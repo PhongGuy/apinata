@@ -258,6 +258,8 @@ pub(crate) enum RhsError {
     NeedsJs,
     /// An item would run as a template literal but does not parse, so it can never run.
     NotJs,
+    /// An item is a whole template literal, valid JavaScript that only a runtime could evaluate.
+    TemplateLiteral,
     /// The JavaScript template of a right-side item threw or was unsupported.
     Script(ExprError),
     Variable(ResolveError),
@@ -293,6 +295,7 @@ pub(crate) fn operand(
     let scalar = |raw: &str, value: String| -> Result<Scalar, RhsError> {
         match (literal(&value), scripted) {
             // Text that cannot parse never runs, so it is refused before any approval check.
+            (Err(NeedsJs), _) if is_template_literal(&value) => Err(RhsError::TemplateLiteral),
             (Err(NeedsJs), _) if !runs_as_template(&value) => Err(RhsError::NotJs),
             (Err(NeedsJs), Some(scripted))
                 if !scripted.allows(text) || (scripted.restricted() && value != raw) =>
@@ -354,6 +357,17 @@ pub(crate) fn needs_script(op: Operator, text: &str) -> bool {
 /// would run it as.
 fn runs_as_template(item: &str) -> bool {
     crate::script::compile::parses_as_template(remove_quotes(js::js_trim(item)))
+}
+
+/// Whether the item is a backtick-delimited template literal that is valid JavaScript on its own.
+/// The reference wraps an item in backticks again, so such an item never parses there; it is
+/// still a template literal, not malformed text.
+fn is_template_literal(item: &str) -> bool {
+    let item = js::js_trim(item);
+    item.len() >= 2
+        && item.starts_with('`')
+        && item.ends_with('`')
+        && crate::script::compile::parses_as_template(&item[1..item.len() - 1])
 }
 
 /// Strips an outer `open`…`close` pair; a single character is kept, as JavaScript's
