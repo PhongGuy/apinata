@@ -67,7 +67,8 @@ source under MIT or Apache-2.0.
   ![The import report after importing a collection from another tool](assets/screenshots/import.png)
 
 - **Mock server and code generation.** `apinata mock` serves your saved
-  examples, and `apinata gen` prints a request as code: curl, HTTPie, Python
+  examples, as does the app's Mock button in the status bar, and `apinata gen`
+  prints a request as code: curl, HTTPie, Python
   requests, JavaScript fetch, Node axios, Go, PowerShell, PHP, Rust reqwest,
   Java or C#.
 
@@ -160,8 +161,8 @@ To build without installing, run `cargo build --release`; the binaries land in
 Start `apinata-app`, or pass it a collection folder: `apinata-app ./my-api`.
 From its menu or command palette, choose Open collection for an existing one,
 New collection to start in an empty folder, Import collection to bring one in
-from another tool, Clone repository to fetch one from git, or Join team server
-to open your team's workspaces. Pick an
+from another tool, or Clone repository to fetch one from git. To open your
+team's workspaces, choose Join team server in the command palette. Pick an
 environment in the title bar, open a request in the sidebar and send it.
 
 To look around first, `make demo` builds the app from source and opens a
@@ -223,7 +224,7 @@ Because the files live in git, the app and the CLI show what changed since the
 last commit (`apinata git status`, `apinata git diff`). The CLI also commits,
 pulls and pushes (`apinata git commit`, `apinata git pull`, `apinata git
 push`), an AI assistant can commit through the MCP server, and the app can
-clone a repository and switch its branches.
+clone a repository, switch its branches, and pull and push.
 
 ### One core, three thin shells
 
