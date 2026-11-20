@@ -17,3 +17,6 @@
 *.ico  binary
 *.icns binary
 *.ttf  binary
+
+# PKCS#12 test bundles are DER, so any byte may appear.
+*.p12  binary

@@ -1,4 +1,4 @@
-//! Client identities and extra CA roots, read from PEM files on every use.
+//! Client identities and extra CA roots, read from PEM or PKCS#12 files on every use.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -10,8 +10,6 @@ use crate::execute::ExecError;
 
 use super::{CertPath, CertificateFiles, Preloaded, ResolvedCertificate};
 
-const PKCS12_UNSUPPORTED: &str = "PKCS#12 files are not supported yet; convert it with \
-    `openssl pkcs12 -in x.pfx -nodes -out x.pem` and use the result as a PEM certificate and key";
 const TRADITIONAL_ENCRYPTED: &str = "this encrypted key format is not supported; convert it with \
     `openssl pkcs8 -topk8 -in key.pem -out key-pkcs8.pem`";
 const NO_CERTIFICATE: &str = "no certificate in file";
@@ -25,7 +23,7 @@ fn failure(path: impl Into<PathBuf>, message: impl Into<String>) -> ExecError {
 
 /// One PEM buffer (certificate chain, then an unencrypted PKCS#8, PKCS#1 or SEC1 key) for
 /// `reqwest::Identity::from_pem`, from the bytes the network check read when it ran, else read
-/// fresh from disk.
+/// fresh from disk. A PKCS#12 bundle is opened with the passphrase and re-encoded as PEM.
 pub(crate) async fn load_identity(
     cert: &ResolvedCertificate,
     preloaded: Option<&Preloaded>,
@@ -36,10 +34,13 @@ pub(crate) async fn load_identity(
             private_key,
         } => (certificate, private_key),
         CertificateFiles::Pkcs12 { file } => {
-            return Err(failure(&file.written, PKCS12_UNSUPPORTED));
+            let bundle = read_given(file, preloaded, 0).await?;
+            let pem = pkcs12_pem(&bundle, cert.passphrase())
+                .map_err(|message| failure(&file.written, message))?;
+            return usable(pem.into_bytes(), &file.written);
         }
     };
-    let chain: String = sections(&read_given(certificate, preloaded, 0).await?)
+    let chain: String = sections(&lossy(read_given(certificate, preloaded, 0).await?))
         .into_iter()
         .filter(|(label, _)| *label == "CERTIFICATE")
         .map(|(_, block)| block)
@@ -48,19 +49,62 @@ pub(crate) async fn load_identity(
         return Err(failure(&certificate.written, NO_CERTIFICATE));
     }
     let key = plain_key(
-        &read_given(private_key, preloaded, 1).await?,
+        &lossy(read_given(private_key, preloaded, 1).await?),
         cert.passphrase(),
     )
     .map_err(|message| failure(&private_key.written, message))?;
-    let pem = format!("{chain}{key}").into_bytes();
-    // Checked here so a pair reqwest rejects is reported on the key, never as a client-build error.
-    reqwest::Identity::from_pem(&pem).map_err(|_| {
-        failure(
-            &private_key.written,
-            "the certificate and key could not be used together",
-        )
-    })?;
+    usable(format!("{chain}{key}").into_bytes(), &private_key.written)
+}
+
+/// `pem` once reqwest accepts it; checked here so a pair reqwest rejects is reported on the
+/// file at `path`, never as a client-build error.
+fn usable(pem: Vec<u8>, path: &str) -> Result<Arc<[u8]>, ExecError> {
+    reqwest::Identity::from_pem(&pem)
+        .map_err(|_| failure(path, "the certificate and key could not be used together"))?;
     Ok(pem.into())
+}
+
+/// The PKCS#12 `bundle` as PEM: its leaf certificate (the one sharing the key's local key ID,
+/// else the first), the other certificates, then its first private key as unencrypted PKCS#8.
+/// The error is the message for the bundle's path and never contains the passphrase.
+fn pkcs12_pem(bundle: &[u8], passphrase: &str) -> Result<String, &'static str> {
+    use p12_keystore::error::Error;
+    let archive =
+        p12_keystore::Pkcs12Archive::from_pkcs12(bundle, passphrase).map_err(|e| match e {
+            Error::MacError(_) | Error::UnpadError => "wrong passphrase",
+            Error::UnsupportedEncryptionScheme
+            | Error::UnsupportedMacAlgorithm
+            | Error::Pkcs5Error(_) => {
+                "the PKCS#12 file uses an encryption scheme that is not supported"
+            }
+            _ => "not a PKCS#12 file, or the file is damaged",
+        })?;
+    let key = archive.keys.first().ok_or("no private key in file")?;
+    let leaf = key
+        .local_key_id
+        .as_ref()
+        .and_then(|id| {
+            archive
+                .certs
+                .iter()
+                .position(|c| c.local_key_id.as_deref() == Some(id.0.as_slice()))
+        })
+        .unwrap_or(0);
+    let leaf = archive.certs.get(leaf).ok_or(NO_CERTIFICATE)?;
+    let unreadable = "the PKCS#12 contents could not be read";
+    let mut pem = String::new();
+    let others = archive.certs.iter().filter(|c| !std::ptr::eq(*c, leaf));
+    for bag in std::iter::once(leaf).chain(others) {
+        pem += &pkcs8::der::pem::encode_string("CERTIFICATE", LineEnding::LF, bag.cert.as_der())
+            .map_err(|_| unreadable)?;
+    }
+    pem += &pkcs8::der::pem::encode_string("PRIVATE KEY", LineEnding::LF, key.key.as_der())
+        .map_err(|_| unreadable)?;
+    Ok(pem)
+}
+
+fn lossy(bytes: Vec<u8>) -> String {
+    String::from_utf8_lossy(&bytes).into_owned()
 }
 
 /// The CA file's certificates; an unreadable file or one with none is `ExecError::Certificate`.
@@ -79,19 +123,18 @@ async fn read_given(
     file: &CertPath,
     preloaded: Option<&Preloaded>,
     at: usize,
-) -> Result<String, ExecError> {
+) -> Result<Vec<u8>, ExecError> {
     match preloaded.and_then(|p| p.0.get(at)) {
-        Some(Ok(bytes)) => Ok(String::from_utf8_lossy(bytes).into_owned()),
+        Some(Ok(bytes)) => Ok(bytes.clone()),
         Some(Err(message)) => Err(failure(&file.written, message.clone())),
         None => read(file).await,
     }
 }
 
-async fn read(file: &CertPath) -> Result<String, ExecError> {
-    let bytes = read_regular_async(&file.read)
+async fn read(file: &CertPath) -> Result<Vec<u8>, ExecError> {
+    read_regular_async(&file.read)
         .await
-        .map_err(|e| failure(&file.written, e.to_string()))?;
-    Ok(String::from_utf8_lossy(&bytes).into_owned())
+        .map_err(|e| failure(&file.written, e.to_string()))
 }
 
 /// The first private key in `text` as an unencrypted PEM block, decrypting an encrypted PKCS#8

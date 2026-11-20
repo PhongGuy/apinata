@@ -109,7 +109,7 @@ async fn launch_certificates_are_used() {
     )
     .await;
     let message = server.err("send_request", json!({"path": "r.yml"})).await;
-    assert!(message.contains("openssl pkcs12"), "{message}");
+    assert!(message.contains("c.p12"), "{message}");
 }
 
 // Launch options whose global proxy is the PAC file at the absolute path `script`.

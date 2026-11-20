@@ -43,6 +43,8 @@ http = "1"
 http-body-util = "0.1"
 # SHA-1 and 3DES open older openssl keys; export picks its scheme itself and never uses them.
 pkcs8 = { version = "=0.11.0", features = ["encryption", "pem", "std", "sha1-insecure", "3des"] }
+# Pure-Rust PKCS#12 reader; its default pbes1 feature opens legacy RC2 and 3DES exports.
+p12-keystore = "=0.4.1"
 scrypt = { version = "=0.12.0", default-features = false }
 jsonwebtoken = { version = "=11.1.0", default-features = false, features = ["use_pem", "aws_lc_rs"] }
 aws-lc-rs = "1.18"

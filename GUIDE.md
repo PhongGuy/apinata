@@ -380,6 +380,13 @@ file, as the app does.
 `cert remove <domain>` deletes it. A path inside the collection is stored relative to
 it, and a relative path is read from the collection.
 
+A PEM entry takes a certificate file and a key that is plain or encrypted PKCS#8. A
+PKCS#12 entry (`.pfx` or `.p12`) is opened with its passphrase, which resolves
+`{{variables}}` like any other value; both the AES-256 bundles current OpenSSL writes
+and the older RC2 and 3DES bundles of Windows and browser exports are read. A wrong
+passphrase, a file that is not PKCS#12 and a bundle without a private key each fail
+the send with an error naming the file, never the passphrase.
+
 A proxy password or certificate passphrase is never taken as a plain flag value, so it
 stays out of shell history. `--password` and `--passphrase` accept only a
 `{{variable}}` reference. `--password-stdin` and `--passphrase-stdin` read the value

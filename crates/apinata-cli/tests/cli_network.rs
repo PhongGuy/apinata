@@ -188,20 +188,14 @@ fn client_cert_config_adds_certificates_after_the_collections() {
         &["--client-cert-config", config.to_str().expect("utf-8")],
         &[],
     );
-    assert!(
-        column(&report, "error")[0].contains("openssl pkcs12"),
-        "{report}"
-    );
+    assert!(column(&report, "error")[0].contains("c.p12"), "{report}");
     std::fs::write(&config, r#"{"enabled": false, "certs": [{"domain": "127.0.0.1", "type": "pfx", "pfxFilePath": "c.p12"}]}"#).expect("write");
     let (_, report, _) = run(
         dir.path(),
         &["--client-cert-config", config.to_str().expect("utf-8")],
         &[],
     );
-    assert!(
-        !column(&report, "error")[0].contains("openssl pkcs12"),
-        "{report}"
-    );
+    assert!(!column(&report, "error")[0].contains("c.p12"), "{report}");
 }
 
 #[test]
