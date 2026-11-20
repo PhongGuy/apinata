@@ -3668,14 +3668,23 @@ impl Workspace {
             cx.emit(WorkspaceEvent::Opened(root.to_path_buf()));
             self.restore_tabs(root, cx);
             let preferred = self.import_envs.remove(root);
-            if !self.restore_environment(root, cx) {
-                // With no saved choice, a collection's only environment is the obvious pick.
+            if !self.restore_environment(root, cx) && !self.chose_no_environment(root, cx) {
+                // With no saved choice, take the import's pick, then the collection's preset
+                // default, then its only environment; each only while that environment exists.
                 let names = self.environments(root, cx);
+                let preset = self.snapshot(root, cx).and_then(|s| {
+                    let presets = s.content.collection.presets.as_ref()?;
+                    Some(presets.default_environment().to_owned())
+                });
                 let only = match names.as_slice() {
-                    [only] if !self.chose_no_environment(root, cx) => Some(only.clone()),
+                    [only] => Some(only.clone()),
                     _ => None,
                 };
-                if let Some(name) = preferred.filter(|n| names.contains(n)).or(only) {
+                let pick = [preferred, preset]
+                    .into_iter()
+                    .flatten()
+                    .find(|n| names.contains(n));
+                if let Some(name) = pick.or(only) {
                     self.send(root, Command::SelectEnvironment(Some(name)), cx);
                 }
             }
