@@ -28,6 +28,10 @@ pub type Locate = Box<dyn Fn(&App) -> Option<(PathBuf, Target)>>;
 /// Run before Get token: the labels of the required fields left blank, which it marks.
 pub type Check = Box<dyn Fn(&mut App) -> Vec<&'static str>>;
 
+/// Run before every action: commits a secret still being typed, as Send does. It sends
+/// through the editor, which refreshes this panel, so it runs outside the panel's update.
+pub type Commit = std::rc::Rc<dyn Fn(&mut App)>;
+
 /// The neutral line a sign-in the user cancelled leaves.
 pub const CANCELLED: &str = "Sign-in cancelled";
 
@@ -79,6 +83,7 @@ pub struct TokenPanel {
     // The required fields Get token found blank and that are still blank; an edit keeps them.
     missing: Vec<&'static str>,
     check: Option<Check>,
+    commit: Option<Commit>,
     read_error: Option<String>,
     memory_only: Option<String>,
     // A read can be replaced at any time; an action is never cut short by a read.
@@ -108,6 +113,7 @@ impl TokenPanel {
             action_note: None,
             missing: Vec::new(),
             check: None,
+            commit: None,
             read_error: None,
             memory_only: None,
             read: None,
@@ -133,6 +139,11 @@ impl TokenPanel {
     /// Sets the check Get token runs first; blank required fields stop it with one message.
     pub fn set_check(&mut self, check: Check) {
         self.check = Some(check);
+    }
+
+    /// Sets the commit every action runs first, so it reads the secret being typed.
+    pub fn set_commit(&mut self, commit: Commit) {
+        self.commit = Some(commit);
     }
 
     /// Narrows the blank-field summary to `labels`, the fields still marked after an edit.
@@ -222,8 +233,24 @@ impl TokenPanel {
         cx.notify();
     }
 
-    // Actions are refused while one runs; starting one drops any read, which has no effects.
+    // Typing still owed is committed first, deferred out of this update; its edit queues on
+    // the collection actor ahead of the action's plan, so the plan reads it.
     fn act(&mut self, action: Action, cx: &mut Context<Self>) {
+        if self.action.is_some() {
+            return;
+        }
+        let Some(commit) = self.commit.clone() else {
+            return self.start(action, cx);
+        };
+        let this = cx.weak_entity();
+        cx.defer(move |cx| {
+            commit(cx);
+            let _ = this.update(cx, |p, cx| p.start(action, cx));
+        });
+    }
+
+    // Actions are refused while one runs; starting one drops any read, which has no effects.
+    fn start(&mut self, action: Action, cx: &mut Context<Self>) {
         if self.action.is_some() {
             return;
         }
