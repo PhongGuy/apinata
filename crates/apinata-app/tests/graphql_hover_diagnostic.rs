@@ -1,8 +1,10 @@
-//! A live-check diagnostic under a hovered name joins the hover instead of a second popover.
+//! A live-check diagnostic on a schema name carries that name's hover, so one popover shows.
 
 use crate::support;
 
+use std::cell::Cell;
 use std::ops::Range;
+use std::rc::Rc;
 use std::time::Duration;
 
 use apinata_app::graphql_check::CHECK_DELAY;
@@ -86,26 +88,20 @@ fn hover_over(
     }
 }
 
-// The hover's Markdown, if one is open, and whether the diagnostic popover is open.
-fn popovers(cx: &mut TestAppContext, query: &Entity<EditorState>) -> (Option<String>, bool) {
+// The hover's Markdown, if one is open, and the diagnostic popover's message, if one is open.
+fn popovers(
+    cx: &mut TestAppContext,
+    query: &Entity<EditorState>,
+) -> (Option<String>, Option<String>) {
     query.read_with(cx, |e, _| {
         let hover = e.hover_popover().map(|h| match &h.hover.contents {
             HoverContents::Markup(m) => m.value.clone(),
             other => panic!("not Markdown: {other:?}"),
         });
-        (hover, e.diagnostic_popover().is_some())
-    })
-}
-
-fn squiggle_messages(cx: &mut TestAppContext, query: &Entity<EditorState>) -> Vec<String> {
-    query.read_with(cx, |e, _| {
-        e.diagnostics()
-            .map(|set| {
-                set.iter()
-                    .map(|d| d.diagnostic.message.to_string())
-                    .collect()
-            })
-            .unwrap_or_default()
+        let diagnostic = e
+            .diagnostic_popover()
+            .map(|d| d.diagnostic.message.to_string());
+        (hover, diagnostic)
     })
 }
 
@@ -115,64 +111,104 @@ fn span(text: &str, word: &str) -> Range<usize> {
 }
 
 #[gpui_kit::test]
-fn a_deprecated_field_folds_its_warning_into_the_hover(cx: &mut TestAppContext) {
+fn a_deprecated_field_shows_one_popover_holding_warning_and_description(cx: &mut TestAppContext) {
     let text = "{ me { legacyName } }";
     let (win, query) = section(cx, text);
-    let messages = squiggle_messages(cx, &query);
-    assert_eq!(messages, ["`User.legacyName` is deprecated: Use name"]);
     hover_over(cx, win, &query, span(text, "legacyName"));
     let (hover, diagnostic) = popovers(cx, &query);
-    let hover = hover.expect("a hover");
+    assert_eq!(
+        hover, None,
+        "the schema hover stays quiet under the warning"
+    );
+    let message = diagnostic.expect("the diagnostic popover");
     assert!(
-        hover.starts_with("`User.legacyName: String`\n\nFormer name\\."),
-        "{hover}"
+        message.starts_with("`User.legacyName` is deprecated\\: Use name\n\n---\n\n"),
+        "{message}"
     );
     assert!(
-        hover.ends_with("\n\n---\n\n`User.legacyName` is deprecated\\: Use name"),
-        "{hover}"
+        message.contains("`User.legacyName: String`\n\nFormer name\\."),
+        "{message}"
     );
-    assert!(!diagnostic, "the diagnostic popover stays closed");
 }
 
 #[gpui_kit::test]
-fn an_unused_fragment_folds_into_the_hover_of_a_name_inside_it(cx: &mut TestAppContext) {
+fn moving_across_a_squiggle_keeps_the_popover_without_redrawing(cx: &mut TestAppContext) {
+    let text = "{ me { legacyName } }";
+    let (win, query) = section(cx, text);
+    let name = span(text, "legacyName");
+    hover_over(cx, win, &query, name.clone());
+    let open = query.read_with(cx, |e, _| e.diagnostic_popover().expect("open"));
+    let redraws = Rc::new(Cell::new(0));
+    let counter = Rc::clone(&redraws);
+    let _watch = cx.update(|cx| cx.observe(&query, move |_, _| counter.set(counter.get() + 1)));
+    for offset in name.clone() {
+        let at = query
+            .read_with(cx, |e, _| e.range_to_bounds(&(offset..offset + 1)))
+            .expect("laid out")
+            .center();
+        cx.update_window(win, |_, w, cx| {
+            let event = MouseMoveEvent {
+                position: at,
+                pressed_button: None,
+                modifiers: Modifiers::default(),
+            };
+            w.dispatch_event(event.to_platform_input(), cx);
+        })
+        .unwrap();
+        cx.run_until_parked();
+        let now = query.read_with(cx, |e, _| e.diagnostic_popover().expect("still open"));
+        assert!(
+            Rc::ptr_eq(&open, &now),
+            "the popover was closed and reopened"
+        );
+    }
+    assert_eq!(
+        redraws.get(),
+        0,
+        "moves within the squiggle redrew the editor"
+    );
+}
+
+#[gpui_kit::test]
+fn a_wide_warning_keeps_its_own_text_beside_the_name_hover(cx: &mut TestAppContext) {
     let text = "{ me { name } }\nfragment Unused on User { name }";
     let (win, query) = section(cx, text);
-    let messages = squiggle_messages(cx, &query);
-    assert!(
-        messages.iter().any(|m| m.contains("Unused")),
-        "{messages:?}"
-    );
     let inner = text.rfind("name").unwrap();
     hover_over(cx, win, &query, inner..inner + 4);
     let (hover, diagnostic) = popovers(cx, &query);
-    let hover = hover.expect("a hover");
-    assert!(hover.contains("Display name\\."), "{hover}");
-    assert!(hover.contains("\n\n---\n\n"), "{hover}");
-    assert!(hover.contains("Unused"), "{hover}");
-    assert!(!diagnostic, "the diagnostic popover stays closed");
+    assert_eq!(
+        hover.as_deref(),
+        Some("`User.name: String`\n\nDisplay name\\.")
+    );
+    let message = diagnostic.expect("the diagnostic popover");
+    assert!(message.contains("Unused"), "{message}");
+    assert!(!message.contains("---"), "{message}");
 }
 
 #[gpui_kit::test]
-fn a_squiggle_without_a_hover_keeps_the_diagnostic_popover(cx: &mut TestAppContext) {
+fn a_squiggle_without_a_schema_name_shows_just_the_warning(cx: &mut TestAppContext) {
     let text = "{ me { nmae } }";
     let (win, query) = section(cx, text);
-    assert_eq!(squiggle_messages(cx, &query).len(), 1);
     hover_over(cx, win, &query, span(text, "nmae"));
-    assert_eq!(popovers(cx, &query), (None, true));
+    assert_eq!(
+        popovers(cx, &query),
+        (
+            None,
+            Some("type `User` does not have a field `nmae`".to_owned())
+        )
+    );
 }
 
 #[gpui_kit::test]
 fn a_clean_name_shows_the_hover_alone(cx: &mut TestAppContext) {
     let text = "{ me { name } }";
     let (win, query) = section(cx, text);
-    assert!(squiggle_messages(cx, &query).is_empty());
     hover_over(cx, win, &query, span(text, "name"));
     assert_eq!(
         popovers(cx, &query),
         (
             Some("`User.name: String`\n\nDisplay name\\.".to_owned()),
-            false
+            None
         )
     );
 }

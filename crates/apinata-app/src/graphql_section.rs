@@ -25,7 +25,7 @@ use crate::graphql_check::{
 };
 use crate::graphql_complete::SchemaCompletions;
 use crate::graphql_docs::{DocsPanel, DocsView};
-use crate::graphql_hover::{SchemaSymbols, Squiggles, docs_view, hide_folded_diagnostic};
+use crate::graphql_hover::{SchemaSymbols, Squiggles, docs_view, with_name_hovers};
 use crate::graphql_schema_store::{self, CheckKey, Lookup, SchemaState, SchemaStore};
 use crate::graphql_variables::VariableTools;
 use crate::schema_load::load_from_file;
@@ -157,11 +157,6 @@ impl GraphqlSection {
                 }
             }),
             cx.subscribe(&variables, on_change),
-            // A hover that already carries the diagnostic under the pointer closes the kit's
-            // diagnostic popover, so the two never stack.
-            cx.observe(&query, |_, query, cx| {
-                query.update(cx, hide_folded_diagnostic)
-            }),
             // A schema that settles on a key other than the last check's gets a new check.
             cx.observe_global::<SchemaStore>(|this, cx| {
                 let key = graphql_schema_store::compiled(&this.schema_url, cx).key();
@@ -365,6 +360,11 @@ impl GraphqlSection {
                 if !this.jobs.is_latest(job) {
                     return;
                 }
+                // The loaded schema names the hovers that diagnostics on one name carry.
+                let named = match graphql_schema_store::state(cx, &this.schema_url) {
+                    Some(SchemaState::Loaded(schema)) => Some(schema),
+                    _ => None,
+                };
                 this.query.update(cx, |e, cx| {
                     if *e.value() != *text {
                         return;
@@ -372,7 +372,11 @@ impl GraphqlSection {
                     let rope = e.text().clone();
                     if let Some(set) = e.diagnostics_mut() {
                         set.reset(&rope);
-                        set.extend(editor_diagnostics(&rope, check.diagnostics()));
+                        let found = editor_diagnostics(&rope, check.diagnostics());
+                        set.extend(match &named {
+                            Some(schema) => with_name_hovers(schema, &rope, found),
+                            None => found,
+                        });
                         *this.squiggles.borrow_mut() = Squiggles::of(&rope, set);
                     }
                     cx.notify();
