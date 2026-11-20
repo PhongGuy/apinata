@@ -934,8 +934,9 @@ apinata import collection openapi.yaml --into ./collections/Shop --update --dry-
 
 A collection set up for OpenAPI sync in another app records its spec's link or
 file in `opencollection.yml`. Leave the description out and `--update` uses that
-source, grouped as recorded (a link is fetched like any other; in the app, Update
-fills in the recorded source). The first update of such a collection does not know
+source, grouped as recorded, and names it on stderr (a link is fetched like any
+other; in the app, Update fills in the recorded source). The recorded source
+updates the whole collection, so updating a folder still needs the description. The first update of such a collection does not know
 which values were generated, so it adds new operations, keeps every request that
 already differs from the description as it is and lists it under "differs", and
 removes nothing. From then on updates work as above.

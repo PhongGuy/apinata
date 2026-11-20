@@ -136,3 +136,21 @@ async fn an_update_with_no_input_and_no_recorded_source_is_refused() {
         .await;
     assert!(message.contains("`url` and `text`"), "{message}");
 }
+
+#[tokio::test]
+async fn a_folder_update_without_input_is_refused_and_changes_nothing() {
+    let server = reference_only("spec.json", "tags").await;
+    fs::write(server.root().join("spec.json"), V2).unwrap();
+    let before = files_under(server.root());
+    let message = server
+        .err(
+            "import_collection",
+            json!({"update": true, "into": "people"}),
+        )
+        .await;
+    assert!(
+        message.contains("give a spec file or link to update a folder"),
+        "{message}"
+    );
+    assert_eq!(files_under(server.root()), before);
+}

@@ -118,3 +118,38 @@ fn a_typed_link_is_not_replaced_by_the_recorded_one(cx: &mut TestAppContext) {
         "http://127.0.0.1:9/mine.json"
     );
 }
+
+#[gpui_kit::test]
+fn a_folder_target_is_not_offered_the_recorded_source(cx: &mut TestAppContext) {
+    use apinata_core::import::SpecBaseline;
+    use apinata_core::{Collection, ItemPath};
+    let r = rig(cx);
+    let root = reference_only(r.parent.path(), "spec.json", "tags");
+    // `people` carries a baseline of its own, so it is a scope of its own.
+    let mut c = Collection::open(&root).unwrap();
+    let people = ItemPath::new("people").unwrap();
+    c.file_mut()
+        .set_spec_baseline_in(&people, &SpecBaseline::default());
+    c.file_mut().save().unwrap();
+    r.open(cx, root.clone());
+    let d = r.dialog(cx, "");
+    r.click(cx, "import-update-target-0");
+    d.update(cx, |d, cx| d.select_scope(Some(people.clone()), cx));
+    frame(cx, r.win);
+    assert_eq!(
+        d.read_with(cx, |d, cx| d.link(cx)),
+        "",
+        "no offer for a folder"
+    );
+    d.update(cx, |d, cx| d.select_scope(None, cx));
+    frame(cx, r.win);
+    let offered = root.join("spec.json").to_string_lossy().into_owned();
+    assert_eq!(d.read_with(cx, |d, cx| d.link(cx)), offered);
+    d.update(cx, |d, cx| d.select_scope(Some(people), cx));
+    frame(cx, r.win);
+    assert_eq!(
+        d.read_with(cx, |d, cx| d.link(cx)),
+        "",
+        "an untouched offer is withdrawn for a folder"
+    );
+}

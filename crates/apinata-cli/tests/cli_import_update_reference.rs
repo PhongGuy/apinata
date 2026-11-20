@@ -145,3 +145,66 @@ fn an_import_without_update_still_needs_an_input() {
         .failure()
         .stderr(contains("FILE_OR_URL"));
 }
+
+#[test]
+fn the_recorded_source_is_named_on_stderr() {
+    let parent = tempfile::tempdir().unwrap();
+    let root = reference_only(parent.path(), "spec.json", "tags");
+    fs::copy(fixture("update-v2.json"), root.join("spec.json")).unwrap();
+    let shown = root.join("spec.json").display().to_string();
+    apinata()
+        .args([
+            "import",
+            "collection",
+            "--update",
+            "--format",
+            "json",
+            "--into",
+        ])
+        .arg(&root)
+        .assert()
+        .code(0)
+        .stderr(contains(format!(
+            "Updating from the recorded source {shown}"
+        )))
+        .stdout(contains("Updating").not());
+}
+
+#[test]
+fn a_folder_update_without_input_is_refused_and_changes_nothing() {
+    let parent = tempfile::tempdir().unwrap();
+    let root = reference_only(parent.path(), "spec.json", "tags");
+    fs::copy(fixture("update-v2.json"), root.join("spec.json")).unwrap();
+    let before = snapshot(&root);
+    apinata()
+        .args([
+            "import",
+            "collection",
+            "--update",
+            "--folder",
+            "people",
+            "--into",
+        ])
+        .arg(&root)
+        .assert()
+        .failure()
+        .stderr(contains("give a spec file or link to update a folder"));
+    assert_eq!(snapshot(&root), before);
+}
+
+fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+    let mut out = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in fs::read_dir(&dir).unwrap() {
+            let p = entry.unwrap().path();
+            if p.is_dir() {
+                stack.push(p);
+            } else {
+                out.push((p.clone(), fs::read(&p).unwrap()));
+            }
+        }
+    }
+    out.sort();
+    out
+}

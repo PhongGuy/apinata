@@ -191,6 +191,14 @@ pub(crate) fn plan(a: &ImportCollectionArgs) -> Result<Plan, String> {
     if !update && (prune || dry_run) {
         return Err("`prune` and `dry_run` require `update`".to_owned());
     }
+    // The record belongs to the root; a folder keeps its own spec and must be given one.
+    if none && a.into.is_some() {
+        return Err(
+            "the recorded source updates the whole collection; give a spec file or link to update \
+             a folder (`url` or `text`)"
+                .to_owned(),
+        );
+    }
     let folder = match (update, a.into.as_deref()) {
         (true, Some(raw)) => Some(into_segments(raw)?),
         _ => None,

@@ -517,6 +517,10 @@ fn update_bundle(args: &CollectionArgs, c: &Collection) -> anyhow::Result<Import
             (input, name, None)
         }
         None => {
+            // The record belongs to the root; a folder keeps its own spec and must be given one.
+            if args.folder.is_some() {
+                return Err(anyhow!("{FOLDER_NEEDS_INPUT}"));
+            }
             let recorded = recorded_spec(c).ok_or_else(|| {
                 anyhow!(
                     "--update needs FILE_OR_URL: this collection records no spec to update from"
@@ -890,23 +894,24 @@ fn read_recorded(
     location: &SpecLocation,
     fetch: &FetchNetworkArgs,
 ) -> anyhow::Result<(Vec<u8>, Option<String>)> {
-    let (read, shown) = match location {
-        SpecLocation::Link(url) => (
-            fetch_link(url, fetch).map(|b| (b, default_import_name(url))),
-            url.clone(),
-        ),
-        SpecLocation::File(path) => (
-            read_file(path).map(|b| (b, file_stem(path))),
-            path.display().to_string(),
-        ),
-        _ => {
-            return Err(anyhow!(
-                "the recorded spec has a kind of source this version cannot read"
-            ));
-        }
+    let unknown = || anyhow!("the recorded spec has a kind of source this version cannot read");
+    let shown = match location {
+        SpecLocation::Link(url) => url.clone(),
+        SpecLocation::File(path) => path.display().to_string(),
+        _ => return Err(unknown()),
+    };
+    // The user never typed this source, so say which one is used; stderr keeps JSON clean.
+    eprintln!("Updating from the recorded source {shown}");
+    let read = match location {
+        SpecLocation::Link(url) => fetch_link(url, fetch).map(|b| (b, default_import_name(url))),
+        SpecLocation::File(path) => read_file(path).map(|b| (b, file_stem(path))),
+        _ => Err(unknown()),
     };
     read.with_context(|| format!("cannot read the recorded spec {shown}"))
 }
+
+const FOLDER_NEEDS_INPUT: &str =
+    "the recorded source updates the whole collection; give a spec file or link to update a folder";
 
 fn read_file(path: &Path) -> anyhow::Result<Vec<u8>> {
     std::fs::read(path).with_context(|| format!("cannot read {}", path.display()))

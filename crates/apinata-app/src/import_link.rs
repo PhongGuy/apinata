@@ -835,25 +835,35 @@ impl ImportLinkDialog {
     }
 
     // Fill the link with the chosen collection's recorded spec while the field is empty or
-    // still shows an earlier offer, so a typed link is never replaced.
+    // still shows an earlier offer, so a typed link is never replaced. The record belongs to
+    // the root, so a folder scope withdraws an untouched offer instead.
     fn offer_recorded(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.mode != Mode::Update || !matches!(self.phase, Phase::Idle) {
             return;
         }
-        let Some(text) = self
-            .selected
-            .and_then(|n| self.targets.get(n))
-            .and_then(|t| t.recorded.as_ref())
-            .and_then(recorded_text)
-        else {
-            return;
-        };
         let current = self.link(cx);
         let untouched = current.is_empty() || self.offered.as_deref() == Some(current.as_str());
-        if untouched && current != text {
-            self.link.update(cx, |i, cx| i.set_value(&text, window, cx));
-            self.offered = Some(text);
+        if !untouched {
+            return;
         }
+        let text = self
+            .recorded_at_root()
+            .and_then(recorded_text)
+            .unwrap_or_default();
+        if current != text {
+            self.link.update(cx, |i, cx| i.set_value(&text, window, cx));
+            self.offered = (!text.is_empty()).then_some(text);
+        }
+    }
+
+    // The chosen collection's recorded spec, while its root is the scope being updated.
+    fn recorded_at_root(&self) -> Option<&RecordedSpec> {
+        if self.folder != Some(None) {
+            return None;
+        }
+        self.selected
+            .and_then(|n| self.targets.get(n))
+            .and_then(|t| t.recorded.as_ref())
     }
 
     /// The link field's text.
@@ -912,9 +922,7 @@ impl ImportLinkDialog {
         };
         // The recorded source is parsed with the grouping its record names; anything typed groups by tag.
         let group_by = self
-            .selected
-            .and_then(|n| self.targets.get(n))
-            .and_then(|t| t.recorded.as_ref())
+            .recorded_at_root()
             .filter(|r| self.mode == Mode::Update && recorded_text(r).as_deref() == Some(&url))
             .map_or(GroupBy::Tags, |r| r.group_by);
         // The collection is named after the link, or after the file, where the format takes a name.
