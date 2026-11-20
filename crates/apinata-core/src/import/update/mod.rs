@@ -78,6 +78,9 @@ impl TakeSpec {
             let fields = list
                 .split(',')
                 .map(|id| {
+                    if id.trim().is_empty() {
+                        return Err(format!("empty field name in {list:?}"));
+                    }
                     ChangedField::from_id(id.trim()).ok_or_else(|| {
                         let known: Vec<_> = ChangedField::ALL.iter().map(|f| f.id()).collect();
                         format!("unknown field {id}; expected {}", known.join(", "))
@@ -350,7 +353,13 @@ pub fn apply_update(
             Action::DropStale { key } => {
                 baseline.remove(&key);
             }
-            Action::Relink { key, path } => baseline.set_file(key, path.as_str().to_owned()),
+            // A link stands only beside a record, so a failed take of an unrecorded request
+            // leaves it unlinked as well.
+            Action::Relink { key, path } => {
+                if baseline.get(&key).is_some() {
+                    baseline.set_file(key, path.as_str().to_owned());
+                }
+            }
         }
     }
     if baseline != c.file().spec_baseline_in(&scope).unwrap_or_default() {
@@ -463,12 +472,13 @@ fn unrecorded_state(spec: &str, file: &str) -> FieldState {
 
 /// First update of a collection only the reference app synced: nothing is known to be
 /// generated, so only the fields that already equal the spec are recorded, and the request
-/// is tied to its file so later updates find it.
+/// is tied to its file so later updates find it. On a first update (`adopting`) a taken
+/// request is recorded as untaken first, so a take that fails to write leaves that record.
 fn adopt(
     path: &ItemPath,
     file: &RequestFile,
     request: &ImportedRequest,
-    key: String,
+    adopting: bool,
     takes: &dyn Fn(ChangedField) -> bool,
     summary: &mut UpdateSummary,
     actions: &mut Vec<Action>,
@@ -477,30 +487,42 @@ fn adopt(
         summary.edited.push(path.clone());
         return Ok(());
     }
+    let key = operation_key(&request.method, &request.url);
     let spec = spec_field_hashes(request)?;
     let on_file = file_field_hashes(file);
     let mut differing = Vec::new();
     let mut equal = Vec::new();
+    let mut untaken = Vec::new();
     let mut refresh = Vec::new();
     let absent = fields::absent_hash();
     for field in ChangedField::ALL {
         let spec_hash = spec.get(field).unwrap_or("");
         let file_hash = on_file.get(field).unwrap_or("");
+        // A request with no examples counts as generated without them, so the next update adds
+        // the spec's examples as it does for an older baseline; it is not reported as differing.
+        let (record, differs) =
+            if field == ChangedField::Examples && file_hash == absent && spec_hash != absent {
+                (Some(absent.clone()), false)
+            } else {
+                match unrecorded_state(spec_hash, file_hash) {
+                    FieldState::Differs => (None, true),
+                    FieldState::Adopt => (Some(spec_hash.to_owned()), false),
+                    _ => (None, false),
+                }
+            };
+        if let Some(hash) = &record {
+            untaken.push((field, hash.clone()));
+        }
         if takes(field) && file_hash != spec_hash {
             refresh.push(field);
             equal.push((field, spec_hash.to_owned()));
             continue;
         }
-        // A request with no examples counts as generated without them, so the next update adds
-        // the spec's examples as it does for an older baseline; it is not reported as differing.
-        if field == ChangedField::Examples && file_hash == absent && spec_hash != absent {
-            equal.push((field, absent.clone()));
-            continue;
+        if differs {
+            differing.push(field);
         }
-        match unrecorded_state(spec_hash, file_hash) {
-            FieldState::Differs => differing.push(field),
-            FieldState::Adopt => equal.push((field, spec_hash.to_owned())),
-            _ => {}
+        if let Some(hash) = record {
+            equal.push((field, hash));
         }
     }
     let differs = !differing.is_empty();
@@ -524,6 +546,12 @@ fn adopt(
             path: path.clone(),
             fields: refresh.clone(),
         });
+        if adopting {
+            actions.push(Action::Adopt {
+                key: key.clone(),
+                hashes: FieldHashes::new(untaken),
+            });
+        }
         actions.push(Action::Refresh {
             path: path.clone(),
             key: key.clone(),
@@ -827,7 +855,15 @@ pub(crate) fn plan(
         }
         // A request with no record that is named to take the spec is adopted as if first seen.
         if adopting || (baseline.get(&key).is_none() && !chosen.is_empty()) {
-            adopt(path, file, request, key, &takes, &mut summary, &mut actions)?;
+            adopt(
+                path,
+                file,
+                request,
+                adopting,
+                &takes,
+                &mut summary,
+                &mut actions,
+            )?;
             continue;
         }
         let Some(recorded) = baseline.get(&key) else {
