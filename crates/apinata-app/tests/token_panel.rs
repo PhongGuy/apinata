@@ -718,3 +718,117 @@ fn a_refused_token_fetch_reads_like_a_failed_send(cx: &mut TestAppContext) {
         Some("Connection refused: Nothing is listening at 127.0.0.1:9. Is the server running?")
     );
 }
+
+// A password grant whose password is stored in `.env` under the name a move writes.
+fn password_grant(uri: &str) -> String {
+    format!(
+        "    type: oauth2\n    flow: resource_owner_password_credentials\n    accessTokenUrl: \"{uri}/token\"\n    credentials:\n      clientId: app\n    resourceOwner:\n      username: ann\n      password: \"{{{{process.env.APINATA_OAUTH2_PASSWORD}}}}\"\n    tokenConfig:\n      id: main\n"
+    )
+}
+
+// The bodies of the password grant posts `server` received, oldest first.
+fn password_posts(cx: &mut TestAppContext, server: &MockServer) -> Vec<String> {
+    let handle = cx.update(|cx| apinata_app::tokio_bridge::handle(cx));
+    handle
+        .block_on(server.received_requests())
+        .unwrap_or_default()
+        .iter()
+        .map(|r| String::from_utf8_lossy(&r.body).into_owned())
+        .filter(|b| b.contains("grant_type=password"))
+        .collect()
+}
+
+// Replaces the stored password and types a new one, then presses Get token while the field
+// keeps the focus, so no blur commits the typing first; returns what the endpoint received.
+fn get_token_while_typing(
+    cx: &mut TestAppContext,
+    win: AnyWindowHandle,
+    panel: &Entity<TokenPanel>,
+    server: &MockServer,
+) -> Vec<String> {
+    cx.update_window(win, |_, w, _| w.activate_window())
+        .unwrap();
+    frame(cx, win);
+    assert!(present(cx, win, "oauth2-password-stored"));
+    cx.update_window(win, |_, w, cx| w.click("oauth2-password-replace", cx))
+        .unwrap();
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| w.input("new-pw", cx))
+        .unwrap();
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| w.click("oauth2-get-token", cx))
+        .unwrap();
+    wait_real(cx, |cx| !panel.read_with(cx, |p, _| p.is_busy()));
+    password_posts(cx, server)
+}
+
+fn password_provider(cx: &mut TestAppContext) -> MockServer {
+    let handle = cx.update(|cx| apinata_app::tokio_bridge::handle(cx));
+    let server = handle.block_on(MockServer::builder().start());
+    handle.block_on(
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"access_token":"t"}"#))
+            .mount(&server),
+    );
+    server
+}
+
+#[gpui_kit::test]
+fn get_token_sends_a_request_password_still_being_typed(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let server = password_provider(cx);
+    let file = format!(
+        "{}  auth:\n{}",
+        request("a", "http://x.test/r"),
+        password_grant(&server.uri())
+    );
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("a.yml", &file),
+        (".env", "APINATA_OAUTH2_PASSWORD=old-pw\n"),
+    ]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, view) = editor_for(cx, &ws, &root, "a.yml", false);
+    let panel = request_panel(cx, &view);
+    settle_panel(cx, &panel);
+    cx.update_window(win, |_, w, cx| {
+        w.click(("section", Section::Auth as usize), cx);
+        w.render_frame(cx)
+    })
+    .unwrap();
+    frame(cx, win);
+    let posts = get_token_while_typing(cx, win, &panel, &server);
+    assert_eq!(posts.len(), 1, "{posts:?}");
+    assert!(posts[0].contains("password=new-pw"), "{posts:?}");
+}
+
+#[gpui_kit::test]
+fn get_token_sends_a_folder_password_still_being_typed(cx: &mut TestAppContext) {
+    use apinata_app::config_editor::ConfigSection;
+    http_ready(cx);
+    let server = password_provider(cx);
+    let folder = format!(
+        "info:\n  name: F\n  type: folder\n  seq: 1\nrequest:\n  auth:\n{}",
+        password_grant(&server.uri())
+    );
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("f/folder.yml", &folder),
+        ("f/a.yml", &request("a", "http://x.test/r")),
+        (".env", "APINATA_OAUTH2_PASSWORD=old-pw\n"),
+    ]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, view) = config_editor(cx, &ws, &root, ConfigTarget::Folder(ip("f")));
+    view.update(cx, |e, cx| e.set_section(ConfigSection::Auth, cx));
+    frame(cx, win);
+    let panel = view
+        .read_with(cx, |v, cx| {
+            v.auth().read(cx).oauth2().read(cx).token_panel().cloned()
+        })
+        .expect("a token panel");
+    settle_panel(cx, &panel);
+    let posts = get_token_while_typing(cx, win, &panel, &server);
+    assert_eq!(posts.len(), 1, "{posts:?}");
+    assert!(posts[0].contains("password=new-pw"), "{posts:?}");
+}

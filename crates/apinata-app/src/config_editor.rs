@@ -228,6 +228,12 @@ impl ConfigEditor {
             })
         };
         let panel = cx.new(|cx| TokenPanel::new(workspace.clone(), locate, cx));
+        let me = cx.weak_entity();
+        panel.update(cx, |p, _| {
+            p.set_commit(std::rc::Rc::new(move |cx| {
+                let _ = me.update(cx, |e, cx| e.commit_pending_secret(cx));
+            }))
+        });
         let oauth2 = auth.read(cx).oauth2().clone();
         let follow = FocusFollow::default();
         oauth2.update(cx, |o, cx| {
