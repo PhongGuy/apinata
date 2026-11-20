@@ -5,7 +5,9 @@ use apinata_app::assertions_section::{
 };
 use apinata_app::command::Edit;
 use apinata_app::kv_grid::KvWidth;
-use apinata_app::style::{KV_CHECK_WIDTH, OPERATOR_SELECT_WIDTH, VALUE_GROW};
+use apinata_app::style::{
+    ASSERTION_CELL_MIN, KV_CHECK_WIDTH, OPERATOR_SELECT_MIN, OPERATOR_SELECT_WIDTH, VALUE_GROW,
+};
 use apinata_app::style::{ROW_HEIGHT, at_zoom};
 use apinata_core::{Assertion, RequestFile};
 use gpui_kit::test::TestWindowExt;
@@ -385,7 +387,7 @@ fn assertion_columns_have_headings(cx: &mut TestAppContext) {
 }
 
 #[test]
-fn assertion_columns_name_expression_operator_value_with_a_fixed_operator() {
+fn assertion_columns_name_expression_operator_value_with_a_yielding_operator() {
     let cols = apinata_app::assertions_section::columns();
     let heads: Vec<String> = cols.iter().map(|c| c.heading.to_string()).collect();
     assert_eq!(heads, apinata_app::assertions_section::HEADINGS);
@@ -396,9 +398,14 @@ fn assertion_columns_name_expression_operator_value_with_a_fixed_operator() {
         widths,
         [
             KvWidth::Flex,
-            KvWidth::Fixed(OPERATOR_SELECT_WIDTH),
+            KvWidth::Yield(OPERATOR_SELECT_WIDTH, OPERATOR_SELECT_MIN),
             KvWidth::Grow(VALUE_GROW)
         ]
+    );
+    let floors: Vec<_> = cols.iter().map(|c| c.floor).collect();
+    assert_eq!(
+        floors,
+        [Some(ASSERTION_CELL_MIN), None, Some(ASSERTION_CELL_MIN)]
     );
     // The value takes the larger share of what the operator leaves.
     const { assert!(VALUE_GROW > 1.0) };

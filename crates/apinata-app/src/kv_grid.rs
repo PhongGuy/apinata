@@ -44,6 +44,9 @@ pub enum KvWidth {
     /// Shares the free width with the other flexible columns, taking this many parts of it
     /// to a plain flexible column's one.
     Grow(f32),
+    /// This wide while the row has room; in a narrow row it gives up width before the
+    /// flexible columns do, down to the floor.
+    Yield(Rems, Rems),
 }
 
 impl KvWidth {
@@ -67,6 +70,8 @@ pub struct KvColumn {
     /// In a read-only view, the column's text stays on one line and, when it does not fit,
     /// shows whole on hover.
     pub tip_when_cut: bool,
+    /// The narrowest a flexible column gets, so its cells stay usable in a narrow row.
+    pub floor: Option<Rems>,
 }
 
 impl KvColumn {
@@ -82,6 +87,7 @@ impl KvColumn {
             heading: heading.into(),
             width: KvWidth::Flex,
             tip_when_cut: false,
+            floor: None,
         }
     }
 
@@ -126,6 +132,26 @@ impl KvColumn {
         }
     }
 
+    /// A column `width` wide while the row has room, giving width up first down to `floor`.
+    pub fn yielding(
+        head_id: impl Into<ElementId>,
+        cell_id: &'static str,
+        heading: impl Into<SharedString>,
+        width: Rems,
+        floor: Rems,
+    ) -> KvColumn {
+        KvColumn {
+            width: KvWidth::Yield(width, floor),
+            ..KvColumn::flex(head_id, cell_id, heading)
+        }
+    }
+
+    /// A flexible column that never gets narrower than `floor`.
+    pub fn floor(mut self, floor: Rems) -> Self {
+        self.floor = Some(floor);
+        self
+    }
+
     /// A column of a read-only view whose text stays on one line and, when cut, shows whole
     /// in a tooltip (`kv-cut-tooltip`) on hover.
     pub fn tip_when_cut(mut self) -> Self {
@@ -133,14 +159,20 @@ impl KvColumn {
         self
     }
 
-    /// `el` sized to the column: its part of the free width, or the fixed or shared width and
-    /// `flex_none()`.
+    /// `el` sized to the column: its part of the free width, the fixed or shared width and
+    /// `flex_none()`, or the yielding width.
     pub fn size<E: Styled>(&self, el: E) -> E {
+        let floor = |el: E| match self.floor {
+            Some(floor) => el.min_w(floor),
+            None => el.min_w_0(),
+        };
         match self.width {
-            KvWidth::Flex => el.flex_1().min_w_0(),
+            KvWidth::Flex => floor(el.flex_1()),
             KvWidth::Fixed(w) => el.w(w).flex_none(),
             KvWidth::Share(part, cap) => el.w(relative(part)).max_w(cap).flex_none(),
-            KvWidth::Grow(parts) => el.flex_1().flex_grow(parts).min_w_0(),
+            KvWidth::Grow(parts) => floor(el.flex_1().flex_grow(parts)),
+            // Only this column has a basis to shrink from, so it alone gives way until its floor.
+            KvWidth::Yield(w, min) => el.flex_basis(w).flex_grow(0.).flex_shrink(1.).min_w(min),
         }
     }
 }
@@ -621,9 +653,10 @@ impl RenderOnce for KvView {
                                     cut_text(text, &mono, room.to_pixels(rem), window)
                                         .then(|| (text.clone(), None))
                                 }
-                                KvWidth::Flex | KvWidth::Share(..) | KvWidth::Grow(_) => {
-                                    Some((text.clone(), Some(widths.clone())))
-                                }
+                                KvWidth::Flex
+                                | KvWidth::Share(..)
+                                | KvWidth::Grow(_)
+                                | KvWidth::Yield(..) => Some((text.clone(), Some(widths.clone()))),
                             }
                         }
                         _ => None,

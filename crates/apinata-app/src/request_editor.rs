@@ -245,6 +245,8 @@ pub struct RequestEditor {
     applied_ratio: Option<f32>,
     // The split's room, shared with the response pane for sizing a comparison.
     response_room: Rc<Cell<Pixels>>,
+    // Whether the button group last laid out on a line of its own, below the method and URL.
+    buttons_wrapped: Rc<Cell<bool>>,
     base: Vec<Param>,
     header_base: Vec<KeyValue>,
     var_base: Vec<Variable>,
@@ -314,8 +316,9 @@ enum PartInputs {
     Breadcrumb(Option<Crumbs>),
     // Whether the URL is locked, and the variable set (identity and revision) it tints from.
     Url(bool, Option<(Same<VariableSet>, u64)>),
-    // Whether Save shows, and which of Send, Cancel and Stop the slot holds.
-    Buttons(bool, u8),
+    // Whether Save shows, which of Send, Cancel and Stop the slot holds, and whether the
+    // buttons last laid out on their own line.
+    Buttons(bool, u8, bool),
     // The request kind, the shown section, and each section's count and mode mark.
     Sections(
         RequestKind,
@@ -759,6 +762,7 @@ impl RequestEditor {
             _split_sub: split_sub,
             applied_ratio: None,
             response_room,
+            buttons_wrapped: Rc::default(),
             base: Vec::new(),
             header_base: Vec::new(),
             var_base: Vec::new(),
@@ -2459,7 +2463,18 @@ impl Render for RequestEditor {
                             .child(url),
                     )
                     // Save, Send and Generate code wrap together, so the group never splits.
-                    .child(buttons),
+                    .child(buttons)
+                    .on_children_prepainted({
+                        let wrapped = Rc::clone(&self.buttons_wrapped);
+                        let editor = cx.entity_id();
+                        move |laid_out, _, cx| {
+                            let now = matches!(laid_out.as_slice(),
+                                [line, buttons] if buttons.top() > line.top());
+                            if wrapped.replace(now) != now {
+                                cx.notify(editor);
+                            }
+                        }
+                    }),
             )
             .children(self.custom_error.clone().map(|message| {
                 div()
@@ -2671,7 +2686,11 @@ impl RequestEditor {
                 self.locked(Side::Url, cx),
                 self.variables.as_ref().map(|v| (Same::of(v), v.revision())),
             ),
-            ChromePart::Buttons => PartInputs::Buttons(self.save_shown(cx), self.slot_now(cx)),
+            ChromePart::Buttons => PartInputs::Buttons(
+                self.save_shown(cx),
+                self.slot_now(cx),
+                self.buttons_wrapped.get(),
+            ),
             ChromePart::Sections => PartInputs::Sections(
                 self.kind(cx),
                 self.section,
@@ -2731,13 +2750,24 @@ impl RequestEditor {
                     .into_any_element()
             }
             ChromePart::Url => self.url_field(window, cx),
-            ChromePart::Buttons => h_flex()
-                .flex_none()
-                .gap(style::SPACE_1)
-                .children(self.save_button(cx))
-                .child(self.send_button(window, cx))
-                .child(self.generate_code_button(cx))
-                .into_any_element(),
+            ChromePart::Buttons => {
+                // On a line of its own the group starts at the URL row's left edge, so Save's
+                // empty slot moves behind the buttons; the group keeps its width, and its wrap.
+                let save = self.save_button(cx);
+                let (lead, trail) = if self.buttons_wrapped.get() && !self.save_shown(cx) {
+                    (None, save)
+                } else {
+                    (save, None)
+                };
+                h_flex()
+                    .flex_none()
+                    .gap(style::SPACE_1)
+                    .children(lead)
+                    .child(self.send_button(window, cx))
+                    .child(self.generate_code_button(cx))
+                    .children(trail)
+                    .into_any_element()
+            }
             ChromePart::Sections => self.section_bar(window, cx).into_any_element(),
         }
     }
