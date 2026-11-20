@@ -17,7 +17,7 @@ use gpui_kit::base::{
 };
 use gpui_kit::component::Colorize as _;
 use gpui_kit::component::button::{Button, ButtonVariant, ButtonVariants as _};
-use gpui_kit::component::dialog::Dialog;
+use gpui_kit::component::dialog::{AlertDialog, Dialog};
 use gpui_kit::component::input::{Editor, EditorState, Input, InputState, Textarea, TextareaState};
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
@@ -1292,31 +1292,75 @@ pub fn rollup_dot(id: ElementId) -> impl IntoElement + use<> {
         }))
 }
 
+/// Opens a dialog through the kit. Every app dialog opens here, so a tooltip can tell a
+/// dialog opened after it was shown.
+// The one caller of the kit's opener that clippy lets through, since this one counts.
+#[allow(clippy::disallowed_methods)]
+pub fn open_dialog(
+    window: &mut Window,
+    cx: &mut App,
+    build: impl Fn(Dialog, &mut Window, &mut App) -> Dialog + 'static,
+) {
+    count_dialog_open(window, cx);
+    gpui_kit::component::WindowExt::open_dialog(window, cx, build);
+}
+
+/// Opens an alert dialog through the kit, counted as [`open_dialog`] counts a dialog.
+// The kit's alert opener, let through here for the same reason.
+#[allow(clippy::disallowed_methods)]
+pub fn open_alert_dialog(
+    window: &mut Window,
+    cx: &mut App,
+    build: impl Fn(AlertDialog, &mut Window, &mut App) -> AlertDialog + 'static,
+) {
+    count_dialog_open(window, cx);
+    gpui_kit::component::WindowExt::open_alert_dialog(window, cx, build);
+}
+
+/// How many dialogs the app has opened in `window` so far.
+pub fn dialog_opens(window: &Window, cx: &App) -> u64 {
+    cx.try_global::<DialogOpens>()
+        .and_then(|opens| opens.0.get(&window.window_handle().window_id()))
+        .copied()
+        .unwrap_or(0)
+}
+
+// The kit keeps no count of the dialogs it has opened, so the app keeps one per window.
+#[derive(Default)]
+struct DialogOpens(HashMap<gpui_kit::WindowId, u64>);
+
+impl gpui_kit::Global for DialogOpens {}
+
+fn count_dialog_open(window: &Window, cx: &mut App) {
+    let id = window.window_handle().window_id();
+    *cx.default_global::<DialogOpens>().0.entry(id).or_default() += 1;
+}
+
 /// The tooltip `build` makes, hidden while a dialog opened after it was shown lies over the
 /// window. Every element tooltip goes through this; a kit button's tooltip needs none.
 pub fn tooltip(
     build: impl Fn(&mut Window, &mut App) -> gpui_kit::AnyView + 'static,
 ) -> impl Fn(&mut Window, &mut App) -> gpui_kit::AnyView + 'static {
-    use gpui_kit::component::WindowExt as _;
     move |window, cx| {
         let tip = build(window, cx);
-        let over_dialog = window.has_active_dialog(cx);
-        cx.new(|_| CoverableTip { tip, over_dialog }).into()
+        let opens_at_show = dialog_opens(window, cx);
+        cx.new(|_| CoverableTip { tip, opens_at_show }).into()
     }
 }
 
 // GPUI keeps an element's tooltip while the pointer stays inside the element's bounds, even
-// once a modal covers it. A tip can only start on the top layer, so one shown with no dialog
-// open belongs to a control that any later dialog covers.
+// once a modal covers it. A tip can only start on the top layer, so any dialog opened after it
+// was shown covers its control, whether that control sits in the window or in a dialog.
 struct CoverableTip {
     tip: gpui_kit::AnyView,
-    over_dialog: bool,
+    opens_at_show: u64,
 }
 
 impl Render for CoverableTip {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         use gpui_kit::component::WindowExt as _;
-        let covered = !self.over_dialog && window.has_active_dialog(cx);
+        let covered =
+            window.has_active_dialog(cx) && dialog_opens(window, cx) != self.opens_at_show;
         div().when(!covered, |d| d.child(self.tip.clone()))
     }
 }

@@ -1,3 +1,7 @@
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
 avoid-breaking-exported-api = false
+disallowed-methods = [
+    { path = "gpui_component::WindowExt::open_dialog", reason = "open dialogs with apinata_app::ui::open_dialog, which counts them for tooltips" },
+    { path = "gpui_component::WindowExt::open_alert_dialog", reason = "open alerts with apinata_app::ui::open_alert_dialog, which counts them for tooltips" },
+]

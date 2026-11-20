@@ -761,7 +761,7 @@ fn unopened_guard(cx: &mut TestAppContext) -> (Started, tempfile::TempDir) {
             |_, _| {},
         );
         let guard = guarded(guard, w, cx);
-        w.open_dialog(cx, move |d, _, _| {
+        apinata_app::ui::open_dialog(w, cx, move |d, _, _| {
             apinata_app::ui::with_close(guard.apply(d), "Guarded").child(
                 gpui_kit::div()
                     .id("guarded-body")

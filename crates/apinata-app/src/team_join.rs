@@ -115,7 +115,7 @@ pub fn open_for(
     });
     cx.set_global(OpenView(view.downgrade()));
     let body = view.clone();
-    window.open_dialog(cx, move |dialog, window, _| {
+    crate::ui::open_dialog(window, cx, move |dialog, window, _| {
         // Enter never closes the dialog: the fields submit themselves. Escape cancels a sign-in.
         let view = body.clone();
         crate::dialog_frame::place(dialog, window)

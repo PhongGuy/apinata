@@ -6,7 +6,6 @@ use std::fmt::Display;
 use std::path::{Path, PathBuf};
 
 use apinata_core::legacy::{ConversionPlan, ConvertError, ConvertTarget, convert, plan_conversion};
-use gpui_kit::component::WindowExt as _;
 use gpui_kit::{
     AppContext as _, AsyncWindowContext, Context, Entity, PathPromptOptions, SharedString, Window,
 };
@@ -101,7 +100,7 @@ async fn alert(text: String, cx: &mut AsyncWindowContext) {
     let (closed, wait) = async_channel::bounded::<()>(1);
     let shown = cx.update(|window, cx| {
         let text: SharedString = text.into();
-        window.open_alert_dialog(cx, move |dialog, _, _| {
+        crate::ui::open_alert_dialog(window, cx, move |dialog, _, _| {
             let closed = closed.clone();
             dialog
                 .title("Could not convert collection")

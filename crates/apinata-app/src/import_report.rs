@@ -193,7 +193,7 @@ pub fn open_report(
     cx: &mut App,
 ) {
     let scroll = ScrollHandle::new();
-    window.open_dialog(cx, move |d, window, cx| {
+    crate::ui::open_dialog(window, cx, move |d, window, cx| {
         let d = crate::dialog_frame::place(d, window);
         // Note ids count across groups, so each group starts where the previous one ended.
         let mut first = 0usize;

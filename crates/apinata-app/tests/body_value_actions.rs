@@ -378,7 +378,7 @@ fn dialog_on_event(cx: &mut TestAppContext, win: AnyWindowHandle, view: &Entity<
             view.update(cx, |_, cx| {
                 cx.subscribe_in(&me, w, |_, _, _: &SetVariable, window, cx| {
                     window.defer(cx, |window, cx| {
-                        window.open_dialog(cx, |dialog, _, _| {
+                        apinata_app::ui::open_dialog(window, cx, |dialog, _, _| {
                             dialog.child(
                                 gpui_kit::div()
                                     .child(

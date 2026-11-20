@@ -281,7 +281,7 @@ pub fn open_value(
     let input = form.read(cx).name.clone();
     window.defer(cx, move |window, cx| {
         let builder_form = body.clone();
-        window.open_dialog(cx, move |dialog, window, cx| {
+        crate::ui::open_dialog(window, cx, move |dialog, window, cx| {
             let dialog = crate::dialog_frame::place(dialog, window);
             let ready = builder_form.read(cx).answer(cx).is_some();
             // Enter and the Set button run the same write; a refusal keeps the dialog open.

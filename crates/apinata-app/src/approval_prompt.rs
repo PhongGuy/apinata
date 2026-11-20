@@ -83,7 +83,7 @@ pub fn open(
         .map(|name| mapped_line(name, &prompt.host).into());
     let proxy: Option<SharedString> = prompt.proxy.as_deref().map(|p| untrusted_text(p).into());
     // The builder runs every frame, so each handler clones what it captures.
-    window.open_dialog(cx, move |dialog, window, cx| {
+    crate::ui::open_dialog(window, cx, move |dialog, window, cx| {
         let dialog = crate::dialog_frame::place(dialog, window);
         // The host line is the dialog's only tab stop: Tab stays inside the dialog, and the
         // buttons are never focusable, so no key can press them.

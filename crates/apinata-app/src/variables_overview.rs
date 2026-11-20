@@ -342,7 +342,7 @@ fn show(
     });
     let body = view.clone();
     let scroll = ScrollHandle::new();
-    window.open_dialog(cx, move |d, window, _| {
+    crate::ui::open_dialog(window, cx, move |d, window, _| {
         let room = crate::dialog_frame::titled_body_room(window);
         // Enter acts on the focused eye or button only; with focus on the dialog itself it
         // would confirm and close the list. Escape and the x still close it.

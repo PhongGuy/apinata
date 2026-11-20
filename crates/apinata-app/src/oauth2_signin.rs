@@ -254,7 +254,7 @@ fn submit(id: u64, cx: &mut App) -> bool {
 }
 
 fn open_dialog(id: u64, paste: Option<Entity<InputState>>, window: &mut Window, cx: &mut App) {
-    window.open_dialog(cx, move |dialog, window, cx| {
+    crate::ui::open_dialog(window, cx, move |dialog, window, cx| {
         let dialog = crate::dialog_frame::place(dialog, window);
         let Some(shown) = (cx.global::<SignIn>().queue.iter())
             .find(|e| e.id == id)

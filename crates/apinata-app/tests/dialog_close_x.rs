@@ -284,7 +284,7 @@ fn enter_on_the_close_button_runs_the_cancel_veto(cx: &mut TestAppContext) {
     let asked = Rc::new(Cell::new(0));
     let seen = asked.clone();
     cx.update_window(s.win, |_, w, cx| {
-        w.open_dialog(cx, move |d, _, _| {
+        apinata_app::ui::open_dialog(w, cx, move |d, _, _| {
             let seen = seen.clone();
             apinata_app::ui::with_close(d, "Veto")
                 .on_ok(|_, _, _| true)
@@ -305,7 +305,7 @@ fn enter_on_the_close_button_runs_the_cancel_veto(cx: &mut TestAppContext) {
 }
 
 // Every dialog in the app turns the kit's close button off: one that wants an x takes the
-// app's, which answers Enter, through `ui::with_close`. Each `open_dialog` call is checked on
+// app's, which answers Enter, through `ui::with_close`. Each dialog opening is checked on
 // its own, with comments stripped, so a second dialog in a file cannot cover for a first.
 #[test]
 fn no_dialog_shows_the_kit_close_button() {
@@ -331,7 +331,7 @@ fn walk_sources(dir: &std::path::Path, bad: &mut Vec<String>) {
     }
 }
 
-// The 1-based lines of the `.open_dialog(` calls in `text` whose argument list, comments
+// The 1-based lines of the `ui::open_dialog(` and `.open_dialog(` calls in `text` whose argument list, comments
 // removed, neither turns the kit's x off nor goes through `with_close`.
 fn kit_x_sites(text: &str) -> Vec<usize> {
     let code: String = text
@@ -341,8 +341,14 @@ fn kit_x_sites(text: &str) -> Vec<usize> {
         .join("\n");
     let mut sites = Vec::new();
     let mut from = 0;
-    while let Some(at) = code[from..].find(".open_dialog(") {
-        let open = from + at + ".open_dialog".len();
+    while let Some(at) = code[from..].find("open_dialog(") {
+        let open = from + at + "open_dialog".len();
+        // Only calls count: the app's wrapper, or the kit's method called directly.
+        let before = &code[..from + at];
+        if !before.ends_with('.') && !before.ends_with("ui::") {
+            from = open;
+            continue;
+        }
         // The call runs to the parenthesis that balances its opening one.
         let mut depth = 0usize;
         let mut end = code.len();
@@ -372,8 +378,8 @@ fn kit_x_sites(text: &str) -> Vec<usize> {
 // and a comment names the cure.
 #[test]
 fn the_scan_finds_a_forgotten_site_beside_a_good_one() {
-    let text = "fn a() {\n    w.open_dialog(cx, |d, _, _| d.close_button(false));\n}\n\
+    let text = "fn a() {\n    apinata_app::ui::open_dialog(w, cx, |d, _, _| d.close_button(false));\n}\n\
                 fn b() {\n    // .close_button(false) would hide it\n    \
-                w.open_dialog(cx, |d, _, _| d.title(\"x\"));\n}\n";
+                apinata_app::ui::open_dialog(w, cx, |d, _, _| d.title(\"x\"));\n}\n";
     assert_eq!(kit_x_sites(text), [6]);
 }

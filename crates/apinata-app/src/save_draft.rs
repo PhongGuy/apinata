@@ -462,7 +462,7 @@ pub fn ask(
     window.defer(cx, move |window, cx| {
         let input = form.read(cx).name.clone();
         let builder_form = form.clone();
-        window.open_dialog(cx, move |dialog, window, cx| {
+        crate::ui::open_dialog(window, cx, move |dialog, window, cx| {
             let dialog = crate::dialog_frame::place(dialog, window);
             let answer = builder_form.read(cx).answer(cx);
             // Enter and the Save button both save, and only while the name is not blank.

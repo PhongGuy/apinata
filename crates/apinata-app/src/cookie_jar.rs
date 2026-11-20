@@ -13,7 +13,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::scroll::ScrollableElement as _;
-use gpui_kit::component::{ActiveTheme as _, WindowExt, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{
@@ -1021,7 +1021,7 @@ pub fn open_cookie_jar(window: &mut Window, cx: &mut App) -> Entity<CookieJarVie
     let guard = crate::dialog_guard::guarded(form_guard(&view), window, cx);
     let body = view.clone();
     let opened = guard.clone();
-    window.open_dialog(cx, move |d, window, cx| {
+    crate::ui::open_dialog(window, cx, move |d, window, cx| {
         // Enter never closes the jar: a form field saves its cookie, and nothing else is lost.
         let title = body.read(cx).title();
         ui::with_close(

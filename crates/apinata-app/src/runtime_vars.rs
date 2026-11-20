@@ -14,7 +14,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::scroll::ScrollableElement as _;
-use gpui_kit::component::{ActiveTheme, WindowExt, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{
@@ -762,7 +762,7 @@ pub fn open_runtime_vars(
         cx.new(|cx| RuntimeVarsView::new(vars, overlay, secrets, global_secrets, window, cx));
     let body = view.clone();
     let scroll = ScrollHandle::new();
-    window.open_dialog(cx, move |d, window, _| {
+    crate::ui::open_dialog(window, cx, move |d, window, _| {
         // The capped box scrolls itself above the status bar.
         let room = crate::dialog_frame::titled_body_room(window);
         let view = body.clone();
