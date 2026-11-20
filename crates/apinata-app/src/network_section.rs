@@ -186,6 +186,8 @@ pub struct NetworkSection {
     focus: FocusHandle,
     // Counts loads, so an edit can tell whether one came between its sending and delivery.
     loads: u64,
+    // Collects the edits instead of emitting them while a save takes the pending typing.
+    outbox: Option<Vec<Edit>>,
     _subs: Vec<Subscription>,
 }
 
@@ -250,6 +252,7 @@ impl NetworkSection {
             change: None,
             focus: cx.focus_handle(),
             loads: 0,
+            outbox: None,
             _subs: subs,
         }
     }
@@ -556,8 +559,9 @@ impl NetworkSection {
     }
 
     fn emit_hosts(&mut self, cx: &mut Context<Self>) {
-        cx.emit(
+        self.send(
             SectionEdit::new(Edit::HostOverrides(self.host_overrides())).after_loads(self.loads),
+            cx,
         );
         cx.notify();
     }
@@ -770,9 +774,26 @@ impl NetworkSection {
         }
     }
 
+    /// The edits a password or passphrase still being typed owes, as Enter or blur would send
+    /// them. They are returned rather than emitted, so a save can send them ahead of itself.
+    pub fn take_pending(&mut self, cx: &mut Context<Self>) -> Vec<Edit> {
+        self.outbox = Some(Vec::new());
+        self.commit_password(cx);
+        self.commit_passphrases(cx);
+        self.outbox.take().unwrap_or_default()
+    }
+
+    fn send(&mut self, edit: SectionEdit, cx: &mut Context<Self>) {
+        match &mut self.outbox {
+            Some(outbox) => outbox.push(edit.edit),
+            None => cx.emit(edit),
+        }
+    }
+
     fn emit_certificates(&mut self, cx: &mut Context<Self>) {
-        cx.emit(
+        self.send(
             SectionEdit::new(Edit::ClientCertificates(self.certificates())).after_loads(self.loads),
+            cx,
         );
         cx.notify();
     }
@@ -1000,7 +1021,10 @@ impl NetworkSection {
         if !self.held_back(cx) && !unchanged {
             let proxy = self.current(cx);
             self.filed = self.choice;
-            cx.emit(SectionEdit::new(Edit::Proxy(proxy)).after_loads(self.loads));
+            self.send(
+                SectionEdit::new(Edit::Proxy(proxy)).after_loads(self.loads),
+                cx,
+            );
         }
         cx.notify();
     }

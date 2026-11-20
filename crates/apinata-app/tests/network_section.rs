@@ -777,3 +777,43 @@ fn the_grid_notes_line_up_with_their_rows_and_buttons(cx: &mut TestAppContext) {
     })
     .unwrap();
 }
+
+const PKCS12: &str = "config:\n  clientCertificates:\n    - domain: p.test\n      type: pkcs12\n      pkcs12FilePath: c.p12\n";
+
+// Types `text` at the end of field `id` and saves with the key while the field keeps the
+// focus, so no Enter or blur commits the typing first; returns the `.env` written.
+fn save_key_while_typing(
+    cx: &mut TestAppContext,
+    root_file: &str,
+    id: impl Into<gpui_kit::ElementId>,
+    text: &str,
+) -> String {
+    let col = write_tree(&[("opencollection.yml", root_file)]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, ed) = editor(cx, &ws, &root, ConfigTarget::Collection);
+    ed.update(cx, |e, cx| e.set_section(ConfigSection::Network, cx));
+    frame(cx, win);
+    cx.update_window(win, |_, w, _| w.activate_window())
+        .unwrap();
+    frame(cx, win);
+    type_at_end(cx, win, None, id, text);
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| w.press(&key("s"), cx))
+        .unwrap();
+    frame(cx, win);
+    cx.run_until_parked();
+    std::fs::read_to_string(col.path().join(".env")).unwrap_or_default()
+}
+
+#[gpui_kit::test]
+fn the_save_key_keeps_a_passphrase_still_being_typed(cx: &mut TestAppContext) {
+    let root_file = format!("{ROOT}{PKCS12}");
+    let env = save_key_while_typing(cx, &root_file, ("cert-passphrase", 0usize), "p12-pass");
+    assert!(env.contains("='p12-pass'"), "{env:?}");
+}
+
+#[gpui_kit::test]
+fn the_save_key_keeps_a_proxy_password_still_being_typed(cx: &mut TestAppContext) {
+    let env = save_key_while_typing(cx, &root_with_password(""), "proxy-password", "pw");
+    assert_eq!(env, "APINATA_PROXY_PASSWORD='pw'\n");
+}

@@ -585,14 +585,21 @@ impl ConfigEditor {
         self.auth.read(cx).holds_pending(cx)
     }
 
-    /// Sends the edit an OAuth secret still focused owes, as its blur would; true when one
-    /// went out.
+    /// Sends the edits an OAuth secret, proxy password or certificate passphrase still focused
+    /// owes, as its blur would; true when one went out.
     pub fn commit_pending_secret(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(edit) = self.auth.update(cx, |a, cx| a.take_pending(cx)) else {
-            return false;
-        };
-        self.send(edit, Some(ConfigSection::Auth), cx);
-        true
+        let mut sent = false;
+        if let Some(edit) = self.auth.update(cx, |a, cx| a.take_pending(cx)) {
+            self.send(edit, Some(ConfigSection::Auth), cx);
+            sent = true;
+        }
+        if let Some(network) = self.network.clone() {
+            for edit in network.update(cx, |n, cx| n.take_pending(cx)) {
+                self.send(edit, Some(ConfigSection::Network), cx);
+                sent = true;
+            }
+        }
+        sent
     }
 
     /// The warnings a save gives for typed values it cannot take.
