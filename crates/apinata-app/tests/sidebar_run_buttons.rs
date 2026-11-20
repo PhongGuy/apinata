@@ -274,12 +274,69 @@ fn shift_enter_runs_the_selected_collection(cx: &mut TestAppContext) {
     assert_eq!(seen.borrow().last(), Some(&expected));
 }
 
-// The run button's tooltip names the Shift+Enter key bound to running the selected row.
+fn keystroke(k: &'static str) -> gpui_kit::Keystroke {
+    gpui_kit::Keystroke::parse(k).unwrap()
+}
+
+// The run button's tooltip carries the Shift+Enter key bound to running the selected row as
+// its key chip, apart from its words.
 #[gpui_kit::test]
-fn the_run_button_tooltip_names_shift_enter(cx: &mut TestAppContext) {
+fn the_run_button_tooltip_has_a_shift_enter_chip(cx: &mut TestAppContext) {
     open_sidebar(cx);
     let tip = cx.update(|cx| apinata_app::sidebar::run_tooltip("collection.run", cx));
-    assert!(tip.ends_with("(Shift+Enter)"), "tooltip was {tip:?}");
+    assert_eq!(tip.label.as_ref(), "Run collection");
+    assert_eq!(tip.key, Some(keystroke("shift-enter")));
+}
+
+// With nothing bound to running the selected row, the tooltip is its words alone.
+#[gpui_kit::test]
+fn an_unbound_run_tooltip_has_no_chip(cx: &mut TestAppContext) {
+    open_sidebar(cx);
+    let tip = cx.update(|cx| {
+        cx.clear_key_bindings();
+        apinata_app::sidebar::run_tooltip("collection.run", cx)
+    });
+    assert_eq!(tip.label.as_ref(), "Run collection");
+    assert_eq!(tip.key, None);
+}
+
+// A later binding in the tree's nested context wins, and the chip shows it.
+#[gpui_kit::test]
+fn a_rebound_run_key_shows_in_the_chip(cx: &mut TestAppContext) {
+    open_sidebar(cx);
+    let tip = cx.update(|cx| {
+        cx.bind_keys([gpui_kit::KeyBinding::new(
+            "alt-r",
+            apinata_app::sidebar::RunSelected,
+            Some("Sidebar > Tree"),
+        )]);
+        apinata_app::sidebar::run_tooltip("collection.run", cx)
+    });
+    assert_eq!(tip.key, Some(keystroke("alt-r")));
+}
+
+// Hovering the run button shows its tooltip, words and key together.
+#[gpui_kit::test]
+fn hovering_the_run_button_shows_its_key_tooltip(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    cx.update_window(h.win, |_, w, cx| {
+        w.render_frame(cx);
+        w.hover(("run-collection", 0usize), cx);
+    })
+    .unwrap();
+    cx.executor()
+        .advance_clock(std::time::Duration::from_secs(1));
+    frame(cx, h.win);
+    frame(cx, h.win);
+    let shown = cx
+        .update_window(h.win, |_, w, cx| {
+            w.render_frame(cx);
+            w.try_find(apinata_app::ui::KEY_TIP_ID)
+                .and_then(|t| t.label().map(str::to_owned))
+        })
+        .unwrap();
+    let key = gpui_kit::component::kbd::Kbd::format(&keystroke("shift-enter"));
+    assert_eq!(shown, Some(format!("Run collection ({key})")));
 }
 
 const LONG_ROOT: &str =

@@ -4037,8 +4037,8 @@ fn examples_toggle(n: &Node, view: &WeakEntity<Sidebar>, cx: &App) -> impl IntoE
 
 /// The run button's tooltip: the registry label of `command` and the Shift+Enter key, which
 /// runs the selected row from the tree.
-pub fn run_tooltip(command: &str, cx: &App) -> String {
-    ui::label_with_key(label(command), &RunSelected, cx)
+pub fn run_tooltip(command: &str, cx: &App) -> ui::KeyTip {
+    ui::KeyTip::new(label(command), &RunSelected, cx)
 }
 
 /// A ghost run button `id` for collection or folder row `n`, tooltip the registry label of
@@ -4053,7 +4053,7 @@ fn run_button(
 ) -> Button {
     let (view, node) = (view.clone(), n.clone());
     // Off the Tab order so a big tree is one stop; Shift+Enter runs the selected row instead.
-    ui::icon_button(id, IconName::Play, &run_tooltip(command, cx), None, cx)
+    ui::key_icon_button(id, IconName::Play, run_tooltip(command, cx), cx)
         .tab_stop(false)
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_click(move |_, window, cx| {

@@ -1471,18 +1471,7 @@ pub fn icon_button(
     action: Option<&dyn Action>,
     cx: &App,
 ) -> Button {
-    // The kit names a button from its label or `accessibility_label`, never its tooltip, so
-    // an icon-only button would be nameless without this.
-    debug_assert!(!tooltip.trim().is_empty(), "an icon button needs a tooltip");
-    // Square by its height, so an out-of-flow child, which sizes it as a labelled button, and
-    // the ring's reserved border leave it as wide as it is tall.
-    let button = Button::new(id)
-        .solid_ring(cx)
-        .ghost()
-        .compact()
-        .aspect_ratio(1.)
-        .icon(icon)
-        .accessibility_label(tooltip.to_string());
+    let button = icon_base(id, icon, tooltip, cx);
     match action {
         Some(action) => {
             let owned = action.boxed_clone();
@@ -1494,6 +1483,22 @@ pub fn icon_button(
         }
         None => button.tooltip(tooltip.to_string()),
     }
+}
+
+// An icon button with no tooltip yet, named by its tooltip's words.
+fn icon_base(id: impl Into<ElementId>, icon: IconName, tooltip: &str, cx: &App) -> Button {
+    // The kit names a button from its label or `accessibility_label`, never its tooltip, so
+    // an icon-only button would be nameless without this.
+    debug_assert!(!tooltip.trim().is_empty(), "an icon button needs a tooltip");
+    // Square by its height, so an out-of-flow child, which sizes it as a labelled button, and
+    // the ring's reserved border leave it as wide as it is tall.
+    Button::new(id)
+        .solid_ring(cx)
+        .ghost()
+        .compact()
+        .aspect_ratio(1.)
+        .icon(icon)
+        .accessibility_label(tooltip.to_string())
 }
 
 /// An [`icon_button`] that flips between two faces under one element `id`, so its focus
@@ -1519,20 +1524,89 @@ pub fn swap_icon_button(
     )
 }
 
-/// `label` followed by the key bound to `action`, as in "Run (Shift+Enter)", read from the
-/// keymap in any context. For a tooltip of an action bound in a nested context, which the
-/// kit's own lookup cannot name; plain `label` when the action has no key.
-pub fn label_with_key(label: &str, action: &dyn Action, cx: &App) -> String {
-    let keymap = cx.key_bindings();
-    let keymap = keymap.borrow();
-    let key = keymap
-        .bindings_for_action(action)
-        .next_back()
-        .and_then(|b| b.keystrokes().first().map(|k| k.as_keystroke().clone()));
-    match key {
-        Some(key) => format!("{label} ({})", Kbd::format(&key)),
-        None => label.to_string(),
+/// The element id of a [`KeyTip`] tooltip's words, which tests find it by; its label is the
+/// words and key as [`KeyTip::described`] spells them.
+pub const KEY_TIP_ID: &str = "key-tip";
+
+/// A tooltip's words and the key bound to its action, which the tooltip shows beside the words
+/// in the kit's key style, as an action tooltip does.
+#[derive(Clone, Debug, PartialEq)]
+pub struct KeyTip {
+    /// The words.
+    pub label: SharedString,
+    /// The key bound to the action, if any.
+    pub key: Option<Keystroke>,
+}
+
+impl KeyTip {
+    /// `label` and the newest key bound to `action` in any context. The kit's own lookup parses
+    /// a context string, which cannot name a nested one such as the sidebar tree's.
+    pub fn new(label: impl Into<SharedString>, action: &dyn Action, cx: &App) -> Self {
+        let keymap = cx.key_bindings();
+        let keymap = keymap.borrow();
+        let key = keymap
+            .bindings_for_action(action)
+            .next_back()
+            .and_then(|b| b.keystrokes().first().map(|k| k.as_keystroke().clone()));
+        Self {
+            label: label.into(),
+            key,
+        }
     }
+
+    /// `label` with no key.
+    pub fn plain(label: impl Into<SharedString>) -> Self {
+        Self {
+            label: label.into(),
+            key: None,
+        }
+    }
+
+    /// The words followed by the key, as in "Run (Shift+Enter)": what a screen reader hears.
+    pub fn described(&self) -> SharedString {
+        match &self.key {
+            Some(key) => format!("{} ({})", self.label, Kbd::format(key)).into(),
+            None => self.label.clone(),
+        }
+    }
+
+    /// Builds the tooltip: the words, and the key after them as the kit draws an action's key.
+    pub fn build(&self) -> impl Fn(&mut Window, &mut App) -> gpui_kit::AnyView + 'static {
+        let (label, key, described) = (self.label.clone(), self.key.clone(), self.described());
+        self::tooltip(move |window, cx| {
+            let (label, described) = (label.clone(), described.clone());
+            Tooltip::element(move |_, _| {
+                div()
+                    .id(KEY_TIP_ID)
+                    .test_support()
+                    .aria_label(described.clone())
+                    .child(label.clone())
+            })
+            .key_binding(key.clone().map(Kbd::new))
+            .build(window, cx)
+        })
+    }
+}
+
+/// A kit button whose tooltip shows a [`KeyTip`], in place of the kit's text tooltip.
+pub trait KeyTooltip: Sized {
+    /// Gives the button `tip` as its tooltip.
+    fn key_tooltip(self, tip: KeyTip) -> Self;
+}
+
+impl KeyTooltip for Button {
+    fn key_tooltip(mut self, tip: KeyTip) -> Self {
+        // The kit's button takes only text for its own tooltip, so the tip goes on the
+        // element beneath it.
+        self.interactivity().tooltip(tip.build());
+        self
+    }
+}
+
+/// An [`icon_button`] whose tooltip is `tip`, for an action bound in a context the kit's
+/// tooltip lookup cannot name. It dispatches nothing; the caller handles the click.
+pub fn key_icon_button(id: impl Into<ElementId>, icon: IconName, tip: KeyTip, cx: &App) -> Button {
+    icon_base(id, icon, &tip.label, cx).key_tooltip(tip)
 }
 
 /// A kit button whose keyboard focus draws the app's solid ring, the colour and weight of a
