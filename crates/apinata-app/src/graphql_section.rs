@@ -51,13 +51,22 @@ pub enum SidePanel {
     Builder,
 }
 
-/// The focused editor's caret, as [`GraphqlSection::caret`] reports it.
+/// The focused editor's caret, or the focused Docs row, as [`GraphqlSection::caret`] reports it.
 pub struct Caret {
-    /// Where the caret is drawn, in window coordinates; `None` while the editor's own scroll
-    /// hides it.
+    /// Where the caret or row is drawn, in window coordinates; `None` while the editor's or
+    /// list's own scroll hides it.
     pub drawn: Option<Bounds<Pixels>>,
-    /// The text length and caret offset, to tell edits and moves apart.
-    pub key: (usize, usize),
+    /// What changes on every edit or move, to arm a follow only then.
+    pub key: CaretKey,
+}
+
+/// Tells edits and moves apart, in an editor or among the Docs rows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CaretKey {
+    /// The editor's text length and caret offset.
+    Text(usize, usize),
+    /// The Docs page depth and selected row.
+    Docs(usize, usize),
 }
 
 /// Edits a GraphQL body. Any change to either editor emits the whole body, query and
@@ -213,11 +222,12 @@ impl GraphqlSection {
     }
 
     /// The focused editor's caret in window coordinates, with its text length and offset to tell
-    /// edits and moves apart, or `None` when neither has focus or none has been laid out. The
-    /// editor reports a caret without its own vertical scroll, so that is added back to give
-    /// where the caret is drawn; the bounds are `None` while the editor's own scroll hides it.
+    /// edits and moves apart, or the selected Docs row while the rows hold focus; `None` when
+    /// none has focus or been laid out. The editor reports a caret without its own vertical
+    /// scroll, so that is added back to give where the caret is drawn; the bounds are `None`
+    /// while the editor's own scroll hides it.
     pub fn caret(&self, window: &Window, cx: &App) -> Option<Caret> {
-        [&self.query, &self.variables].into_iter().find_map(|e| {
+        let editors = [&self.query, &self.variables].into_iter().find_map(|e| {
             let state = e.read(cx);
             if !state.focus_handle(cx).is_focused(window) {
                 return None;
@@ -227,9 +237,10 @@ impl GraphqlSection {
             let drawn = state.input_bounds().intersects(&caret).then_some(caret);
             Some(Caret {
                 drawn,
-                key: (state.value().len(), state.cursor()),
+                key: CaretKey::Text(state.value().len(), state.cursor()),
             })
-        })
+        });
+        editors.or_else(|| self.docs.read(cx).selection(window))
     }
 
     /// The variables editor.

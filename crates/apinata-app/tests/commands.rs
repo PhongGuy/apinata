@@ -359,6 +359,7 @@ fn today() -> Vec<Triple> {
         ("up".into(), "list_keys::ListUp", "KeyList"),
         ("down".into(), "list_keys::ListDown", "KeyList"),
         ("enter".into(), "list_keys::ListOpen", "KeyList"),
+        ("escape".into(), "list_keys::ListBack", "KeyList"),
         ("pageup".into(), "apinata::RowPageUp", "ResponseBody"),
         ("pagedown".into(), "apinata::RowPageDown", "ResponseBody"),
         ("home".into(), "apinata::RowFirst", "ResponseBody"),
