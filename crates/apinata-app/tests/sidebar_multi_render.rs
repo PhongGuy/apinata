@@ -54,6 +54,28 @@ fn one_key_paints_exactly_what_a_single_selection_does(cx: &mut TestAppContext) 
     assert!(!shown(cx, h.win, marker_id("focus-edge", &row("c.yml"))));
 }
 
+// A menu on a member acts on the set, so no row gets the menu outline and every member,
+// the focus row too, shows the unfocused edge while the menu holds focus.
+#[gpui_kit::test]
+fn a_menu_on_a_member_dims_the_focus_edge_and_marks_no_row(cx: &mut TestAppContext) {
+    let h = two_selected(cx);
+    cx.update_window(h.win, |_, w, cx| w.right_click(row("a.yml"), cx))
+        .unwrap();
+    frame(cx, h.win);
+    assert!(
+        h.view.read_with(cx, |s, _| s.multi_active()),
+        "the set stays"
+    );
+    for member in ["a.yml", "c.yml"] {
+        assert!(
+            shown(cx, h.win, marker_id("edge", &row(member))),
+            "{member}"
+        );
+        assert!(!shown(cx, h.win, marker_id("focus-edge", &row(member))));
+        assert!(!shown(cx, h.win, marker_id("menu-target", &row(member))));
+    }
+}
+
 #[gpui_kit::test]
 fn every_member_reports_selected_to_assistive_technology(cx: &mut TestAppContext) {
     let h = two_selected(cx);
