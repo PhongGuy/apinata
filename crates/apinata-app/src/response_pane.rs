@@ -3871,6 +3871,24 @@ pub(crate) fn scroll_frame(id: &'static str, column: Div) -> AnyElement {
         column,
         subject: None,
         follow: None,
+        reveal: None,
+    }
+    .into_any_element()
+}
+
+/// Like `scroll_frame`, but scrolls the column's child at `reveal.1` into view whenever
+/// `reveal.0`, the selected item's identity, differs from the previous render's.
+pub(crate) fn scroll_frame_revealing(
+    id: &'static str,
+    reveal: Option<(u64, usize)>,
+    column: Div,
+) -> AnyElement {
+    ScrollFrame {
+        id,
+        column,
+        subject: None,
+        follow: None,
+        reveal,
     }
     .into_any_element()
 }
@@ -3887,6 +3905,7 @@ pub(crate) fn scroll_frame_following(
         column,
         subject: None,
         follow: Some(follow.clone()),
+        reveal: None,
     }
     .into_any_element()
 }
@@ -3899,6 +3918,7 @@ pub(crate) fn scroll_frame_for(id: &'static str, subject: u64, column: Div) -> A
         column,
         subject: Some(subject),
         follow: None,
+        reveal: None,
     }
     .into_any_element()
 }
@@ -3909,6 +3929,7 @@ struct ScrollFrame {
     column: Div,
     subject: Option<u64>,
     follow: Option<FocusFollow>,
+    reveal: Option<(u64, usize)>,
 }
 
 impl RenderOnce for ScrollFrame {
@@ -3931,6 +3952,18 @@ impl RenderOnce for ScrollFrame {
             if last.read(cx).replace(Some(subject)) != Some(subject) {
                 scroll.set_offset(gpui_kit::point(gpui_kit::px(0.), gpui_kit::px(0.)));
             }
+        }
+        // Only a change of selection scrolls, so a wheel scroll away from it is left alone.
+        let shown = window.use_keyed_state(
+            SharedString::from(format!("{}-revealed", self.id)),
+            cx,
+            |_, _| std::cell::Cell::new(None::<u64>),
+        );
+        let key = self.reveal.map(|(key, _)| key);
+        if shown.read(cx).replace(key) != key
+            && let Some((_, child)) = self.reveal
+        {
+            scroll.scroll_to_item(child);
         }
         div()
             .id(self.id)

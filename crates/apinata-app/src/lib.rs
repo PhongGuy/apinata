@@ -99,6 +99,7 @@ pub mod kv_table;
 pub mod last_response;
 pub mod launch;
 pub mod legacy_convert;
+pub mod list_keys;
 pub mod live_stream;
 pub mod log_feed;
 pub mod menu_focus;
