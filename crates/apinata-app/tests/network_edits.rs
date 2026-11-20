@@ -403,3 +403,26 @@ fn a_proxy_reference_that_is_no_env_key_is_never_reused(cx: &mut TestAppContext)
     save(cx, &model);
     assert_eq!(read(&dir, ".env"), "APINATA_PROXY_PASSWORD='topsecret'\n");
 }
+
+// A PKCS#12 entry saves the keys the reference app reads, in its writer's order; a literal
+// passphrase goes to `.env` as a PEM one does.
+#[gpui_kit::test]
+fn a_pkcs12_entry_saves_the_reference_keys(cx: &mut TestAppContext) {
+    let dir = write_tree(&[("opencollection.yml", ROOT), (".gitignore", ".env\n")]);
+    let model = open(cx, &dir);
+    let mut vars = ClientCertificate::pkcs12("a.test", "certs/c.p12");
+    vars.passphrase = "{{p12pass}}".into();
+    let mut literal = ClientCertificate::pkcs12("b.test", "b.pfx");
+    literal.passphrase = "pw".into();
+    literal.enabled = false;
+    apply(cx, &model, Edit::ClientCertificates(vec![vars, literal]));
+    save(cx, &model);
+    assert_eq!(
+        read(&dir, "opencollection.yml"),
+        format!(
+            "{}config:\n  clientCertificates:\n    - domain: a.test\n      type: pkcs12\n      pkcs12FilePath: certs/c.p12\n      passphrase: \"{{{{p12pass}}}}\"\n    - domain: b.test\n      type: pkcs12\n      pkcs12FilePath: b.pfx\n      passphrase: \"{{{{process.env.APINATA_CERT_PASSPHRASE_2}}}}\"\n      disabled: true\n",
+            ROOT.replacen('\n', "\n\n", 1)
+        )
+    );
+    assert_eq!(read(&dir, ".env"), "APINATA_CERT_PASSPHRASE_2='pw'\n");
+}
