@@ -15,9 +15,14 @@ use std::path::{Path, PathBuf};
 
 /// Write the v1 import under `parent` with its `extensions` swapped for a reference record.
 fn reference_only(parent: &Path, source: &str, group_by: &str) -> PathBuf {
+    reference_only_from(V1, parent, source, group_by)
+}
+
+/// Write the import of `spec` under `parent` with its `extensions` swapped for a reference record.
+fn reference_only_from(spec: &[u8], parent: &Path, source: &str, group_by: &str) -> PathBuf {
     let b = parse_collections(
         Some(CollectionFormat::OpenApi),
-        V1,
+        spec,
         &CollectionOptions::default(),
     )
     .unwrap()
@@ -73,6 +78,38 @@ fn the_recorded_file_is_offered_and_its_first_update_adopts(cx: &mut TestAppCont
     assert_eq!(s.differs.len(), 1);
     assert_eq!(s.differs[0].path.as_str(), "people/getUser.yml");
     assert!(present(cx, r.win, "import-update-section-differs"));
+    let counts = d.read_with(cx, |d, _| d.counts_text());
+    assert!(counts.contains("1 differs from the spec"), "{counts}");
+    let row = |cx: &mut TestAppContext| d.read_with(cx, |d, _| d.differs_rows());
+    assert!(row(cx)[0].1.ends_with(", not refreshed"), "{:?}", row(cx));
+    r.click(cx, "import-update-take-differs-0");
+    assert!(
+        row(cx)[0].1.ends_with(", spec version will be taken"),
+        "{:?}",
+        row(cx)
+    );
+}
+
+#[gpui_kit::test]
+fn two_differing_requests_read_in_the_plural(cx: &mut TestAppContext) {
+    let r = rig(cx);
+    let root = reference_only_from(V2, r.parent.path(), "spec.json", "tags");
+    fs::write(root.join("spec.json"), V2).unwrap();
+    // Docs edited by hand, which a request's spec key does not depend on.
+    let get = root.join("people/getUser.yml");
+    let text = fs::read_to_string(&get).unwrap();
+    fs::write(&get, text.replace("Fetch a user", "Fetch someone")).unwrap();
+    let list = root.join("people/listUsers.yml");
+    let text = fs::read_to_string(&list).unwrap();
+    fs::write(&list, format!("{text}docs: Lists everyone\n")).unwrap();
+    r.open(cx, root);
+    let d = r.dialog(cx, "");
+    r.click(cx, "import-update-target-0");
+    r.click(cx, "import-link-import");
+    let s = preview(cx, &d);
+    assert_eq!(s.differs.len(), 2, "{s:?}");
+    let counts = d.read_with(cx, |d, _| d.counts_text());
+    assert!(counts.contains("2 differ from the spec"), "{counts}");
 }
 
 #[gpui_kit::test]

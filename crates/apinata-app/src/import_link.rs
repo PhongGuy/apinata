@@ -477,6 +477,41 @@ impl ImportLinkDialog {
         }
     }
 
+    /// The counts line of the current preview or result, as shown.
+    #[doc(hidden)]
+    pub fn counts_text(&self) -> String {
+        match &self.phase {
+            Phase::Preview { summary, .. } => counts_line(&summary.0, false),
+            Phase::Done(summary) => counts_line(&summary.0, true),
+            _ => String::new(),
+        }
+    }
+
+    /// The edited rows of the current preview or result, as (path, detail) shown.
+    #[doc(hidden)]
+    pub fn edited_rows(&self) -> Vec<(String, String)> {
+        self.take_rows(edited_rows)
+    }
+
+    /// The differing rows of the current preview or result, as (path, detail) shown.
+    #[doc(hidden)]
+    pub fn differs_rows(&self) -> Vec<(String, String)> {
+        self.take_rows(differs_rows)
+    }
+
+    // A preview shows the current choices; a result lists only what was left alone.
+    fn take_rows(
+        &self,
+        rows: impl Fn(&UpdateSummary, Option<&BTreeSet<ItemPath>>) -> Vec<(ItemPath, String)>,
+    ) -> Vec<(String, String)> {
+        let rows = match &self.phase {
+            Phase::Preview { summary, .. } => rows(&summary.0, Some(&self.take)),
+            Phase::Done(summary) => rows(&summary.0, None),
+            _ => Vec::new(),
+        };
+        rows.into_iter().map(|(p, d)| (p.to_string(), d)).collect()
+    }
+
     /// Test-only: the Update button's action, without the button's disabled state.
     #[doc(hidden)]
     pub fn submit_for_test(&mut self, cx: &mut Context<Self>) {
@@ -1224,6 +1259,51 @@ fn changed_rows(s: &UpdateSummary) -> Vec<(String, String)> {
         .collect()
 }
 
+/// The edited requests of `s` as (path, detail) rows; `take` holds the preview's choices.
+fn edited_rows(s: &UpdateSummary, take: Option<&BTreeSet<ItemPath>>) -> Vec<(ItemPath, String)> {
+    s.edited
+        .iter()
+        .map(|p| {
+            // A request skipped for unsaved edits has no fields found, so it names none.
+            let fields = s.edited_fields.iter().find(|e| e.path == *p);
+            let fields = fields.map_or(&[][..], |e| &e.fields[..]);
+            let kept = "spec change not applied";
+            (p.clone(), take_detail(fields, kept, p, take))
+        })
+        .collect()
+}
+
+/// The differing requests of `s` as (path, detail) rows; `take` holds the preview's choices.
+fn differs_rows(s: &UpdateSummary, take: Option<&BTreeSet<ItemPath>>) -> Vec<(ItemPath, String)> {
+    s.differs
+        .iter()
+        .map(|c| {
+            let detail = take_detail(&c.fields, "not refreshed", &c.path, take);
+            (c.path.clone(), detail)
+        })
+        .collect()
+}
+
+/// A row's field words, then what happens to it: `kept` unless the preview takes the spec.
+fn take_detail(
+    fields: &[ChangedField],
+    kept: &str,
+    path: &ItemPath,
+    take: Option<&BTreeSet<ItemPath>>,
+) -> String {
+    let taken = take.is_some_and(|t| t.contains(path));
+    let what = if taken {
+        "spec version will be taken"
+    } else {
+        kept
+    };
+    if fields.is_empty() {
+        return what.to_owned();
+    }
+    let words: Vec<&str> = fields.iter().map(|f| field_label(*f)).collect();
+    format!("({}), {what}", words.join(", "))
+}
+
 /// The rows around the report body (modes, counts, checkbox, note, footer) in a preview.
 const REPORT_CHROME_ROWS: f32 = 8.;
 
@@ -1238,7 +1318,12 @@ fn counts_line(s: &UpdateSummary, applied: bool) -> String {
     part(s.added.len(), "added");
     part(s.changed.len(), "changed");
     part(s.edited.len(), "edited by you");
-    part(s.differs.len(), "differ from the spec");
+    let differ = if s.differs.len() == 1 {
+        "differs"
+    } else {
+        "differ"
+    };
+    part(s.differs.len(), &format!("{differ} from the spec"));
     part(s.orphaned.len(), "missing from the spec");
     if applied {
         part(s.pruned.len(), "removed");
@@ -1355,35 +1440,28 @@ fn report_view(
         cx,
     );
     let changed = report_section("import-update-section-changed", "Changed", changed, cx);
+    // Each row says whether the spec is taken, so the headings only name the group.
+    let take_rows = |section: &str, rows: Vec<(ItemPath, String)>| {
+        rows.into_iter()
+            .enumerate()
+            .map(|(n, (path, detail))| Row {
+                main: path.to_string(),
+                extra: Some(detail),
+                control: control(section, n, &path),
+            })
+            .collect()
+    };
+    let chosen = take.map(|(chosen, _)| chosen);
     let edited = report_section(
         "import-update-section-edited",
-        "Edited by you (spec change not applied)",
-        s.edited
-            .iter()
-            .enumerate()
-            .map(|(n, p)| Row {
-                main: p.to_string(),
-                extra: None,
-                control: control("edited", n, p),
-            })
-            .collect(),
+        "Edited by you",
+        take_rows("edited", edited_rows(s, chosen)),
         cx,
     );
     let differs = report_section(
         "import-update-section-differs",
-        "Differs from the spec (not refreshed)",
-        s.differs
-            .iter()
-            .enumerate()
-            .map(|(n, c)| {
-                let fields: Vec<&str> = c.fields.iter().map(|f| field_label(*f)).collect();
-                Row {
-                    main: c.path.to_string(),
-                    extra: Some(format!("({})", fields.join(", "))),
-                    control: control("differs", n, &c.path),
-                }
-            })
-            .collect(),
+        "Differs from the spec",
+        take_rows("differs", differs_rows(s, chosen)),
         cx,
     );
     let missing = report_section(

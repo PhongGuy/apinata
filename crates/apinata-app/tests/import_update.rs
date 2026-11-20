@@ -786,3 +786,30 @@ fn an_edited_request_left_unchosen_keeps_its_edit(cx: &mut TestAppContext) {
     let text = std::fs::read_to_string(root.join("people/getUser.yml")).unwrap();
     assert!(text.contains("method: POST"), "{text}");
 }
+
+#[gpui_kit::test]
+fn an_edited_row_names_its_fields_and_says_when_the_spec_is_taken(cx: &mut TestAppContext) {
+    let r = rig(cx);
+    open_with_edited_method(cx, &r);
+    let server = serve(cx, V2);
+    let d = r.dialog(cx, &format!("{}/spec.json", server.uri()));
+    r.click(cx, "import-update-target-0");
+    r.click(cx, "import-link-import");
+    preview(cx, &d);
+    let row = |cx: &mut TestAppContext| d.read_with(cx, |d, _| d.edited_rows());
+    assert_eq!(
+        row(cx),
+        [(
+            "people/getUser.yml".to_owned(),
+            "(method), spec change not applied".to_owned()
+        )]
+    );
+    r.click(cx, "import-update-take-edited-0");
+    assert_eq!(
+        row(cx),
+        [(
+            "people/getUser.yml".to_owned(),
+            "(method), spec version will be taken".to_owned()
+        )]
+    );
+}
