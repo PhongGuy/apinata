@@ -136,7 +136,7 @@ fn a_file_that_does_not_parse_is_revealed_after_a_check_from_the_menu(cx: &mut T
         .unwrap();
     frame(cx, s.win);
     cx.update_window(s.win, |_, w, cx| {
-        let ix = menu_index(w, "Check collection");
+        let ix = menu_index(w, "Check collection…");
         w.within("popup-menu").click(ix, cx)
     })
     .unwrap();
@@ -218,10 +218,10 @@ fn the_command_is_in_the_registry_and_the_palette() {
         .into_iter()
         .find(|c| c.id == "collection.check")
         .expect("registered");
-    assert_eq!(command.label, "Check collection");
+    assert_eq!(command.label, "Check collection…");
     let entry = palette_items()
         .into_iter()
-        .find(|e| e.label == "Check collection")
+        .find(|e| e.label == "Check collection…")
         .expect("in the palette");
     assert_eq!(entry.group, PaletteGroup::Collection);
 }
@@ -235,7 +235,7 @@ fn the_collection_menu_checks_that_collection(cx: &mut TestAppContext) {
         .unwrap();
     frame(cx, s.win);
     cx.update_window(s.win, |_, w, cx| {
-        let ix = menu_index(w, "Check collection");
+        let ix = menu_index(w, "Check collection…");
         w.within("popup-menu").click(ix, cx)
     })
     .unwrap();

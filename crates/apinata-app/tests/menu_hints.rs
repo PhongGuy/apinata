@@ -60,7 +60,7 @@ fn the_collection_menu_is_split_into_groups(cx: &mut TestAppContext) {
             some(&["Paste", "Sort by name"]),
             some(&[
                 "Run collection",
-                "Check collection",
+                "Check collection…",
                 "Collection settings",
                 "Start mock server"
             ]),

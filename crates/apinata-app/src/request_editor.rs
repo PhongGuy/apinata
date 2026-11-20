@@ -3121,7 +3121,7 @@ impl RequestEditor {
                 .solid_ring(cx)
                 .ghost()
                 .small()
-                .label("Save")
+                .label(crate::commands::label("request.save"))
                 .role(None::<Role>)
                 .tab_stop(false);
             return div()
@@ -3139,7 +3139,7 @@ impl RequestEditor {
             .solid_ring(cx)
             .ghost()
             .small()
-            .label("Save")
+            .label(crate::commands::label("request.save"))
             .tooltip_with_action(
                 crate::commands::label("request.save"),
                 &SaveRequest,

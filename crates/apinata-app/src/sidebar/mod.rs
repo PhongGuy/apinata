@@ -3086,14 +3086,14 @@ impl Render for Sidebar {
                                     .aspect_ratio(1.)
                                     .icon(IconName::RotateCcwClock)
                                     .tooltip_with_action(
-                                        "History",
+                                        label("view.history"),
                                         &OpenHistory,
                                         Some(SHELL_CONTEXT),
                                     )
                                     .on_click(|_, window, cx| {
                                         window.dispatch_action(Box::new(OpenHistory), cx)
                                     })
-                                    .accessibility_label("History"),
+                                    .accessibility_label(label("view.history")),
                             ),
                     ),
             )

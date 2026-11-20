@@ -15,6 +15,7 @@ use crate::body_node::{
 use crate::check_dialog::CheckCollection;
 use crate::config_editor::SaveConfig;
 use crate::env_editor::SaveEnvironment;
+use crate::env_selector::{IMPORT_ENVIRONMENT, MANAGE_ENVIRONMENTS};
 use crate::env_table::ENV_TABLE_CONTEXT as ENV_TABLE;
 use crate::history_palette::OpenHistory;
 use crate::keymap::{
@@ -136,6 +137,9 @@ pub struct Command {
     pub in_palette: bool,
     /// Words a palette search also finds the command by, for names its label lacks.
     pub keywords: &'static [&'static str],
+    /// Invoking it opens a dialog or asks for more input before acting, so its label ends in
+    /// "…"; a confirmation before a destructive step does not count.
+    pub opens_dialog: bool,
 }
 
 // The rows of a structured table; a focused cell or checkbox inside it counts.
@@ -200,6 +204,7 @@ fn command(
         default_chords: default_chords.to_vec(),
         in_palette: true,
         keywords: &[],
+        opens_dialog: false,
     }
 }
 
@@ -244,18 +249,22 @@ pub fn registry() -> Vec<Command> {
         c.in_palette = false;
         c
     };
+    let asks = |mut c: Command| {
+        c.opens_dialog = true;
+        c
+    };
     let found_by = |keywords: &'static [&'static str], mut c: Command| {
         c.keywords = keywords;
         c
     };
     let mut cmds = vec![
-        command(
+        asks(command(
             "collection.open",
             "Open collection…",
             Collection,
             shell(OpenCollection),
             &["secondary-o"],
-        ),
+        )),
         command(
             "collection.close",
             "Close collection",
@@ -305,111 +314,111 @@ pub fn registry() -> Vec<Command> {
             shell(SortByName),
             &[],
         ),
-        command(
+        asks(command(
             "collection.import",
             "Import collection…",
             Collection,
             shell(ImportCollection),
             &["secondary-shift-i"],
-        ),
-        command(
+        )),
+        asks(command(
             "collection.import_curl",
             "Import curl…",
             Collection,
             shell(ImportCurl),
             &[],
-        ),
-        command(
+        )),
+        asks(command(
             "collection.export",
             "Export collection to Postman, converting scripts…",
             Collection,
             shell(ExportCollection),
             &[],
-        ),
-        command(
+        )),
+        asks(command(
             "collection.export_keep_scripts",
             "Export collection to Postman, keeping scripts as written…",
             Collection,
             shell(ExportCollectionPostmanKeepScripts),
             &[],
-        ),
-        command(
+        )),
+        asks(command(
             "collection.export_openapi",
             "Export collection to OpenAPI…",
             Collection,
             shell(ExportCollectionOpenApi),
             &[],
-        ),
-        command(
+        )),
+        asks(command(
             "collection.export_html",
             "Export collection to HTML documentation…",
             Collection,
             shell(ExportCollectionHtml),
             &[],
-        ),
-        command(
+        )),
+        asks(command(
             "collection.new",
             "New collection…",
             Collection,
             shell(NewCollection),
             &["secondary-shift-n"],
-        ),
+        )),
         found_by(
             &["git"],
-            command(
+            asks(command(
                 "collection.clone",
                 "Clone repository…",
                 Collection,
                 shell(CloneRepository),
                 &[],
-            ),
+            )),
         ),
         found_by(
             &["team", "server", "potluck"],
-            command(
+            asks(command(
                 "collection.join_team_server",
                 "Join team server…",
                 Collection,
                 shell(JoinTeamServer),
                 &[],
-            ),
+            )),
         ),
         found_by(
             &["team", "workspace", "potluck"],
-            command(
+            asks(command(
                 "collection.team_workspaces",
                 "Team workspaces…",
                 Collection,
                 shell(TeamWorkspaces),
                 &[],
-            ),
+            )),
         ),
         found_by(
             &["team", "sync", "status", "potluck"],
-            command(
+            asks(command(
                 "collection.team_sync",
                 "Team sync…",
                 Collection,
                 shell(ShowTeamSync),
                 &[],
-            ),
+            )),
         ),
-        command(
+        asks(command(
             "collection.open_demo",
             "Open the demo collection…",
             Collection,
             shell(OpenDemoCollection),
             &[],
-        ),
+        )),
         found_by(
             &["git", "checkout"],
-            command(
+            asks(command(
                 "collection.switch_branch",
                 "Switch branch…",
                 Collection,
                 shell(SwitchBranch),
                 &[],
-            ),
+            )),
         ),
         found_by(
             &["git", "fetch", "fast-forward", "update"],
@@ -433,13 +442,13 @@ pub fn registry() -> Vec<Command> {
         ),
         found_by(
             &["git", "commit", "stage"],
-            command(
+            asks(command(
                 "collection.show_changes",
                 "Show changes…",
                 Collection,
                 shell(ShowChanges),
                 &[],
-            ),
+            )),
         ),
         // The registry's labels are fixed, so one label covers starting and stopping.
         found_by(
@@ -473,13 +482,13 @@ pub fn registry() -> Vec<Command> {
             shell(RunCollection),
             &[],
         ),
-        command(
+        asks(command(
             "collection.check",
-            "Check collection",
+            "Check collection…",
             Collection,
             shell(CheckCollection),
             &[],
-        ),
+        )),
         command(
             "collection.check_secret_renames",
             "Check for renamed secrets",
@@ -524,13 +533,13 @@ pub fn registry() -> Vec<Command> {
             shell(CopyAsCurl),
             &[],
         ),
-        command(
+        asks(command(
             "request.generate_code",
-            "Generate code",
+            "Generate code…",
             Request,
             shell(GenerateCode),
             &[],
-        ),
+        )),
         command(
             "request.convert_to_graphql",
             "Convert to GraphQL",
@@ -566,20 +575,20 @@ pub fn registry() -> Vec<Command> {
             shell(BeautifyQuery),
             &["shift-alt-f"],
         ),
-        command(
+        asks(command(
             "request.save_as_example",
-            "Save response as example",
+            "Save response as example…",
             Request,
             shell(SaveAsExample),
             &[],
-        ),
-        command(
+        )),
+        asks(command(
             "request.export_har",
             "Export response as HAR…",
             Request,
             shell(ExportHar),
             &[],
-        ),
+        )),
         command(
             "request.compare_response",
             "Compare response",
@@ -601,13 +610,13 @@ pub fn registry() -> Vec<Command> {
             shell(CopyCaretJsonPath),
             &[],
         ),
-        command(
+        asks(command(
             "request.set_json_variable",
             "Set JSON value at caret as variable…",
             Request,
             shell(SetCaretJsonVariable),
             &[],
-        ),
+        )),
         command(
             "request.assert_json_value",
             "Assert JSON value at caret",
@@ -815,13 +824,13 @@ pub fn registry() -> Vec<Command> {
             c.scope = Scope::Pane(SIDEBAR);
             hidden(c)
         },
-        command(
+        asks(command(
             "request.save_draft",
-            "Save selected draft",
+            "Save selected draft…",
             Request,
             shell(SaveSelectedDraft),
             &[],
-        ),
+        )),
         command(
             "request.close_draft",
             "Close selected draft",
@@ -1132,17 +1141,17 @@ pub fn registry() -> Vec<Command> {
         },
         found_by(
             &["settings"],
-            command(
+            asks(command(
                 "view.preferences",
-                "Preferences",
+                "Preferences…",
                 View,
                 shell(OpenPreferences),
                 &["secondary-,"],
-            ),
+            )),
         ),
-        command(
+        asks(command(
             "view.history",
-            "History",
+            "History…",
             View,
             shell(OpenHistory),
             if cfg!(target_os = "macos") {
@@ -1150,14 +1159,14 @@ pub fn registry() -> Vec<Command> {
             } else {
                 &["ctrl-h"]
             },
-        ),
-        command(
+        )),
+        asks(command(
             "view.search_collection",
-            "Search collection",
+            "Search collection…",
             View,
             shell(OpenCollectionSearch),
             &["secondary-shift-f"],
-        ),
+        )),
         command(
             "view.check_for_updates",
             "Check for updates",
@@ -1165,24 +1174,31 @@ pub fn registry() -> Vec<Command> {
             shell(CheckForUpdates),
             &[],
         ),
-        command("view.about", "About Apinata", View, shell(OpenAbout), &[]),
-        hidden(command(
+        // An About window only informs, so platforms name it without an ellipsis.
+        asks(command(
+            "view.about",
+            "About Apinata",
+            View,
+            shell(OpenAbout),
+            &[],
+        )),
+        hidden(asks(command(
             "view.command_palette",
-            "Command palette",
+            "Command palette…",
             View,
             shell(OpenCommandPalette),
             &["secondary-shift-p"],
-        )),
-        command(
+        ))),
+        asks(command(
             "view.go_to_request",
-            "Go to request",
+            "Go to request…",
             View,
             shell(GoToRequest),
             &["secondary-p"],
-        ),
+        )),
         command(
             "environment.open",
-            "Manage environments",
+            MANAGE_ENVIRONMENTS,
             Environment,
             shell(OpenEnvironments),
             &["secondary-e"],
@@ -1194,63 +1210,63 @@ pub fn registry() -> Vec<Command> {
             shell(OpenEnvironmentSelector),
             &["secondary-alt-e"],
         ),
-        command(
+        asks(command(
             "environment.import",
-            "Import environment…",
+            IMPORT_ENVIRONMENT,
             Environment,
             shell(ImportEnvironment),
             &[],
-        ),
-        command(
+        )),
+        asks(command(
             "environment.export",
             "Export current environment to Postman…",
             Environment,
             shell(ExportEnvironment),
             &[],
-        ),
-        command(
+        )),
+        asks(command(
             "environment.export_all",
             "Export all environments to Postman…",
             Environment,
             shell(ExportEnvironments),
             &[],
-        ),
-        command(
+        )),
+        asks(command(
             "environment.cookies",
-            "Cookies",
+            "Cookies…",
             Environment,
             shell(OpenCookies),
             &[],
-        ),
+        )),
         found_by(
             &["environment"],
-            command(
+            asks(command(
                 "environment.variables_overview",
-                "Show all variables",
+                "Show all variables…",
                 Environment,
                 shell(OpenVariablesOverview),
                 &[],
-            ),
+            )),
         ),
         found_by(
             &["environment"],
-            command(
+            asks(command(
                 "environment.runtime_variables",
-                "Edit variables set by requests",
+                "Edit variables set by requests…",
                 Environment,
                 shell(OpenRuntimeVariables),
                 &[],
-            ),
+            )),
         ),
         found_by(
             &["environment"],
-            command(
+            asks(command(
                 "environment.manage_globals",
                 "Manage globals…",
                 Environment,
                 shell(OpenGlobalEnvironments),
                 &[],
-            ),
+            )),
         ),
     ]);
     cmds

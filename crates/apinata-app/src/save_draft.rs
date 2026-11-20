@@ -390,7 +390,7 @@ impl Render for SaveDraftForm {
                         Button::new("save-draft-open-collection")
                             .solid_ring(cx)
                             .key_context(ui::DIALOG_FOOTER_CONTEXT)
-                            .label("Open collection…")
+                            .label(crate::commands::label("collection.open"))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.prompt_open(false, window, cx)
                             })),
@@ -399,7 +399,7 @@ impl Render for SaveDraftForm {
                         Button::new("save-draft-new-collection")
                             .solid_ring(cx)
                             .key_context(ui::DIALOG_FOOTER_CONTEXT)
-                            .label("New collection…")
+                            .label(crate::commands::label("collection.new"))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.prompt_open(true, window, cx)
                             })),

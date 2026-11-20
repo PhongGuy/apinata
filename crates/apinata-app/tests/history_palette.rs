@@ -146,7 +146,7 @@ fn the_registry_offers_history_in_the_view_group() {
         .iter()
         .find(|c| c.id == "view.history")
         .expect("listed");
-    assert_eq!(history.label, "History");
+    assert_eq!(history.label, "History…");
     assert_eq!(history.group, PaletteGroup::View);
     assert!(history.in_palette);
 }

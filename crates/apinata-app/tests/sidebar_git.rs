@@ -100,7 +100,7 @@ fn git_marker(path: &str) -> gpui_kit::SharedString {
 
 #[test]
 fn show_changes_is_named_in_words() {
-    assert_eq!(MenuEntry::ShowChanges.label(), "Show changes");
+    assert_eq!(MenuEntry::ShowChanges.label(), "Show changes…");
     assert!(!menu_entries(NodeKind::Request).contains(&MenuEntry::ShowChanges));
 }
 
@@ -297,7 +297,7 @@ fn show_changes_opens_the_dialog_on_the_row(cx: &mut TestAppContext) {
     cx.update_window(s.win, |_, w, cx| w.right_click(row("health.yml"), cx))
         .unwrap();
     frame(cx, s.win);
-    click_menu(cx, s.win, "Show changes");
+    click_menu(cx, s.win, "Show changes…");
     frame(cx, s.win);
     let selected = cx.update(|cx| {
         current(cx).and_then(|v| {
@@ -320,7 +320,7 @@ fn an_unchanged_row_offers_no_show_changes(cx: &mut TestAppContext) {
         .update_window(s.win, |_, w, _| {
             (
                 try_menu_index(w, "Delete").is_some(),
-                try_menu_index(w, "Show changes").is_some(),
+                try_menu_index(w, "Show changes…").is_some(),
             )
         })
         .unwrap();

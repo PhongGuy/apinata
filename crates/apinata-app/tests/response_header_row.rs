@@ -362,7 +362,7 @@ fn a_compact_pane_offers_the_schema_test_in_more_actions(cx: &mut TestAppContext
     assert_eq!(got.get(), 1);
 }
 
-// A locked Export as HAR names itself before the reason, as its icon carries no text.
+// A locked Export response as HAR names itself before the reason, as its icon carries no text.
 #[gpui_kit::test]
 fn a_locked_export_har_tooltip_names_the_action(cx: &mut TestAppContext) {
     let (s, _server) = redirected(cx, 1600.);
@@ -378,7 +378,7 @@ fn a_locked_export_har_tooltip_names_the_action(cx: &mut TestAppContext) {
     assert_eq!(
         label(cx, s.win, "response-export-har-tooltip"),
         Some(format!(
-            "Export HAR: {}",
+            "Export response as HAR: {}",
             apinata_app::har_export::NO_REQUEST
         ))
     );

@@ -674,7 +674,7 @@ fn detail_pane(e: &NetworkEntry, area: Option<WeakEntity<TabArea>>, cx: &App) ->
                 .solid_ring(cx)
                 .ghost()
                 .compact()
-                .label("Export as HAR")
+                .label("Export as HAR…")
                 .on_click(move |_, window, cx| {
                     let area = area.as_ref().and_then(|a| a.upgrade());
                     let via_tab = area.is_some_and(|a| {

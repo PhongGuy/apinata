@@ -185,11 +185,11 @@ fn the_overflow_menu_goes_back_to_the_latest_send(cx: &mut TestAppContext) {
     assert_eq!(
         labels,
         [
-            "Save response as example",
+            "Save response as example…",
             "Copy body",
             "Save body",
             "Add schema test",
-            "Export as HAR",
+            "Export response as HAR…",
             "Back to latest"
         ]
     );

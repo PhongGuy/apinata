@@ -127,7 +127,9 @@ fn the_narrow_menu_and_the_palette_export_too(cx: &mut TestAppContext) {
     frame(cx, s.win);
     let har = cx
         .update_window(s.win, |_, w, _| {
-            (0..8usize).find(|&ix| w.within("popup-menu").find(ix).label() == Some("Export as HAR"))
+            (0..8usize).find(|&ix| {
+                w.within("popup-menu").find(ix).label() == Some("Export response as HAR…")
+            })
         })
         .unwrap()
         .expect("Export as HAR is listed");

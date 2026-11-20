@@ -29,7 +29,7 @@ fn history_has_a_default_chord_and_ends_the_data_group() {
     assert_eq!(history.default_chords, [CHORD]);
     let groups = app_menu_groups();
     let (label, action) = groups[3].last().expect("an item");
-    assert_eq!(*label, "History");
+    assert_eq!(*label, "History…");
     assert_eq!(action.name(), "apinata::OpenHistory");
 }
 
@@ -73,7 +73,7 @@ fn the_sidebar_button_sits_right_of_the_filter_and_opens_history(cx: &mut TestAp
             (button.center().y - hint.center().y).abs() < px(4.),
             "{button:?} vs {hint:?}"
         );
-        assert_eq!(w.find("sidebar-history").label(), Some("History"));
+        assert_eq!(w.find("sidebar-history").label(), Some("History…"));
     })
     .unwrap();
     cx.update_window(s.win, |_, w, cx| w.click("sidebar-history", cx))

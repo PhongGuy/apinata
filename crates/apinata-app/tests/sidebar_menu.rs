@@ -464,7 +464,7 @@ fn a_draft_row_offers_save_and_close() {
     assert_eq!(menu_entries(NodeKind::Draft), [E::SaveDraft, E::CloseDraft]);
     assert_eq!(
         (E::SaveDraft.label(), E::CloseDraft.label()),
-        ("Save", "Close")
+        ("Save…", "Close")
     );
     assert!(menu_entries(NodeKind::UnsavedGroup).is_empty());
 }

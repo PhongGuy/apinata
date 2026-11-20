@@ -374,5 +374,5 @@ fn the_changed_file_count_says_it_shows_changes(cx: &mut TestAppContext) {
                 .map(str::to_owned)
         })
         .unwrap();
-    assert_eq!(tip.as_deref(), Some("Show changes"));
+    assert_eq!(tip.as_deref(), Some("Show changes…"));
 }

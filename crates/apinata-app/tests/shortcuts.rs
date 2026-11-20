@@ -41,6 +41,7 @@ fn cmd(id: &'static str, scope: Scope, chords: &[&'static str]) -> Command {
         default_chords: chords.to_vec(),
         in_palette: false,
         keywords: &[],
+        opens_dialog: false,
     }
 }
 

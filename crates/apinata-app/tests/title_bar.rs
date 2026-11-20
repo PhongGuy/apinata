@@ -231,7 +231,7 @@ fn icon_only_title_bar_buttons_are_named_like_their_tooltips(cx: &mut TestAppCon
         let bar = w.within("title-bar");
         assert_eq!(
             bar.find("environments").label(),
-            Some(apinata_app::shell::MANAGE_ENVIRONMENTS_TIP)
+            Some(apinata_app::commands::label("environment.open"))
         );
         assert_eq!(
             bar.find("app-menu-slot").label(),
@@ -244,7 +244,7 @@ fn icon_only_title_bar_buttons_are_named_like_their_tooltips(cx: &mut TestAppCon
         gpui_kit::assets::IconName::SlidersHorizontal
     );
     assert_eq!(
-        apinata_app::shell::MANAGE_ENVIRONMENTS_TIP,
+        apinata_app::commands::label("environment.open"),
         "Manage environments"
     );
 }

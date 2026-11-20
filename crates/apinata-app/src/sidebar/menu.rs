@@ -117,8 +117,9 @@ impl MenuEntry {
             MenuEntry::CollapseAll => label("collection.collapse_all"),
             MenuEntry::ExpandAll => label("collection.expand_all"),
             MenuEntry::Close => label("collection.close"),
-            MenuEntry::ShowChanges => "Show changes",
-            MenuEntry::SaveDraft => "Save",
+            MenuEntry::ShowChanges => label("collection.show_changes"),
+            // A row's menu names the row's own actions in a word; saving a draft asks where.
+            MenuEntry::SaveDraft => "Save…",
             MenuEntry::CloseDraft => "Close",
         }
     }

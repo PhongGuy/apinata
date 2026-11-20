@@ -168,7 +168,7 @@ fn label_width(cx: &mut TestAppContext, s: &Started) -> Option<f32> {
     cx.update_window(s.win, |_, win, _| {
         let bar = win.within("title-bar");
         let chevron = bar.find("git-branch-chevron");
-        assert_eq!(chevron.label(), Some("Switch branch"));
+        assert_eq!(chevron.label(), Some("Switch branch…"));
         let width = bar
             .try_find("git-label")
             .map(|e| e.bounds().size.width.as_f32());

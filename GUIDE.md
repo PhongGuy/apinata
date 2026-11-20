@@ -893,7 +893,7 @@ Join team server in the command palette signs in to a self-hosted
 [Potluck](https://github.com/PhongGuy/potluck) server with its address, your
 username and your password. The password is sent once and never stored; the
 sign-in is kept in the system keychain. The Team workspaces dialog then opens,
-and Team workspaces… in the command palette brings it back. It lists each
+and Team workspaces in the command palette brings it back. It lists each
 server's workspaces: Open clones one and opens it as a collection, a server
 admin can create a new one, and Sign out leaves that server.
 
