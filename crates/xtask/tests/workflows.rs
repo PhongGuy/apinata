@@ -193,6 +193,21 @@ fn the_ci_gate_job_outlasts_its_install_and_gate_steps_together() {
 }
 
 #[test]
+fn the_ci_gate_step_fits_a_cold_build_cache() {
+    // A changed lockfile misses the Rust cache and rebuilds everything, which overran 35 minutes.
+    let ci = load("ci.yml");
+    let gate = steps(&ci, "gate")
+        .into_iter()
+        .find(|s| str_of(&s["run"]).trim_start().starts_with("make"))
+        .unwrap();
+    let minutes = gate["timeout-minutes"].as_u64().unwrap_or(0);
+    assert!(
+        minutes >= 50,
+        "the gate step allows {minutes} min, want at least 50"
+    );
+}
+
+#[test]
 fn ci_installs_build_dependencies_from_cached_debs_saved_only_by_master() {
     // A slow mirror costs minutes per run, so the gate reuses the downloaded debs. Pull
     // requests only restore, so nothing a branch downloads reaches master's cache.

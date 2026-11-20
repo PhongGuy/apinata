@@ -34,7 +34,7 @@ env:
 jobs:
   gate:
     runs-on: ubuntu-26.04
-    timeout-minutes: 75
+    timeout-minutes: 90
     steps:
       - name: Free disk space
         # The hosted runner leaves about 14 GB free; these preinstalled toolchains are unused.
@@ -89,7 +89,7 @@ jobs:
           path: ${{ runner.temp }}/apt-debs
           key: ${{ steps.apt-plan.outputs.key }}
       - name: Gate
-        timeout-minutes: 35
+        timeout-minutes: 50
         run: make check icons-check windows-check workflows-lint
 
   # Audits every workflow for injection, credential and pinning mistakes.
