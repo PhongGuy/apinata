@@ -1011,9 +1011,9 @@ impl ImportLinkDialog {
         ) {
             return;
         }
-        let prompt = match self.mode {
-            Mode::New => "Import collection",
-            Mode::Update => "Choose spec",
+        let (prompt, action) = match self.mode {
+            Mode::New => ("Import collection", "import a collection"),
+            Mode::Update => ("Choose spec", "choose a spec"),
         };
         let reply = cx.prompt_for_paths(PathPromptOptions {
             files: true,
@@ -1022,7 +1022,7 @@ impl ImportLinkDialog {
             prompt: Some(prompt.into()),
         });
         cx.spawn_in(window, async move |this, cx| {
-            let Some(file) = crate::shell::first_path(reply.await) else {
+            let Some(file) = crate::file_dialog::picked_one(reply, action, cx).await else {
                 return;
             };
             let _ = this.update_in(cx, |this, window, cx| {
@@ -1044,7 +1044,8 @@ impl ImportLinkDialog {
             prompt: Some("Create in".into()),
         });
         cx.spawn_in(window, async move |this, cx| {
-            let Some(parent) = crate::shell::first_path(reply.await) else {
+            let Some(parent) = crate::file_dialog::picked_one(reply, "choose a folder", cx).await
+            else {
                 return;
             };
             let _ = this.update(cx, |this, cx| this.set_parent(parent, cx));

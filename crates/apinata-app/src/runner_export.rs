@@ -87,7 +87,8 @@ pub fn export_results(
     let reply = cx.prompt_for_new_path(&dir, Some(format.file_name()));
     window
         .spawn(cx, async move |cx| {
-            let Ok(Ok(Some(path))) = reply.await else {
+            let Some(path) = crate::file_dialog::picked(reply, "export the run report", cx).await
+            else {
                 return;
             };
             let job = cx.background_spawn(async move {

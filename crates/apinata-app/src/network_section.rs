@@ -718,7 +718,7 @@ impl NetworkSection {
     }
 
     // Asks for one file and puts it, relative to the collection when inside it, into the
-    // row's certificate or key. A cancelled or failed prompt does nothing.
+    // row's certificate or key. A cancelled prompt does nothing.
     fn pick(&mut self, row: usize, field: CertField, window: &mut Window, cx: &mut Context<Self>) {
         let reply = cx.prompt_for_paths(PathPromptOptions {
             files: true,
@@ -727,7 +727,9 @@ impl NetworkSection {
             prompt: None,
         });
         cx.spawn_in(window, async move |this, cx| {
-            let Ok(Ok(Some(paths))) = reply.await else {
+            let Some(paths) =
+                crate::file_dialog::picked(reply, "choose a certificate file", cx).await
+            else {
                 return;
             };
             let _ = this.update_in(cx, |this, window, cx| {

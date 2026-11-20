@@ -25,6 +25,9 @@ use crate::style::{SHORT_FORM_LABEL_WIDTH, SPACE_2};
 use crate::ui;
 use crate::workspace::Workspace;
 
+// A folder dialog's answer: the outer error is a dropped reply, the inner one the platform's.
+type DialogReply = Result<Result<Option<PathBuf>, String>, String>;
+
 /// What the user chose: the request's name and the folder it goes in.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SaveAs {
@@ -219,12 +222,16 @@ impl SaveDraftForm {
         let workspace = choice.workspace.clone();
         // The seam, when set, answers in place of the native prompt.
         let seam = cx.try_global::<FolderPickSeam>().map(|s| Rc::clone(&s.0));
-        let native: Option<Pin<Box<dyn Future<Output = Option<PathBuf>>>>> = match (&seam, new) {
+        // The native reply keeps its failure as text so the shared helper can toast it.
+        let native: Option<Pin<Box<dyn Future<Output = DialogReply>>>> = match (&seam, new) {
             (Some(_), _) => None,
             (None, true) => {
                 let start = dirs::home_dir().unwrap_or_default();
                 let reply = cx.prompt_for_new_path(&start, Some("New collection"));
-                Some(Box::pin(async move { reply.await.ok()?.ok()? }))
+                Some(Box::pin(async move {
+                    let reply = reply.await.map_err(|e| e.to_string())?;
+                    Ok(reply.map_err(|e| format!("{e:#}")))
+                }))
             }
             (None, false) => {
                 let reply = cx.prompt_for_paths(PathPromptOptions {
@@ -234,14 +241,22 @@ impl SaveDraftForm {
                     prompt: Some("Open or create collection".into()),
                 });
                 Some(Box::pin(async move {
-                    reply.await.ok()?.ok()??.into_iter().next()
+                    let reply = reply.await.map_err(|e| e.to_string())?;
+                    Ok(reply
+                        .map(|paths| paths.and_then(|p| p.into_iter().next()))
+                        .map_err(|e| format!("{e:#}")))
                 }))
             }
+        };
+        let action = if new {
+            "create a collection"
+        } else {
+            "open a collection"
         };
         cx.spawn_in(window, async move |this, cx| {
             let picked = match (seam, native) {
                 (Some(pick), _) => pick(),
-                (None, Some(reply)) => reply.await,
+                (None, Some(reply)) => crate::file_dialog::picked(reply, action, cx).await,
                 (None, None) => None,
             };
             let Some(dir) = picked else {

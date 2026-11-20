@@ -2068,7 +2068,8 @@ impl BodyView {
         let name = save_name(url.as_deref(), &result.name, &content_type);
         let reply = cx.prompt_for_new_path(&dir, Some(&name));
         cx.spawn_in(window, async move |_, cx| {
-            let Ok(Ok(Some(path))) = reply.await else {
+            let Some(path) = crate::file_dialog::picked(reply, "save the response", cx).await
+            else {
                 return;
             };
             let write = cx.background_spawn(async move {
@@ -2195,7 +2196,8 @@ impl BodyView {
             .map_or("response.bin".to_string(), download_name);
         let reply = cx.prompt_for_new_path(&dir, Some(&name));
         cx.spawn_in(window, async move |this, cx| {
-            let Ok(Ok(Some(path))) = reply.await else {
+            let Some(path) = crate::file_dialog::picked(reply, "download the response", cx).await
+            else {
                 return;
             };
             this.update_in(cx, |view, window, cx| view.begin_download(path, window, cx))

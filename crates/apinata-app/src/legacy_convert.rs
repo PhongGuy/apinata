@@ -11,7 +11,7 @@ use gpui_kit::{
 };
 
 use crate::confirm::{self, Ask, Choice};
-use crate::shell::{Shell, first_path};
+use crate::shell::Shell;
 use crate::workspace::Workspace;
 
 /// How many failing files or paths an alert lists before "and N more".
@@ -116,7 +116,7 @@ async fn alert(text: String, cx: &mut AsyncWindowContext) {
 }
 
 // Asks for the parent directory, then plans and converts off the main thread; the original is
-// left untouched. `None` when the prompt was cancelled.
+// left untouched. `None` when the prompt was cancelled or failed.
 async fn new_folder(root: PathBuf, cx: &mut AsyncWindowContext) -> Option<Result<PathBuf, String>> {
     let reply = cx
         .update(|_, cx| {
@@ -128,7 +128,7 @@ async fn new_folder(root: PathBuf, cx: &mut AsyncWindowContext) -> Option<Result
             })
         })
         .ok()?;
-    let parent = first_path(reply.await)?;
+    let parent = crate::file_dialog::picked_one(reply, "convert the collection", cx).await?;
     let job = cx.background_spawn(async move {
         let plan = plan_conversion(&root)?;
         convert(&plan, ConvertTarget::NewFolderIn(parent))

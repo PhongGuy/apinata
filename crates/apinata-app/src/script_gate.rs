@@ -9,6 +9,7 @@ use apinata_core::{
     ScriptDecision, ScriptOptions, ScriptTextKind, ScriptTrust, is_hidden_char,
     is_variation_selector, plan_script_texts,
 };
+use gpui_kit::component::WindowExt as _;
 use gpui_kit::{AnyWindowHandle, App, AsyncApp, Entity, Global};
 
 use crate::app::AppState;
@@ -336,18 +337,26 @@ impl TrustQuestion {
             return off;
         };
         let run = answer == RUN;
-        // Only Run and Never store anything; Don't run and Escape skip this send alone.
-        if run || answer == NEVER {
-            record(&path, &root, run, hashes.iter().map(String::as_str));
-        }
-        // Views of the trust file follow the approvals model, so the answer shows at once.
-        let stored = if run {
+        // Only Run and Never store anything; Don't run and Escape skip this send alone. A
+        // failed write still answers this send, but the views must not show it as stored.
+        let mut stored = if run {
             Some(ScriptDecision::Allowed)
         } else if answer == NEVER {
             Some(ScriptDecision::Blocked)
         } else {
             None
         };
+        if stored.is_some()
+            && let Err(e) = record(&path, &root, run, hashes.iter().map(String::as_str))
+        {
+            stored = None;
+            let text = format!("Could not save your script choice: {e}");
+            let _ = window.update(cx, |_, window, cx| {
+                let toast = crate::ui::kind_toast(crate::ui::ToastKind::Error, text);
+                window.push_notification(toast, cx);
+            });
+        }
+        // Views of the trust file follow the approvals model, so the answer shows at once.
         cx.update(|cx| {
             if let Some(state) = cx.try_global::<AppState>() {
                 let approvals = state.approvals.clone();
@@ -363,15 +372,20 @@ impl TrustQuestion {
 
 // Updates under the trust file's lock so entries written elsewhere survive; a store that
 // fails to load is never overwritten.
-fn record<'a>(path: &Path, root: &Path, run: bool, hashes: impl Iterator<Item = &'a str>) {
-    let _ = ScriptTrust::update(path, |store| {
+fn record<'a>(
+    path: &Path,
+    root: &Path,
+    run: bool,
+    hashes: impl Iterator<Item = &'a str>,
+) -> Result<(), apinata_core::TrustError> {
+    ScriptTrust::update(path, |store| {
         if run {
             store.set_decision(root, Some(ScriptDecision::Allowed));
             store.approve(root, hashes);
         } else {
             store.set_decision(root, Some(ScriptDecision::Blocked));
         }
-    });
+    })
 }
 
 // Scripts off under the time limit `secs`. A hand-edited settings file may hold a limit the

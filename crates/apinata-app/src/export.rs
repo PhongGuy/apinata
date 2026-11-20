@@ -248,7 +248,8 @@ pub fn export_collection(
     let root = root.to_path_buf();
     window
         .spawn(cx, async move |cx| {
-            let Ok(Ok(Some(path))) = reply.await else {
+            let Some(path) = crate::file_dialog::picked(reply, "export the collection", cx).await
+            else {
                 return;
             };
             // Saved files only, opened fresh off the UI thread, as the actor's plan_saved does.
@@ -306,7 +307,8 @@ pub fn export_environment(root: &Path, name: &str, dirty: bool, window: &mut Win
     let name = name.to_string();
     window
         .spawn(cx, async move |cx| {
-            let Ok(Ok(Some(path))) = reply.await else {
+            let Some(path) = crate::file_dialog::picked(reply, "export the environment", cx).await
+            else {
                 return;
             };
             // Core reads the saved files, so the export is what is on disk, secrets blanked.
@@ -364,10 +366,8 @@ pub fn export_environments(
     });
     window
         .spawn(cx, async move |cx| {
-            let Ok(Ok(Some(paths))) = reply.await else {
-                return;
-            };
-            let Some(dir) = paths.into_iter().next() else {
+            let Some(dir) = crate::file_dialog::picked_one(reply, "export environments", cx).await
+            else {
                 return;
             };
             // Core reads the saved files, so the export is what is on disk, secrets blanked.

@@ -699,7 +699,7 @@ impl PreferencesView {
         .detach();
     }
 
-    // Asks for one file and makes it the CA file; a cancelled or failed prompt does nothing.
+    // Asks for one file and makes it the CA file; a cancelled prompt does nothing.
     fn choose_ca_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let reply = cx.prompt_for_paths(PathPromptOptions {
             files: true,
@@ -708,10 +708,8 @@ impl PreferencesView {
             prompt: None,
         });
         cx.spawn_in(window, async move |this, cx| {
-            let Ok(Ok(Some(paths))) = reply.await else {
-                return;
-            };
-            let Some(path) = paths.into_iter().next() else {
+            let Some(path) = crate::file_dialog::picked_one(reply, "choose a CA file", cx).await
+            else {
                 return;
             };
             let _ = this.update_in(cx, |this, window, cx| {

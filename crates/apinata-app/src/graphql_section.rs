@@ -449,10 +449,8 @@ impl GraphqlSection {
             prompt: None,
         });
         cx.spawn_in(window, async move |this, cx| {
-            let Ok(Ok(Some(paths))) = reply.await else {
-                return;
-            };
-            let Some(path) = paths.into_iter().next() else {
+            let Some(path) = crate::file_dialog::picked_one(reply, "load a schema file", cx).await
+            else {
                 return;
             };
             let _ = this.update(cx, |this, cx| {

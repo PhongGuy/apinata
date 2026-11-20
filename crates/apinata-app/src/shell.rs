@@ -951,7 +951,7 @@ impl Shell {
         crate::closing::confirm_close(self.workspace.clone(), CloseScope::Window, window, cx);
     }
 
-    // Asks for one directory and opens it; a cancelled or failed prompt does nothing.
+    // Asks for one directory and opens it; a cancelled prompt does nothing.
     fn prompt_open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let reply = cx.prompt_for_paths(PathPromptOptions {
             files: false,
@@ -960,10 +960,8 @@ impl Shell {
             prompt: Some("Open collection".into()),
         });
         cx.spawn_in(window, async move |this, cx| {
-            let Ok(Ok(Some(paths))) = reply.await else {
-                return;
-            };
-            let Some(root) = paths.into_iter().next() else {
+            let Some(root) = crate::file_dialog::picked_one(reply, "open a collection", cx).await
+            else {
                 return;
             };
             let _ = this.update_in(cx, |shell, window, cx| shell.open(root, window, cx));
@@ -1175,7 +1173,9 @@ impl Shell {
             }) else {
                 return;
             };
-            let Some(parent) = first_path(reply.await) else {
+            let Some(parent) =
+                crate::file_dialog::picked_one(reply, "copy the demo collection", cx).await
+            else {
                 return;
             };
             let job = cx.background_spawn(async move { crate::demo_collection::install(&parent) });
@@ -1291,7 +1291,8 @@ impl Shell {
             .unwrap_or_default();
         let reply = cx.prompt_for_new_path(&start, Some("New Collection"));
         cx.spawn_in(window, async move |this, cx| {
-            let Ok(Ok(Some(dir))) = reply.await else {
+            let Some(dir) = crate::file_dialog::picked(reply, "create a collection", cx).await
+            else {
                 return;
             };
             let job =
@@ -3545,13 +3546,6 @@ impl Focusable for Shell {
     }
 }
 
-/// The one path a single-path prompt answered with, or `None` when it was cancelled or failed.
-pub(crate) fn first_path<E, F>(
-    reply: Result<Result<Option<Vec<PathBuf>>, F>, E>,
-) -> Option<PathBuf> {
-    reply.ok()?.ok()??.into_iter().next()
-}
-
 /// A view's action handler, run from the shell on that view.
 type Handler<V, A> = fn(&mut V, &A, &mut Window, &mut Context<V>);
 
@@ -3845,7 +3839,7 @@ async fn place_bundles(
     }) else {
         return;
     };
-    let Some(parent) = first_path(reply.await) else {
+    let Some(parent) = crate::file_dialog::picked_one(reply, "import collections", cx).await else {
         return;
     };
     let job = cx.background_spawn(async move { write_bundles(&bundles, &parent, &*store) });
