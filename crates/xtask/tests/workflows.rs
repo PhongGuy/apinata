@@ -167,23 +167,80 @@ fn every_package_install_step_has_its_own_timeout_inside_the_jobs() {
 
 #[test]
 fn the_ci_gate_job_outlasts_its_install_and_gate_steps_together() {
-    // The gate keeps its whole budget however long a healthy apt run takes.
+    // The gate keeps its whole budget however long the apt steps take, even on a cold cache.
     let ci = load("ci.yml");
-    let limit = |s: &Value| s["timeout-minutes"].as_u64();
-    let all = steps(&ci, "gate");
-    let install = all.iter().find(|s| installs_system_packages(s)).unwrap();
-    let gate = all
-        .iter()
-        .find(|s| str_of(&s["run"]).trim_start().starts_with("make"))
-        .unwrap();
-    let (Some(install), Some(gate)) = (limit(install), limit(gate)) else {
-        panic!("the install and gate steps each need timeout-minutes");
+    let limit = |s: &Value| {
+        s["timeout-minutes"]
+            .as_u64()
+            .unwrap_or_else(|| panic!("step {:?} needs timeout-minutes", s["name"]))
     };
+    let all = steps(&ci, "gate");
+    let install: u64 = all
+        .iter()
+        .filter(|s| installs_system_packages(s))
+        .map(limit)
+        .sum();
+    let gate = limit(
+        all.iter()
+            .find(|s| str_of(&s["run"]).trim_start().starts_with("make"))
+            .unwrap(),
+    );
     let job = ci["jobs"]["gate"]["timeout-minutes"].as_u64().unwrap();
     assert!(
         install + gate < job,
         "gate job {job} min must exceed install {install} + gate {gate}"
     );
+}
+
+#[test]
+fn ci_installs_build_dependencies_from_cached_debs_saved_only_by_master() {
+    // A slow mirror costs minutes per run, so the gate reuses the downloaded debs. Pull
+    // requests only restore, so nothing a branch downloads reaches master's cache.
+    let ci = load("ci.yml");
+    let all = steps(&ci, "gate");
+    let position = |prefix: &str| {
+        all.iter()
+            .position(|s| str_of(&s["uses"]).starts_with(prefix))
+            .unwrap_or_else(|| panic!("the gate has no {prefix} step"))
+    };
+    let (restore, save) = (
+        position("actions/cache/restore@"),
+        position("actions/cache/save@"),
+    );
+    let install = step_running(&all, "apt-get install -y --no-install-recommends");
+    assert!(
+        restore < install && install < save,
+        "restore, install, save"
+    );
+    assert!(
+        !all.iter()
+            .any(|s| str_of(&s["uses"]).starts_with("actions/cache@")),
+        "the combined cache action would save from pull requests too"
+    );
+    let (r, s) = (&all[restore]["with"], &all[save]["with"]);
+    assert_eq!(r["path"], s["path"], "restore and save one directory");
+    assert_eq!(r["key"], s["key"], "restore and save one key");
+    let key = str_of(&r["key"]);
+    assert!(
+        key.contains("steps."),
+        "the key follows the resolved packages: {key}"
+    );
+    // Pushes run only on master, so gating the save on a push confines it there.
+    assert!(
+        str_of(&all[save]["if"]).starts_with("github.event_name == 'push' && "),
+        "{:?}",
+        all[save]["if"]
+    );
+    assert_eq!(strs(&ci["on"]["push"]["branches"]), ["master"]);
+    // The key hashes apt's install plan, so a new package or version misses the cache.
+    let plan = str_of(&all[step_running(&all, "apt-get install -s")]["run"]);
+    for piece in [
+        "$LINUX_BUILD_DEPS gcc-mingw-w64-x86-64",
+        "sha256sum",
+        "$GITHUB_OUTPUT",
+    ] {
+        assert!(plan.contains(piece), "missing {piece:?} in {plan}");
+    }
 }
 
 #[test]

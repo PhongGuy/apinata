@@ -34,7 +34,7 @@ env:
 jobs:
   gate:
     runs-on: ubuntu-26.04
-    timeout-minutes: 60
+    timeout-minutes: 75
     steps:
       - name: Free disk space
         # The hosted runner leaves about 14 GB free; these preinstalled toolchains are unused.
@@ -50,12 +50,44 @@ jobs:
           components: rustfmt, clippy
           targets: x86_64-pc-windows-gnu
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      # A stuck package mirror fails here by name instead of starving the gate below.
-      - name: Install build dependencies
-        timeout-minutes: 15
+      # The mirror can serve debs at dial-up speed, so they are cached under a hash of apt's
+      # install plan: a new package or version misses, and a near miss restores the rest.
+      - name: Plan build dependencies
+        id: apt-plan
+        timeout-minutes: 5
         run: |
           sudo apt-get update
+          prefix="apt-debs-$ImageOS-$RUNNER_ARCH-"
+          plan=$(apt-get install -s --no-install-recommends $LINUX_BUILD_DEPS gcc-mingw-w64-x86-64 | { grep '^Inst ' || true; } | sha256sum | cut -c1-16)
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+          echo "key=$prefix$plan" >> "$GITHUB_OUTPUT"
+      - name: Restore cached build dependencies
+        id: apt-restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/apt-debs
+          key: ${{ steps.apt-plan.outputs.key }}
+          restore-keys: ${{ steps.apt-plan.outputs.prefix }}
+      # A stuck mirror fails here by name instead of starving the gate below; the limit
+      # leaves room for a cold cache downloading everything slowly.
+      - name: Install build dependencies
+        timeout-minutes: 25
+        env:
+          DEBS: ${{ runner.temp }}/apt-debs
+        run: |
+          mkdir -p "$DEBS"
+          sudo find "$DEBS" -maxdepth 1 -name '*.deb' -exec cp -t /var/cache/apt/archives/ {} +
+          sudo apt-get install -y --no-install-recommends --download-only $LINUX_BUILD_DEPS gcc-mingw-w64-x86-64
+          find "$DEBS" -maxdepth 1 -name '*.deb' -delete
+          find /var/cache/apt/archives -maxdepth 1 -name '*.deb' -exec cp -t "$DEBS" {} +
           sudo apt-get install -y --no-install-recommends $LINUX_BUILD_DEPS gcc-mingw-w64-x86-64
+      # Only master writes the cache, so a pull request can read it but never poison it.
+      - name: Save build dependencies
+        if: github.event_name == 'push' && steps.apt-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/apt-debs
+          key: ${{ steps.apt-plan.outputs.key }}
       - name: Gate
         timeout-minutes: 35
         run: make check icons-check windows-check workflows-lint
