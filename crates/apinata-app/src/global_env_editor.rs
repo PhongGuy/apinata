@@ -12,7 +12,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Escape, Input, InputEvent, InputState};
 use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
-use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, WindowExt as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::prelude::*;
 use gpui_kit::{
@@ -1575,7 +1575,7 @@ pub fn open_global_env_editor(
     let body = editor.clone();
     let closed = editor.downgrade();
     let opened = guard.clone();
-    window.open_dialog(cx, move |d, window, cx| {
+    crate::ui::open_dialog(window, cx, move |d, window, cx| {
         let (scroll, follow) = {
             let editor = body.read(cx);
             (editor.scroll.clone(), editor.follow.clone())

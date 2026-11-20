@@ -129,7 +129,7 @@ pub fn open(workspace: &Entity<Workspace>, window: &mut Window, cx: &mut App) ->
     }
     cx.set_global(OpenView(view.downgrade()));
     let body = view.clone();
-    window.open_dialog(cx, move |dialog, window, _| {
+    crate::ui::open_dialog(window, cx, move |dialog, window, _| {
         // Escape cancels a running clone and keeps the dialog until core has cleaned up. Enter
         // never closes it: the fields start the clone themselves.
         let view = body.clone();

@@ -85,7 +85,7 @@ pub fn open(workspace: &Entity<Workspace>, root: PathBuf, window: &mut Window, c
     let workspace = workspace.clone();
     // Enter never closes it: the editor takes Enter as a newline and only the button imports,
     // so Enter elsewhere must not discard the pasted command.
-    window.open_dialog(cx, move |dialog, window, cx| {
+    crate::ui::open_dialog(window, cx, move |dialog, window, cx| {
         let dialog = crate::dialog_frame::place(dialog, window);
         let (form_ok, workspace, root) = (form.clone(), workspace.clone(), root.clone());
         let buttons = ui::dialog_footer(

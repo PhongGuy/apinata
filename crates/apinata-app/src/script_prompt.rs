@@ -86,7 +86,7 @@ pub fn open(
         .collect();
     let scroll = ScrollHandle::new();
     // The builder runs every frame, so each handler clones what it captures.
-    window.open_dialog(cx, move |dialog, window, cx| {
+    crate::ui::open_dialog(window, cx, move |dialog, window, cx| {
         // The list scrolls in what the titled body leaves after four lines of header and
         // the footer's buttons, its top padding and its ring room.
         let room = crate::dialog_frame::titled_body_room(window)
@@ -100,13 +100,14 @@ pub fn open(
             cx.focus_handle().tab_stop(true)
         });
         let focus: FocusHandle = focus.read(cx).clone();
-        let on_key = |shell: &WeakEntity<Shell>, approvals: &Entity<Approvals>, prompt: &ScriptPrompt| {
-            let (shell, approvals, prompt) = (shell.clone(), approvals.clone(), prompt.clone());
-            move |_: &_, _: &mut Window, cx: &mut App| {
-                answer(&shell, &approvals, &prompt, false, cx);
-                true
-            }
-        };
+        let on_key =
+            |shell: &WeakEntity<Shell>, approvals: &Entity<Approvals>, prompt: &ScriptPrompt| {
+                let (shell, approvals, prompt) = (shell.clone(), approvals.clone(), prompt.clone());
+                move |_: &_, _: &mut Window, cx: &mut App| {
+                    answer(&shell, &approvals, &prompt, false, cx);
+                    true
+                }
+            };
         let button = |id: &'static str, label: &'static str, approve: bool| {
             let (shell, approvals, prompt) = (shell.clone(), approvals.clone(), prompt.clone());
             Button::new(id)

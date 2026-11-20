@@ -55,7 +55,7 @@ pub fn open(
         }),
     });
     let guard = picker.clone();
-    window.open_dialog(cx, move |dialog, window, _| {
+    crate::ui::open_dialog(window, cx, move |dialog, window, _| {
         let guard = guard.clone();
         crate::dialog_frame::place(dialog, window)
             .title("Switch branch")

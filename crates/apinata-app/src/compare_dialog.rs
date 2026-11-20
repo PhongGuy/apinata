@@ -346,7 +346,7 @@ fn present(
     window.defer(cx, move |window, cx| {
         // Over another dialog, such as team sync, it sits lower so the one beneath keeps its title.
         let nested = window.has_active_dialog(cx);
-        window.open_dialog(cx, move |frame, window, cx| {
+        crate::ui::open_dialog(window, cx, move |frame, window, cx| {
             let frame = if nested {
                 crate::dialog_frame::place_nested(frame, window)
             } else {

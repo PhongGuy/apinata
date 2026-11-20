@@ -180,7 +180,6 @@ fn cancelling_the_send_closes_the_open_prompt(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn cancelling_under_another_dialog_leaves_that_dialog_open(cx: &mut TestAppContext) {
-    use gpui_kit::component::WindowExt as _;
     use gpui_kit::*;
     http_ready(cx);
     let server = mock_server(cx, ResponseTemplate::new(200));
@@ -190,7 +189,7 @@ fn cancelling_under_another_dialog_leaves_that_dialog_open(cx: &mut TestAppConte
     model.update(cx, |m, cx| m.send(&s.root, ip("a.yml"), cx));
     wait_real(cx, |cx| asked(cx, &s));
     cx.update_window(s.win, |_, w, cx| {
-        w.open_dialog(cx, |d, _, _| {
+        apinata_app::ui::open_dialog(w, cx, |d, _, _| {
             d.child(div().id("other-dialog").test_support().size_4())
         })
     })

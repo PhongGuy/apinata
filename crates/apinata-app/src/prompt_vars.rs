@@ -142,7 +142,7 @@ fn open(
         }
         let first = form.read(cx).inputs.first().cloned();
         let builder_form = form.clone();
-        window.open_dialog(cx, move |dialog, window, cx| {
+        crate::ui::open_dialog(window, cx, move |dialog, window, cx| {
             let dialog = crate::dialog_frame::place(dialog, window);
             // Every answer is accepted as typed, empty included, so Continue is always enabled.
             let answer = {

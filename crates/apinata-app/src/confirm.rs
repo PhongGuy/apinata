@@ -48,7 +48,7 @@ pub fn ask(spec: Ask, window: &mut Window, cx: &mut App) -> async_channel::Recei
     window.defer(cx, move |window, cx| {
         let nested = window.has_active_dialog(cx);
         // The builder runs every frame, so each handler clones what it captures.
-        window.open_dialog(cx, move |dialog, window, cx| {
+        crate::ui::open_dialog(window, cx, move |dialog, window, cx| {
             let dialog = if nested {
                 crate::dialog_frame::place_nested(dialog, window)
             } else {

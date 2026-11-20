@@ -74,7 +74,7 @@ pub fn open(
     });
     cx.set_global(OpenView(view.downgrade()));
     let body = view.clone();
-    window.open_dialog(cx, move |dialog, window, _| {
+    crate::ui::open_dialog(window, cx, move |dialog, window, _| {
         crate::dialog_frame::place(dialog, window)
             .title("Team sync")
             .close_button(false)

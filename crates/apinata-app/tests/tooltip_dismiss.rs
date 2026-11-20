@@ -4,7 +4,11 @@ use crate::support;
 
 use apinata_app::tabs::TabKind;
 use gpui_kit::test::TestWindowExt as _;
-use gpui_kit::{AnyWindowHandle, AppContext as _, TestAppContext, VisualTestContext, point, px};
+use gpui_kit::{
+    AnyWindowHandle, AppContext as _, InteractiveElement as _, ParentElement as _,
+    StatefulInteractiveElement as _, Styled as _, TestAppContext, TestSupportExt as _,
+    VisualTestContext, point, px,
+};
 use support::*;
 
 const TIP: &str = "env-control-tooltip";
@@ -86,4 +90,81 @@ fn the_tooltip_returns_once_the_dialog_closes(cx: &mut TestAppContext) {
     .unwrap();
     rest(cx, s.win);
     assert!(present(cx, s.win, TIP), "the tip shows again");
+}
+
+const PROBE_TIP: &str = "probe-tip";
+
+// A collection window with a dialog open whose one control has an element tooltip, hovered
+// until the tip shows.
+fn hovered_dialog_control(cx: &mut TestAppContext) -> (Started, tempfile::TempDir) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("a.yml", &request("a", "http://x/0")),
+    ]);
+    let s = started(cx, &col);
+    cx.update_window(s.win, |_, w, cx| {
+        apinata_app::ui::open_dialog(w, cx, |d, _, _| {
+            d.close_button(false).child(
+                gpui_kit::div()
+                    .id("probe")
+                    .test_support()
+                    .size_8()
+                    .tooltip(apinata_app::ui::text_tooltip(PROBE_TIP, "Probe")),
+            )
+        });
+    })
+    .unwrap();
+    rest(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| w.hover("probe", cx))
+        .unwrap();
+    rest(cx, s.win);
+    assert!(
+        present(cx, s.win, PROBE_TIP),
+        "the dialog's control shows its tip"
+    );
+    (s, col)
+}
+
+// A second dialog opened from the keyboard over the first covers the first's controls too.
+#[gpui_kit::test]
+fn a_dialog_opened_over_a_dialog_hides_the_tooltip_inside_it(cx: &mut TestAppContext) {
+    let (s, _col) = hovered_dialog_control(cx);
+    ask(cx, s.win);
+    assert!(
+        !present(cx, s.win, PROBE_TIP),
+        "no tip from the covered dialog"
+    );
+}
+
+// The dialog the tip was shown in is still the top layer, so its tip stays.
+#[gpui_kit::test]
+fn a_tooltip_inside_the_top_dialog_stays(cx: &mut TestAppContext) {
+    let (s, _col) = hovered_dialog_control(cx);
+    rest(cx, s.win);
+    assert!(
+        present(cx, s.win, PROBE_TIP),
+        "the tip stays on the top dialog"
+    );
+}
+
+// Every dialog the app opens counts, alerts included, in its own window.
+#[gpui_kit::test]
+fn opening_a_dialog_counts_it(cx: &mut TestAppContext) {
+    let col = write_tree(&[("opencollection.yml", ROOT)]);
+    let s = started(cx, &col);
+    let opens = |cx: &mut TestAppContext| {
+        cx.update_window(s.win, |_, w, cx| apinata_app::ui::dialog_opens(w, cx))
+            .unwrap()
+    };
+    let before = opens(cx);
+    cx.update_window(s.win, |_, w, cx| {
+        apinata_app::ui::open_dialog(w, cx, |d, _, _| d.close_button(false));
+    })
+    .unwrap();
+    assert_eq!(opens(cx), before + 1, "a dialog counts");
+    cx.update_window(s.win, |_, w, cx| {
+        apinata_app::ui::open_alert_dialog(w, cx, |a, _, _| a.title("Alert"));
+    })
+    .unwrap();
+    assert_eq!(opens(cx), before + 2, "an alert counts");
 }

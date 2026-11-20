@@ -421,7 +421,7 @@ pub fn open(
         target,
         _check: None,
     });
-    window.open_dialog(cx, {
+    crate::ui::open_dialog(window, cx, {
         let view = view.clone();
         move |dialog, window, _| {
             crate::ui::with_close(

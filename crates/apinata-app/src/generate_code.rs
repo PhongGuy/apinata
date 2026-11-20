@@ -98,7 +98,7 @@ fn show(request: ResolvedRequest, window: &mut Window, cx: &mut App) {
     let target = cx.try_global::<LastTarget>().map_or(Target::Curl, |t| t.0);
     let view = cx.new(|cx| GenerateCodeView::new(request, target, window, cx));
     cx.set_global(OpenView(view.downgrade()));
-    window.open_dialog(cx, move |d, window, _| {
+    crate::ui::open_dialog(window, cx, move |d, window, _| {
         // Code reads best unbroken, so the dialog is wider than the default, within the window.
         let width = (style::resolve(style::CODE_DIALOG_WIDTH, window)
             + style::DIALOG_SIDE_PADDINGS)

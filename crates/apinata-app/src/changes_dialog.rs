@@ -169,7 +169,7 @@ pub fn open_changes(
         (!v.files.is_empty()).then(|| v.list_focus.clone())
     };
     let body = view.clone();
-    window.open_dialog(cx, move |d, window, _| {
+    crate::ui::open_dialog(window, cx, move |d, window, _| {
         // Two panes need more room than the default width, but never more than the window.
         let width = style::resolve(style::CHANGES_DIALOG_WIDTH, window)
             .min(window.viewport_size().width * 0.9);

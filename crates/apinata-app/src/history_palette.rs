@@ -398,7 +398,7 @@ pub fn open_history(
     let state = cx.new(|cx| CommandState::new(window, cx));
     let dialog_state = state.clone();
     let rows_key = Rc::new(RowsKey::new());
-    window.open_dialog(cx, move |dialog, window, cx| {
+    crate::ui::open_dialog(window, cx, move |dialog, window, cx| {
         // The entries are fixed while the dialog is open, so the query and height decide
         // whether the rows need building again.
         let query = dialog_state.read(cx).query(cx);

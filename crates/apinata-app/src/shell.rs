@@ -1184,7 +1184,7 @@ impl Shell {
                 Ok(root) => this.open(root, window, cx),
                 Err(e) => {
                     let text: SharedString = crate::ui::plain_quotes(&e.to_string()).into();
-                    window.open_alert_dialog(cx, move |dialog, _, _| {
+                    crate::ui::open_alert_dialog(window, cx, move |dialog, _, _| {
                         dialog
                             .title("Could not copy the demo collection")
                             .description(text.clone())
@@ -1301,7 +1301,7 @@ impl Shell {
                 Ok(root) => this.open(root, window, cx),
                 Err(message) => {
                     let text: SharedString = message.into();
-                    window.open_alert_dialog(cx, move |dialog, _, _| {
+                    crate::ui::open_alert_dialog(window, cx, move |dialog, _, _| {
                         dialog
                             .title("Could not create collection")
                             .description(text.clone())
@@ -1509,7 +1509,7 @@ impl Shell {
             }
             WorkspaceEvent::OpenFailed { root, message } => {
                 let text: SharedString = crate::import_report::open_failure(root, message).into();
-                window.open_alert_dialog(cx, move |dialog, _, _| {
+                crate::ui::open_alert_dialog(window, cx, move |dialog, _, _| {
                     dialog
                         .title("Could not open collection")
                         .description(text.clone())
@@ -3819,7 +3819,7 @@ fn describe(target: &Target) -> String {
 
 fn import_failed(message: String, window: &mut Window, cx: &mut App) {
     let text: SharedString = crate::import_report::failure_text(&message).into();
-    window.open_alert_dialog(cx, move |dialog, _, _| {
+    crate::ui::open_alert_dialog(window, cx, move |dialog, _, _| {
         dialog
             .title("Could not import collection")
             .description(text.clone())

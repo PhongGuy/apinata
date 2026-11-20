@@ -8,7 +8,6 @@ use std::rc::Rc;
 use apinata_core::import::{ImportReport, ImportedEnvironment, parse_environments};
 use gpui_kit::assets::IconName;
 use gpui_kit::base::actions::SelectDown;
-use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::select::{Select, SelectEvent, SelectItem, SelectState};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -482,7 +481,7 @@ fn merge(into: &mut ImportReport, report: ImportReport) {
 
 fn failed(message: String, window: &mut Window, cx: &mut App) {
     let text: SharedString = crate::import_report::failure_text(&message).into();
-    window.open_alert_dialog(cx, move |dialog, _, _| {
+    crate::ui::open_alert_dialog(window, cx, move |dialog, _, _| {
         dialog
             .title("Could not import environment")
             .description(text.clone())

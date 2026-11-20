@@ -672,7 +672,7 @@ pub fn open(
         ),
         input: input.clone(),
     });
-    window.open_dialog(cx, move |dialog, window, _| {
+    crate::ui::open_dialog(window, cx, move |dialog, window, _| {
         crate::dialog_frame::place(dialog, window)
             .w(style::resolve(style::PALETTE_WIDTH, window))
             .close_button(false)

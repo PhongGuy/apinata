@@ -34,7 +34,7 @@ pub fn version_text() -> String {
 
 /// Opens the About dialog, id `about-dialog`, on `window`.
 pub fn open(window: &mut Window, cx: &mut App) {
-    window.open_dialog(cx, |d, window, cx| {
+    crate::ui::open_dialog(window, cx, |d, window, cx| {
         let version = version_text();
         let licence = format!("Licence: {LICENCE}");
         // Enter acts on the focused link or button only, never as a confirm of the dialog.

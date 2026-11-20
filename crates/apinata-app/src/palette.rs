@@ -640,7 +640,7 @@ fn show(
                 .detach();
         });
     }
-    window.open_dialog(cx, move |dialog, window, cx| {
+    crate::ui::open_dialog(window, cx, move |dialog, window, cx| {
         // The key holds everything the rows are built from but the keymap's hint widths, so
         // an unchanged frame skips building them, and `palette` with them.
         let available = availability_now(

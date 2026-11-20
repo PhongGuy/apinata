@@ -318,7 +318,7 @@ pub fn open(
     cx.set_global(OpenView(view.downgrade()));
     view.update(cx, |v, cx| v.load(window, cx));
     let body = view.clone();
-    window.open_dialog(cx, move |dialog, window, _| {
+    crate::ui::open_dialog(window, cx, move |dialog, window, _| {
         crate::dialog_frame::place(dialog, window)
             .title("Team workspaces")
             .close_button(false)

@@ -1729,7 +1729,7 @@ pub fn open(window: &mut Window, cx: &mut App) -> Option<Entity<PreferencesView>
     let dialog_view = view.clone();
     let search = view.read(cx).search.clone();
     // Enter commits the focused input; the dialog's own Enter confirm must not close it.
-    window.open_dialog(cx, move |d, window, cx| {
+    crate::ui::open_dialog(window, cx, move |d, window, cx| {
         // The kit's title is body-sized, the same as a section heading, with a 1.25 relative
         // line height; ours outranks it in size and in line box.
         let title = div()

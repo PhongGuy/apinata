@@ -243,7 +243,7 @@ pub fn open(
     });
     cx.set_global(OpenDialog(view.downgrade()));
     let body = view.clone();
-    window.open_dialog(cx, move |dialog, window, _| {
+    crate::ui::open_dialog(window, cx, move |dialog, window, _| {
         let (view, enter) = (body.clone(), body.clone());
         crate::dialog_frame::place(dialog, window)
             .title("Import collection")

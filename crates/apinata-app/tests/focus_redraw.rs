@@ -442,7 +442,7 @@ fn a_background_focus_lost_under_stacked_dialogs_lands_in_the_top_one(cx: &mut T
     cx.simulate_keystrokes(s.win, &key("shift-f"));
     frame(cx, s.win);
     cx.update_window(s.win, |_, w, cx| {
-        w.open_dialog(cx, |d, _, _| {
+        apinata_app::ui::open_dialog(w, cx, |d, _, _| {
             d.close_button(false)
                 .child(gpui_kit::component::button::Button::new("top-ok").label("OK"))
         })
