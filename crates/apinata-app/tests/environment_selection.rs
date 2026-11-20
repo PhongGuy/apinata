@@ -283,3 +283,79 @@ fn picking_no_environment_is_recorded_as_a_choice(cx: &mut TestAppContext) {
     cx.run_until_parked();
     assert!(chose_none(cx, &ws, &root));
 }
+
+fn with_preset(default: &str, envs: &[&str]) -> tempfile::TempDir {
+    let root =
+        format!("{ROOT}extensions:\n  bruno:\n    presets:\n      defaultEnvironment: {default}\n");
+    let files: Vec<(String, String)> = envs
+        .iter()
+        .map(|e| (format!("environments/{e}.yml"), format!("name: {e}\n")))
+        .collect();
+    let mut tree = vec![
+        ("opencollection.yml", root.as_str()),
+        (
+            "a.yml",
+            "info:\n  name: a\n  type: http\n  seq: 1\nhttp:\n  method: GET\n  url: \"http://x/0\"\n",
+        ),
+    ];
+    tree.extend(files.iter().map(|(p, t)| (p.as_str(), t.as_str())));
+    write_tree(&tree)
+}
+
+// With nothing saved, the collection's preset default environment is selected on open.
+#[gpui_kit::test]
+fn the_preset_default_environment_is_selected_on_first_open(cx: &mut TestAppContext) {
+    let col = with_preset("prod", &["dev", "prod"]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    assert_eq!(chosen(cx, &ws, &root).as_deref(), Some("prod"));
+    assert_eq!(saved(cx, &ws, &root).as_deref(), Some("prod"));
+}
+
+#[gpui_kit::test]
+fn a_saved_choice_beats_the_preset_default(cx: &mut TestAppContext) {
+    let col = with_preset("prod", &["dev", "prod"]);
+    let (_state, ws, root) = start_with(cx, &col, "dev");
+    assert_eq!(chosen(cx, &ws, &root).as_deref(), Some("dev"));
+}
+
+#[gpui_kit::test]
+fn choosing_no_environment_beats_the_preset_default(cx: &mut TestAppContext) {
+    let col = with_preset("prod", &["dev", "prod"]);
+    let state = tempfile::tempdir().unwrap();
+    let root = col.path().to_path_buf();
+    let mut s = Session::default();
+    let c = CollectionSession {
+        no_environment: true,
+        ..Default::default()
+    };
+    s.collections.insert(root.clone(), c);
+    s.open.push(root.clone());
+    let session = session_at(cx, &state, s);
+    let ws = workspace(cx, &session);
+    ws.update(cx, |w, cx| w.restore(cx));
+    cx.run_until_parked();
+    assert_eq!(chosen(cx, &ws, &root), None);
+}
+
+// A preset naming an environment the collection lacks is ignored, so the sole-one rule applies.
+#[gpui_kit::test]
+fn a_preset_naming_a_missing_environment_falls_back_to_the_sole_one(cx: &mut TestAppContext) {
+    let col = with_preset("staging", &["dev"]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    assert_eq!(chosen(cx, &ws, &root).as_deref(), Some("dev"));
+}
+
+#[gpui_kit::test]
+fn the_imports_preferred_environment_beats_the_preset_default(cx: &mut TestAppContext) {
+    let col = with_preset("prod", &["dev", "prod"]);
+    let state = tempfile::tempdir().unwrap();
+    let session = session_at(cx, &state, Session::default());
+    let ws = workspace(cx, &session);
+    let root = col.path().to_path_buf();
+    ws.update(cx, |w, cx| {
+        w.select_on_open(&root, "dev".into());
+        w.open(root.clone(), cx)
+    });
+    cx.run_until_parked();
+    assert_eq!(chosen(cx, &ws, &root).as_deref(), Some("dev"));
+}
