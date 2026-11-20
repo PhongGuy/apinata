@@ -163,3 +163,54 @@ fn a_read_only_collection_marks_the_request_breadcrumb(cx: &mut TestAppContext) 
         .unwrap();
     assert_eq!(mark.as_deref(), Some("Read only"));
 }
+
+fn synced(cx: &mut TestAppContext) -> (Sandbox, tempfile::TempDir, Started) {
+    let (sb, col) = (Sandbox::new(), collection());
+    shared_origin(&sb, col.path());
+    let s = app(cx, &sb, &col);
+    start_team_as(cx, &sb, &s, Role::Write, FAST);
+    let want = format!("{}: synced", name(&s));
+    wait_for(cx, "synced", |cx| {
+        label(cx, &s).as_deref() == Some(want.as_str())
+    });
+    (sb, col, s)
+}
+
+fn dialog_root(cx: &mut TestAppContext) -> Option<std::path::PathBuf> {
+    let view = cx.update(|cx| apinata_app::team_sync_dialog::current(cx))?;
+    Some(view.read_with(cx, |v, _| v.root().to_path_buf()))
+}
+
+#[gpui_kit::test]
+fn the_sync_status_takes_tab_and_enter_opens_its_dialog(cx: &mut TestAppContext) {
+    use crate::keyboard_reach::{press, tab_to};
+    let (_sb, _col, s) = synced(cx);
+    let tip = cx
+        .update_window(s.win, |_, w, _| {
+            (w.within("status-bar").find(("team-status", 0usize)))
+                .description()
+                .map(str::to_owned)
+        })
+        .unwrap();
+    let command = apinata_app::commands::label("collection.team_sync");
+    assert_eq!(tip.as_deref(), Some(command));
+    assert!(tab_to(cx, s.win, ("team-status", 0usize)), "Tab reaches it");
+    press(cx, s.win, "enter");
+    assert_eq!(dialog_root(cx), Some(s.root.clone()));
+}
+
+#[gpui_kit::test]
+fn the_palette_opens_the_current_collections_sync_dialog(cx: &mut TestAppContext) {
+    let (_sb, _col, s) = synced(cx);
+    let label = apinata_app::commands::label("collection.team_sync");
+    assert_eq!(label, "Team sync…");
+    let entry = (apinata_app::palette::palette_items().into_iter())
+        .find(|e| e.label == label)
+        .expect("Team sync is in the palette");
+    cx.update_window(s.win, |_, w, cx| {
+        w.dispatch_action(entry.action.boxed_clone(), cx)
+    })
+    .unwrap();
+    frame(cx, s.win);
+    assert_eq!(dialog_root(cx), Some(s.root.clone()));
+}

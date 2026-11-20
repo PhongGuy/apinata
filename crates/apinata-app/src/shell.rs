@@ -144,7 +144,9 @@ actions!(
         /// Closes the current collection, asking first about unsaved changes.
         CloseCollection,
         /// Starts the current collection's mock server, or stops it when it runs.
-        ToggleMockServer
+        ToggleMockServer,
+        /// Opens the current team collection's sync dialog.
+        ShowTeamSync
     ]
 );
 
@@ -1159,6 +1161,17 @@ impl Shell {
         crate::team_workspaces::open(&self.workspace, window, cx);
     }
 
+    // The palette's twin of the status bar's sync status, for the current team collection.
+    fn show_team_sync(&mut self, _: &ShowTeamSync, window: &mut Window, cx: &mut Context<Self>) {
+        let workspace = self.workspace.read(cx);
+        let Some(root) = workspace.current_root() else {
+            return;
+        };
+        if workspace.team_status(&root).is_some() {
+            team_sync_dialog::open(&self.workspace, root, window, cx);
+        }
+    }
+
     // Copies the bundled demo into a folder the user picks, then opens it. Cancelling does
     // nothing; a failed copy raises an alert.
     fn open_demo(&mut self, _: &OpenDemoCollection, window: &mut Window, cx: &mut Context<Self>) {
@@ -1627,35 +1640,24 @@ impl Shell {
             return None;
         }
         let muted = cx.theme().muted_foreground;
-        let hover = cx.theme().list_hover;
         let room = path_room(window);
+        // Each row is a ghost button two lines tall, so Tab reaches it and Enter opens it.
         let rows = recents.into_iter().enumerate().map(|(ix, root)| {
             let name = self.recent_name(&root);
             let full = root.display().to_string();
             let path = path_display::fitted(&root, self.home.as_deref(), room, window);
             let cut = path_display::is_shortened(&root, self.home.as_deref(), &path);
-            v_flex()
-                .id(("recent", ix))
-                .test_support()
-                .role(Role::Button)
-                .aria_label(name.clone())
+            let lines = v_flex()
                 .w_full()
+                .min_w_0()
                 .items_center()
-                .px(style::SPACE_2)
-                .py(style::SPACE_1)
-                .rounded(cx.theme().radius)
-                .cursor_pointer()
-                .hover(move |d| d.bg(hover))
-                .on_click(
-                    cx.listener(move |this, _, window, cx| this.open(root.clone(), window, cx)),
-                )
                 .child(
                     div()
                         .id(("recent-name", ix))
                         .test_support()
                         .max_w_full()
                         .truncate()
-                        .child(name),
+                        .child(name.clone()),
                 )
                 .child(
                     div()
@@ -1671,7 +1673,19 @@ impl Shell {
                             d.tooltip(ui::text_tooltip("recent-path-tooltip", full))
                         })
                         .child(path),
+                );
+            Button::new(("recent", ix))
+                .solid_ring(cx)
+                .ghost()
+                .w_full()
+                .h_auto()
+                .px(style::SPACE_2)
+                .py(style::SPACE_1)
+                .accessibility_label(name)
+                .on_click(
+                    cx.listener(move |this, _, window, cx| this.open(root.clone(), window, cx)),
                 )
+                .child(lines)
         });
         Some(
             v_flex()
@@ -2523,13 +2537,13 @@ impl Shell {
         let problem_color = cx.theme().warning;
         let statuses = team.into_iter().map(|(ix, root, kind, text)| {
             let label = format!("{}: {text}", display_name(&root));
-            div()
-                .id(("team-status", ix))
-                .test_support()
-                .aria_label(label.clone())
-                .cursor_pointer()
-                .when(kind == SyncKind::Problem, |d| d.text_color(problem_color))
-                .child(label)
+            Button::new(("team-status", ix))
+                .solid_ring(cx)
+                .ghost()
+                .xsmall()
+                .label(label)
+                .tooltip(commands::label("collection.team_sync"))
+                .when(kind == SyncKind::Problem, |b| b.text_color(problem_color))
                 .on_click(cx.listener(move |this, _, window, cx| {
                     let ws = this.workspace.clone();
                     team_sync_dialog::open(&ws, root.clone(), window, cx);
@@ -3153,6 +3167,7 @@ impl Render for Shell {
             .on_action(cx.listener(Self::clone_repository))
             .on_action(cx.listener(Self::join_team_server))
             .on_action(cx.listener(Self::team_workspaces))
+            .on_action(cx.listener(Self::show_team_sync))
             .on_action(cx.listener(Self::open_demo))
             .on_action(cx.listener(|this, _: &SwitchBranch, window, cx| {
                 this.open_branch_picker(window, cx);

@@ -16,7 +16,11 @@ use support::*;
 use wiremock::ResponseTemplate;
 
 // Tabs forward until `id` holds focus; false when it never does.
-fn tab_to(cx: &mut TestAppContext, win: AnyWindowHandle, id: impl Into<ElementId>) -> bool {
+pub(crate) fn tab_to(
+    cx: &mut TestAppContext,
+    win: AnyWindowHandle,
+    id: impl Into<ElementId>,
+) -> bool {
     let id = id.into();
     for _ in 0..60 {
         cx.update_window(win, |_, w, cx| w.render_frame(cx))
@@ -35,7 +39,7 @@ fn tab_to(cx: &mut TestAppContext, win: AnyWindowHandle, id: impl Into<ElementId
     false
 }
 
-fn press(cx: &mut TestAppContext, win: AnyWindowHandle, key: &str) {
+pub(crate) fn press(cx: &mut TestAppContext, win: AnyWindowHandle, key: &str) {
     cx.update_window(win, |_, w, cx| w.press(key, cx)).unwrap();
     cx.run_until_parked();
     cx.update_window(win, |_, w, cx| w.render_frame(cx))
@@ -359,4 +363,82 @@ fn a_keyboard_send_keeps_focus_through_to_stop(cx: &mut TestAppContext) {
         .update_window(win, |_, w, _| w.find("stop-button").focused())
         .unwrap();
     assert_eq!(on_stop, Some(true), "Stop holds the focus");
+}
+
+#[gpui_kit::test]
+fn a_welcome_recent_collection_takes_tab_and_enter(cx: &mut TestAppContext) {
+    support::init(cx);
+    let col = collection();
+    let state = tempfile::tempdir().unwrap();
+    let start = apinata_app::session::Session {
+        recent: vec![col.path().to_path_buf()],
+        ..Default::default()
+    };
+    let session = session_at(cx, &state, start);
+    let ws = workspace(cx, &session);
+    let shared = ws.clone();
+    let (win, _shell) = cx
+        .update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |w, cx| {
+                cx.new(|cx| apinata_app::shell::Shell::new(shared, w, cx))
+            })
+        })
+        .unwrap();
+    frame(cx, win);
+    assert!(
+        tab_to(cx, win, ("recent", 0usize)),
+        "Tab reaches the recent"
+    );
+    press(cx, win, "enter");
+    assert_eq!(ws.read_with(cx, |w, _| w.collections().len()), 1);
+}
+
+#[gpui_kit::test]
+fn an_event_row_takes_tab_and_enter_copies_it_with_a_toast(cx: &mut TestAppContext) {
+    use crate::support::sse_server::{Script, event};
+    use apinata_app::response_pane::ResponseTab;
+    use gpui_kit::component::WindowExt as _;
+    http_ready(cx);
+    let server = sse(cx, Script::sse(vec![event("first")]));
+    let col = sse_collection(&server);
+    let s = started(cx, &col);
+    let tab = open_tab(cx, &s.ws, &s.root, "a.yml");
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| w.click("send", cx))
+        .unwrap();
+    let ed = editor_of(cx, &s, tab);
+    let model = ed.read_with(cx, |e, _| e.send_model().clone());
+    wait_real(cx, |cx| {
+        model.read_with(cx, |m, _| m.live().is_some_and(|l| l.events().len() == 1))
+    });
+    let pane = ed.read_with(cx, |e, _| e.response().clone());
+    pane.update(cx, |p, cx| p.set_tab(ResponseTab::Events, cx));
+    frame(cx, s.win);
+    let (name, tip) = cx
+        .update_window(s.win, |_, w, _| {
+            let row = w.find(("event-row", 0usize));
+            let name = row.label().map(str::to_owned);
+            (name, row.description().map(str::to_owned))
+        })
+        .unwrap();
+    assert_eq!(name.as_deref(), Some("message: first"));
+    assert_eq!(tip.as_deref(), Some("Copy event data"));
+    let toasts = |cx: &mut TestAppContext| {
+        cx.update_window(s.win, |_, w, cx| w.notifications(cx).len())
+            .unwrap()
+    };
+    let before = toasts(cx);
+    assert!(
+        tab_to(cx, s.win, ("event-row", 0usize)),
+        "Tab reaches the row"
+    );
+    press(cx, s.win, "enter");
+    assert_eq!(
+        cx.read_from_clipboard().and_then(|c| c.text()).as_deref(),
+        Some("first")
+    );
+    assert_eq!(toasts(cx), before + 1, "the copy confirms itself");
+    model.update(cx, |m, cx| m.cancel(cx));
+    finished(cx, &model);
+    drop(server);
 }
