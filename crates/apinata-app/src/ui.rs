@@ -1826,7 +1826,10 @@ pub fn select(
                 ),
         )
         .dropdown_menu_with_anchor(Anchor::TopLeft, move |mut menu, window, cx| {
-            menu = checks_right(menu.scrollable(true));
+            // A list that fits never scrolls, so moving to the checked row cannot cut the first.
+            let height = window.window_bounds().get_bounds().size.height;
+            let scrolls = menu_may_overflow(labels.len(), height, window.rem_size());
+            menu = checks_right(menu.scrollable(scrolls));
             start_on(&menu, selected, window, cx);
             for (ix, label) in labels.iter().enumerate() {
                 let on_pick = Rc::clone(&on_pick);
@@ -4137,12 +4140,24 @@ pub fn stored_secret(
         .tooltip(self::tooltip(move |window, cx| {
             Tooltip::new(tip).build(window, cx)
         }))
-        .child(div().text_color(cx.theme().muted_foreground).child(text))
+        // In a narrow slot the note wraps to a second small line and then cuts, so it never
+        // pushes Replace past the slot; the tooltip and label keep the whole note.
+        .child(
+            div()
+                .min_w_0()
+                .text_size(TEXT_SMALL)
+                .line_height(relative(1.15))
+                .line_clamp(2)
+                .text_ellipsis()
+                .text_color(cx.theme().muted_foreground)
+                .child(text),
+        )
         .child(
             Button::new(replace_id)
                 .solid_ring(cx)
                 .label("Replace")
                 .small()
+                .flex_none()
                 .on_click(on_replace),
         )
 }

@@ -1,7 +1,7 @@
 //! Shows a folder path in little room: home as "~", the middle elided, the tail kept.
 
 use crate::style;
-use gpui_kit::{Pixels, Window};
+use gpui_kit::{Font, Pixels, Window};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -90,8 +90,13 @@ fn cut_end(text: &str, max: f32, measure: &dyn Fn(&str) -> f32) -> String {
 /// A width function for text at `size` in the window's current font, in pixels; a glyph the
 /// text system cannot measure counts as half an em.
 pub fn measurer(window: &Window, size: Pixels) -> impl Fn(&str) -> f32 + use<> {
+    font_measurer(window, window.text_style().font(), size)
+}
+
+/// A width function as [`measurer`] gives, for text in `font` instead of the window's.
+pub fn font_measurer(window: &Window, font: Font, size: Pixels) -> impl Fn(&str) -> f32 + use<> {
     let system = Arc::clone(window.text_system());
-    let font = system.resolve_font(&window.text_style().font());
+    let font = system.resolve_font(&font);
     move |text: &str| {
         text.chars()
             .map(|c| {

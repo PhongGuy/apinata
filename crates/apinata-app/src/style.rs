@@ -104,6 +104,10 @@ pub const HISTORY_DETAIL_WIDTH: Rems = ui(144.);
 /// The History palette's tag column: room for the widest origin tag.
 pub const HISTORY_TAG_WIDTH: Rems = ui(56.);
 
+/// The kit small input's border and side padding, where its text starts; the kit draws it
+/// in pixels at every zoom.
+pub const SMALL_INPUT_TEXT_INSET: Pixels = px(9.);
+
 /// The column of a search hit's field label.
 pub const SEARCH_FIELD_WIDTH: Rems = ui(120.);
 /// Width of a form's label column; longer labels wrap.
