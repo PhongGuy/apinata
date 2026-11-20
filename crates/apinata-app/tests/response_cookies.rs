@@ -1176,3 +1176,35 @@ fn the_jar_view_relists_when_another_tab_finishes_a_send(cx: &mut TestAppContext
     names.sort();
     assert_eq!(names, ["c", "d"]);
 }
+
+#[gpui_kit::test]
+fn the_jar_view_relists_when_a_download_stores_a_cookie(cx: &mut TestAppContext) {
+    let (_win, view, s) = jar_pane(cx);
+    // From now on the server sets `d`, so only the download can have stored it.
+    let handle = cx.update(|cx| apinata_app::tokio_bridge::handle(cx));
+    handle.block_on(s.server.reset());
+    handle.block_on(
+        wiremock::Mock::given(wiremock::matchers::any())
+            .respond_with(ResponseTemplate::new(200).insert_header("set-cookie", "d=2; Path=/"))
+            .mount(&s.server),
+    );
+    let ws = s.ws.clone();
+    let dl = cx.new(|_| apinata_app::download_model::DownloadModel::new(ws));
+    let out = tempfile::tempdir().unwrap();
+    let root = s.root.clone();
+    assert!(dl.update(cx, |m, cx| m.start(
+        &root,
+        ip("a.yml"),
+        out.path().join("d.bin"),
+        cx
+    )));
+    wait_real(cx, |cx| !dl.read_with(cx, |m, _| m.is_running()));
+    cx.run_until_parked();
+    let mut names: Vec<String> = view
+        .read_with(cx, |p, _| p.cookie_rows())
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+    names.sort();
+    assert_eq!(names, ["c", "d"]);
+}
