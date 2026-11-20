@@ -39,10 +39,12 @@ pub const ACTIONS_GROUP: &str = "Actions";
 /// The selector item that selects no environment.
 pub const NO_ENVIRONMENT: &str = "No environment";
 
-/// The dropdown entry that opens the environment editor instead of selecting one.
-pub const MANAGE_ENVIRONMENTS: &str = "Manage environments…";
+/// The dropdown entry that opens the environment editor instead of selecting one; the
+/// command that does the same takes it as its label.
+pub const MANAGE_ENVIRONMENTS: &str = "Manage environments";
 
-/// The dropdown entry that imports environment files instead of selecting one.
+/// The dropdown entry that imports environment files instead of selecting one; the command
+/// that does the same takes it as its label.
 pub const IMPORT_ENVIRONMENT: &str = "Import environment…";
 
 /// The id of the dropdown row for `item`; the prefixes keep an environment named "none" or

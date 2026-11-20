@@ -585,7 +585,10 @@ fn environment_and_example_labels_read_as_elsewhere() {
     let label = |id: &str| cmds.iter().find(|c| c.id == id).expect(id).label;
     assert_eq!(label("environment.open"), "Manage environments");
     assert_eq!(label("environment.import"), "Import environment…");
-    assert_eq!(label("request.save_as_example"), "Save response as example");
+    assert_eq!(
+        label("request.save_as_example"),
+        "Save response as example…"
+    );
     assert_eq!(label("request.compare_response"), "Compare response");
     assert_eq!(apinata_app::env_selector::NO_ENVIRONMENT, "No environment");
     assert_eq!(
@@ -612,6 +615,23 @@ fn the_dialog_commands_end_in_an_ellipsis() {
     );
 }
 
+// A label ends in "…" exactly when the command opens a dialog or asks for input first. About
+// is the platforms' one exception: an informational window named without one.
+#[test]
+fn a_label_ends_in_an_ellipsis_exactly_when_the_command_asks_first() {
+    let wrong: Vec<String> = registry()
+        .into_iter()
+        .filter(|c| c.label.ends_with('…') != (c.opens_dialog && c.id != "view.about"))
+        .map(|c| {
+            format!(
+                "{} {:?} (opens a dialog: {})",
+                c.id, c.label, c.opens_dialog
+            )
+        })
+        .collect();
+    assert!(wrong.is_empty(), "{wrong:#?}");
+}
+
 // One spelling for curl and one ellipsis character, so like commands read alike in the palette.
 #[test]
 fn labels_spell_curl_and_the_ellipsis_one_way() {
@@ -627,11 +647,11 @@ fn the_two_variables_commands_say_what_each_does() {
     let label = |id: &str| cmds.iter().find(|c| c.id == id).expect(id).label;
     assert_eq!(
         label("environment.variables_overview"),
-        "Show all variables"
+        "Show all variables…"
     );
     assert_eq!(
         label("environment.runtime_variables"),
-        "Edit variables set by requests"
+        "Edit variables set by requests…"
     );
 }
 

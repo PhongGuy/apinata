@@ -153,23 +153,14 @@ actions!(
 /// The icon of the title bar's environment editor button.
 pub const ENV_EDITOR_ICON: IconName = IconName::SlidersHorizontal;
 
-/// Tooltip and accessibility label of the environment editor button; one const, so they agree.
-pub const MANAGE_ENVIRONMENTS_TIP: &str = "Manage environments";
-
 /// Why the collection's environment select and the editor button are locked with nothing open.
 pub const NO_COLLECTION_ENV_TIP: &str = "Open a collection to use its environments";
 
 /// The icon of the title bar's global environments button.
 pub const GLOBAL_ENV_ICON: IconName = IconName::Globe;
 
-/// Tooltip and accessibility label of the global environments button; one const, so they agree.
-pub const GLOBAL_ENVIRONMENTS_TIP: &str = "Global environments";
-
 /// The icon of the title bar's variables button.
 pub const VARIABLES_ICON: IconName = IconName::Braces;
-
-/// Tooltip of the title bar's variables button.
-pub const VARIABLES_TIP: &str = "Variables";
 
 /// Tooltip and accessibility label of the app menu's slot.
 pub const APP_MENU_TIP: &str = "App menu";
@@ -1713,16 +1704,19 @@ impl Shell {
         // The demo is offered until a recent collection still exists on disk.
         let offer_demo = !self.closed_recents(cx).iter().any(|p| p.is_dir());
         let mut actions: Vec<(&str, &dyn Action)> = vec![
-            ("New request", &NewRequest),
-            ("Open collection…", &OpenCollection),
-            ("New collection…", &NewCollection),
-            ("Import collection…", &ImportCollection),
-            ("Clone repository…", &CloneRepository),
+            (commands::label("collection.new_request"), &NewRequest),
+            (commands::label("collection.open"), &OpenCollection),
+            (commands::label("collection.new"), &NewCollection),
+            (commands::label("collection.import"), &ImportCollection),
+            (commands::label("collection.clone"), &CloneRepository),
         ];
         if offer_demo {
-            actions.push(("Open the demo collection…", &OpenDemoCollection));
+            actions.push((commands::label("collection.open_demo"), &OpenDemoCollection));
         }
-        actions.push(("Join team server…", &JoinTeamServer));
+        actions.push((
+            commands::label("collection.join_team_server"),
+            &JoinTeamServer,
+        ));
         let demo = (actions.iter()).position(|(_, a)| a.partial_eq(&OpenDemoCollection));
         div()
             .id("no-collection")
@@ -2056,25 +2050,25 @@ impl Shell {
                     (
                         "switcher-open-collection",
                         IconName::FolderOpen,
-                        "Open collection…",
+                        commands::label("collection.open"),
                         Box::new(OpenCollection) as Box<dyn Action>,
                     ),
                     (
                         "switcher-import-collection",
                         IconName::Import,
-                        "Import collection…",
+                        commands::label("collection.import"),
                         Box::new(ImportCollection) as Box<dyn Action>,
                     ),
                     (
                         "switcher-new-collection",
                         IconName::FolderPlus,
-                        "New collection…",
+                        commands::label("collection.new"),
                         Box::new(NewCollection) as Box<dyn Action>,
                     ),
                     (
                         "switcher-clone-repository",
                         IconName::GitBranch,
-                        "Clone repository…",
+                        commands::label("collection.clone"),
                         Box::new(CloneRepository) as Box<dyn Action>,
                     ),
                 ];
@@ -2146,7 +2140,7 @@ impl Shell {
             return icon_button(
                 "environments",
                 ENV_EDITOR_ICON,
-                MANAGE_ENVIRONMENTS_TIP,
+                commands::label("environment.open"),
                 Some(&OpenEnvironments),
                 cx,
             );
@@ -2154,7 +2148,7 @@ impl Shell {
         icon_button(
             "environments",
             ENV_EDITOR_ICON,
-            MANAGE_ENVIRONMENTS_TIP,
+            commands::label("environment.open"),
             None,
             cx,
         )
@@ -2442,7 +2436,7 @@ impl Shell {
                 false => text_box(count.clone(), lead),
             };
             part("git-changes", count.clone().into(), factor, count_hidden)
-                .tooltip("Show changes")
+                .tooltip(commands::label("collection.show_changes"))
                 .on_click(move |event, window, cx| {
                     focus_pressed_part(event, &label_focus, has_name as usize, window, cx);
                     open_changes(&ws, &root, None, window, cx)
@@ -2474,8 +2468,8 @@ impl Shell {
             .ghost()
             .small()
             .icon(IconName::ChevronDown)
-            .accessibility_label("Switch branch")
-            .tooltip("Switch branch")
+            .accessibility_label(commands::label("collection.switch_branch"))
+            .tooltip(commands::label("collection.switch_branch"))
             .on_click(cx.listener(|this, _, window, cx| {
                 this.open_branch_picker(window, cx);
             }));
@@ -2575,7 +2569,7 @@ impl Shell {
                         icon_button(
                             "toggle-sidebar",
                             IconName::PanelLeft,
-                            "Toggle sidebar",
+                            commands::label("view.toggle_sidebar"),
                             Some(&ToggleSidebar),
                             cx,
                         )
@@ -2588,7 +2582,7 @@ impl Shell {
                         icon_button(
                             "toggle-console",
                             IconName::PanelBottom,
-                            "Toggle console",
+                            commands::label("view.toggle_console"),
                             Some(&ToggleConsole),
                             cx,
                         )
@@ -2958,7 +2952,7 @@ impl Shell {
                                     row.child(no_window_move(div().flex_none().child(icon_button(
                                         "global-environments",
                                         GLOBAL_ENV_ICON,
-                                        GLOBAL_ENVIRONMENTS_TIP,
+                                        commands::label("environment.manage_globals"),
                                         Some(&OpenGlobalEnvironments),
                                         cx,
                                     ))))
@@ -2975,7 +2969,7 @@ impl Shell {
                                 no_window_move(div().flex_none().child(icon_button(
                                     "variables-button",
                                     VARIABLES_ICON,
-                                    VARIABLES_TIP,
+                                    commands::label("environment.variables_overview"),
                                     Some(&OpenVariablesOverview),
                                     cx,
                                 )))

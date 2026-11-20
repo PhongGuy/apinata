@@ -98,7 +98,7 @@ fn draft_commands_name_the_selected_draft(cx: &mut TestAppContext) {
     let name = support::view_of(cx, &s.ws, &s.root, &draft).name.clone();
     support::open_tab(cx, &s.ws, &s.root, "a.yml");
     select_in_tree(cx, &s, support::row(&draft));
-    for label in ["Save selected draft", "Close selected draft"] {
+    for label in ["Save selected draft…", "Close selected draft"] {
         assert_eq!(target_of(cx, &s, label).as_deref(), Some(&*name), "{label}");
     }
 }

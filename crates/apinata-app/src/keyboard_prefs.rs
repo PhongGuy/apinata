@@ -242,13 +242,17 @@ impl KeyboardPrefs {
         let cmds = registry();
         let scope_of = |id: &str| cmds.iter().find(|c| c.id == id).map(|c| c.scope);
         let this = self.row.and_then(scope_of);
-        // A command that takes the key deeper in, where it wins, says where that is.
+        // A command that takes the key deeper in, where it wins, says where that is. A sentence
+        // names a command without its menu ellipsis.
         let labels: Vec<String> = others
             .iter()
             .filter_map(|o| cmds.iter().find(|c| c.id == *o))
-            .map(|c| match this.and_then(|t| shown_place(t, c.scope)) {
-                Some(place) => format!("{} {place}", c.label),
-                None => c.label.to_string(),
+            .map(|c| {
+                let name = c.label.trim_end_matches('…');
+                match this.and_then(|t| shown_place(t, c.scope)) {
+                    Some(place) => format!("{name} {place}"),
+                    None => name.to_string(),
+                }
             })
             .collect();
         let shown = Kbd::format(chord.keystroke());

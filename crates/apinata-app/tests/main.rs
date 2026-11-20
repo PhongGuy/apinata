@@ -173,6 +173,7 @@ mod closing_drafts;
 mod closing_run;
 mod collection_label;
 mod collection_switcher;
+mod command_labels;
 mod commands;
 mod compare_dialog;
 mod compare_digests;

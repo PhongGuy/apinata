@@ -73,7 +73,7 @@ fn the_menu_of_a_changed_tab_opens_its_changes(cx: &mut TestAppContext) {
     cx.update_window(s.win, |_, w, cx| w.right_click(("tab", 0usize), cx))
         .unwrap();
     frame(cx, s.win);
-    click_menu(cx, s.win, "Show changes");
+    click_menu(cx, s.win, "Show changes…");
     frame(cx, s.win);
     let selected = cx.update(|cx| {
         current(cx).and_then(|v| {
@@ -95,7 +95,7 @@ fn the_menu_of_an_unchanged_tab_has_no_show_changes(cx: &mut TestAppContext) {
     let (last, extra) = cx
         .update_window(s.win, |_, w, _| {
             (
-                try_menu_index(w, "Show changes").is_none(),
+                try_menu_index(w, "Show changes…").is_none(),
                 menu_labels(w).into_iter().flatten().last(),
             )
         })

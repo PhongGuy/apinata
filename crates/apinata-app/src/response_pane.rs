@@ -2732,9 +2732,14 @@ impl ResponsePane {
             .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, _, cx| {
                 if let Some(enabled) = example {
                     menu = menu.item(
-                        ui::menu_item("Save response as example", !enabled, cx).on_click(
-                            |_, window, cx| window.dispatch_action(Box::new(SaveAsExample), cx),
-                        ),
+                        ui::menu_item(
+                            crate::commands::label("request.save_as_example"),
+                            !enabled,
+                            cx,
+                        )
+                        .on_click(|_, window, cx| {
+                            window.dispatch_action(Box::new(SaveAsExample), cx)
+                        }),
                     );
                 }
                 let copy = body.clone();
@@ -2755,10 +2760,12 @@ impl ResponsePane {
                     ));
                 }
                 if let Some(enabled) = har {
-                    menu =
-                        menu.item(ui::menu_item("Export as HAR", !enabled, cx).on_click(
-                            |_, window, cx| window.dispatch_action(Box::new(ExportHar), cx),
-                        ));
+                    menu = menu.item(
+                        ui::menu_item(crate::commands::label("request.export_har"), !enabled, cx)
+                            .on_click(|_, window, cx| {
+                                window.dispatch_action(Box::new(ExportHar), cx)
+                            }),
+                    );
                 }
                 if viewing {
                     let send = send.clone();
@@ -5702,7 +5709,7 @@ pub const EXPORT_HAR_ICON: AssetIcon = AssetIcon::FileOutput;
 /// The Compare dropdown's icon, a diff so it never reads as the layout toggle.
 pub const COMPARE_ICON: AssetIcon = AssetIcon::FileDiff;
 
-// "Export as HAR", an icon button: enabled when the response still has the request it
+// Export response as HAR, an icon button: enabled when the response still has the request it
 // answered, which a response kept from an earlier session does not.
 // The tooltip sits on a wrapper, which shows it whether or not the button is locked; a
 // locked one names the action before the reason, since the icon carries no text.
@@ -5714,15 +5721,20 @@ fn export_har_button(response: &Response, cx: &App) -> AnyElement {
         .compact()
         .aspect_ratio(1.)
         .icon(ui::glyph("response-export-har", EXPORT_HAR_ICON))
-        .accessibility_label("Export HAR");
+        .accessibility_label(crate::commands::label("request.export_har"));
     let (button, tip) = match response.timeline().is_empty() {
         true => (
             button.lock(true, cx),
-            format!("Export HAR: {}", crate::har_export::NO_REQUEST),
+            // A locked button names the action before its reason, without the ellipsis.
+            format!(
+                "{}: {}",
+                crate::commands::label("request.export_har").trim_end_matches('…'),
+                crate::har_export::NO_REQUEST
+            ),
         ),
         false => (
             button.on_click(|_, window, cx| window.dispatch_action(Box::new(ExportHar), cx)),
-            "Export the request and response as a HAR file".to_owned(),
+            crate::commands::label("request.export_har").to_owned(),
         ),
     };
     div()
@@ -5733,7 +5745,7 @@ fn export_har_button(response: &Response, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-// "Save response as example": enabled for a whole response under the size limit of a request that
+// Save response as example: enabled for a whole response under the size limit of a request that
 // can hold examples, otherwise disabled with a tooltip saying why (`blocked` first).
 fn save_example_button(response: &Response, blocked: Option<&'static str>, cx: &App) -> Button {
     let id = "response-save-example";
@@ -5741,7 +5753,7 @@ fn save_example_button(response: &Response, blocked: Option<&'static str>, cx: &
         return ui::icon_button(
             id,
             ui::glyph(id, AssetIcon::Bookmark),
-            "Save response as example",
+            crate::commands::label("request.save_as_example"),
             Some(&SaveAsExample),
             cx,
         );

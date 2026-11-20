@@ -2434,7 +2434,7 @@ impl TabArea {
                 }
                 // Discard changes is always listed, greyed out when there is nothing to revert.
                 let view = menu_view.clone();
-                menu = ui::MenuLine::new("Discard changes")
+                menu = ui::MenuLine::new(label("request.discard"))
                     .action(Box::new(DiscardChanges))
                     .disabled(!discardable)
                     .danger(true)
@@ -2446,12 +2446,14 @@ impl TabArea {
                         cx,
                     );
                 if let Some((workspace, root, item)) = show_changes.clone() {
-                    menu = menu.item(PopupMenuItem::new("Show changes").on_click(
-                        move |_, window, cx| {
-                            let file = PathBuf::from(item_file(&item, false));
-                            open_changes(&workspace, &root, Some(file), window, cx);
-                        },
-                    ));
+                    menu = menu.item(
+                        PopupMenuItem::new(label("collection.show_changes")).on_click(
+                            move |_, window, cx| {
+                                let file = PathBuf::from(item_file(&item, false));
+                                open_changes(&workspace, &root, Some(file), window, cx);
+                            },
+                        ),
+                    );
                 }
                 let view = menu_view.clone();
                 let pin: Box<dyn Action> = if pinned {
@@ -2459,7 +2461,7 @@ impl TabArea {
                 } else {
                     Box::new(PinTab)
                 };
-                ui::MenuLine::new(if pinned { "Unpin tab" } else { "Pin tab" })
+                ui::MenuLine::new(label(if pinned { "tabs.unpin" } else { "tabs.pin" }))
                     .action(pin)
                     .group_break(true)
                     .add_to(
@@ -2499,41 +2501,54 @@ impl TabArea {
                 if pinned {
                     // A pinned tab trades its close button for the pin; clicking it unpins.
                     let pin_view = view.clone();
-                    let icon =
-                        ui::icon_button(("tab-pin", ix), IconName::Pin, "Unpin tab", None, cx)
-                            .text_color(cx.theme().muted_foreground)
-                            .on_click(move |_, _, cx| {
-                                cx.stop_propagation();
-                                pin_view.update(cx, |a, cx| a.set_pinned(id, false, cx));
-                            });
+                    let icon = ui::icon_button(
+                        ("tab-pin", ix),
+                        IconName::Pin,
+                        crate::commands::label("tabs.unpin"),
+                        None,
+                        cx,
+                    )
+                    .text_color(cx.theme().muted_foreground)
+                    .on_click(move |_, _, cx| {
+                        cx.stop_propagation();
+                        pin_view.update(cx, |a, cx| a.set_pinned(id, false, cx));
+                    });
                     return slot.child(icon);
                 }
                 let close_view = view.clone();
-                let close =
-                    ui::icon_button(("tab-close", ix), IconName::Close, "Close tab", None, cx)
-                        .tooltip_with_action("Close tab", &CloseTab, Some(SHELL_CONTEXT))
-                        .when(!active && !hovered, |b| {
-                            b.text_color(cx.theme().muted_foreground)
-                        })
-                        .on_click(move |_, window, cx| {
-                            cx.stop_propagation();
-                            // A button cut by the strip's edge or under a fade selects its tab:
-                            // the user cannot see what a press there would close.
-                            close_view.update(cx, |a, cx| {
-                                let count = a.workspace.read(cx).tabs().entries().len();
-                                if a.may_close(count, ix, window) {
-                                    a.close(vec![id], window, cx);
-                                } else {
-                                    a.reveal.clicked();
-                                    if active {
-                                        a.reveal.request();
-                                    }
-                                    a.workspace.update(cx, |w, cx| {
-                                        w.update_tabs(cx, |t| t.activate_index(ix))
-                                    });
-                                }
-                            });
-                        });
+                let close = ui::icon_button(
+                    ("tab-close", ix),
+                    IconName::Close,
+                    crate::commands::label("tabs.close"),
+                    None,
+                    cx,
+                )
+                .tooltip_with_action(
+                    crate::commands::label("tabs.close"),
+                    &CloseTab,
+                    Some(SHELL_CONTEXT),
+                )
+                .when(!active && !hovered, |b| {
+                    b.text_color(cx.theme().muted_foreground)
+                })
+                .on_click(move |_, window, cx| {
+                    cx.stop_propagation();
+                    // A button cut by the strip's edge or under a fade selects its tab:
+                    // the user cannot see what a press there would close.
+                    close_view.update(cx, |a, cx| {
+                        let count = a.workspace.read(cx).tabs().entries().len();
+                        if a.may_close(count, ix, window) {
+                            a.close(vec![id], window, cx);
+                        } else {
+                            a.reveal.clicked();
+                            if active {
+                                a.reveal.request();
+                            }
+                            a.workspace
+                                .update(cx, |w, cx| w.update_tabs(cx, |t| t.activate_index(ix)));
+                        }
+                    });
+                });
                 slot.child(close)
             });
         let weak = view.downgrade();
@@ -2980,10 +2995,10 @@ impl Render for TabArea {
                         "tab-empty-actions",
                         "No request open",
                         &[
-                            ("New request", &NewRequest),
-                            ("Filter requests", &FocusFilter),
-                            ("Manage environments", &OpenEnvironments),
-                            ("Command palette", &OpenCommandPalette),
+                            (label("collection.new_request"), &NewRequest),
+                            (label("view.filter_requests"), &FocusFilter),
+                            (label("environment.open"), &OpenEnvironments),
+                            (label("view.command_palette"), &OpenCommandPalette),
                         ],
                     )),
             );

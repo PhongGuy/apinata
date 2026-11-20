@@ -250,7 +250,7 @@ fn with_a_collection_open_the_environment_controls_work(cx: &mut TestAppContext)
         assert_ne!(manage.disabled(), Some(true), "Manage environments");
         assert_eq!(
             manage.description(),
-            Some(apinata_app::shell::MANAGE_ENVIRONMENTS_TIP)
+            Some(apinata_app::commands::label("environment.open"))
         );
     })
     .unwrap();

@@ -100,7 +100,7 @@ impl Render for VariablesOverview {
                     .child(
                         Button::new("var-overview-edit-runtime")
                             .solid_ring(cx)
-                            .label("Edit variables set by requests")
+                            .label(crate::commands::label("environment.runtime_variables"))
                             .on_click(|_, window, cx| {
                                 window.close_dialog(cx);
                                 window.defer(cx, |window, cx| {
