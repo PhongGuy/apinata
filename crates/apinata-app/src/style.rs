@@ -329,6 +329,10 @@ pub const KV_VIEW_LINE_HEIGHT: Rems = ui(20.);
 pub const KV_VIEW_PAD_Y: Rems = Rems((ROW_HEIGHT.0 - KV_VIEW_LINE_HEIGHT.0) / 2.);
 /// Width of an assertion row's operator select.
 pub const OPERATOR_SELECT_WIDTH: Rems = ui(180.);
+/// The narrowest an assertion row's operator select gets in a narrow table.
+pub const OPERATOR_SELECT_MIN: Rems = ui(48.);
+/// The narrowest an assertion row's expression or value field gets in a narrow table.
+pub const ASSERTION_CELL_MIN: Rems = ui(48.);
 /// The parts of an assertion row's free width its value takes to the expression's one.
 pub const VALUE_GROW: f32 = 1.5;
 /// Width of the operator list, room for the plain words and the raw operator beside them.

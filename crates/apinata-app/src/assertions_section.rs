@@ -27,8 +27,8 @@ use crate::row_move::{
 use crate::scroll_follow::{FocusFollow, Followed};
 use crate::section::SectionEdit;
 use crate::style::{
-    KV_ACTION_WIDTH, KV_CHECK_WIDTH, KV_GRIP_WIDTH, OPERATOR_MENU_WIDTH, OPERATOR_SELECT_WIDTH,
-    ROW_HEIGHT, SPACE_2, VALUE_GROW,
+    ASSERTION_CELL_MIN, KV_ACTION_WIDTH, KV_CHECK_WIDTH, KV_GRIP_WIDTH, OPERATOR_MENU_WIDTH,
+    OPERATOR_SELECT_MIN, OPERATOR_SELECT_WIDTH, ROW_HEIGHT, SPACE_2, VALUE_GROW,
 };
 use crate::tabs::Side;
 use crate::ui;
@@ -923,12 +923,19 @@ impl AssertionsSection {
 /// The assertion table's columns: Expression (`as-head-expr`, `as-expr`, flex), Operator
 /// (`as-head-op`, `as-op`, `OPERATOR_SELECT_WIDTH`), Value (`as-head-value`, `as-value`,
 /// `VALUE_GROW` parts of the free width to the expression's one); headings are `HEADINGS`.
+/// In a narrow table the operator gives way first, and the fields keep `ASSERTION_CELL_MIN`.
 pub fn columns() -> Vec<KvColumn> {
     let [expr, op, value] = HEADINGS;
     vec![
-        KvColumn::flex("as-head-expr", "as-expr", expr),
-        KvColumn::fixed("as-head-op", "as-op", op, OPERATOR_SELECT_WIDTH),
-        KvColumn::grow("as-head-value", "as-value", value, VALUE_GROW),
+        KvColumn::flex("as-head-expr", "as-expr", expr).floor(ASSERTION_CELL_MIN),
+        KvColumn::yielding(
+            "as-head-op",
+            "as-op",
+            op,
+            OPERATOR_SELECT_WIDTH,
+            OPERATOR_SELECT_MIN,
+        ),
+        KvColumn::grow("as-head-value", "as-value", value, VALUE_GROW).floor(ASSERTION_CELL_MIN),
     ]
 }
 
