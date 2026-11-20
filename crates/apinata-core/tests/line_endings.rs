@@ -21,7 +21,7 @@ fn git(args: &[&str]) -> String {
     String::from_utf8(out.stdout).expect("git prints UTF-8")
 }
 
-const BINARY_EXTENSIONS: [&str; 4] = ["png", "ico", "icns", "ttf"];
+const BINARY_EXTENSIONS: [&str; 5] = ["png", "ico", "icns", "ttf", "p12"];
 
 #[test]
 fn no_tracked_text_file_contains_a_carriage_return() {

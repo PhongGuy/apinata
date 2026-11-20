@@ -13,6 +13,11 @@ openssl x509 -req -in client.csr -CA ca.pem -CAkey ca.key -CAcreateserial -out c
 openssl x509 -req -in client.csr -CA ca.pem -CAkey ca.key -CAcreateserial -out expired-client.pem -extfile client.ext -not_before 20190101000000Z -not_after 20200101000000Z </dev/null
 openssl pkcs8 -topk8 -in client.key -out client-enc.key -passout pass:secret
 openssl rsa -in client.key -aes256 -traditional -out client-trad.key -passout pass:secret
+# PKCS#12 bundles of the client pair: OpenSSL 3's default PBES2 AES-256-CBC, the legacy RC2 and
+# 3DES scheme old Windows exports use, and one holding the certificate but no key.
+openssl pkcs12 -export -in client.pem -inkey client.key -out client.p12 -passout pass:secret -name client </dev/null
+openssl pkcs12 -export -legacy -in client.pem -inkey client.key -out client-legacy.p12 -passout pass:secret -name client </dev/null
+openssl pkcs12 -export -in client.pem -nokeys -out cert-only.p12 -passout pass:secret </dev/null
 # A server certificate that expired in 2020 under its own CA, so a client trusting that CA fails
 # on expiry alone. Not signed by ca.pem, whose key is gone by now.
 openssl req -x509 -newkey rsa:2048 -nodes -keyout expired-ca.key -out expired-ca.pem -days $DAYS -subj "/CN=apinata-expired-test-ca" </dev/null

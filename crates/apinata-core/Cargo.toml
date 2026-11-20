@@ -33,6 +33,7 @@ http.workspace = true
 http-body-util.workspace = true
 hyper = { workspace = true, features = ["server", "http1"] }
 pkcs8.workspace = true
+p12-keystore.workspace = true
 scrypt.workspace = true
 jsonwebtoken.workspace = true
 aws-lc-rs.workspace = true

@@ -79,8 +79,8 @@ const HOST_INCOMPLETE: &str = "Not saved until both the host and the address are
 const PROXY_HOST_INCOMPLETE: &str = "Not saved until a host is filled in.";
 const PROXY_HOST_FAILS: &str = "Requests fail until a host is filled in.";
 const OUTSIDE_NOTICE: &str = "Outside the collection: saved as an absolute path";
-const PKCS12_HINT: &str =
-    "PKCS#12 is not supported yet; convert with openssl pkcs12 -in x.pfx -nodes -out x.pem";
+const PKCS12_HINT: &str = "A PKCS#12 bundle, used when sending; edit it in the collection file \
+    or with apinata network cert set --pfx";
 
 const PLACEHOLDERS: [&str; 4] = ["Domain", "Certificate", "Key", "Passphrase"];
 

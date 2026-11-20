@@ -115,24 +115,55 @@ async fn key_problems_fail_before_any_connection() {
     assert_eq!(server.connections(), 0);
 }
 
+/// A collection whose one PKCS#12 certificate for 127.0.0.1 is `file` with `passphrase`.
+fn with_pkcs12(file: &str, passphrase: &str) -> String {
+    root_with(&format!(
+        "  clientCertificates:\n    - domain: \"127.0.0.1\"\n      type: pkcs12\n      pkcs12FilePath: '{file}'\n      passphrase: \"{passphrase}\"\n"
+    ))
+}
+
 #[tokio::test]
-async fn a_pkcs12_entry_fails_with_the_conversion_hint() {
-    let root = root_with(
-        "  clientCertificates:\n    - domain: \"127.0.0.1\"\n      type: pkcs12\n      pkcs12FilePath: certs/client.p12\n",
-    );
-    let url = format!("https://127.0.0.1:{}/", closed_port());
-    let r = resolve_in(&root, &url, ContextOptions::new());
-    let (at, message) = certificate_error(
-        &trusting_the_ca()
-            .send(r.request())
-            .await
-            .expect_err("pkcs12"),
-    );
-    assert_eq!(at, PathBuf::from("certs/client.p12"));
-    assert!(
-        message.contains("openssl pkcs12 -in x.pfx -nodes -out x.pem"),
-        "{message}"
-    );
+async fn a_pkcs12_bundle_completes_mutual_tls_with_a_resolved_passphrase() {
+    let server = tls_server(true).await;
+    let url = format!("https://127.0.0.1:{}/", server.port);
+    for file in ["client.p12", "client-legacy.p12"] {
+        let r = resolve_in(
+            &with_pkcs12(&path(file), "{{process.env.PP}}"),
+            &url,
+            ContextOptions::new().process_env([("PP", PASSPHRASE)]),
+        );
+        let res = trusting_the_ca().send(r.request()).await.expect(file);
+        assert_eq!((res.status(), res.text()), (200, "ok"), "{file}");
+    }
+}
+
+#[tokio::test]
+async fn pkcs12_problems_fail_before_any_connection() {
+    let server = tls_server(true).await;
+    let url = format!("https://127.0.0.1:{}/", server.port);
+    let cases = [
+        ("client.p12", "hunter2-not-it", "wrong passphrase"),
+        ("client.p12", "", "wrong passphrase"),
+        ("cert-only.p12", PASSPHRASE, "no private key"),
+        ("client.pem", PASSPHRASE, "not a PKCS#12 file"),
+        ("missing.p12", PASSPHRASE, ""),
+    ];
+    for (file, passphrase, says) in cases {
+        let r = resolve_in(
+            &with_pkcs12(&path(file), passphrase),
+            &url,
+            ContextOptions::new(),
+        );
+        let err = trusting_the_ca().send(r.request()).await.expect_err(file);
+        let (at, message) = certificate_error(&err);
+        assert_eq!(at, pki(file), "{file}");
+        assert!(message.contains(says), "{file}: {message}");
+        assert!(
+            passphrase.is_empty() || !message.contains(passphrase),
+            "{message}"
+        );
+    }
+    assert_eq!(server.connections(), 0);
 }
 
 #[tokio::test]
