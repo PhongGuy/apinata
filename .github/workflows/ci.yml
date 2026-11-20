@@ -68,26 +68,41 @@ jobs:
           path: ${{ runner.temp }}/apt-debs
           key: ${{ steps.apt-plan.outputs.key }}
           restore-keys: ${{ steps.apt-plan.outputs.prefix }}
-      # A stuck mirror fails here by name instead of starving the gate below; the limit
-      # leaves room for a cold cache downloading everything slowly.
+      # apt writes each finished deb straight into the cached directory, so a slow mirror
+      # that times out this step still leaves its progress for the save below.
+      - name: Download build dependencies
+        id: apt-download
+        timeout-minutes: 20
+        env:
+          DEBS: ${{ runner.temp }}/apt-debs
+        run: |
+          mkdir -p "$DEBS/partial"
+          sudo apt-get install -y --no-install-recommends --download-only -o Dir::Cache::Archives="$DEBS" $LINUX_BUILD_DEPS gcc-mingw-w64-x86-64
       - name: Install build dependencies
-        timeout-minutes: 25
+        timeout-minutes: 10
+        env:
+          DEBS: ${{ runner.temp }}/apt-debs
+        run: sudo apt-get install -y --no-install-recommends -o Dir::Cache::Archives="$DEBS" $LINUX_BUILD_DEPS gcc-mingw-w64-x86-64
+      # The cache action tars as the runner user, so apt's root-owned lock and half-fetched
+      # files go and the rest changes hands.
+      - name: Prepare build dependencies for saving
+        if: always() && github.event_name == 'push' && steps.apt-restore.outputs.cache-hit != 'true' && steps.apt-plan.outcome == 'success'
+        timeout-minutes: 2
         env:
           DEBS: ${{ runner.temp }}/apt-debs
         run: |
           mkdir -p "$DEBS"
-          sudo find "$DEBS" -maxdepth 1 -name '*.deb' -exec cp -t /var/cache/apt/archives/ {} +
-          sudo apt-get install -y --no-install-recommends --download-only $LINUX_BUILD_DEPS gcc-mingw-w64-x86-64
-          find "$DEBS" -maxdepth 1 -name '*.deb' -delete
-          find /var/cache/apt/archives -maxdepth 1 -name '*.deb' -exec cp -t "$DEBS" {} +
-          sudo apt-get install -y --no-install-recommends $LINUX_BUILD_DEPS gcc-mingw-w64-x86-64
-      # Only master writes the cache, so a pull request can read it but never poison it.
+          sudo rm -rf "$DEBS/partial" "$DEBS/lock"
+          sudo chown -R "$(id -u):$(id -g)" "$DEBS"
+      # Only master writes the cache, so a pull request can read it but never poison it. An
+      # unfinished download saves under a partial key that the restore prefix picks up next
+      # run, so an exact hit always means every deb is there.
       - name: Save build dependencies
-        if: github.event_name == 'push' && steps.apt-restore.outputs.cache-hit != 'true'
+        if: always() && github.event_name == 'push' && steps.apt-restore.outputs.cache-hit != 'true' && steps.apt-plan.outcome == 'success'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/apt-debs
-          key: ${{ steps.apt-plan.outputs.key }}
+          key: ${{ steps.apt-download.outcome == 'success' && steps.apt-plan.outputs.key || format('{0}partial-{1}-{2}', steps.apt-plan.outputs.prefix, github.run_id, github.run_attempt) }}
       - name: Gate
         timeout-minutes: 50
         run: make check icons-check windows-check workflows-lint

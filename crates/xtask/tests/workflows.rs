@@ -222,10 +222,12 @@ fn ci_installs_build_dependencies_from_cached_debs_saved_only_by_master() {
         position("actions/cache/restore@"),
         position("actions/cache/save@"),
     );
-    let install = step_running(&all, "apt-get install -y --no-install-recommends");
+    let download = step_running(&all, "--download-only");
+    let install = step_running(&all, "apt-get install -y --no-install-recommends -o");
+    let prepare = step_running(&all, "chown");
     assert!(
-        restore < install && install < save,
-        "restore, install, save"
+        restore < download && download < install && install < prepare && prepare < save,
+        "restore, download, install, prepare, save"
     );
     assert!(
         !all.iter()
@@ -234,19 +236,80 @@ fn ci_installs_build_dependencies_from_cached_debs_saved_only_by_master() {
     );
     let (r, s) = (&all[restore]["with"], &all[save]["with"]);
     assert_eq!(r["path"], s["path"], "restore and save one directory");
-    assert_eq!(r["key"], s["key"], "restore and save one key");
     let key = str_of(&r["key"]);
     assert!(
         key.contains("steps."),
         "the key follows the resolved packages: {key}"
     );
-    // Pushes run only on master, so gating the save on a push confines it there.
+
+    // Every deb apt finishes lands straight in the cached directory, so a timed out download
+    // still keeps its progress; the install then reads the same directory without the mirror.
+    let cached = "-o Dir::Cache::Archives=\"$DEBS\"";
+    for step in [download, install] {
+        assert!(
+            str_of(&all[step]["run"]).contains(cached),
+            "step {:?} must use {cached}",
+            all[step]["name"]
+        );
+        assert_eq!(
+            all[step]["env"]["DEBS"], r["path"],
+            "{:?}",
+            all[step]["name"]
+        );
+        assert!(
+            all[step]["if"].is_null(),
+            "{:?} runs only after success",
+            all[step]["name"]
+        );
+    }
     assert!(
-        str_of(&all[save]["if"]).starts_with("github.event_name == 'push' && "),
-        "{:?}",
-        all[save]["if"]
+        !str_of(&all[install]["run"]).contains("--download-only"),
+        "the install is its own step"
     );
+    let download_id = str_of(&all[download]["id"]);
+    assert!(!download_id.is_empty(), "the download step needs an id");
+
+    // Prepare and save run even after a failed or timed out download, but only on pushes,
+    // and never over an exact hit. Pushes run only on master, which confines the save there.
+    let restore_id = str_of(&all[restore]["id"]);
+    let guard = format!(
+        "always() && github.event_name == 'push' && steps.{restore_id}.outputs.cache-hit != 'true'"
+    );
+    for step in [prepare, save] {
+        assert!(
+            str_of(&all[step]["if"]).starts_with(&guard),
+            "{:?} if {:?}, want it to start with {guard}",
+            all[step]["name"],
+            all[step]["if"]
+        );
+    }
+    let prepare_run = str_of(&all[prepare]["run"]);
+    for piece in ["\"$DEBS/partial\"", "\"$DEBS/lock\""] {
+        assert!(prepare_run.contains(piece), "prepare must remove {piece}");
+    }
+    assert_eq!(all[prepare]["env"]["DEBS"], r["path"]);
+    assert!(all[prepare]["timeout-minutes"].as_u64().is_some());
     assert_eq!(strs(&ci["on"]["push"]["branches"]), ["master"]);
+
+    // A complete download saves under the full key, so an exact hit always means complete;
+    // anything less saves under a per-run partial key that the restore prefix still matches.
+    fn inner(e: &str) -> &str {
+        e.trim_start_matches("${{ ").trim_end_matches(" }}")
+    }
+    let save_key = str_of(&s["key"]);
+    let prefix = str_of(&r["restore-keys"]);
+    for piece in [
+        format!(
+            "steps.{download_id}.outcome == 'success' && {} || ",
+            inner(key)
+        ),
+        "format('{0}partial-".to_string(),
+        inner(prefix).to_string(),
+        "github.run_id".to_string(),
+    ] {
+        assert!(save_key.contains(&piece), "missing {piece:?} in {save_key}");
+    }
+
     // The key hashes apt's install plan, so a new package or version misses the cache.
     let plan = str_of(&all[step_running(&all, "apt-get install -s")]["run"]);
     for piece in [
