@@ -2824,7 +2824,11 @@ impl Render for Sidebar {
         while self.button_focus.len() < collections {
             self.button_focus.push(cx.focus_handle());
         }
-        let tree_focused = self.rename.is_none() && self.tree_holds_focus(window, cx);
+        // A right-click menu sits inside the tree's focus but holds the keys, so the selection
+        // drops its accent while one is open and the menu's outline is the only accent mark.
+        let tree_focused = self.rename.is_none()
+            && self.menu_target.is_none()
+            && self.tree_holds_focus(window, cx);
         let button_focus = self.button_focus.clone();
         self.tag_paints.borrow_mut().clear();
         let paints = Rc::clone(&self.tag_paints);

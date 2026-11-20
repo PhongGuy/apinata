@@ -16,9 +16,9 @@ use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::{ActiveTheme as _, IndexPath, WindowExt as _, h_flex};
 use gpui_kit::{
     Action, AnyElement, App, AppContext as _, AsKeystroke as _, Entity, FocusHandle,
-    Focusable as _, InteractiveElement, IntoElement as _, KeyContext, ParentElement as _, Pixels,
-    SharedString, StatefulInteractiveElement as _, Styled as _, TestSupportExt as _, Window,
-    actions, div,
+    Focusable as _, InteractiveElement, IntoElement as _, KeyBindingContextPredicate, KeyContext,
+    ParentElement as _, Pixels, SharedString, StatefulInteractiveElement as _, Styled as _,
+    TestSupportExt as _, Window, actions, div,
 };
 
 use crate::body_node::{
@@ -1051,6 +1051,35 @@ fn row_targets(sidebar: &Sidebar, opening: Opening, window: &Window, cx: &App) -
         .collect()
 }
 
+/// The key context a command's binding predicate names, for looking up its key hint: the
+/// identifiers and `key == value` pairs it joins with `&&`. A predicate no single context
+/// satisfies the same way (`||`, `!`, `!=`, `>`) or one that does not parse gives `None`.
+pub fn hint_context(predicate: &str) -> Option<KeyContext> {
+    // The kit's own context parser recurses forever on an operator, so the binding parser
+    // reads the predicate and the context is built from its conjunction.
+    fn add(p: &KeyBindingContextPredicate, ctx: &mut KeyContext) -> Option<()> {
+        use KeyBindingContextPredicate as P;
+        match p {
+            P::Identifier(name) => ctx.add(name.clone()),
+            P::Equal(key, value) => ctx.set(key.clone(), value.clone()),
+            P::And(a, b) => {
+                add(a, ctx)?;
+                add(b, ctx)?;
+            }
+            _ => return None,
+        }
+        Some(())
+    }
+    let mut ctx = KeyContext::default();
+    if !predicate.trim().is_empty() {
+        add(
+            &KeyBindingContextPredicate::parse(predicate).ok()?,
+            &mut ctx,
+        )?;
+    }
+    Some(ctx)
+}
+
 // What the palette's command rows are built from: whether it lists commands at all, which
 // of them apply, and the tree rows the row commands act on.
 struct Listing {
@@ -1072,8 +1101,7 @@ fn palette_row(ix: usize, entry: &PaletteEntry, target: Option<SharedString>) ->
         let key = if action.partial_eq(&RenameSelected) {
             crate::ui::primary_key(action.as_ref(), cx)
         } else {
-            KeyContext::parse(context)
-                .ok()
+            hint_context(context)
                 .and_then(|ctx| {
                     window.highest_precedence_binding_for_action_in_context(action.as_ref(), ctx)
                 })

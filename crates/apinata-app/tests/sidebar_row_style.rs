@@ -197,6 +197,39 @@ fn tabbing_into_a_tree_without_a_selection_selects_the_first_row(cx: &mut TestAp
     );
 }
 
+// While a right-click menu is open the focus is in the menu, so the open row keeps only its
+// unfocused edge and the accent outline marks the menu's row alone.
+#[gpui_kit::test]
+fn a_right_click_menu_leaves_the_selected_row_its_unfocused_edge(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    let (open, other) = (row("health.yml"), row("status.yml"));
+    cx.update_window(h.win, |_, w, cx| w.click(open.clone(), cx))
+        .unwrap();
+    cx.run_until_parked();
+    focus_tree(cx, &h);
+    assert!(shown(cx, h.win, marker_id("focus-edge", &open)));
+    cx.update_window(h.win, |_, w, cx| w.right_click(other.clone(), cx))
+        .unwrap();
+    frame(cx, h.win);
+    assert!(shown(cx, h.win, marker_id("menu-target", &other)));
+    assert!(
+        !shown(cx, h.win, marker_id("focus-edge", &open)),
+        "the selected row drops the accent while the menu is open"
+    );
+    assert!(
+        shown(cx, h.win, marker_id("edge", &open)),
+        "and keeps its edge"
+    );
+    cx.simulate_keystrokes(h.win, "escape");
+    cx.run_until_parked();
+    frame(cx, h.win);
+    assert!(!shown(cx, h.win, marker_id("menu-target", &other)));
+    assert!(
+        shown(cx, h.win, marker_id("focus-edge", &open)),
+        "closing the menu gives the tree its accent back"
+    );
+}
+
 // Guard: a click focuses the kit tree directly, not through `tree_focus`, and must still ring.
 #[gpui_kit::test]
 fn clicking_a_row_shows_its_outline(cx: &mut TestAppContext) {

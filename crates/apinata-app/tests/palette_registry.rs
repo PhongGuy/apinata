@@ -351,3 +351,33 @@ fn run_folder_from_an_example_runs_its_requests_folder(cx: &mut TestAppContext) 
     let kind = run_from_palette(cx, &s, "Run folder");
     assert_eq!(kind, Some(TabKind::Runner(support::ip("users"))));
 }
+
+// A command's key context is a binding predicate, so a compound one names the context a key
+// hint is looked up in, and one no single context can satisfy gives no hint.
+#[test]
+fn compound_key_contexts_read_as_one_context() {
+    use apinata_app::palette::hint_context;
+    use gpui_kit::KeyContext;
+    let both = KeyContext::parse("Sidebar mode=tree").unwrap();
+    assert_eq!(hint_context("Sidebar && mode == tree"), Some(both));
+    assert_eq!(
+        hint_context("Sidebar"),
+        Some(KeyContext::parse("Sidebar").unwrap())
+    );
+    for unreadable in ["a || b", "!a", "a > b", "a != b", "a &&"] {
+        assert_eq!(hint_context(unreadable), None, "{unreadable}");
+    }
+}
+
+#[test]
+fn every_palette_entry_has_a_readable_key_context() {
+    use apinata_app::palette::hint_context;
+    for e in palette_items() {
+        assert!(
+            hint_context(e.context).is_some(),
+            "{}: {}",
+            e.label,
+            e.context
+        );
+    }
+}

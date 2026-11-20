@@ -633,6 +633,30 @@ fn method_colours_stay_apart_from_each_other_and_from_text() {
     assert!(fails.is_empty(), "{}", fails.join("\n"));
 }
 
+// While a right-click menu is open the menu's row has the accent outline on the hover fill and
+// the selected row its muted edge; both must show, and the two must not read as one mark. The
+// marks also differ in shape, so a plainly different colour (Delta E 15) is enough.
+#[test]
+fn the_menu_outline_reads_apart_from_the_unfocused_selection_edge() {
+    const APART: f64 = 15.0;
+    let mut fails = Vec::new();
+    for (_, t) in themes() {
+        let name = t["name"].as_str().unwrap();
+        let (outline, edge) = (col(&t, "primary.background"), col(&t, "muted.foreground"));
+        let r = ratio(&outline, &col(&t, "list.hover.background"));
+        if r < 3.0 {
+            fails.push(format!("{name}: outline on list.hover.background = {r:.2}"));
+        }
+        let d = delta_e(&outline, &edge);
+        if d < APART {
+            fails.push(format!(
+                "{name}: outline {outline} against edge {edge} = {d:.1}"
+            ));
+        }
+    }
+    assert!(fails.is_empty(), "{}", fails.join("\n"));
+}
+
 // A placeholder is drawn in `muted.foreground`; against entered text it must look clearly
 // dimmer. 1.9:1 is what the high-contrast themes can spare while muted text keeps 7:1.
 #[test]
