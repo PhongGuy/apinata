@@ -57,7 +57,7 @@ pub enum NetworkField {
     Bypass,
 }
 
-/// One text input of a PEM certificate row.
+/// One text input of a certificate row; a PKCS#12 row's `Certificate` is its bundle file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(missing_docs)]
 pub enum CertField {
@@ -79,19 +79,22 @@ const HOST_INCOMPLETE: &str = "Not saved until both the host and the address are
 const PROXY_HOST_INCOMPLETE: &str = "Not saved until a host is filled in.";
 const PROXY_HOST_FAILS: &str = "Requests fail until a host is filled in.";
 const OUTSIDE_NOTICE: &str = "Outside the collection: saved as an absolute path";
-const PKCS12_HINT: &str = "A PKCS#12 bundle, used when sending; edit it in the collection file \
-    or with apinata network cert set --pfx";
-
 const PLACEHOLDERS: [&str; 4] = ["Domain", "Certificate", "Key", "Passphrase"];
+const BUNDLE_PLACEHOLDER: &str = "PKCS#12 file";
 
-// The inputs of a PEM row, indexed by `CertField` order.
+// The certificate types a row offers, in its type select's order.
+const CERT_TYPES: [&str; 2] = ["PEM", "PKCS#12"];
+// Fits the wider type, so every row's fields start at the same place.
+const CERT_TYPE_WIDTH: Rems = style::ui(84.);
+
+// The inputs of a row, indexed by `CertField` order.
 struct CertInputs([Entity<InputState>; 4]);
 
-// One certificate as loaded or edited. The value keeps its YAML origin; a PEM row writes
-// its typed text back into it, and its passphrase is the last committed one.
+// One certificate as loaded or edited. The value keeps its YAML origin; a row writes its
+// typed text back into it, and its passphrase is the last committed one.
 struct CertRow {
     cert: ClientCertificate,
-    inputs: Option<CertInputs>,
+    inputs: CertInputs,
     // An added row stays local until its domain and paths are filled, as the reference app
     // validates a row before adding it; loaded rows are never drafts.
     draft: bool,
@@ -113,7 +116,7 @@ impl CertRow {
     }
 
     fn outside(&self, root: &Path, canonical_root: Option<&Path>) -> bool {
-        let [_, certificate, key, _] = pem_texts(&self.cert);
+        let [_, certificate, key, _] = cert_texts(&self.cert);
         let mut cache = self.outside.borrow_mut();
         match &*cache {
             Some((paths, answer)) if paths[0] == certificate && paths[1] == key => *answer,
@@ -300,10 +303,8 @@ impl NetworkSection {
         self.certs.retain(|row| !row.draft);
         for row in &mut self.certs {
             row.replacing = false;
-            if let Some(inputs) = &row.inputs {
-                let pass = &inputs.0[CertField::Passphrase as usize];
-                set_text(pass, &row.cert.passphrase, window, cx);
-            }
+            let pass = &row.inputs.0[CertField::Passphrase as usize];
+            set_text(pass, &row.cert.passphrase, window, cx);
         }
         self.hosts.retain(|slot| !slot.draft);
         cx.notify();
@@ -338,7 +339,7 @@ impl NetworkSection {
         }
     }
 
-    // Rows keep their input entities while the shape matches, so a snapshot echoing the
+    // Rows keep their input entities while the count matches, so a snapshot echoing the
     // user's own typing leaves focus and caret alone. The file never holds a draft, so drafts
     // are left out of the match and kept after the loaded rows.
     fn load_certificates(
@@ -347,12 +348,7 @@ impl NetworkSection {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let committed = || self.certs.iter().filter(|row| !row.draft);
-        let same_shape = committed().count() == certs.len()
-            && committed()
-                .zip(certs)
-                .all(|(row, cert)| row.inputs.is_some() == is_pem(cert));
-        if !same_shape {
+        if self.certs.iter().filter(|row| !row.draft).count() != certs.len() {
             let drafts: Vec<CertRow> = std::mem::take(&mut self.certs)
                 .into_iter()
                 .filter(|row| row.draft)
@@ -365,18 +361,22 @@ impl NetworkSection {
             return;
         }
         // The passphrase commits on Enter or blur, so its typing stays while the file keeps
-        // the same certificate (domain and paths) with the passphrase last committed.
+        // the same certificate (domain and paths) with the passphrase last committed. A
+        // PKCS#12 row keeps its hidden key text, so switching back to PEM restores it.
         let rows = self.certs.iter_mut().filter(|row| !row.draft);
         for (row, cert) in rows.zip(certs) {
             let typed_over = row.cert.passphrase == cert.passphrase
                 && row.cert.domain == cert.domain
                 && row.cert.kind == cert.kind;
+            if is_pem(&row.cert) != is_pem(cert) {
+                set_file_placeholder(&row.inputs, cert, window, cx);
+            }
             row.cert = cert.clone();
-            if let Some(inputs) = &row.inputs {
-                for (i, (state, text)) in inputs.0.iter().zip(pem_texts(cert)).enumerate() {
-                    if !(typed_over && i == CertField::Passphrase as usize) {
-                        set_text(state, text, window, cx);
-                    }
+            for (i, (state, text)) in row.inputs.0.iter().zip(cert_texts(cert)).enumerate() {
+                let kept = (typed_over && i == CertField::Passphrase as usize)
+                    || (!is_pem(cert) && i == CertField::Key as usize);
+                if !kept {
+                    set_text(state, text, window, cx);
                 }
             }
         }
@@ -568,22 +568,16 @@ impl NetworkSection {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> CertRow {
-        if !is_pem(&cert) {
-            return CertRow {
-                cert,
-                inputs: None,
-                draft: false,
-                outside: RefCell::default(),
-                replacing: false,
-                _subs: Vec::new(),
-            };
-        }
-        let texts = pem_texts(&cert);
+        let texts = cert_texts(&cert);
         let inputs = std::array::from_fn(|i| {
+            let placeholder = match i == CertField::Certificate as usize && !is_pem(&cert) {
+                true => BUNDLE_PLACEHOLDER,
+                false => PLACEHOLDERS[i],
+            };
             cx.new(|cx| {
                 InputState::new(window, cx)
                     .masked(i == CertField::Passphrase as usize)
-                    .placeholder(PLACEHOLDERS[i])
+                    .placeholder(placeholder)
                     .default_value(texts[i].to_string())
             })
         });
@@ -607,7 +601,7 @@ impl NetworkSection {
             .collect();
         CertRow {
             cert,
-            inputs: Some(CertInputs(inputs)),
+            inputs: CertInputs(inputs),
             draft: false,
             outside: RefCell::default(),
             replacing: false,
@@ -629,18 +623,17 @@ impl NetworkSection {
         cx.notify();
     }
 
-    /// Removes row `row`, moves focus to the next editable row's domain, else the previous
+    /// Removes row `row`, moves focus to the next row's domain, else the previous
     /// one's, else the section itself (so the editor's keys keep working), and sends the list.
     pub fn remove_certificate(&mut self, row: usize, window: &mut Window, cx: &mut Context<Self>) {
         if row < self.certs.len() {
             let draft = self.certs.remove(row).draft;
-            let domain = |r: &CertRow| {
-                r.inputs
-                    .as_ref()
-                    .map(|i| i.0[CertField::Domain as usize].clone())
-            };
-            let next = self.certs[row..].iter().find_map(domain);
-            let prev = self.certs[..row].iter().rev().find_map(domain);
+            let domain = |r: &CertRow| r.inputs.0[CertField::Domain as usize].clone();
+            let next = self.certs.get(row).map(domain);
+            let prev = row
+                .checked_sub(1)
+                .and_then(|i| self.certs.get(i))
+                .map(domain);
             match next.or(prev) {
                 Some(input) => input.focus_handle(cx).focus(window, cx),
                 None => self.focus.focus(window, cx),
@@ -653,49 +646,68 @@ impl NetworkSection {
         }
     }
 
-    /// The input behind `field` of row `row`; `None` for a PKCS#12 row or no such row.
+    /// The input behind `field` of row `row`; `None` for no such row.
     pub fn cert_input(&self, row: usize, field: CertField) -> Option<&Entity<InputState>> {
-        let inputs = self.certs.get(row)?.inputs.as_ref()?;
-        Some(&inputs.0[field as usize])
+        Some(&self.certs.get(row)?.inputs.0[field as usize])
     }
 
     // Copies the row's typed text into its value and sends it when it changed; the
     // passphrase input reports here on Enter or blur only.
     fn cert_text_changed(&mut self, state: &Entity<InputState>, cx: &mut Context<Self>) {
-        let Some(row) = self.certs.iter_mut().find(|row| {
-            row.inputs
-                .as_ref()
-                .is_some_and(|inputs| inputs.0.contains(state))
-        }) else {
+        let Some(ix) = self
+            .certs
+            .iter()
+            .position(|row| row.inputs.0.contains(state))
+        else {
             return;
         };
+        let row = &mut self.certs[ix];
         let before = row.cert.clone();
-        if let Some(inputs) = &row.inputs {
-            let [domain, certificate, key, passphrase] =
-                inputs.0.each_ref().map(|s| s.read(cx).value().to_string());
-            row.cert.domain = domain;
-            row.cert.kind = CertificateKind::Pem {
-                certificate,
-                private_key: key,
+        let [domain, _, _, passphrase] = row
+            .inputs
+            .0
+            .each_ref()
+            .map(|s| s.read(cx).value().to_string());
+        row.cert.domain = domain;
+        row.cert.kind = typed_kind(&row.inputs, is_pem(&row.cert), cx);
+        // Other fields carry the last committed passphrase, never half-typed text. A
+        // stored passphrase stays unless replaced, and a replace left empty keeps it.
+        if *state == row.inputs.0[CertField::Passphrase as usize] {
+            let replacing = std::mem::take(&mut row.replacing);
+            let stored = row.stored_home(&self.dotenv).is_some();
+            let keep = if replacing {
+                passphrase.is_empty()
+            } else {
+                stored
             };
-            // Other fields carry the last committed passphrase, never half-typed text. A
-            // stored passphrase stays unless replaced, and a replace left empty keeps it.
-            if *state == inputs.0[CertField::Passphrase as usize] {
-                let replacing = std::mem::take(&mut row.replacing);
-                let stored = row.stored_home(&self.dotenv).is_some();
-                let keep = if replacing {
-                    passphrase.is_empty()
-                } else {
-                    stored
-                };
-                if !keep {
-                    row.cert.passphrase = passphrase;
-                }
-                if replacing {
-                    cx.notify();
-                }
+            if !keep {
+                row.cert.passphrase = passphrase;
+            }
+            if replacing {
+                cx.notify();
             }
         }
+        self.settle_cert(ix, before, cx);
+    }
+
+    // Switches row `ix` between PEM and PKCS#12. The typed paths stay in their inputs, so the
+    // certificate file becomes the bundle file and switching back restores the key.
+    fn set_cert_type(&mut self, ix: usize, pem: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(row) = self.certs.get_mut(ix) else {
+            return;
+        };
+        if is_pem(&row.cert) == pem {
+            return;
+        }
+        let before = row.cert.clone();
+        row.cert.kind = typed_kind(&row.inputs, pem, cx);
+        set_file_placeholder(&row.inputs, &row.cert, window, cx);
+        self.settle_cert(ix, before, cx);
+    }
+
+    // Sends the list after row `ix` changed from `before`; a draft stays local until complete.
+    fn settle_cert(&mut self, ix: usize, before: ClientCertificate, cx: &mut Context<Self>) {
+        let row = &mut self.certs[ix];
         let completed = row.draft && is_complete(&row.cert);
         if row.draft && !completed {
             cx.notify();
@@ -751,8 +763,7 @@ impl NetworkSection {
         let states: Vec<_> = self
             .certs
             .iter()
-            .filter_map(|row| row.inputs.as_ref())
-            .map(|inputs| inputs.0[CertField::Passphrase as usize].clone())
+            .map(|row| row.inputs.0[CertField::Passphrase as usize].clone())
             .collect();
         for state in states {
             self.cert_text_changed(&state, cx);
@@ -932,11 +943,8 @@ impl NetworkSection {
         let Some(row) = self.certs.get_mut(ix) else {
             return;
         };
-        let Some(inputs) = &row.inputs else {
-            return;
-        };
         row.replacing = true;
-        let input = inputs.0[CertField::Passphrase as usize].clone();
+        let input = row.inputs.0[CertField::Passphrase as usize].clone();
         set_text(&input, "", window, cx);
         input.update(cx, |i, cx| i.focus(window, cx));
         cx.notify();
@@ -1215,16 +1223,14 @@ impl NetworkSection {
             .certs
             .iter()
             .enumerate()
-            .map(|(ix, row)| match &row.inputs {
-                Some(inputs) => v_flex()
+            .map(|(ix, row)| {
+                v_flex()
                     .gap(style::SPACE_1)
-                    .child(self.pem_row(ix, row, inputs, window, cx))
+                    .child(self.cert_row(ix, row, window, cx))
                     .when(
                         row.outside(&self.root, self.canonical_root.as_deref()),
                         |el| el.child(muted_note(("cert-outside", ix), OUTSIDE_NOTICE, cx)),
                     )
-                    .into_any_element(),
-                None => pkcs12_row(ix, &row.cert, cx).into_any_element(),
             })
             .collect::<Vec<_>>();
         v_flex()
@@ -1244,15 +1250,15 @@ impl NetworkSection {
             )
     }
 
-    fn pem_row(
+    fn cert_row(
         &self,
         ix: usize,
         row: &CertRow,
-        inputs: &CertInputs,
         window: &Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        let [domain, file, key, passphrase] = &inputs.0;
+        let [domain, file, key, passphrase] = &row.inputs.0;
+        let pem = is_pem(&row.cert);
         let field = |id: &'static str, state: &Entity<InputState>, cx: &App| {
             ui::padded_input(
                 ui::table_input(state, false, window, cx)
@@ -1265,6 +1271,31 @@ impl NetworkSection {
             ui::icon_button((id, ix), IconName::FolderOpen, tip, None, cx)
                 .tab_stop(false)
                 .on_click(cx.listener(move |this, _, window, cx| this.pick(ix, which, window, cx)))
+        };
+        // A path and its picker share one column, so a PKCS#12 row's empty key column keeps
+        // the passphrase aligned with the PEM rows'.
+        let column = || {
+            h_flex()
+                .flex_1()
+                .min_w_0()
+                .gap(style::SPACE_2)
+                .items_center()
+        };
+        let this = cx.entity();
+        let kind = ui::select(
+            format!("cert-type-{ix}"),
+            "Certificate type",
+            CERT_TYPES[usize::from(!pem)].into(),
+            CERT_TYPES.map(SharedString::from).to_vec(),
+            usize::from(!pem),
+            move |pick, window, cx| {
+                this.update(cx, |s, cx| s.set_cert_type(ix, pick == 0, window, cx));
+            },
+            cx,
+        );
+        let file_pick = match pem {
+            true => "Choose certificate",
+            false => "Choose PKCS#12 file",
         };
         h_flex()
             .id(("cert-row", ix))
@@ -1280,16 +1311,22 @@ impl NetworkSection {
                         this.set_cert_enabled(ix, *on, cx)
                     })),
             )
+            .child(div().flex_none().w(CERT_TYPE_WIDTH).child(kind))
             .child(field("cert-domain", domain, cx))
-            .child(field("cert-file", file, cx))
-            .child(picker(
+            .child(column().child(field("cert-file", file, cx)).child(picker(
                 "cert-file-pick",
-                "Choose certificate",
+                file_pick,
                 CertField::Certificate,
                 cx,
-            ))
-            .child(field("cert-key", key, cx))
-            .child(picker("cert-key-pick", "Choose key", CertField::Key, cx))
+            )))
+            .child(column().when(pem, |el| {
+                el.child(field("cert-key", key, cx)).child(picker(
+                    "cert-key-pick",
+                    "Choose key",
+                    CertField::Key,
+                    cx,
+                ))
+            }))
             .child(if let Some(home) = row.stored_home(&self.dotenv) {
                 div()
                     .flex_1()
@@ -1323,28 +1360,11 @@ impl NetworkSection {
     }
 }
 
-// A PKCS#12 row is shown as text only and sent back unchanged.
-fn pkcs12_row(ix: usize, cert: &ClientCertificate, cx: &App) -> impl IntoElement + use<> {
-    let file = match &cert.kind {
-        CertificateKind::Pkcs12 { file } => file.as_str(),
-        _ => "",
-    };
-    v_flex()
-        .gap(style::SPACE_1)
-        .child(
-            div()
-                .id(("cert-pkcs12", ix))
-                .test_support()
-                .child(format!("{}  {}", cert.domain, file)),
-        )
-        .child(muted_note(("cert-pkcs12-hint", ix), PKCS12_HINT, cx))
-}
-
 // The 1px frame around each host input, which sits between the row gap and the input.
 const HOST_FRAME_BORDER: Pixels = px(1.);
 
 /// What a client certificate row does and what each of its fields takes.
-pub const CERT_NOTE: &str = "Sends a certificate to HTTPS addresses that start with the domain, where * matches anything, as in *.example.com. Each row takes the domain, the certificate file, the key file and the key's passphrase, if it has one.";
+pub const CERT_NOTE: &str = "Sends a certificate to HTTPS addresses that start with the domain, where * matches anything, as in *.example.com. Each row takes its type, the domain, the certificate and key files of a PEM pair or the one file of a PKCS#12 bundle, and the key's passphrase, if it has one.";
 
 // A small muted line in a grid's left edge, labelled with its text for assistive tools.
 fn muted_note(
@@ -1381,11 +1401,11 @@ fn host_note(
     )
 }
 
-// Whether a PEM row names a file by an absolute path outside the collection at `root`,
+// Whether a row names a file by an absolute path outside the collection at `root`,
 // which will not resolve once the collection moves. A path that misses lexically is still
 // inside when its canonical form lies under `canonical_root`.
 fn names_outside(root: &Path, canonical_root: Option<&Path>, cert: &ClientCertificate) -> bool {
-    let [_, certificate, key, _] = pem_texts(cert);
+    let [_, certificate, key, _] = cert_texts(cert);
     [certificate, key].iter().any(|p| {
         let p = Path::new(p);
         let resolved_inside =
@@ -1398,15 +1418,45 @@ fn is_pem(cert: &ClientCertificate) -> bool {
     matches!(cert.kind, CertificateKind::Pem { .. })
 }
 
-// A PEM certificate's texts in `CertField` order; empty for any other kind.
-fn pem_texts(cert: &ClientCertificate) -> [&str; 4] {
-    match &cert.kind {
+// A certificate's texts in `CertField` order; a PKCS#12 bundle fills the certificate slot.
+fn cert_texts(cert: &ClientCertificate) -> [&str; 4] {
+    let (file, key) = match &cert.kind {
         CertificateKind::Pem {
             certificate,
             private_key,
-        } => [&cert.domain, certificate, private_key, &cert.passphrase],
-        _ => ["", "", "", ""],
+        } => (certificate.as_str(), private_key.as_str()),
+        CertificateKind::Pkcs12 { file } => (file.as_str(), ""),
+        _ => ("", ""),
+    };
+    [&cert.domain, file, key, &cert.passphrase]
+}
+
+// The key material a row's typed paths name as a PEM pair or a PKCS#12 bundle.
+fn typed_kind(inputs: &CertInputs, pem: bool, cx: &App) -> CertificateKind {
+    let text = |f: CertField| inputs.0[f as usize].read(cx).value().to_string();
+    match pem {
+        true => CertificateKind::Pem {
+            certificate: text(CertField::Certificate),
+            private_key: text(CertField::Key),
+        },
+        false => CertificateKind::Pkcs12 {
+            file: text(CertField::Certificate),
+        },
     }
+}
+
+fn set_file_placeholder(
+    inputs: &CertInputs,
+    cert: &ClientCertificate,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let hint = match is_pem(cert) {
+        true => PLACEHOLDERS[CertField::Certificate as usize],
+        false => BUNDLE_PLACEHOLDER,
+    };
+    let state = &inputs.0[CertField::Certificate as usize];
+    state.update(cx, |s, cx| s.set_placeholder(hint, window, cx));
 }
 
 // Whether a host override row lacks its host or its address, so it cannot be sent yet.
@@ -1431,10 +1481,8 @@ fn is_complete(cert: &ClientCertificate) -> bool {
 
 impl Render for NetworkSection {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let passphrases = self.certs.iter().filter_map(|row| {
-            let inputs = row.inputs.as_ref()?;
-            Some(&inputs.0[CertField::Passphrase as usize])
-        });
+        let passphrases =
+            (self.certs.iter()).map(|row| &row.inputs.0[CertField::Passphrase as usize]);
         for input in std::iter::once(&self.password).chain(passphrases) {
             ui::mask_unless_template(input, window, cx);
         }
@@ -1444,10 +1492,8 @@ impl Render for NetworkSection {
             hidden.push((self.password.clone(), self.password_committed.clone()));
         }
         for row in (self.certs.iter()).filter(|row| row.stored_home(&self.dotenv).is_some()) {
-            if let Some(inputs) = &row.inputs {
-                let input = inputs.0[CertField::Passphrase as usize].clone();
-                hidden.push((input, row.cert.passphrase.clone()));
-            }
+            let input = row.inputs.0[CertField::Passphrase as usize].clone();
+            hidden.push((input, row.cert.passphrase.clone()));
         }
         for (input, value) in hidden {
             if input.read(cx).value() != value.as_str() {

@@ -138,32 +138,113 @@ fn enabled_and_remove(cx: &mut TestAppContext) {
     assert_eq!(sent(cx, &host), Some(vec![]));
 }
 
+// Choose a row's certificate type from its type select.
+fn choose_type(cx: &mut TestAppContext, win: AnyWindowHandle, row: usize, label: &str) {
+    click(cx, win, ElementId::Name(format!("cert-type-{row}").into()));
+    click_menu(cx, win, label);
+    frame(cx, win);
+}
+
+fn with_passphrase(mut cert: ClientCertificate, passphrase: &str) -> ClientCertificate {
+    cert.passphrase = passphrase.into();
+    cert
+}
+
 #[gpui_kit::test]
-fn pkcs12_rows_are_read_only_and_kept_in_place(cx: &mut TestAppContext) {
-    let p12 = ClientCertificate::pkcs12("p.test", "c.p12");
-    let (win, host) = section(
-        cx,
-        vec![
-            p12.clone(),
-            ClientCertificate::pem("a.test", "c.pem", "k.pem"),
-        ],
-    );
-    assert!(present(cx, win, ("cert-pkcs12-hint", 0usize)));
+fn an_added_pkcs12_row_takes_a_picked_bundle_and_is_sent_once_filled(cx: &mut TestAppContext) {
+    let (win, host) = section(cx, vec![]);
+    click(cx, win, "cert-add");
+    choose_type(cx, win, 0, "PKCS#12");
     assert!(
-        !present(cx, win, ("cert-domain", 0usize)) && !present(cx, win, ("cert-remove", 0usize))
+        !present(cx, win, ("cert-key", 0usize)) && !present(cx, win, ("cert-key-pick", 0usize)),
+        "a PKCS#12 row has no key file"
     );
-    let s = host.read_with(cx, |h, _| h.view.clone());
-    assert!(s.read_with(cx, |s, _| {
-        s.cert_input(0, apinata_app::network_section::CertField::Domain)
-            .is_none()
-    }));
-    type_at_end(cx, win, None, ("cert-domain", 1usize), "x");
+    type_at_end(cx, win, None, ("cert-domain", 0usize), "api.test");
+    cx.run_until_parked();
+    assert_eq!(sent(cx, &host), None, "an unfilled row stays a local draft");
+    click(cx, win, ("cert-file-pick", 0usize));
+    cx.simulate_path_prompt_response(|_| Some(vec![PathBuf::from("/c/certs/c.p12")]));
     cx.run_until_parked();
     assert_eq!(
         sent(cx, &host),
+        Some(vec![ClientCertificate::pkcs12("api.test", "certs/c.p12")])
+    );
+}
+
+#[gpui_kit::test]
+fn a_loaded_pkcs12_row_is_editable_without_the_old_hint(cx: &mut TestAppContext) {
+    let p12 = with_passphrase(ClientCertificate::pkcs12("p.test", "c.p12"), "{{p12pass}}");
+    let (win, host) = section(cx, vec![p12]);
+    assert!(!present(cx, win, ("cert-pkcs12-hint", 0usize)));
+    assert!(!present(cx, win, ("cert-key", 0usize)));
+    type_at_end(cx, win, None, ("cert-domain", 0usize), "x");
+    cx.run_until_parked();
+    assert_eq!(
+        sent(cx, &host),
+        Some(vec![with_passphrase(
+            ClientCertificate::pkcs12("p.testx", "c.p12"),
+            "{{p12pass}}"
+        )])
+    );
+    type_at_end(cx, win, None, ("cert-file", 0usize), "x");
+    cx.run_until_parked();
+    assert_eq!(
+        sent(cx, &host),
+        Some(vec![with_passphrase(
+            ClientCertificate::pkcs12("p.testx", "c.p12x"),
+            "{{p12pass}}"
+        )])
+    );
+    type_at_end(cx, win, None, ("cert-passphrase", 0usize), "2");
+    cx.update_window(win, |_, w, cx| w.press("enter", cx))
+        .unwrap();
+    cx.run_until_parked();
+    assert_eq!(
+        sent(cx, &host),
+        Some(vec![with_passphrase(
+            ClientCertificate::pkcs12("p.testx", "c.p12x"),
+            "{{p12pass}}2"
+        )])
+    );
+}
+
+#[gpui_kit::test]
+fn a_literal_pkcs12_passphrase_stays_masked(cx: &mut TestAppContext) {
+    use apinata_app::network_section::CertField;
+    let p12 = with_passphrase(ClientCertificate::pkcs12("p.test", "c.p12"), "pw");
+    let (_win, host) = section(cx, vec![p12]);
+    let s = host.read_with(cx, |h, _| h.view.clone());
+    let input = s.read_with(cx, |s, _| {
+        s.cert_input(0, CertField::Passphrase).cloned().unwrap()
+    });
+    assert!(input.read_with(cx, |i, _| i.presentation().is_masked()));
+}
+
+#[gpui_kit::test]
+fn switching_the_type_keeps_the_paths_typed(cx: &mut TestAppContext) {
+    let (win, host) = section(
+        cx,
+        vec![
+            ClientCertificate::pkcs12("p.test", "c.p12"),
+            ClientCertificate::pem("a.test", "c.pem", "k.pem"),
+        ],
+    );
+    choose_type(cx, win, 1, "PKCS#12");
+    assert!(!present(cx, win, ("cert-key", 1usize)));
+    assert_eq!(
+        sent(cx, &host),
         Some(vec![
-            p12,
-            ClientCertificate::pem("a.testx", "c.pem", "k.pem")
+            ClientCertificate::pkcs12("p.test", "c.p12"),
+            ClientCertificate::pkcs12("a.test", "c.pem"),
+        ])
+    );
+    choose_type(cx, win, 1, "PEM");
+    assert!(present(cx, win, ("cert-key", 1usize)));
+    assert_eq!(
+        sent(cx, &host),
+        Some(vec![
+            ClientCertificate::pkcs12("p.test", "c.p12"),
+            ClientCertificate::pem("a.test", "c.pem", "k.pem"),
         ])
     );
 }
