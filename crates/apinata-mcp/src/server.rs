@@ -54,7 +54,7 @@ use crate::graphql_query::{
     self, GraphqlFormatArgs, GraphqlFormatDoc, GraphqlValidateArgs, GraphqlValidateDoc, Source,
 };
 use crate::import_collection::{
-    self, FETCH_LABEL, ImportCollectionArgs, ImportedCollections, NoSecrets,
+    self, FETCH_LABEL, ImportCollectionArgs, ImportedCollections, NoSecrets, RecordedSource,
 };
 use crate::imports::{self, ImportRequestArgs, ImportedRequestResult};
 use crate::items::{self, ItemList, ListItemsArgs};
@@ -503,6 +503,28 @@ impl ApinataServer {
 }
 
 impl ApinataServer {
+    /// Fetch an import link under the host-trust policy, with the proxy, CA and insecure flag
+    /// sends use. A host that is not trusted files an approval; `what` names the link in any
+    /// other failure.
+    async fn fetch_import(&self, url: &str, what: &str) -> Result<Vec<u8>, String> {
+        // Read the trust file first so a host approved a moment ago passes.
+        self.trust.refresh();
+        let policy = self.trust.policy();
+        let mut fetch = SourceFetch::default();
+        if let Some(settings) = self.options.network_settings() {
+            fetch = fetch.network(settings.clone());
+        }
+        fetch.insecure = self.options.is_insecure();
+        let fetch = fetch.host_policy(move |host| policy(host));
+        fetch_source(url, &fetch).await.map_err(|e| match e {
+            FetchError::HostNotAllowed { host, hop } => {
+                self.trust
+                    .refuse_fetch(&host, hop, FETCH_LABEL, self.inbox.as_ref())
+            }
+            other => format!("cannot fetch {what}: {other}"),
+        })
+    }
+
     // One token action, then the fresh status, as the app's token panel does. The reply is built
     // from the status alone; errors go through the send's messages and host refusals.
     async fn token_action(
@@ -1466,29 +1488,28 @@ impl ApinataServer {
         &self,
         Parameters(args): Parameters<ImportCollectionArgs>,
     ) -> Result<Json<ImportedCollections>, String> {
-        let plan = import_collection::plan(&args)?;
+        let mut plan = import_collection::plan(&args)?;
         let (input, default_name) = match (&args.url, &args.text) {
-            (Some(url), _) => {
-                // Read the trust file first so a host approved a moment ago passes.
-                self.trust.refresh();
-                let policy = self.trust.policy();
-                // The link goes out the way sends do: same proxy, CA and insecure flag.
-                let mut fetch = SourceFetch::default();
-                if let Some(settings) = self.options.network_settings() {
-                    fetch = fetch.network(settings.clone());
-                }
-                fetch.insecure = self.options.is_insecure();
-                let fetch = fetch.host_policy(move |host| policy(host));
-                let bytes = fetch_source(url, &fetch).await.map_err(|e| match e {
-                    FetchError::HostNotAllowed { host, hop } => {
-                        self.trust
-                            .refuse_fetch(&host, hop, FETCH_LABEL, self.inbox.as_ref())
+            (Some(url), _) => (
+                self.fetch_import(url, "the link").await?,
+                default_import_name(url),
+            ),
+            (None, Some(text)) => (text.clone().into_bytes(), None),
+            // An update with no input takes the spec the served collection records.
+            (None, None) => {
+                let recorded = self.with_collection(import_collection::recorded).await?;
+                plan.recorded_grouping(recorded.group_by);
+                match recorded.source {
+                    RecordedSource::Link(url) => {
+                        let what = format!("the recorded spec {url}");
+                        (
+                            self.fetch_import(&url, &what).await?,
+                            default_import_name(&url),
+                        )
                     }
-                    other => format!("cannot fetch the link: {other}"),
-                })?;
-                (bytes, default_import_name(url))
+                    RecordedSource::Read { bytes, name } => (bytes, name),
+                }
             }
-            (None, text) => (text.clone().unwrap_or_default().into_bytes(), None),
         };
         let bundles = import_collection::parse(&plan, &input, default_name)?;
         let (bin, log) = (self.options.trash_bin(), self.options.trash_record());

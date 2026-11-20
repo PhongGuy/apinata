@@ -8,8 +8,8 @@ use std::rc::Rc;
 use std::sync::{Arc, LazyLock};
 
 use apinata_core::import::{
-    CollectionOptions, EnvironmentFormat, FormatError, ImportBundle, ImportReport, ImportedRequest,
-    parse_collections, write_collection,
+    CollectionOptions, EnvironmentFormat, FormatError, GroupBy, ImportBundle, ImportReport,
+    ImportedRequest, parse_collections, write_collection,
 };
 use apinata_core::team::TeamState;
 use apinata_core::{DraftSnapshot, ItemPath};
@@ -3852,9 +3852,18 @@ async fn place_bundles(
 /// Reads and parses every collection `file` holds, each named after the file's stem where the
 /// format takes a name. Answers the failure as alert text when the file cannot be read or parsed.
 pub fn parse_bundles(file: &Path, formats_shown: bool) -> Result<Vec<ImportBundle>, String> {
+    parse_bundles_grouped(file, formats_shown, GroupBy::Tags)
+}
+
+/// `parse_bundles` with OpenAPI operations grouped by `group_by`.
+pub fn parse_bundles_grouped(
+    file: &Path,
+    formats_shown: bool,
+    group_by: GroupBy,
+) -> Result<Vec<ImportBundle>, String> {
     let input =
         std::fs::read(file).map_err(|e| crate::import_report::failure_at(file, &e.to_string()))?;
-    parse_bundles_from(file, &input, formats_shown)
+    parse_bundles_with(file, &input, formats_shown, group_by)
 }
 
 /// `parse_bundles` over bytes already read from `file`, which only names the collection. With
@@ -3864,7 +3873,18 @@ pub fn parse_bundles_from(
     input: &[u8],
     formats_shown: bool,
 ) -> Result<Vec<ImportBundle>, String> {
+    parse_bundles_with(file, input, formats_shown, GroupBy::Tags)
+}
+
+/// `parse_bundles_from` with OpenAPI operations grouped by `group_by`.
+pub fn parse_bundles_with(
+    file: &Path,
+    input: &[u8],
+    formats_shown: bool,
+    group_by: GroupBy,
+) -> Result<Vec<ImportBundle>, String> {
     let mut options = CollectionOptions::default();
+    options.group_by = group_by;
     options.name = file.file_stem().map(|s| s.to_string_lossy().into_owned());
     parse_collections(None, input, &options).map_err(|e| match e {
         // An environment file is a near miss: point at the action that takes it.

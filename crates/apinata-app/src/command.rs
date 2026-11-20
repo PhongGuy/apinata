@@ -610,6 +610,12 @@ pub enum Command {
         /// Where the answer goes.
         reply: async_channel::Sender<bool>,
     },
+    /// The spec the collection's sync record names, offered when no update record of our own
+    /// exists; `None` otherwise.
+    RecordedSpec {
+        /// Where the answer goes.
+        reply: async_channel::Sender<Option<apinata_core::import::RecordedSpec>>,
+    },
     /// The folders (never the root) that carry a spec baseline of their own, in tree order.
     UpdateFolders {
         /// Where the answer goes.

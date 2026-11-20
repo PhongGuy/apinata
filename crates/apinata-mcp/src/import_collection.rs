@@ -8,8 +8,9 @@
 use std::fs;
 
 use apinata_core::import::{
-    CollectionFormat, CollectionOptions, GroupBy, ImportBundle, ImportError, UpdateOptions,
-    UpdateSummary, apply_update, ensure_folder, parse_collections, place_items, plan_update,
+    CollectionFormat, CollectionOptions, GroupBy, ImportBundle, ImportError, SpecLocation,
+    UpdateOptions, UpdateSummary, apply_update, can_update, ensure_folder, parse_collections,
+    place_items, plan_update, recorded_spec,
 };
 use apinata_core::{
     AuthSpec, Collection, ItemPath, SecretError, SecretKey, SecretStore, Trash, TrashLog,
@@ -53,7 +54,11 @@ pub(crate) struct ImportCollectionArgs {
     pub into: Option<String>,
     /// OpenAPI only: refresh the served collection from this description instead of adding a
     /// folder. Works on the folder `into` names, or the collection root when absent; either
-    /// needs the baseline an import of the description recorded.
+    /// needs the baseline an import of the description recorded. With neither `url` nor `text`
+    /// the root is updated from the spec the collection's sync record names (a file inside the
+    /// collection, or a link fetched under the same host approval); without our own baseline
+    /// that first update adds new operations, records the matching fields and lists the
+    /// requests that differ in `differs`, unchanged.
     #[serde(default)]
     pub update: Option<bool>,
     /// With `update`: also move to the system trash requests whose operation left the
@@ -119,6 +124,9 @@ pub(crate) struct UpdateReport {
     pub edited: Vec<String>,
     /// For those requests, the spec-owned fields found edited (such as `method`).
     pub edited_fields: Vec<ChangedDoc>,
+    /// Requests that differ from the description where no generated value is recorded (a
+    /// first update of a collection synced elsewhere), with those fields; not refreshed.
+    pub differs: Vec<ChangedDoc>,
     /// Requests whose operation left the description.
     pub orphaned: Vec<String>,
     /// Orphans moved to the trash, or that would be.
@@ -163,7 +171,9 @@ pub(crate) struct Plan {
 /// Check everything that needs no input: one source, a known format and grouping, a safe
 /// `into`. Runs before any fetch so a bad argument never costs a request.
 pub(crate) fn plan(a: &ImportCollectionArgs) -> Result<Plan, String> {
-    if a.url.is_some() == a.text.is_some() {
+    // An update may leave both out and take the spec the collection records.
+    let none = a.url.is_none() && a.text.is_none();
+    if (a.url.is_some() && a.text.is_some()) || (none && a.update != Some(true)) {
         return Err("give exactly one of `url` and `text`".to_owned());
     }
     let format = match a.format.as_deref() {
@@ -199,6 +209,85 @@ impl Plan {
     pub(crate) fn is_update(&self) -> bool {
         self.update.is_some()
     }
+
+    /// Group as the recorded spec says, unless the call named a grouping itself.
+    pub(crate) fn recorded_grouping(&mut self, group_by: GroupBy) {
+        self.group_by.get_or_insert(group_by);
+    }
+}
+
+/// Whether `path`, read as written, stays under `root`: no absolute part and no `..` that
+/// climbs above it.
+fn stays_inside(root: &std::path::Path, path: &std::path::Path) -> bool {
+    use std::path::Component;
+    let Ok(rel) = path.strip_prefix(root) else {
+        return false;
+    };
+    let mut depth = 0usize;
+    for part in rel.components() {
+        match part {
+            Component::Normal(_) => depth += 1,
+            Component::CurDir => {}
+            Component::ParentDir if depth > 0 => depth -= 1,
+            _ => return false,
+        }
+    }
+    true
+}
+
+/// The spec an update with no input takes from the served collection.
+pub(crate) struct Recorded {
+    pub source: RecordedSource,
+    pub group_by: GroupBy,
+}
+
+/// A recorded link still to be fetched under host trust, or a recorded file already read.
+pub(crate) enum RecordedSource {
+    Link(String),
+    Read {
+        bytes: Vec<u8>,
+        name: Option<String>,
+    },
+}
+
+/// The spec `c` records. A recorded file must lie inside the collection, as `into` must,
+/// since the record is a file the AI may edit.
+pub(crate) fn recorded(c: &mut Collection) -> Result<Recorded, String> {
+    let spec = recorded_spec(c).ok_or(
+        "give exactly one of `url` and `text`: this collection records no spec to update from",
+    )?;
+    let source = match spec.location {
+        SpecLocation::Link(url) => RecordedSource::Link(url),
+        SpecLocation::File(path) => {
+            let shown = path.display().to_string();
+            let outside = || {
+                format!("the recorded spec {shown} is outside the collection, so it is not read")
+            };
+            // Refuse a path that climbs out before touching it, then again once links resolve.
+            if !stays_inside(c.root(), &path) {
+                return Err(outside());
+            }
+            let real = fs::canonicalize(&path)
+                .map_err(|e| format!("cannot read the recorded spec {shown}: {e}"))?;
+            let root = fs::canonicalize(c.root()).map_err(|e| e.to_string())?;
+            if !real.starts_with(&root) {
+                return Err(outside());
+            }
+            let bytes = fs::read(&real)
+                .map_err(|e| format!("cannot read the recorded spec {shown}: {e}"))?;
+            let name = path.file_stem().map(|s| s.to_string_lossy().into_owned());
+            RecordedSource::Read { bytes, name }
+        }
+        _ => {
+            return Err(
+                "the recorded spec has a kind of source this version cannot read".to_owned(),
+            );
+        }
+    };
+    Ok(Recorded {
+        source,
+        group_by: spec.group_by,
+    })
 }
 
 fn unknown_format(id: &str) -> String {
@@ -293,7 +382,7 @@ pub(crate) fn update(
     options.prune = prune;
     options.folder = Some(folder.clone());
     options.trash_log = log;
-    let has_baseline = c.file().spec_baseline_in(&folder).is_some();
+    let has_baseline = can_update(c, &folder);
     let summary = if dry_run {
         plan_update(c, bundle, &options)
     } else {
@@ -354,6 +443,14 @@ fn report(
             edited: paths(&s.edited),
             edited_fields: s
                 .edited_fields
+                .iter()
+                .map(|ch| ChangedDoc {
+                    path: ch.path.as_str().to_owned(),
+                    fields: ch.fields.iter().map(|f| f.id().to_owned()).collect(),
+                })
+                .collect(),
+            differs: s
+                .differs
                 .iter()
                 .map(|ch| ChangedDoc {
                     path: ch.path.as_str().to_owned(),

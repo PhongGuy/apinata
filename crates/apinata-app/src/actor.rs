@@ -9,7 +9,8 @@ use std::sync::Arc;
 
 use apinata_core::import::{
     ImportBundle, ImportReport, ImportedEnvironment, ImportedRequest, PrunedRequest, UpdateOptions,
-    UpdateSummary, add_environment, apply_update, plan_update, store_request_secrets,
+    UpdateSummary, add_environment, apply_update, can_update, plan_update, recorded_spec,
+    store_request_secrets,
 };
 use apinata_core::team::ConflictCopies;
 use apinata_core::{
@@ -367,7 +368,11 @@ impl Actor {
                 Ok(())
             }
             Command::UpdateInfo { reply } => {
-                let _ = reply.try_send(self.collection.file().spec_baseline().is_some());
+                let _ = reply.try_send(can_update(&self.collection, &ItemPath::root()));
+                Ok(())
+            }
+            Command::RecordedSpec { reply } => {
+                let _ = reply.try_send(recorded_spec(&self.collection));
                 Ok(())
             }
             Command::UpdateFolders { reply } => {
@@ -2340,10 +2345,7 @@ fn update_options(prune: bool, folder: Option<ItemPath>) -> UpdateOptions {
 
 /// Whether the spec imported into `folder` (the root for `None`) can be updated.
 fn has_baseline(c: &Collection, folder: Option<&ItemPath>) -> bool {
-    match folder {
-        None => c.file().spec_baseline().is_some(),
-        Some(f) => c.folder(f).is_some() && c.file().spec_baseline_in(f).is_some(),
-    }
+    can_update(c, folder.unwrap_or(&ItemPath::root()))
 }
 
 /// Whether any request or folder file under `folder` has edits not yet saved.

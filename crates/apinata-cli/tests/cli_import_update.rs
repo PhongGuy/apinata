@@ -267,6 +267,7 @@ fn json_output_carries_the_same_summary() {
             "added",
             "changed",
             "collection",
+            "differs",
             "dry_run",
             "edited",
             "edited_fields",

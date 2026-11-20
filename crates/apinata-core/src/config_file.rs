@@ -381,6 +381,22 @@ impl CollectionFile {
         SpecBaseline::read(&self.inner.doc)
     }
 
+    /// The first `extensions.bruno.openapi` entry with a non-empty `sourceUrl`: that source and
+    /// the entry's `groupBy`, as written.
+    pub(crate) fn reference_openapi_source(&self) -> Option<(String, Option<String>)> {
+        let entries = self
+            .inner
+            .doc
+            .get(&["extensions", "bruno", "openapi"])?
+            .as_sequence()?;
+        entries.iter().find_map(|entry| {
+            let entry = entry.as_mapping()?;
+            let source = entry.get("sourceUrl")?.as_str().filter(|s| !s.is_empty())?;
+            let group = entry.get("groupBy").and_then(Value::as_str);
+            Some((source.to_owned(), group.map(str::to_owned)))
+        })
+    }
+
     /// Write the baseline as `extensions.apinata.openapi.ops`. An empty baseline still writes an
     /// empty `ops`, so a collection whose generated requests were all pruned stays updatable.
     pub fn set_spec_baseline(&mut self, baseline: &SpecBaseline) {

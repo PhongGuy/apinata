@@ -2,9 +2,12 @@
 
 mod baseline;
 mod fields;
+mod reference;
 
 pub use baseline::SpecBaseline;
 pub use fields::{ChangedField, FieldHashes, file_field_hashes, operation_key, spec_field_hashes};
+use reference::update_baseline;
+pub use reference::{RecordedSpec, SpecLocation, can_update, recorded_spec};
 
 use super::{
     ImportBundle, ImportError, ImportNote, ImportedItem, ImportedRequest, NoteKind, add_request,
@@ -73,6 +76,9 @@ pub struct UpdateSummary {
     /// For each of those requests whose edited fields were found, which ones, in
     /// [`ChangedField`] order. A request skipped for unsaved edits has no entry.
     pub edited_fields: Vec<RequestChange>,
+    /// Requests that differ from the spec where no generated value is recorded, so it is not
+    /// known who changed them; those fields were not refreshed, in [`ChangedField`] order.
+    pub differs: Vec<RequestChange>,
     /// Requests whose operation left the spec.
     pub orphaned: Vec<ItemPath>,
     /// Orphans removed, or that would be.
@@ -174,7 +180,7 @@ pub fn apply_update(
     } = plan(c, bundle, o)?;
     // Without a baseline the plan is only its note, so that outcome wins over any refusal.
     let scope = o.scope();
-    let Some(mut baseline) = scope_baseline(c, &scope) else {
+    let Some((mut baseline, _)) = update_baseline(c, &scope) else {
         return Ok(summary);
     };
     // Pruned files are only ever moved to the trash, so refuse up front, before any write.
@@ -380,6 +386,64 @@ enum FieldState {
     Adopt,
     /// The user edited it and the spec moved too: leave it, list the request.
     Edited,
+    /// No generated value is recorded and the file differs from the spec: leave it, list it.
+    Differs,
+}
+
+/// A field with no recorded hash, which only an adopted request has: matching the spec is
+/// recorded, differing is reported and left alone.
+fn unrecorded_state(spec: &str, file: &str) -> FieldState {
+    match (file == spec, spec.is_empty()) {
+        (true, true) => FieldState::Same,
+        (true, false) => FieldState::Adopt,
+        (false, _) => FieldState::Differs,
+    }
+}
+
+/// First update of a collection only the reference app synced: nothing is known to be
+/// generated, so only the fields that already equal the spec are recorded, and the request
+/// is tied to its file so later updates find it.
+fn adopt(
+    path: &ItemPath,
+    file: &RequestFile,
+    request: &ImportedRequest,
+    key: String,
+    summary: &mut UpdateSummary,
+    actions: &mut Vec<Action>,
+) -> Result<(), ImportError> {
+    if file.is_dirty() {
+        summary.edited.push(path.clone());
+        return Ok(());
+    }
+    let spec = spec_field_hashes(request)?;
+    let on_file = file_field_hashes(file);
+    let mut differing = Vec::new();
+    let mut equal = Vec::new();
+    for field in ChangedField::ALL {
+        let spec_hash = spec.get(field).unwrap_or("");
+        match unrecorded_state(spec_hash, on_file.get(field).unwrap_or("")) {
+            FieldState::Differs => differing.push(field),
+            FieldState::Adopt => equal.push((field, spec_hash.to_owned())),
+            _ => {}
+        }
+    }
+    if differing.is_empty() {
+        summary.kept.push(path.clone());
+    } else {
+        summary.differs.push(RequestChange {
+            path: path.clone(),
+            fields: differing,
+        });
+    }
+    actions.push(Action::Adopt {
+        key: key.clone(),
+        hashes: FieldHashes::new(equal),
+    });
+    actions.push(Action::Relink {
+        key,
+        path: path.clone(),
+    });
+    Ok(())
 }
 
 fn field_state(spec: &str, file: &str, recorded: &str) -> FieldState {
@@ -558,7 +622,7 @@ pub(crate) fn plan(
     // Without a baseline nothing is known to be spec-owned, and adding would duplicate every
     // operation, so the whole update is a no-op with one explanation.
     let scope = o.scope();
-    let Some(baseline) = scope_baseline(c, &scope) else {
+    let Some((baseline, adopting)) = update_baseline(c, &scope) else {
         let detail = if scope.is_root() {
             "no update baseline: this collection was not imported from an OpenAPI spec, or by an \
              older version"
@@ -660,6 +724,10 @@ pub(crate) fn plan(
                 path: path.clone(),
             });
         }
+        if adopting {
+            adopt(path, file, request, key, &mut summary, &mut actions)?;
+            continue;
+        }
         let Some(recorded) = baseline.get(&key) else {
             summary.kept.push(path.clone());
             summary.notes.push(note(
@@ -677,6 +745,7 @@ pub(crate) fn plan(
         let file_hashes = file_field_hashes(file);
         let mut refresh = Vec::new();
         let mut edited_in = Vec::new();
+        let mut differs_in = Vec::new();
         let mut adopted = false;
         let mut new_hashes = recorded.clone();
         let mut next = Vec::new();
@@ -686,13 +755,15 @@ pub(crate) fn plan(
             let state = match (field, recorded.get(field)) {
                 (ChangedField::Method, recorded) => method_state(spec, on_file, recorded),
                 (ChangedField::Examples, None) => field_state(spec, on_file, &absent),
-                (_, recorded) => field_state(spec, on_file, recorded.unwrap_or("")),
+                (_, Some(recorded)) => field_state(spec, on_file, recorded),
+                (_, None) => unrecorded_state(spec, on_file),
             };
             match state {
                 FieldState::Same => {}
                 FieldState::Refresh => refresh.push(field),
                 FieldState::Adopt => adopted = true,
                 FieldState::Edited => edited_in.push(field),
+                FieldState::Differs => differs_in.push(field),
             }
             if matches!(state, FieldState::Refresh | FieldState::Adopt) {
                 next.push((field, spec.to_owned()));
@@ -700,6 +771,13 @@ pub(crate) fn plan(
         }
         for (field, hash) in next {
             new_hashes = replace_hash(&new_hashes, field, hash);
+        }
+        let differs = !differs_in.is_empty();
+        if differs {
+            summary.differs.push(RequestChange {
+                path: path.clone(),
+                fields: differs_in,
+            });
         }
         let edited = !edited_in.is_empty();
         if edited {
@@ -722,7 +800,7 @@ pub(crate) fn plan(
                 hashes: new_hashes,
             });
         } else {
-            if !edited {
+            if !edited && !differs {
                 summary.kept.push(path.clone());
             }
             if adopted {

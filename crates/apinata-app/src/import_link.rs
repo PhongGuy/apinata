@@ -12,8 +12,8 @@ use std::sync::Arc;
 
 use apinata_core::ItemPath;
 use apinata_core::import::{
-    ChangedField, CollectionFormat, FetchError, ImportBundle, ImportSource, UpdateSummary,
-    classify_source, default_import_name, fetch_source,
+    ChangedField, CollectionFormat, FetchError, GroupBy, ImportBundle, ImportSource, RecordedSpec,
+    SpecLocation, UpdateSummary, classify_source, default_import_name, fetch_source,
 };
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -28,7 +28,7 @@ use gpui_kit::{
 };
 
 use crate::command::Command;
-use crate::shell::{Shell, parse_bundles_from};
+use crate::shell::{Shell, parse_bundles_grouped, parse_bundles_with};
 use crate::style::{
     IMPORT_FORM_LABEL_WIDTH, RADIUS, ROW_HEIGHT, SPACE_1, SPACE_2, TEXT_SMALL, resolve,
 };
@@ -143,6 +143,17 @@ pub struct UpdateTarget {
     pub root_baseline: bool,
     /// The folders that carry a baseline of their own.
     pub folders: Vec<ItemPath>,
+    /// The spec the collection's sync record names, when it has no update record of ours.
+    pub recorded: Option<RecordedSpec>,
+}
+
+/// The text the link field shows for a recorded spec.
+fn recorded_text(spec: &RecordedSpec) -> Option<String> {
+    match &spec.location {
+        SpecLocation::Link(url) => Some(url.clone()),
+        SpecLocation::File(path) => Some(path.to_string_lossy().into_owned()),
+        _ => None,
+    }
 }
 
 impl UpdateTarget {
@@ -182,6 +193,9 @@ pub struct ImportLinkDialog {
     default_parent: Option<PathBuf>,
     // The parsed spec an update previews and applies.
     bundle: Option<Arc<ImportBundle>>,
+    // The recorded source the link field was filled with, so a later choice may replace it
+    // while the user has not typed over it.
+    offered: Option<String>,
     // The in-flight fetch; dropping it aborts the request, so Cancel and close drop it.
     task: Option<Task<()>>,
     // The baseline questions to the open collections' actors.
@@ -235,6 +249,7 @@ pub fn open(
             parent,
             default_parent,
             bundle: None,
+            offered: None,
             task: None,
             asking: None,
             scroll: ScrollHandle::new(),
@@ -542,6 +557,7 @@ impl ImportLinkDialog {
                 baseline: None,
                 root_baseline: false,
                 folders: Vec::new(),
+                recorded: None,
             })
             .collect();
         self.selected = None;
@@ -558,8 +574,16 @@ impl ImportLinkDialog {
         for root in &roots {
             let (reply, info) = async_channel::bounded(1);
             let (folders_reply, folders) = async_channel::bounded(1);
+            let (recorded_reply, recorded) = async_channel::bounded(1);
             let sent = ws.update(cx, |w, cx| {
                 w.send(root, Command::UpdateInfo { reply }, cx)?;
+                w.send(
+                    root,
+                    Command::RecordedSpec {
+                        reply: recorded_reply,
+                    },
+                    cx,
+                )?;
                 w.send(
                     root,
                     Command::UpdateFolders {
@@ -568,16 +592,17 @@ impl ImportLinkDialog {
                     cx,
                 )
             });
-            asked.push(sent.map(|_| (info, folders)));
+            asked.push(sent.map(|_| (info, folders, recorded)));
         }
         self.asking = Some(cx.spawn(async move |this, cx| {
             for (i, answer) in asked.into_iter().enumerate() {
-                let (root, folders) = match answer {
-                    Some((info, folders)) => (
+                let (root, folders, recorded) = match answer {
+                    Some((info, folders, recorded)) => (
                         info.recv().await.unwrap_or(false),
                         folders.recv().await.unwrap_or_default(),
+                        recorded.recv().await.ok().flatten(),
                     ),
-                    None => (false, Vec::new()),
+                    None => (false, Vec::new(), None),
                 };
                 let active = active.clone();
                 let _ = this.update(cx, |this, cx| {
@@ -585,6 +610,7 @@ impl ImportLinkDialog {
                         t.root_baseline = root;
                         t.baseline = Some(root || !folders.is_empty());
                         t.folders = folders;
+                        t.recorded = recorded;
                     }
                     this.settle(i, active.as_deref());
                     cx.notify();
@@ -808,6 +834,28 @@ impl ImportLinkDialog {
         cx.notify();
     }
 
+    // Fill the link with the chosen collection's recorded spec while the field is empty or
+    // still shows an earlier offer, so a typed link is never replaced.
+    fn offer_recorded(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.mode != Mode::Update || !matches!(self.phase, Phase::Idle) {
+            return;
+        }
+        let Some(text) = self
+            .selected
+            .and_then(|n| self.targets.get(n))
+            .and_then(|t| t.recorded.as_ref())
+            .and_then(recorded_text)
+        else {
+            return;
+        };
+        let current = self.link(cx);
+        let untouched = current.is_empty() || self.offered.as_deref() == Some(current.as_str());
+        if untouched && current != text {
+            self.link.update(cx, |i, cx| i.set_value(&text, window, cx));
+            self.offered = Some(text);
+        }
+    }
+
     /// The link field's text.
     pub fn link(&self, cx: &App) -> String {
         self.link.read(cx).value().to_string()
@@ -862,6 +910,13 @@ impl ImportLinkDialog {
                 }
             },
         };
+        // The recorded source is parsed with the grouping its record names; anything typed groups by tag.
+        let group_by = self
+            .selected
+            .and_then(|n| self.targets.get(n))
+            .and_then(|t| t.recorded.as_ref())
+            .filter(|r| self.mode == Mode::Update && recorded_text(r).as_deref() == Some(&url))
+            .map_or(GroupBy::Tags, |r| r.group_by);
         // The collection is named after the link, or after the file, where the format takes a name.
         let name = match &file {
             Some(path) => path.file_stem().map(|s| s.to_string_lossy().into_owned()),
@@ -877,7 +932,7 @@ impl ImportLinkDialog {
         self.task = Some(cx.spawn_in(window, async move |this, cx| {
             if let Some(file) = file {
                 let parsed = cx
-                    .background_spawn(async move { crate::shell::parse_bundles(&file, true) })
+                    .background_spawn(async move { parse_bundles_grouped(&file, true, group_by) })
                     .await;
                 let _ = this.update_in(cx, |this, window, cx| this.fetched(parsed, window, cx));
                 return;
@@ -887,7 +942,8 @@ impl ImportLinkDialog {
             let parsed = match fetched {
                 Ok(Ok(bytes)) => {
                     cx.background_spawn(async move {
-                        parse_bundles_from(Path::new(&format!("{name}.json")), &bytes, true)
+                        let file = format!("{name}.json");
+                        parse_bundles_with(Path::new(&file), &bytes, true, group_by)
                     })
                     .await
                 }
@@ -1144,6 +1200,7 @@ fn counts_line(s: &UpdateSummary, applied: bool) -> String {
     part(s.added.len(), "added");
     part(s.changed.len(), "changed");
     part(s.edited.len(), "edited by you");
+    part(s.differs.len(), "differ from the spec");
     part(s.orphaned.len(), "missing from the spec");
     if applied {
         part(s.pruned.len(), "removed");
@@ -1212,6 +1269,18 @@ fn report_view(
         plain(&paths(&s.edited)),
         cx,
     );
+    let differs = report_section(
+        "import-update-section-differs",
+        "Differs from the spec (not refreshed)",
+        s.differs
+            .iter()
+            .map(|c| {
+                let fields: Vec<&str> = c.fields.iter().map(|f| field_label(*f)).collect();
+                (c.path.to_string(), Some(format!("({})", fields.join(", "))))
+            })
+            .collect(),
+        cx,
+    );
     let missing = report_section(
         "import-update-section-missing",
         "Missing from the spec",
@@ -1272,6 +1341,7 @@ fn report_view(
                         .children(added)
                         .children(changed)
                         .children(edited)
+                        .children(differs)
                         .children(missing)
                         .children(removed)
                         .children(notes)
@@ -1283,6 +1353,7 @@ fn report_view(
 
 impl Render for ImportLinkDialog {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.offer_recorded(window, cx);
         if std::mem::take(&mut self.refocus)
             && matches!(self.phase, Phase::Preview { .. } | Phase::Done(_))
         {
