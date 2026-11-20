@@ -243,9 +243,13 @@ pub struct OAuth2Args {
     /// The collection directory or a directory inside it; defaults to the working directory.
     #[arg(long, global = true)]
     pub collection: Option<PathBuf>,
-    /// The environment the tokens were fetched under; tokens are kept per environment.
+    /// The environment the tokens were fetched under; tokens are kept per environment. By
+    /// default the collection's preset default environment, as for `run`.
     #[arg(long, value_name = "NAME", global = true)]
     pub env: Option<String>,
+    /// Use no environment, even when the collection names a default one.
+    #[arg(long, conflicts_with = "env", global = true)]
+    pub no_env: bool,
     /// Define a variable the auth settings use, like `run --env-var`.
     #[arg(long = "env-var", value_name = "KEY[=VALUE]", value_parser = parse_env_var, global = true)]
     pub env_var: Vec<EnvVar>,
@@ -1119,9 +1123,13 @@ pub struct GenArgs {
     /// php-curl, rust-reqwest, java-httpclient or csharp-httpclient.
     #[arg(long)]
     pub target: apinata_core::Target,
-    /// The environment to use, by file name without `.yml`.
+    /// The environment to use, by file name without `.yml`; by default the collection's preset
+    /// default environment, when it has one.
     #[arg(long)]
     pub env: Option<String>,
+    /// Use no environment, even when the collection names a default one.
+    #[arg(long, conflicts_with = "env")]
+    pub no_env: bool,
     /// Set or override an environment variable; repeatable. `KEY=VALUE`, or `KEY` to read the value
     /// from the process environment (empty if set but empty; kept secret).
     #[arg(long = "env-var", value_name = "KEY[=VALUE]", value_parser = parse_env_var)]
@@ -1322,9 +1330,13 @@ pub struct McpArgs {
     /// The same as the positional COLLECTION.
     #[arg(long)]
     pub collection: Option<PathBuf>,
-    /// The default environment, by file name without `.yml`.
+    /// The default environment, by file name without `.yml`; by default the collection's preset
+    /// default environment, when it has one.
     #[arg(long)]
     pub env: Option<String>,
+    /// Use no environment, even when the collection names a default one.
+    #[arg(long, conflicts_with = "env")]
+    pub no_env: bool,
     /// Set or override an environment variable; repeatable. `KEY=VALUE`, or `KEY` to read the value
     /// from the process environment (empty if set but empty; kept secret).
     #[arg(long = "env-var", value_name = "KEY[=VALUE]", value_parser = parse_env_var)]
@@ -1356,9 +1368,13 @@ pub struct MockArgs {
     /// The same as the positional PATH.
     #[arg(long)]
     pub collection: Option<PathBuf>,
-    /// The environment to use, by file name without `.yml`.
+    /// The environment to use, by file name without `.yml`; by default the collection's preset
+    /// default environment, when it has one.
     #[arg(long)]
     pub env: Option<String>,
+    /// Use no environment, even when the collection names a default one.
+    #[arg(long, conflicts_with = "env")]
+    pub no_env: bool,
     /// Set or override an environment variable; repeatable. `KEY=VALUE`, or `KEY` to read the value
     /// from the process environment (empty if set but empty; kept secret).
     #[arg(long = "env-var", value_name = "KEY[=VALUE]", value_parser = parse_env_var)]
@@ -1425,9 +1441,13 @@ pub struct RunArgs {
     /// The collection directory or a directory inside it; the same as PATH.
     #[arg(long)]
     pub collection: Option<PathBuf>,
-    /// The environment to use, by file name without `.yml`.
+    /// The environment to use, by file name without `.yml`; by default the collection's preset
+    /// default environment, when it has one.
     #[arg(long)]
     pub env: Option<String>,
+    /// Use no environment, even when the collection names a default one.
+    #[arg(long, conflicts_with = "env")]
+    pub no_env: bool,
     /// Set or override an environment variable; repeatable. `KEY=VALUE`, or `KEY` to read the value
     /// from the process environment (empty if set but empty; kept secret).
     #[arg(long = "env-var", value_name = "KEY[=VALUE]", value_parser = parse_env_var)]

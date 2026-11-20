@@ -494,7 +494,8 @@ Environments and variables (see [Variables and environments](#variables-and-envi
 | Flag | Meaning |
 | --- | --- |
 | `--collection <DIR>` | The collection, the same as the PATH argument. |
-| `--env <NAME>` | The environment to use, by file name without `.yml`. |
+| `--env <NAME>` | The environment to use, by file name without `.yml`. Without it, the collection's default environment (set in its presets) is used when it exists. |
+| `--no-env` | Use no environment, even when the collection names a default one. |
 | `--env-var KEY[=VALUE]` | Set or override a variable; a bare `KEY` reads the process environment. Repeatable. |
 | `--no-keychain` | Never read secrets from the keychain; each one then needs `--env-var`. |
 | `--global-env <NAME>` | The global environment to use. |
@@ -592,6 +593,12 @@ hint of a request that needs the secret, and stops no other request:
 ```sh
 apinata run ./my-api --env staging --env-var token=abc123 --env-var region=eu
 ```
+
+Without `--env`, `run`, `gen`, `graphql schema`, `mock`, `oauth2` and `mcp` use the
+default environment the collection's presets name, as the app does when it opens the
+collection. A default that names no existing environment prints a warning and the
+command runs with no environment. `--env` picks another one, and `--no-env` runs with
+none.
 
 A bare `--env-var KEY` reads the value from the process environment variable
 `KEY`, so a secret never lands in the shell history or the process list:
@@ -1025,6 +1032,10 @@ writes nothing.
 ```sh
 apinata mcp --collection ./my-api
 ```
+
+Tools that resolve variables use the `environment` they are given, else the server's
+`--env`, else the collection's preset default environment while it exists; `--no-env`
+starts the server with no default environment.
 
 A client config looks like this:
 

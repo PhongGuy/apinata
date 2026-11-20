@@ -38,6 +38,7 @@ fn resolved(args: &GenArgs) -> anyhow::Result<ResolvedRequest> {
     let target = run::open_at(
         &path,
         args.env.as_deref(),
+        args.no_env,
         &args.env_var,
         &BTreeSet::new(),
         ContextOptions::new(),

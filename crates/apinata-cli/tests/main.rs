@@ -26,6 +26,7 @@ mod cli_completions;
 mod cli_connect_hint;
 mod cli_convert;
 mod cli_cookies;
+mod cli_default_env;
 mod cli_env;
 mod cli_env_extends;
 mod cli_env_global;
