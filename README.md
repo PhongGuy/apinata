@@ -53,7 +53,7 @@ source under MIT or Apache-2.0.
   in the app and from `apinata run`, with JSON, JUnit and HTML reports for CI.
   Scripts run before and after each request and can hold tests, with chai,
   crypto and JWT helpers. Data-driven runs repeat a collection once per row of
-  a CSV or JSON file.
+  a CSV or JSON file (`--csv-file-path`, `--json-file-path`).
 
   ![A test run with passed and failed assertions](assets/screenshots/tests.png)
 
@@ -61,7 +61,7 @@ source under MIT or Apache-2.0.
   OpenAPI 3 and Swagger 2.0, Insomnia (v4 and v5), Hoppscotch and HAR 1.2,
   environments from Postman and Hoppscotch, and single requests from curl.
   Export to Postman v2.1, OpenAPI 3.1 (JSON or YAML) or one HTML page, and
-  record a run as HAR. Details are in
+  record a run as HAR (`apinata run --har`). Details are in
   [Importing and exporting](GUIDE.md#importing-and-exporting).
 
   ![The import report after importing a collection from another tool](assets/screenshots/import.png)

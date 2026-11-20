@@ -233,6 +233,8 @@ fn table_codes() -> std::collections::BTreeMap<String, Vec<u8>> {
         .nth(1)
         .expect("an Exit codes section")
         .lines()
+        // The section ends at the next heading, so later tables in the guide are not read as rows.
+        .take_while(|l| !l.starts_with('#'))
         .filter(|l| l.starts_with("| `"));
     table
         .map(|row| {
