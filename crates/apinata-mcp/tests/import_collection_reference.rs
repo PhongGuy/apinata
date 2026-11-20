@@ -154,3 +154,56 @@ async fn a_folder_update_without_input_is_refused_and_changes_nothing() {
     );
     assert_eq!(files_under(server.root()), before);
 }
+
+#[tokio::test]
+async fn take_spec_overwrites_a_differing_request_and_the_next_update_is_clean() {
+    let server = reference_only("spec.json", "path").await;
+    fs::write(server.root().join("spec.json"), V2).unwrap();
+    let take = json!({"update": true, "take_spec": ["people/getUser.yml"]});
+    let planned = server
+        .ok(
+            "import_collection",
+            json!({"update": true, "dry_run": true, "take_spec": ["people/getUser.yml"]}),
+        )
+        .await;
+    assert_eq!(
+        planned["changed"][0]["path"], "people/getUser.yml",
+        "{planned}"
+    );
+    let out = server.ok("import_collection", take).await;
+    assert_eq!(out["changed"][0]["path"], "people/getUser.yml", "{out}");
+    assert_eq!(out["differs"], json!([]), "{out}");
+    let text = fs::read_to_string(server.root().join("people/getUser.yml")).unwrap();
+    assert!(text.contains("include"), "{text}");
+    // Our own record now exists, so the next update names the spec itself.
+    let next = server
+        .ok(
+            "import_collection",
+            json!({"update": true, "text": V2, "group_by": "path"}),
+        )
+        .await;
+    assert_eq!(next["differs"], json!([]), "{next}");
+    assert_eq!(next["changed"], json!([]), "{next}");
+}
+
+#[tokio::test]
+async fn take_spec_naming_an_unknown_request_writes_nothing() {
+    let server = reference_only("spec.json", "path").await;
+    fs::write(server.root().join("spec.json"), V2).unwrap();
+    let before = files_under(server.root());
+    let message = server
+        .err(
+            "import_collection",
+            json!({"update": true, "take_spec": ["people/nope.yml"]}),
+        )
+        .await;
+    assert!(message.contains("people/nope.yml"), "{message}");
+    assert_eq!(files_under(server.root()), before);
+    let message = server
+        .err(
+            "import_collection",
+            json!({"text": V2, "take_spec": ["a.yml"]}),
+        )
+        .await;
+    assert!(message.contains("require `update`"), "{message}");
+}

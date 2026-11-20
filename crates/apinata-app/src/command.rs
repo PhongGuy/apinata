@@ -642,6 +642,8 @@ pub enum Command {
         prune: bool,
         /// The folder whose spec is applied; `None` is the collection root.
         folder: Option<ItemPath>,
+        /// Requests overwritten with the spec's values wherever they differ.
+        take: Vec<ItemPath>,
         /// Where the applied summary, or why nothing was applied, goes.
         reply: async_channel::Sender<Result<UpdateSummary, String>>,
     },

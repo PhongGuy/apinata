@@ -435,3 +435,73 @@ fn a_changed_method_is_reported_as_edited_naming_the_method() {
     assert_eq!(json["changed"][0]["path"], "people/getUser.yml");
     assert!(fs::read_to_string(&file).unwrap().contains("method: POST"));
 }
+
+/// Import v1 and hand-change getUser's method, which v2 leaves alone.
+fn with_edited_method(parent: &Path) -> PathBuf {
+    let root = first_import(parent);
+    let file = root.join("people/getUser.yml");
+    let text = fs::read_to_string(&file).unwrap();
+    fs::write(&file, text.replace("method: GET", "method: POST")).unwrap();
+    root
+}
+
+#[test]
+fn take_spec_overwrites_the_named_request_and_the_next_update_is_clean() {
+    let parent = tempfile::tempdir().unwrap();
+    let root = with_edited_method(parent.path());
+    let before = tree(&root);
+    update(&root, &["--dry-run", "--take-spec", "people/getUser.yml"])
+        .code(0)
+        .stdout(contains("edited: 0"))
+        .stdout(contains(
+            "would change people/getUser.yml (target, docs, method)",
+        ));
+    assert_eq!(tree(&root), before, "a dry run writes nothing");
+    update(&root, &["--take-spec", "people/getUser.yml"])
+        .code(0)
+        .stdout(contains(
+            "changed people/getUser.yml (target, docs, method)",
+        ));
+    let text = fs::read_to_string(root.join("people/getUser.yml")).unwrap();
+    assert!(text.contains("method: GET"), "{text}");
+    update(&root, &["--dry-run"])
+        .code(0)
+        .stdout(contains("would change: 0, kept: 3, edited: 0"));
+}
+
+#[test]
+fn take_spec_with_a_field_list_takes_only_those_fields() {
+    let parent = tempfile::tempdir().unwrap();
+    let root = with_edited_method(parent.path());
+    let file = root.join("people/getUser.yml");
+    let text = fs::read_to_string(&file).unwrap();
+    fs::write(&file, text.replacen("/users/:id", "/users/:id?mine=1", 1)).unwrap();
+    update(&root, &["--take-spec", "people/getUser.yml:target"])
+        .code(0)
+        .stdout(contains("changed people/getUser.yml (target, docs)"))
+        .stdout(contains("edited people/getUser.yml (method)"));
+    assert!(fs::read_to_string(&file).unwrap().contains("method: POST"));
+}
+
+#[test]
+fn take_spec_naming_an_unknown_request_fails_and_writes_nothing() {
+    let parent = tempfile::tempdir().unwrap();
+    let root = with_edited_method(parent.path());
+    let before = tree(&root);
+    update(
+        &root,
+        &[
+            "--take-spec",
+            "people/getUser.yml",
+            "--take-spec",
+            "people/nope.yml",
+        ],
+    )
+    .failure()
+    .stderr(contains("people/nope.yml"));
+    assert_eq!(tree(&root), before);
+    update(&root, &["--take-spec", "people/getUser.yml:colour"])
+        .code(3)
+        .stderr(contains("unknown field colour"));
+    assert_eq!(tree(&root), before);
+}

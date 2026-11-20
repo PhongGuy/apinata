@@ -952,6 +952,22 @@ removes nothing. From then on updates work as above.
 apinata import collection --into ./collections/Shop --update
 ```
 
+An update never overwrites a request you edited, or one listed under "differs".
+To take the description's version anyway, name the request with `--take-spec`,
+using the path the update printed. It overwrites every field that differs from
+the description; add `:FIELD,FIELD` (`target`, `headers`, `body`, `docs`,
+`tags`, `vars`, `method`, `examples`) to take only those. The flag may be
+repeated, works with `--dry-run`, and a path the update does not match stops it
+before anything is written. Afterwards later updates treat the request as
+generated again. In the app, the update preview has a Take from spec box on
+each edited or differing request, and MCP's `import_collection` takes the same
+paths as `take_spec`.
+
+```sh
+apinata import collection openapi.yaml --into ./collections/Shop --update --take-spec people/getUser.yml
+apinata import collection openapi.yaml --into ./collections/Shop --update --take-spec people/getUser.yml:docs
+```
+
 To keep several descriptions in one collection, import each into its own folder
 with `--folder`. The folder is created when missing and must not hold requests
 yet, no environments are written, and `--update --folder` refreshes just that

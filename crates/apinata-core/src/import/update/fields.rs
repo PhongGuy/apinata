@@ -57,6 +57,11 @@ impl ChangedField {
             ChangedField::Examples => "examples",
         }
     }
+
+    /// The field whose [`ChangedField::id`] is `id`.
+    pub fn from_id(id: &str) -> Option<ChangedField> {
+        ChangedField::ALL.into_iter().find(|f| f.id() == id)
+    }
 }
 
 /// One short hash per field.

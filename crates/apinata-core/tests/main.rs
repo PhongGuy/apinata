@@ -296,6 +296,7 @@ mod import_update_prune_restore;
 mod import_update_reference;
 mod import_update_source;
 mod import_update_support;
+mod import_update_take;
 mod import_write;
 mod inherited_headers;
 mod item_folder;

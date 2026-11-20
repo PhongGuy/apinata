@@ -9,8 +9,8 @@ use std::fs;
 
 use apinata_core::import::{
     CollectionFormat, CollectionOptions, GroupBy, ImportBundle, ImportError, SpecLocation,
-    UpdateOptions, UpdateSummary, apply_update, can_update, ensure_folder, parse_collections,
-    place_items, plan_update, recorded_spec,
+    TakeSpec, UpdateOptions, UpdateSummary, apply_update, can_update, ensure_folder,
+    parse_collections, place_items, plan_update, recorded_spec,
 };
 use apinata_core::{
     AuthSpec, Collection, ItemPath, SecretError, SecretKey, SecretStore, Trash, TrashLog,
@@ -69,6 +69,13 @@ pub(crate) struct ImportCollectionArgs {
     /// With `update`: report what would change and write nothing.
     #[serde(default)]
     pub dry_run: Option<bool>,
+    /// With `update`: requests to overwrite with the description's values wherever they
+    /// differ, even edited fields, each the path the update reports (`people/getUser.yml`),
+    /// optionally with `:FIELD,FIELD` (target, headers, body, docs, tags, vars, method,
+    /// examples) to take only those. A path the update does not match fails it and nothing is
+    /// written.
+    #[serde(default)]
+    pub take_spec: Option<Vec<String>>,
 }
 
 /// What was written and what was left out.
@@ -166,6 +173,8 @@ pub(crate) struct Plan {
     name: Option<String>,
     /// `Some((prune, dry_run))` when the call updates the served collection.
     update: Option<(bool, bool)>,
+    /// The requests an update overwrites with the description's values.
+    take_spec: Vec<TakeSpec>,
 }
 
 /// Check everything that needs no input: one source, a known format and grouping, a safe
@@ -188,9 +197,14 @@ pub(crate) fn plan(a: &ImportCollectionArgs) -> Result<Plan, String> {
     };
     let (prune, dry_run) = (a.prune.unwrap_or(false), a.dry_run.unwrap_or(false));
     let update = a.update.unwrap_or(false);
-    if !update && (prune || dry_run) {
-        return Err("`prune` and `dry_run` require `update`".to_owned());
+    let take = a.take_spec.as_deref().unwrap_or_default();
+    if !update && (prune || dry_run || !take.is_empty()) {
+        return Err("`prune`, `dry_run` and `take_spec` require `update`".to_owned());
     }
+    let take_spec = take
+        .iter()
+        .map(|raw| TakeSpec::parse(raw).map_err(|e| format!("take_spec: {e}")))
+        .collect::<Result<Vec<_>, _>>()?;
     // The record belongs to the root; a folder keeps its own spec and must be given one.
     if none && a.into.is_some() {
         return Err(
@@ -210,6 +224,7 @@ pub(crate) fn plan(a: &ImportCollectionArgs) -> Result<Plan, String> {
         group_by,
         name: a.name.clone(),
         update: update.then_some((prune, dry_run)),
+        take_spec,
     })
 }
 
@@ -390,6 +405,7 @@ pub(crate) fn update(
     options.prune = prune;
     options.folder = Some(folder.clone());
     options.trash_log = log;
+    options.take_spec = plan.take_spec.clone();
     let has_baseline = can_update(c, &folder);
     let summary = if dry_run {
         plan_update(c, bundle, &options)
@@ -622,6 +638,7 @@ mod tests {
             update: None,
             prune: None,
             dry_run: None,
+            take_spec: None,
         };
         let plan = plan(&args).unwrap();
         let bundles = parse(&plan, INPUT.as_bytes(), None).unwrap();
