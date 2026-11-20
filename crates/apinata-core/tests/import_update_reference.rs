@@ -2,8 +2,8 @@
 
 use crate::import_update_support::{FakeBin, bundle, imported, ip, paths, spec};
 use apinata_core::import::{
-    ChangedField, GroupBy, SpecLocation, UpdateOptions, apply_update, can_update, plan_update,
-    recorded_spec,
+    ChangedField, GroupBy, SpecLocation, TakeSpec, UpdateOptions, apply_update, can_update,
+    file_field_hashes, plan_update, recorded_spec,
 };
 use apinata_core::{Collection, ItemPath};
 use std::fs;
@@ -285,4 +285,29 @@ fn a_request_without_examples_is_not_reported_as_differing_and_gets_them_next_ti
     .unwrap();
     assert_eq!(second.changed.len(), 1, "{second:?}");
     assert_eq!(second.changed[0].fields, [ChangedField::Examples]);
+}
+
+#[test]
+fn a_differing_request_named_on_the_first_update_takes_the_spec_and_then_updates_clean() {
+    let dir = TempDir::new().unwrap();
+    let mut c = reference_only(dir.path(), "update-v1.json");
+    let v2 = bundle(&spec("update-v2.json"));
+    let mut o = UpdateOptions::default();
+    o.take_spec = vec![TakeSpec::request(ip("people/getUser.yml"))];
+    let s = apply_update(&mut c, &v2, &o, None).unwrap();
+    assert!(s.differs.is_empty(), "{s:?}");
+    assert_eq!(paths(&[s.changed[0].path.clone()]), ["people/getUser.yml"]);
+    let mut reopened = Collection::open(c.root()).unwrap();
+    let get = reopened.request(&ip("people/getUser.yml")).unwrap();
+    assert!(get.url().contains("include"));
+    let recorded = reopened.file().spec_baseline().expect("our record");
+    assert_eq!(
+        recorded.get("GET /users/{}").unwrap(),
+        &file_field_hashes(get)
+    );
+    let next = apply_update(&mut reopened, &v2, &UpdateOptions::default(), None).unwrap();
+    assert!(
+        next.differs.is_empty() && next.changed.is_empty(),
+        "{next:?}"
+    );
 }

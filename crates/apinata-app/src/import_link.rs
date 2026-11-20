@@ -6,6 +6,7 @@ use crate::theme::SelectedStyle;
 use crate::ui::SolidRing as _;
 use crate::ui::{ChooseButton as _, LockButton as _};
 use std::cell::Cell;
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -23,8 +24,8 @@ use gpui_kit::component::{ActiveTheme as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    App, Entity, FocusHandle, Focusable, Global, PathPromptOptions, Pixels, Result, ScrollHandle,
-    SharedString, Task, TestSupportExt, WeakEntity, Window, canvas, div, px,
+    AnyElement, App, Entity, FocusHandle, Focusable, Global, PathPromptOptions, Pixels, Result,
+    ScrollHandle, SharedString, Task, TestSupportExt, WeakEntity, Window, canvas, div, px,
 };
 
 use crate::command::Command;
@@ -180,6 +181,8 @@ pub struct ImportLinkDialog {
     // The request open in the active tab, with its collection root.
     active_item: Option<(PathBuf, ItemPath)>,
     prune: bool,
+    // The edited or differing requests the user chose to take from the spec on apply.
+    take: BTreeSet<ItemPath>,
     // A prune toggle is waiting for its new plan; the old preview stays on screen meanwhile.
     replanning: bool,
     // Held by the dialog body once the link field is gone, so Enter still reaches the dialog.
@@ -242,6 +245,7 @@ pub fn open(
             chosen: false,
             active_item: None,
             prune: false,
+            take: BTreeSet::new(),
             replanning: false,
             focus: cx.focus_handle(),
             refocus: false,
@@ -397,6 +401,7 @@ impl ImportLinkDialog {
         self.bundle = None;
         self.shown = None;
         self.prune = false;
+        self.take.clear();
         self.phase = Phase::Idle;
         cx.notify();
     }
@@ -424,6 +429,24 @@ impl ImportLinkDialog {
     /// Whether the preview removes requests missing from the spec.
     pub fn prune(&self) -> bool {
         self.prune
+    }
+
+    /// The requests the update will overwrite with the spec's values.
+    pub fn take(&self) -> Vec<ItemPath> {
+        self.take.iter().cloned().collect()
+    }
+
+    /// Chooses whether `path`, an edited or differing request of the preview, takes the spec.
+    pub fn set_take(&mut self, path: ItemPath, on: bool, cx: &mut Context<Self>) {
+        if self.replanning || !matches!(self.phase, Phase::Preview { .. }) {
+            return;
+        }
+        if on {
+            self.take.insert(path);
+        } else {
+            self.take.remove(&path);
+        }
+        cx.notify();
     }
 
     /// Why the update cannot go ahead right now, if something holds it.
@@ -471,6 +494,7 @@ impl ImportLinkDialog {
         }
         self.mode = mode;
         self.prune = false;
+        self.take.clear();
         self.task = None;
         self.bundle = None;
         self.phase = Phase::Idle;
@@ -701,6 +725,7 @@ impl ImportLinkDialog {
                 bundle,
                 prune,
                 folder,
+                take: self.take(),
                 reply,
             }
         } else {
@@ -742,10 +767,15 @@ impl ImportLinkDialog {
                 this.shown = planned_for;
                 this.refocus = true;
                 this.phase = match result {
-                    Ok(summary) => Phase::Preview {
-                        summary: Summary(summary),
-                        prune,
-                    },
+                    Ok(summary) => {
+                        // A new plan keeps only the choices it still offers.
+                        this.take
+                            .retain(|p| takeable(&summary).any(|(_, t)| t == p));
+                        Phase::Preview {
+                            summary: Summary(summary),
+                            prune,
+                        }
+                    }
                     Err(message) => {
                         this.prune = false;
                         Phase::Failed(message)
@@ -1217,11 +1247,55 @@ fn counts_line(s: &UpdateSummary, applied: bool) -> String {
     parts.join(", ")
 }
 
+/// One line of a report section: the item, muted detail after it, and a control at its end.
+struct Row {
+    main: String,
+    extra: Option<String>,
+    control: Option<AnyElement>,
+}
+
+impl From<(String, Option<String>)> for Row {
+    fn from((main, extra): (String, Option<String>)) -> Row {
+        Row {
+            main,
+            extra,
+            control: None,
+        }
+    }
+}
+
+/// The requests a preview offers to take from the spec, each with the section that lists it.
+fn takeable(s: &UpdateSummary) -> impl Iterator<Item = (&'static str, &ItemPath)> {
+    let edited = s.edited.iter().map(|p| ("edited", p));
+    edited.chain(s.differs.iter().map(|c| ("differs", &c.path)))
+}
+
+/// The "Take from spec" box of row `n` in `section`, which sets the dialog's choice for `path`.
+fn take_box(
+    section: &str,
+    n: usize,
+    path: &ItemPath,
+    on: bool,
+    dialog: &WeakEntity<ImportLinkDialog>,
+) -> AnyElement {
+    let (path, dialog) = (path.clone(), dialog.clone());
+    ui::checkbox(
+        SharedString::from(format!("import-update-take-{section}-{n}")),
+        on,
+    )
+    .label("Take from spec")
+    .on_click(move |on: &bool, _, cx| {
+        let (path, on) = (path.clone(), *on);
+        let _ = dialog.update(cx, |d, cx| d.set_take(path, on, cx));
+    })
+    .into_any_element()
+}
+
 /// One labelled group of the report; the heading carries the count.
 fn report_section(
     id: &'static str,
     title: &str,
-    items: Vec<(String, Option<String>)>,
+    items: Vec<Row>,
     cx: &App,
 ) -> Option<impl IntoElement + use<>> {
     if items.is_empty() {
@@ -1240,12 +1314,13 @@ fn report_section(
                     .text_color(muted)
                     .child(format!("{title} ({})", items.len())),
             )
-            .children(items.into_iter().map(move |(main, extra)| {
+            .children(items.into_iter().map(move |row| {
                 h_flex()
                     .gap(SPACE_1)
                     .flex_wrap()
-                    .child(div().text_color(fg).child(main))
-                    .children(extra.map(|e| div().text_color(muted).child(e)))
+                    .child(div().text_color(fg).child(row.main))
+                    .children(row.extra.map(|e| div().text_color(muted).child(e)))
+                    .children(row.control)
             })),
     )
 }
@@ -1254,15 +1329,24 @@ fn report_section(
 fn report_view(
     s: &UpdateSummary,
     applied: bool,
+    take: Option<(&BTreeSet<ItemPath>, &WeakEntity<ImportLinkDialog>)>,
     room: Pixels,
     scroll: &ScrollHandle,
     cx: &App,
 ) -> impl IntoElement + use<> {
-    let plain = |v: &[String]| v.iter().map(|p| (p.clone(), None)).collect::<Vec<_>>();
+    let plain = |v: &[String]| {
+        v.iter()
+            .map(|p| Row::from((p.clone(), None)))
+            .collect::<Vec<_>>()
+    };
     let changed = changed_rows(s)
         .into_iter()
-        .map(|(path, fields)| (path, Some(fields)))
+        .map(|(path, fields)| Row::from((path, Some(fields))))
         .collect();
+    // Only a preview offers the choice; the result lists the same rows without it.
+    let control = |section: &str, n: usize, path: &ItemPath| {
+        take.map(|(chosen, dialog)| take_box(section, n, path, chosen.contains(path), dialog))
+    };
     let paths = |it: &[_]| it.iter().map(|p: &_| format!("{p}")).collect::<Vec<_>>();
     let added = report_section(
         "import-update-section-added",
@@ -1274,7 +1358,15 @@ fn report_view(
     let edited = report_section(
         "import-update-section-edited",
         "Edited by you (spec change not applied)",
-        plain(&paths(&s.edited)),
+        s.edited
+            .iter()
+            .enumerate()
+            .map(|(n, p)| Row {
+                main: p.to_string(),
+                extra: None,
+                control: control("edited", n, p),
+            })
+            .collect(),
         cx,
     );
     let differs = report_section(
@@ -1282,9 +1374,14 @@ fn report_view(
         "Differs from the spec (not refreshed)",
         s.differs
             .iter()
-            .map(|c| {
+            .enumerate()
+            .map(|(n, c)| {
                 let fields: Vec<&str> = c.fields.iter().map(|f| field_label(*f)).collect();
-                (c.path.to_string(), Some(format!("({})", fields.join(", "))))
+                Row {
+                    main: c.path.to_string(),
+                    extra: Some(format!("({})", fields.join(", "))),
+                    control: control("differs", n, &c.path),
+                }
             })
             .collect(),
         cx,
@@ -1310,7 +1407,7 @@ fn report_view(
         "Notes",
         s.notes
             .iter()
-            .map(|n| (n.detail.to_string(), None))
+            .map(|n| Row::from((n.detail.to_string(), None)))
             .collect(),
         cx,
     );
@@ -1586,7 +1683,9 @@ impl Render for ImportLinkDialog {
         .map(|(s, applied)| {
             let room = crate::dialog_frame::titled_body_room(window)
                 - resolve(ROW_HEIGHT, window) * REPORT_CHROME_ROWS;
-            report_view(s, applied, room, &self.scroll, cx)
+            let dialog = cx.weak_entity();
+            let take = (!applied).then_some((&self.take, &dialog));
+            report_view(s, applied, take, room, &self.scroll, cx)
         });
         let prune = matches!(self.phase, Phase::Preview { .. }).then(|| {
             v_flex()

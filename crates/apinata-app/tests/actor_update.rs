@@ -98,6 +98,7 @@ fn apply(
             folder: None,
             bundle,
             prune,
+            take: Vec::new(),
             reply,
         },
     );

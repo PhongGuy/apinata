@@ -12,9 +12,9 @@ use anyhow::{Context, anyhow};
 use apinata_core::import::{
     CollectionFormat, CollectionOptions, EnvironmentFormat, FetchError, GroupBy, ImportBundle,
     ImportError, ImportNote, ImportReport, ImportSource, RequestFormat, SourceError, SourceFetch,
-    SpecLocation, UpdateOptions, UpdateSummary, add_environment, add_request, apply_update,
-    classify_source, default_import_name, ensure_folder, fetch_source, parse_collections,
-    parse_environments, parse_request, place_items, plan_update, recorded_spec,
+    SpecLocation, TakeSpec, UpdateOptions, UpdateSummary, add_environment, add_request,
+    apply_update, classify_source, default_import_name, ensure_folder, fetch_source,
+    parse_collections, parse_environments, parse_request, place_items, plan_update, recorded_spec,
     store_request_secrets, write_collection,
 };
 use apinata_core::{
@@ -94,6 +94,12 @@ pub struct CollectionArgs {
     /// With `--update`, report what would change and write nothing.
     #[arg(long, requires = "update")]
     pub dry_run: bool,
+    /// With `--update`, overwrite this request with the description's values wherever they
+    /// differ, even fields you edited. PATH is the request as the update reports it; add
+    /// `:FIELD,FIELD` (target, headers, body, docs, tags, vars, method, examples) to take only
+    /// those. May be repeated; a path the update does not match fails it before any write.
+    #[arg(long, value_name = "PATH[:FIELDS]", requires = "update", value_parser = TakeSpec::parse)]
+    pub take_spec: Vec<TakeSpec>,
     /// The report format written to stdout.
     #[arg(long, value_enum, default_value_t = Format::Text)]
     pub format: Format,
@@ -556,6 +562,7 @@ fn update_options(args: &CollectionArgs) -> anyhow::Result<UpdateOptions> {
         .as_deref()
         .map(|raw| ItemPath::new(raw).ok_or_else(|| anyhow!("invalid folder path: {raw}")))
         .transpose()?;
+    update.take_spec = args.take_spec.clone();
     Ok(update)
 }
 

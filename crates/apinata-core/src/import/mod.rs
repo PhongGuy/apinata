@@ -35,8 +35,8 @@ pub use request::{add_request, store_request_secrets};
 pub use source::{ImportSource, SourceError, classify_source};
 pub use update::{
     ChangedField, FieldHashes, PrunedRequest, RecordedSpec, RequestChange, SpecBaseline,
-    SpecLocation, UpdateOptions, UpdateSummary, apply_update, can_update, file_field_hashes,
-    operation_key, plan_update, recorded_spec, spec_field_hashes,
+    SpecLocation, TakeSpec, UpdateOptions, UpdateSummary, apply_update, can_update,
+    file_field_hashes, operation_key, plan_update, recorded_spec, spec_field_hashes,
 };
 pub use write::{record_spec_baseline, write_collection};
 
@@ -388,4 +388,12 @@ pub enum ImportError {
     /// An update would prune, and there is no trash to move the files to.
     #[error("pruning moves files to the trash and none is available, so nothing was changed")]
     TrashUnavailable,
+    /// A request named to take the spec is not one the update matched to an operation.
+    #[error(
+        "{path} is not a request this update matches to a spec operation, so nothing was changed"
+    )]
+    NotMatched {
+        /// The request path as given.
+        path: crate::item_path::ItemPath,
+    },
 }

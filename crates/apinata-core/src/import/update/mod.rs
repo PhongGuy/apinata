@@ -37,6 +37,67 @@ pub struct UpdateOptions {
     /// The caller undoes each prune itself from the summary's `trashed`, as the app does, so a
     /// prune with no `trash_log` needs no note on how to get it back.
     pub undo_in_session: bool,
+    /// Requests whose fields are overwritten with the spec's wherever they differ, edited or
+    /// not; a path the update does not match to an operation fails it with
+    /// [`ImportError::NotMatched`] before anything is written.
+    pub take_spec: Vec<TakeSpec>,
+}
+
+/// A request, by the path an update summary reports, that takes the spec's values.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct TakeSpec {
+    /// The request file, relative to the collection root.
+    pub path: ItemPath,
+    /// The fields to take; empty takes every spec-owned field.
+    pub fields: Vec<ChangedField>,
+}
+
+impl TakeSpec {
+    /// Every spec-owned field of the request at `path`.
+    pub fn request(path: ItemPath) -> TakeSpec {
+        TakeSpec {
+            path,
+            fields: Vec::new(),
+        }
+    }
+
+    /// Only `fields` of the request at `path`.
+    pub fn fields(path: ItemPath, fields: Vec<ChangedField>) -> TakeSpec {
+        TakeSpec { path, fields }
+    }
+
+    /// Read `PATH` or `PATH:FIELD,FIELD`, fields named by [`ChangedField::id`]; the error says
+    /// what is wrong.
+    pub fn parse(raw: &str) -> Result<TakeSpec, String> {
+        // A suffix after the last colon is a field list only when every name in it is a field.
+        if let Some((path, list)) = raw.rsplit_once(':')
+            && !list.contains('/')
+            && !list.contains('.')
+        {
+            let fields = list
+                .split(',')
+                .map(|id| {
+                    ChangedField::from_id(id.trim()).ok_or_else(|| {
+                        let known: Vec<_> = ChangedField::ALL.iter().map(|f| f.id()).collect();
+                        format!("unknown field {id}; expected {}", known.join(", "))
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            return Ok(TakeSpec::fields(request_path(path)?, fields));
+        }
+        Ok(TakeSpec::request(request_path(raw)?))
+    }
+
+    fn takes(&self, field: ChangedField) -> bool {
+        self.fields.is_empty() || self.fields.contains(&field)
+    }
+}
+
+fn request_path(raw: &str) -> Result<ItemPath, String> {
+    ItemPath::new(raw)
+        .filter(|p| !p.is_root())
+        .ok_or_else(|| format!("invalid request path: {raw:?}"))
 }
 
 impl UpdateOptions {
@@ -408,6 +469,7 @@ fn adopt(
     file: &RequestFile,
     request: &ImportedRequest,
     key: String,
+    takes: &dyn Fn(ChangedField) -> bool,
     summary: &mut UpdateSummary,
     actions: &mut Vec<Action>,
 ) -> Result<(), ImportError> {
@@ -419,10 +481,16 @@ fn adopt(
     let on_file = file_field_hashes(file);
     let mut differing = Vec::new();
     let mut equal = Vec::new();
+    let mut refresh = Vec::new();
     let absent = fields::absent_hash();
     for field in ChangedField::ALL {
         let spec_hash = spec.get(field).unwrap_or("");
         let file_hash = on_file.get(field).unwrap_or("");
+        if takes(field) && file_hash != spec_hash {
+            refresh.push(field);
+            equal.push((field, spec_hash.to_owned()));
+            continue;
+        }
         // A request with no examples counts as generated without them, so the next update adds
         // the spec's examples as it does for an older baseline; it is not reported as differing.
         if field == ChangedField::Examples && file_hash == absent && spec_hash != absent {
@@ -435,18 +503,35 @@ fn adopt(
             _ => {}
         }
     }
-    if differing.is_empty() {
-        summary.kept.push(path.clone());
-    } else {
+    let differs = !differing.is_empty();
+    if differs {
         summary.differs.push(RequestChange {
             path: path.clone(),
             fields: differing,
         });
     }
-    actions.push(Action::Adopt {
-        key: key.clone(),
-        hashes: FieldHashes::new(equal),
-    });
+    let hashes = FieldHashes::new(equal);
+    if refresh.is_empty() {
+        if !differs {
+            summary.kept.push(path.clone());
+        }
+        actions.push(Action::Adopt {
+            key: key.clone(),
+            hashes,
+        });
+    } else {
+        summary.changed.push(RequestChange {
+            path: path.clone(),
+            fields: refresh.clone(),
+        });
+        actions.push(Action::Refresh {
+            path: path.clone(),
+            key: key.clone(),
+            fields: refresh,
+            request: request.clone(),
+            hashes,
+        });
+    }
     actions.push(Action::Relink {
         key,
         path: path.clone(),
@@ -690,6 +775,7 @@ pub(crate) fn plan(
         &mut spec_requests,
     );
     let mut spec_keys = BTreeSet::new();
+    let mut matched = BTreeSet::new();
     // Examples were not spec-owned before, and older imports wrote none.
     let absent = fields::absent_hash();
     for (folders, item) in spec_requests {
@@ -717,6 +803,13 @@ pub(crate) fn plan(
             continue;
         };
         let (path, file) = &matches[0];
+        matched.insert(path.clone());
+        let chosen: Vec<&TakeSpec> = o.take_spec.iter().filter(|t| t.path == *path).collect();
+        let takes = |field| chosen.iter().any(|t| t.takes(field));
+        if file.is_dirty() && !chosen.is_empty() {
+            let why = "not taken from the spec: it has unsaved edits".to_owned();
+            summary.notes.push(note(&key, why, Some(path)));
+        }
         for (extra, _) in &matches[1..] {
             summary.notes.push(note(
                 &key,
@@ -732,8 +825,9 @@ pub(crate) fn plan(
                 path: path.clone(),
             });
         }
-        if adopting {
-            adopt(path, file, request, key, &mut summary, &mut actions)?;
+        // A request with no record that is named to take the spec is adopted as if first seen.
+        if adopting || (baseline.get(&key).is_none() && !chosen.is_empty()) {
+            adopt(path, file, request, key, &takes, &mut summary, &mut actions)?;
             continue;
         }
         let Some(recorded) = baseline.get(&key) else {
@@ -761,6 +855,7 @@ pub(crate) fn plan(
             let spec = spec_hashes.get(field).unwrap_or("");
             let on_file = file_hashes.get(field).unwrap_or("");
             let state = match (field, recorded.get(field)) {
+                _ if takes(field) && spec != on_file => FieldState::Refresh,
                 (ChangedField::Method, recorded) => method_state(spec, on_file, recorded),
                 (ChangedField::Examples, None) => field_state(spec, on_file, &absent),
                 (_, Some(recorded)) => field_state(spec, on_file, recorded),
@@ -818,6 +913,13 @@ pub(crate) fn plan(
                 });
             }
         }
+    }
+
+    // A named request the spec does not reach fails the whole update, so nothing is written.
+    if let Some(t) = o.take_spec.iter().find(|t| !matched.contains(&t.path)) {
+        return Err(ImportError::NotMatched {
+            path: t.path.clone(),
+        });
     }
 
     for key in baseline.keys().filter(|k| !spec_keys.contains(*k)) {

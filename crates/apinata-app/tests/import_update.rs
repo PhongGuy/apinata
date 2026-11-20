@@ -711,3 +711,78 @@ fn the_result_lists_the_unchanged_items_under_their_heading(cx: &mut TestAppCont
         "the unchanged section lists its items under the heading: {section:?}"
     );
 }
+
+/// A v1 collection whose getUser method was changed by hand before it was opened.
+fn open_with_edited_method(cx: &mut TestAppContext, r: &Rig) -> PathBuf {
+    let mut all = parse_collections(
+        Some(CollectionFormat::OpenApi),
+        V1,
+        &CollectionOptions::default(),
+    )
+    .unwrap();
+    let b = all.remove(0);
+    let (c, _) = write_collection(
+        r.parent.path(),
+        &b.collection,
+        &b.environments,
+        &MemoryStore::new(),
+    )
+    .unwrap();
+    let file = c.root().join("people/getUser.yml");
+    let text = std::fs::read_to_string(&file).unwrap();
+    std::fs::write(&file, text.replace("method: GET", "method: POST")).unwrap();
+    r.open(cx, c.root().to_path_buf())
+}
+
+#[gpui_kit::test]
+fn take_from_spec_on_an_edited_request_applies_the_spec_to_it(cx: &mut TestAppContext) {
+    let r = rig(cx);
+    let root = open_with_edited_method(cx, &r);
+    let server = serve(cx, V2);
+    let d = r.dialog(cx, &format!("{}/spec.json", server.uri()));
+    r.click(cx, "import-update-target-0");
+    r.click(cx, "import-link-import");
+    let s = preview(cx, &d);
+    assert_eq!(s.edited.len(), 1, "{s:?}");
+    assert!(
+        d.read_with(cx, |d, _| d.take().is_empty()),
+        "off by default"
+    );
+    r.click(cx, "import-update-take-edited-0");
+    assert_eq!(
+        d.read_with(cx, |d, _| d.take()),
+        [apinata_core::ItemPath::new("people/getUser.yml").unwrap()]
+    );
+    r.click(cx, "import-update-apply");
+    applied(cx, &d);
+    let text = std::fs::read_to_string(root.join("people/getUser.yml")).unwrap();
+    assert!(text.contains("method: GET"), "{text}");
+    match phase(cx, &d) {
+        Phase::Done(s) => {
+            assert!(s.0.edited.is_empty(), "{:?}", s.0);
+            assert!(
+                s.0.changed
+                    .iter()
+                    .any(|c| c.path.as_str() == "people/getUser.yml")
+            );
+        }
+        other => panic!("not done: {other:?}"),
+    }
+    assert!(!present(cx, r.win, "import-update-take-edited-0"));
+}
+
+#[gpui_kit::test]
+fn an_edited_request_left_unchosen_keeps_its_edit(cx: &mut TestAppContext) {
+    let r = rig(cx);
+    let root = open_with_edited_method(cx, &r);
+    let server = serve(cx, V2);
+    let d = r.dialog(cx, &format!("{}/spec.json", server.uri()));
+    r.click(cx, "import-update-target-0");
+    r.click(cx, "import-link-import");
+    preview(cx, &d);
+    assert!(present(cx, r.win, "import-update-take-edited-0"));
+    r.click(cx, "import-update-apply");
+    applied(cx, &d);
+    let text = std::fs::read_to_string(root.join("people/getUser.yml")).unwrap();
+    assert!(text.contains("method: POST"), "{text}");
+}

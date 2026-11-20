@@ -8,9 +8,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use apinata_core::import::{
-    ImportBundle, ImportReport, ImportedEnvironment, ImportedRequest, PrunedRequest, UpdateOptions,
-    UpdateSummary, add_environment, apply_update, can_update, plan_update, recorded_spec,
-    store_request_secrets,
+    ImportBundle, ImportReport, ImportedEnvironment, ImportedRequest, PrunedRequest, TakeSpec,
+    UpdateOptions, UpdateSummary, add_environment, apply_update, can_update, plan_update,
+    recorded_spec, store_request_secrets,
 };
 use apinata_core::team::ConflictCopies;
 use apinata_core::{
@@ -392,9 +392,10 @@ impl Actor {
                 bundle,
                 prune,
                 folder,
+                take,
                 reply,
             } => {
-                let done = self.apply_spec_update(id, &bundle, prune, folder);
+                let done = self.apply_spec_update(id, &bundle, prune, folder, take);
                 let _ = reply.try_send(done);
                 Ok(())
             }
@@ -1525,7 +1526,7 @@ impl Actor {
         if !has_baseline(&self.collection, folder.as_ref()) {
             return Err(NO_BASELINE.to_owned());
         }
-        let options = update_options(prune, folder);
+        let options = update_options(prune, folder, Vec::new());
         let summary = plan_update(&self.collection, bundle, &options).map_err(|e| e.to_string())?;
         self.need_trash(&summary)?;
         Ok(summary)
@@ -1549,6 +1550,7 @@ impl Actor {
         bundle: &ImportBundle,
         prune: bool,
         folder: Option<ItemPath>,
+        take: Vec<ItemPath>,
     ) -> Result<UpdateSummary, String> {
         if !has_baseline(&self.collection, folder.as_ref()) {
             return Err(NO_BASELINE.to_owned());
@@ -1556,7 +1558,7 @@ impl Actor {
         if self.collection.file().is_dirty() || folder_unsaved(self.collection.tree()) {
             return Err(UNSAVED_UPDATE.to_owned());
         }
-        let options = update_options(prune, folder);
+        let options = update_options(prune, folder, take);
         if prune {
             let planned =
                 plan_update(&self.collection, bundle, &options).map_err(|e| e.to_string())?;
@@ -2334,10 +2336,11 @@ const NO_BASELINE: &str = "Not imported from a spec, so it cannot be updated";
 const TRASH_UNAVAILABLE: &str = "The trash is not available, so nothing was removed. Turn off removing missing requests, or fix the system trash.";
 const UNSAVED_UPDATE: &str = "Save or discard your unsaved edits in this collection first";
 
-fn update_options(prune: bool, folder: Option<ItemPath>) -> UpdateOptions {
+fn update_options(prune: bool, folder: Option<ItemPath>, take: Vec<ItemPath>) -> UpdateOptions {
     let mut options = UpdateOptions::default();
     options.prune = prune;
     options.folder = folder;
+    options.take_spec = take.into_iter().map(TakeSpec::request).collect();
     // The app undoes a removal in session, from the tickets its notices carry.
     options.undo_in_session = true;
     options
