@@ -258,7 +258,7 @@ fn the_rows_sit_inside_the_lists_focus_border(cx: &mut TestAppContext) {
     });
     cx.run_until_parked();
     let (list, row) = cx
-        .update_window(win.into(), |_, w, cx| {
+        .update_window(win, |_, w, cx| {
             w.render_frame(cx);
             (
                 w.find("graphql-docs-list").bounds(),
