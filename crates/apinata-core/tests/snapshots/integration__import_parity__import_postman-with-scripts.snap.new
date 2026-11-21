@@ -1,0 +1,7 @@
+---
+source: crates/apinata-core/tests/import_parity.rs
+assertion_line: 151
+expression: snapshot
+---
+Converted Login / event[0] [Login.yml]: pre-request script: 1 Postman call translated; it asks before it first runs
+Converted Login / event[1] [Login.yml]: post-response script: 2 Postman calls translated; it asks before it first runs

@@ -293,7 +293,7 @@ fn a_script_note_reads_as_its_owner_and_script() {
     let lines = all_lines(&report_of(&text));
     assert!(
         lines.iter().any(|l| l.starts_with(
-            "1 Postman call translated; it asks before it first runs\nCollection pre-request script, in "
+            "1 Postman call translated; the app and the MCP server ask before it first runs, and apinata run runs it as your own command\nCollection pre-request script, in "
         )),
         "{lines:?}"
     );

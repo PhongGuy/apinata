@@ -340,9 +340,11 @@ fn events_to_scripts(events: &[Value], at: &str, notes: &mut Vec<ImportNote>) ->
         }
         let translated = translate(&code);
         let detail = match translated.replaced {
-            0 => format!("{label} script: carried as written; it asks before it first runs"),
+            0 => format!(
+                "{label} script: carried as written; the app and the MCP server ask before it first runs, and apinata run runs it as your own command"
+            ),
             n => format!(
-                "{label} script: {n} Postman call{} translated; it asks before it first runs",
+                "{label} script: {n} Postman call{} translated; the app and the MCP server ask before it first runs, and apinata run runs it as your own command",
                 if n == 1 { "" } else { "s" }
             ),
         };
