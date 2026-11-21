@@ -393,6 +393,8 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Base Environment
 -- report
 NeedsInput Cookie Tag Error / body.text: a template tag has no equivalent, so each is written as a variable: `{% cookie 'http://127.0.0.1:4010/echo', 'does-not-exist' %}` as `{{cookie}}`; give `cookie` a value before sending (Cookie Tag Error.yml)
 NeedsInput File Tag Error / body.text: a template tag has no equivalent, so each is written as a variable: `{% file '/path/does/not/exist/nope.txt' %}` as `{{file}}`; give `file` a value before sending (File Tag Error.yml)
@@ -408,3 +410,5 @@ NeedsInput Common Tag / body.text: a template tag has no equivalent, so each is 
 NeedsInput FolderWithRequest / Request Tag / body.text: a template tag has no equivalent, so each is written as a variable: `{% request 'name', '', '' %}` as `{{request}}`, `{% request 'folder', '', '' %}` as `{{request}}`, `{% request 'url', '', '' %}` as `{{request}}`, `{% request 'parameter', 'foo', '' %}` as `{{request}}`, `{% request 'cookie', 'from', '' %}` as `{{request}}`; give `request` a value before sending (FolderWithRequest/Request Tag.yml)
 Converted FolderWithRequest / Request Tag / authentication: `oauth2` authentication is not supported; set to none (FolderWithRequest/Request Tag.yml)
 Dropped collection / cookieJar: cookies are not imported
+Converted collection: runs use the environment `Base Environment` by default, as the first environment imported (opencollection.yml)
+NeedsInput collection: needs a value: `base64`, `cookie`, `faker`, `file`, `hash`, `jsonpath`, `now`, `os`, `prompt`, `request`, `response`, `uuid`, `vault`; nothing imported defines them, so add them to the collection's variables or an environment before sending

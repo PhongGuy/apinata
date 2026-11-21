@@ -25,7 +25,8 @@ use std::path::Path;
 /// collection as Bruno's import names it, and store the environments' secret values in
 /// `secrets`. Literal credentials become secret variables of every environment (of a new
 /// `Environment` when there is none), each noted by name, so no file holds their values.
-/// Returns the opened collection and a report whose notes name the files written.
+/// The first environment becomes the default. Returns the opened collection and a report whose
+/// notes name the files written and the referenced variables nothing imported defines.
 ///
 /// Fails with `Create` when the collection's own name cannot be a directory name, `Exists` when
 /// the target appears while writing, and otherwise with the failing step's error; a failure
@@ -61,25 +62,38 @@ pub(crate) fn write_collection_with(
         true,
     );
     add_to_environments(&mut envs, &taken);
-    let default_env = !taken.is_empty();
-    write_staged(
+    let (collection, mut report) = write_staged(
         parent_dir,
         &imported,
         &envs,
         secrets,
-        default_env,
+        !taken.is_empty(),
         before_rename,
-    )
+    )?;
+    let unset = crate::check::unset_names(&collection);
+    if !unset.is_empty() {
+        let names: Vec<String> = unset.iter().map(|n| format!("`{n}`")).collect();
+        let them = if names.len() == 1 { "it" } else { "them" };
+        let detail = format!(
+            "needs a value: {}; nothing imported defines {them}, so add {them} to the collection's variables or an environment before sending",
+            names.join(", ")
+        );
+        // No file is named: the note asks for a value, it does not describe a written file.
+        let note = ImportNote::new("collection", NoteKind::NeedsInput, detail);
+        report.notes.push(note);
+    }
+    Ok((collection, report))
 }
 
-/// [`write_collection_with`] for a collection whose credentials are already protected; with
-/// `default_env` the first environment becomes the default, since it holds their secrets.
+/// [`write_collection_with`] for a collection whose credentials are already protected. The
+/// first environment becomes the default, so every shell runs in it; `credentials` says it
+/// holds their secrets.
 pub(super) fn write_staged(
     parent_dir: &Path,
     imported: &ImportedCollection,
     envs: &[ImportedEnvironment],
     secrets: &dyn SecretStore,
-    default_env: bool,
+    credentials: bool,
     before_rename: &mut dyn FnMut(&Path) -> io::Result<()>,
 ) -> Result<(Collection, ImportReport), ImportError> {
     // A name that sanitises to nothing would make `unique_dir_name` probe `parent_dir` itself
@@ -135,12 +149,17 @@ pub(super) fn write_staged(
         .iter()
         .map(|env| write_environment_file(&mut collection, env))
         .collect::<Result<Vec<_>, _>>()?;
-    if let (true, Some(first)) = (default_env, written.first()) {
+    if let Some(first) = written.first() {
         let root_file = collection.file_mut();
         root_file.set_default_environment(&first.name);
         root_file.save()?;
+        let why = if credentials {
+            "since it holds the imported credentials"
+        } else {
+            "as the first environment imported"
+        };
         let detail = format!(
-            "runs use the environment `{}` by default, since it holds the imported credentials",
+            "runs use the environment `{}` by default, {why}",
             first.name
         );
         let note = ImportNote::new("collection", NoteKind::Converted, detail);

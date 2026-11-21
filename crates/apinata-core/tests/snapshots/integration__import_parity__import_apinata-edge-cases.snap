@@ -8,6 +8,7 @@ Renamed Users / a-b [Users/a-b 1.yml]: the name `a-b` cannot be used as a file n
 Converted Settings / request.auth.password [Settings.yml]: the value is kept as the secret variable `settings_password`, not in the file
 Converted collection [opencollection.yml]: runs use the environment `Environment` by default, since it holds the imported credentials
 Converted imported credentials [environments/Environment.yml]: the imported credentials are the secret variables `settings_password`; their values are kept in the secret store, not in the file
+NeedsInput collection [-]: needs a value: `host`, `k`, `token`; nothing imported defines them, so add them to the collection's variables or an environment before sending
 == Settings.yml
 info:
   name: Settings

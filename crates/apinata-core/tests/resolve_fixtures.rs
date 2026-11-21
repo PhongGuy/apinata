@@ -32,7 +32,7 @@ fn ok(url: &str) -> Result<String, ResolveError> {
 fn undefined(name: &str) -> Result<String, ResolveError> {
     Err(ResolveError::UndefinedVariable {
         name: name.to_owned(),
-        hint: None,
+        hint: Some(apinata_core::UndefinedHint::Undeclared),
     })
 }
 

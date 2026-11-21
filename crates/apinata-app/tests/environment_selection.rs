@@ -345,17 +345,38 @@ fn a_preset_naming_a_missing_environment_falls_back_to_the_sole_one(cx: &mut Tes
     assert_eq!(chosen(cx, &ws, &root).as_deref(), Some("dev"));
 }
 
+// An import records its default environment, so the app opens in the one a run uses.
 #[gpui_kit::test]
-fn the_imports_preferred_environment_beats_the_preset_default(cx: &mut TestAppContext) {
-    let col = with_preset("prod", &["dev", "prod"]);
+fn an_imported_collection_opens_in_the_environment_a_run_uses(cx: &mut TestAppContext) {
+    use apinata_core::import::{CollectionOptions, parse_collections, write_collection};
+    let input = serde_json::json!({"_type": "export", "__export_format": 4, "resources": [
+        {"_id": "wrk_1", "_type": "workspace", "parentId": null, "name": "Pets"},
+        {"_id": "env_1", "_type": "environment", "parentId": "wrk_1", "name": "Base Environment",
+         "data": {"host": "http://127.0.0.1:1"}},
+        {"_id": "env_2", "_type": "environment", "parentId": "env_1", "name": "staging",
+         "data": {"host": "http://127.0.0.1:2"}},
+        {"_id": "req_1", "_type": "request", "parentId": "wrk_1", "name": "Ping",
+         "method": "GET", "url": "{{ _.host }}/ping"}
+    ]})
+    .to_string();
+    let parent = tempfile::tempdir().unwrap();
+    let bundles = parse_collections(None, input.as_bytes(), &CollectionOptions::default()).unwrap();
+    let store = apinata_core::MemoryStore::new();
+    let (c, report) = write_collection(
+        parent.path(),
+        &bundles[0].collection,
+        &bundles[0].environments,
+        &store,
+    )
+    .unwrap();
+    assert_eq!(report.environments, ["Base Environment", "staging"]);
+    let run_uses = c.choose_environment(None).name().map(str::to_owned);
+    assert_eq!(run_uses.as_deref(), Some("Base Environment"));
     let state = tempfile::tempdir().unwrap();
     let session = session_at(cx, &state, Session::default());
     let ws = workspace(cx, &session);
-    let root = col.path().to_path_buf();
-    ws.update(cx, |w, cx| {
-        w.select_on_open(&root, "dev".into());
-        w.open(root.clone(), cx)
-    });
+    let root = c.root().to_path_buf();
+    ws.update(cx, |w, cx| w.open(root.clone(), cx));
     cx.run_until_parked();
-    assert_eq!(chosen(cx, &ws, &root).as_deref(), Some("dev"));
+    assert_eq!(chosen(cx, &ws, &root), run_uses);
 }

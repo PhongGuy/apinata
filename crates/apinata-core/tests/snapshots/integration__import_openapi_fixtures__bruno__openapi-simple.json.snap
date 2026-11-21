@@ -143,6 +143,8 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Echo test server
   apinata:
     openapi:
       ops:
@@ -176,3 +178,5 @@ extensions:
           method: fde2a9b76b8de2ff
           examples: cb197c7d58321825
           file: HTTP POST test.yml
+
+note Converted opencollection.yml | collection | runs use the environment `Echo test server` by default, as the first environment imported

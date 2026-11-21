@@ -42,3 +42,4 @@ settings:
   forwardAuthorizationHeader: false
 == report
 Dropped test-request / testScript: scripts are not imported (test-request.yml)
+NeedsInput collection: needs a value: `firstName`, `fullName`, `id`, `lastName`, `salutation`; nothing imported defines them, so add them to the collection's variables or an environment before sending (-)

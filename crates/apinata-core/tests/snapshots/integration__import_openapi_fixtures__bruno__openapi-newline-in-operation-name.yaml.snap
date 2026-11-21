@@ -95,6 +95,8 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Example server
   apinata:
     openapi:
       ops:
@@ -118,3 +120,5 @@ extensions:
           method: fde2a9b76b8de2ff
           examples: d7796f649335f5ec
           file: Create user with multiple newlines.yml
+
+note Converted opencollection.yml | collection | runs use the environment `Example server` by default, as the first environment imported

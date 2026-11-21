@@ -30,6 +30,7 @@ Dropped Client Creds from PKCE / request.auth [Client Creds from PKCE.yml]: the 
 Dropped Client Creds from PKCE / request.auth [Client Creds from PKCE.yml]: `state` is not carried over: this grant does not use it
 Dropped Password from PKCE / request.auth [Password from PKCE.yml]: the authorization parameter `authKey` is not carried over: this grant has no authorization request
 Dropped Password from PKCE / request.auth [Password from PKCE.yml]: `state` is not carried over: this grant does not use it
+NeedsInput collection [-]: needs a value: `client_id`, `client_secret`, `password`, `username`; nothing imported defines them, so add them to the collection's variables or an environment before sending
 == Client Creds from PKCE.yml
 info:
   name: Client Creds from PKCE

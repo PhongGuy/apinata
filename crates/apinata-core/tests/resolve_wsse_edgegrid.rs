@@ -72,7 +72,7 @@ fn an_unresolved_variable_fails_before_anything_is_sent() {
             resolve_one(&auth).err(),
             Some(ResolveError::UndefinedVariable {
                 name: "nope".into(),
-                hint: None
+                hint: Some(apinata_core::UndefinedHint::Undeclared)
             }),
             "{auth}"
         );

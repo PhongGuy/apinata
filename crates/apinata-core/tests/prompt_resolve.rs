@@ -60,7 +60,7 @@ fn every_missing_label_is_named_before_an_undefined_variable() {
         resolve(request(&c, "r.yml"), &all).unwrap_err(),
         ResolveError::UndefinedVariable {
             name: "nope".into(),
-            hint: None
+            hint: Some(apinata_core::UndefinedHint::Undeclared)
         }
     );
 }

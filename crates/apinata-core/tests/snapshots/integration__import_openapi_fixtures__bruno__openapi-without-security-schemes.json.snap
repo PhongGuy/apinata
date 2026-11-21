@@ -354,6 +354,8 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Public API server
   apinata:
     openapi:
       ops:
@@ -427,3 +429,5 @@ extensions:
           method: 651ba8f38be35d73
           examples: 2be300571d21dc0b
           file: Update data.yml
+
+note Converted opencollection.yml | collection | runs use the environment `Public API server` by default, as the first environment imported

@@ -33,3 +33,4 @@ extensions:
 == report
 Converted jwt-auth-params / auth: `jwt` auth is not supported; imported as no auth (jwt-auth-params.yml)
 Dropped jwt-auth-params / testScript: scripts are not imported (jwt-auth-params.yml)
+NeedsInput collection: needs a value: `url`; nothing imported defines it, so add it to the collection's variables or an environment before sending (-)

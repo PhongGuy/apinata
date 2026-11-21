@@ -131,6 +131,8 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Example server
   apinata:
     openapi:
       ops:
@@ -167,3 +169,4 @@ extensions:
 
 note Renamed Get Users (POST).yml | paths./users.post | renamed to `Get Users (POST)` because another request here has the same name
 note Renamed Get Users (GET).yml | paths./products.get | renamed to `Get Users (GET)` because another request here has the same name
+note Converted opencollection.yml | collection | runs use the environment `Example server` by default, as the first environment imported

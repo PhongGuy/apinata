@@ -38,3 +38,4 @@ settings:
   forwardAuthorizationHeader: false
 == report
 Dropped test1 / testScript: scripts are not imported (test1.yml)
+NeedsInput collection: needs a value: `BODY_KEY`, `BODY_VALUE`, `URL`; nothing imported defines them, so add them to the collection's variables or an environment before sending (-)

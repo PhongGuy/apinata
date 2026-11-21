@@ -16,7 +16,7 @@ pub fn pick(positional: Option<&Path>, flag: Option<&Path>) -> anyhow::Result<Op
                 bail!(
                     "the collection is named twice and the two differ: `{}` and `--collection {}`; give it once",
                     a.display(),
-                    b.display()
+                    apinata_core::shell_word(&b.to_string_lossy())
                 )
             }
         }

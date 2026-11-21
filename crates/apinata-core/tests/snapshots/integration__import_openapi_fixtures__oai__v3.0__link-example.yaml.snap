@@ -420,3 +420,4 @@ note Dropped getUserByName.yml | paths./2.0/users/{username}.get.responses.200.l
 note Dropped getRepositoriesByOwner.yml | paths./2.0/repositories/{username}.get.responses.200.links | response links are not imported
 note Dropped getRepository.yml | paths./2.0/repositories/{username}/{slug}.get.responses.200.links | response links are not imported
 note Dropped getPullRequestsById.yml | paths./2.0/repositories/{username}/{slug}/pullrequests/{pid}.get.responses.200.links | response links are not imported
+note NeedsInput - | collection | needs a value: `baseUrl`; nothing imported defines it, so add it to the collection's variables or an environment before sending

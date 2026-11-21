@@ -699,9 +699,6 @@ pub struct Workspace {
     script_sides: HashMap<(PathBuf, ItemPath), ScriptPhase>,
     // "Add to environment" requests waiting for an environment editor, by absolute root.
     env_intents: HashMap<PathBuf, EnvIntent>,
-    // The environment to select once a collection an import just wrote first loads, by
-    // absolute root; a selection the session restores wins.
-    import_envs: HashMap<PathBuf, String>,
     // Each collection's mock server, stopped when its collection closes.
     mocks: MockServers,
 }
@@ -763,7 +760,6 @@ impl Workspace {
             split_ratio: crate::style::DEFAULT_SPLIT_RATIO,
             script_sides: HashMap::new(),
             env_intents: HashMap::new(),
-            import_envs: HashMap::new(),
             mocks: MockServers::default(),
         }
     }
@@ -1100,7 +1096,6 @@ impl Workspace {
             .retain(|(target, _), (from, _, _)| *target != root && *from != root);
         self.draft_imports.retain(|(r, _), _| *r != root);
         self.env_intents.remove(&root);
-        self.import_envs.remove(&root);
         self.script_sides.retain(|(r, _), _| *r != root);
         self.restoring.remove(&root);
         self.restore_ids.retain(|(r, _), _| *r != root);
@@ -1544,12 +1539,6 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> Option<u64> {
         self.send(root, Command::SelectEnvironment(name), cx)
-    }
-
-    /// Selects `name` in the collection at `root` once it first loads after the next open,
-    /// unless the session restores another; for a collection an import just wrote.
-    pub fn select_on_open(&mut self, root: &Path, name: String) {
-        self.import_envs.insert(absolute(root), name);
     }
 
     /// The environment names of the collection at `root` in its latest snapshot, in order.
@@ -3641,7 +3630,6 @@ impl Workspace {
             self.draft_keys.retain(|(r, _), _| r != root);
             self.saved_drafts.retain(|(r, _), _| r != root);
             self.draft_imports.retain(|(r, _), _| r != root);
-            self.import_envs.remove(root);
             self.restoring.remove(root);
             self.restore_ids.retain(|(r, _), _| r != root);
             self.trashed_tabs.retain(|(r, _), _| r != root);
@@ -3676,10 +3664,9 @@ impl Workspace {
             }
             cx.emit(WorkspaceEvent::Opened(root.to_path_buf()));
             self.restore_tabs(root, cx);
-            let preferred = self.import_envs.remove(root);
             if !self.restore_environment(root, cx) && !self.chose_no_environment(root, cx) {
-                // With no saved choice, take the import's pick, then the collection's preset
-                // default, then its only environment; each only while that environment exists.
+                // With no saved choice, take the collection's preset default, which an import
+                // records, then its only environment; each only while that environment exists.
                 let names = self.environments(root, cx);
                 let preset = self.snapshot(root, cx).and_then(|s| {
                     let presets = s.content.collection.presets.as_ref()?;
@@ -3689,10 +3676,7 @@ impl Workspace {
                     [only] => Some(only.clone()),
                     _ => None,
                 };
-                let pick = [preferred, preset]
-                    .into_iter()
-                    .flatten()
-                    .find(|n| names.contains(n));
+                let pick = preset.filter(|n| names.contains(n));
                 if let Some(name) = pick.or(only) {
                     self.send(root, Command::SelectEnvironment(Some(name)), cx);
                 }

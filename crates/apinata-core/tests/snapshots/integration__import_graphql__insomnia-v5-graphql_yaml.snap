@@ -70,3 +70,4 @@ extensions:
       - node_modules
       - .git
 == report
+NeedsInput collection: needs a value: `base_url`, `password`; nothing imported defines them, so add them to the collection's variables or an environment before sending

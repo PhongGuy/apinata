@@ -98,3 +98,4 @@ extensions:
       - .git
 == report
 Dropped Scripted / preRequestScript: scripts are not imported
+NeedsInput collection: needs a value: `baseUrl`, `pw`, `token`, `userId`; nothing imported defines them, so add them to the collection's variables or an environment before sending

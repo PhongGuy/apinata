@@ -131,6 +131,7 @@ async fn json_report_shape_is_stable() {
           "status": null,
           "duration_ms": null,
           "error": "variable `nowhere` is not defined",
+          "hint": "no environment or collection variable defines nowhere; add it to the collection's variables or pass --env-var nowhere=VALUE",
           "warnings": [],
           "assertions": [],
           "post_response_vars": [],

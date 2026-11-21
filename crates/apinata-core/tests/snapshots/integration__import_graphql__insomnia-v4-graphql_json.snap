@@ -92,3 +92,4 @@ extensions:
 == report
 Dropped Users / User by id / body.text: the operation name `User` is not imported; the request is sent without one
 Dropped Broken body / body.text: the GraphQL body is not JSON with a query and variables; not imported
+NeedsInput collection: needs a value: `base_url`, `token`, `user_id`; nothing imported defines them, so add them to the collection's variables or an environment before sending

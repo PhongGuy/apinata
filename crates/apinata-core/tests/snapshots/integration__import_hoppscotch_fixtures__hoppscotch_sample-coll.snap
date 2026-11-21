@@ -33,3 +33,4 @@ extensions:
 == report
 Renamed : the name `` cannot be used as a file name here, so it was written to `1.yml`; the display name is kept (1.yml)
 Dropped  / testScript: scripts are not imported (1.yml)
+NeedsInput collection: needs a value: `baseURL`; nothing imported defines it, so add it to the collection's variables or an environment before sending (-)

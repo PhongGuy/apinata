@@ -78,3 +78,4 @@ extensions:
 Dropped Named query / testScript: scripts are not imported (Named query.yml)
 Dropped Scripted auth header / preRequestScript: scripts are not imported (Scripted auth header.yml)
 Dropped Scripted auth header / testScript: scripts are not imported (Scripted auth header.yml)
+NeedsInput collection: needs a value: `myToken`; nothing imported defines it, so add it to the collection's variables or an environment before sending (-)

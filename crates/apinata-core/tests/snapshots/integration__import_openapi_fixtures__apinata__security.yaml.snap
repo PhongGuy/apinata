@@ -165,6 +165,8 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Environment 1
   apinata:
     openapi:
       ops:
@@ -232,6 +234,7 @@ extensions:
 note Converted Key.yml | paths./key.get.security | only the first security requirement's first scheme, `keyHeader`, is used
 note Dropped Cookie.yml | paths./cookie.get.security | `keyCookie` is a `apiKey` in `cookie` scheme, which is not imported, so no auth was set
 note Converted OAuth.yml | paths./oauth.get.security | `oauth` uses placeholder variables: set their values in the environment
+note Converted opencollection.yml | collection | runs use the environment `Environment 1` by default, as the first environment imported
 note NeedsInput environments/Environment 1.yml | components.securitySchemes | the secret `token` has no value; enter it before sending
 note NeedsInput environments/Environment 1.yml | components.securitySchemes | the secret `username` has no value; enter it before sending
 note NeedsInput environments/Environment 1.yml | components.securitySchemes | the secret `password` has no value; enter it before sending

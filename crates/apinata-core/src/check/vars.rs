@@ -1,6 +1,6 @@
 //! The variable pass: resolve every request per environment with placeholders.
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::sync::{Arc, LazyLock};
 
 use regress::Regex;
@@ -94,6 +94,26 @@ struct Pass<'a> {
     /// A context with the environment's real values, to say where an unresolved name lives.
     plain: &'a VarContext,
     has_secret_placeholder: bool,
+}
+
+/// The names the requests write that no environment declares and nothing defines with none
+/// selected, leaving out those the process environment or a run could still supply.
+pub(crate) fn unset_names(collection: &Collection) -> BTreeSet<String> {
+    let mut findings = Vec::new();
+    let opts = CheckOptions::default().keychain_not_used();
+    check_variables(collection, &opts, &[], &mut findings);
+    let declared: HashSet<String> = collection
+        .environments()
+        .iter()
+        .flat_map(|e| e.variables().into_iter().map(|v| v.name))
+        .collect();
+    findings
+        .iter()
+        .filter(|f| f.kind() == FindingKind::UndefinedVariable && f.severity() == Severity::Error)
+        .filter_map(Finding::variable)
+        .filter(|name| !declared.contains(*name))
+        .map(str::to_owned)
+        .collect()
 }
 
 /// Resolve every request once per environment (once with none selected when the
@@ -289,6 +309,7 @@ fn undefined_finding(pass: &Pass<'_>, item: &str, name: &str) -> Finding {
         FindingKind::UndefinedVariable,
         message,
     )
+    .about(name.trim())
 }
 
 /// The `; defined in environment X` suffix, empty when no other environment defines `name`.

@@ -5,6 +5,7 @@ expression: snapshot
 Converted Own Auth / request.auth.token [Own Auth.yml]: the value is kept as the secret variable `own_auth_token`, not in the file
 Converted collection [opencollection.yml]: runs use the environment `Environment` by default, since it holds the imported credentials
 Converted imported credentials [environments/Environment.yml]: the imported credentials are the secret variables `own_auth_token`; their values are kept in the secret store, not in the file
+NeedsInput collection [-]: needs a value: `token`; nothing imported defines it, so add it to the collection's variables or an environment before sending
 == Own Auth.yml
 info:
   name: Own Auth

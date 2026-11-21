@@ -132,3 +132,4 @@ Dropped request-variables-basic-usage / testScript: scripts are not imported (re
 Dropped request-variables-alongside-environment-variables / auth.password: not imported (request-variables-alongside-environment-variables.yml)
 Dropped request-variables-alongside-environment-variables / auth.username: not imported (request-variables-alongside-environment-variables.yml)
 Dropped request-variables-alongside-environment-variables / testScript: scripts are not imported (request-variables-alongside-environment-variables.yml)
+NeedsInput collection: needs a value: `inactiveHeaderValue`, `inactiveQueryParamValue`, `secretBasicAuthPasswordEnvVar`, `secretBasicAuthUsernameEnvVar`; nothing imported defines them, so add them to the collection's variables or an environment before sending (-)

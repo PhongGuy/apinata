@@ -56,4 +56,7 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Base
 -- report
+Converted collection: runs use the environment `Base` by default, as the first environment imported (opencollection.yml)

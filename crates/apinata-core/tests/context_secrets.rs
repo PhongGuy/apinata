@@ -70,7 +70,7 @@ fn url(c: &Collection, ctx: &VarContext, rel: &str) -> Result<String, ResolveErr
 fn undefined(name: &str) -> Result<String, ResolveError> {
     Err(ResolveError::UndefinedVariable {
         name: name.to_owned(),
-        hint: None,
+        hint: Some(UndefinedHint::Undeclared),
     })
 }
 

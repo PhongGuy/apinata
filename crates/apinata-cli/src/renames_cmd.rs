@@ -184,9 +184,8 @@ fn list(renames: &[SecretRename]) {
         && let Some((to, _)) = row.to.first()
     {
         eprintln!(
-            "hint: settle an ambiguous one with --pick {}={}",
-            shown(&row.from.to_string()),
-            shown(&to.to_string())
+            "hint: settle an ambiguous one with --pick {}",
+            shown(&apinata_core::shell_word(&format!("{}={}", row.from, to)))
         );
     }
 }

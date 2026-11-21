@@ -123,10 +123,11 @@ fn a_failure_that_is_not_a_connect_error_has_no_hint_field() {
         ("opencollection.yml", ROOT),
         (
             "a.yml",
-            "info:\n  name: a\n  type: http\n  seq: 1\nhttp:\n  method: GET\n  url: \"http://{{nope}}/\"\n",
+            "info:\n  name: a\n  type: http\n  seq: 1\nhttp:\n  method: GET\n  url: \"http://exa mple.test/\"\n",
         ),
     ]);
     let (_, report) = common::run_json(dir.path(), &[]);
+    assert_eq!(report["results"][0]["outcome"], "errored", "{report}");
     assert!(report["results"][0].get("hint").is_none(), "{report}");
 }
 

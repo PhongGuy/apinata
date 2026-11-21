@@ -7,6 +7,7 @@ Converted Own Auth / request.auth.client_token [Own Auth.yml]: the value is kept
 Converted Own Auth / request.auth.client_secret [Own Auth.yml]: the value is kept as the secret variable `own_auth_client_secret`, not in the file
 Converted collection [opencollection.yml]: runs use the environment `Environment` by default, since it holds the imported credentials
 Converted imported credentials [environments/Environment.yml]: the imported credentials are the secret variables `own_auth_access_token`, `own_auth_client_token`, `own_auth_client_secret`; their values are kept in the secret store, not in the file
+NeedsInput collection [-]: needs a value: `accessToken`, `client_token`, `secret`; nothing imported defines them, so add them to the collection's variables or an environment before sending
 == Own Auth.yml
 info:
   name: Own Auth

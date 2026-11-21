@@ -246,6 +246,7 @@ mod import_curl_bodies;
 mod import_curl_cases;
 mod import_curl_flags;
 mod import_curl_graphql;
+mod import_defaults;
 mod import_detect;
 mod import_detection_matrix;
 mod import_environment;

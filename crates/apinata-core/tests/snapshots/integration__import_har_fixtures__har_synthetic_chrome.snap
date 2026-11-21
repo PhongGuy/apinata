@@ -130,6 +130,8 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Capture
 == static.shop.test-8443/POST -form.yml
 info:
   name: POST /form
@@ -176,6 +178,7 @@ needs-input api.shop.test / POST /upload / request.postData.params[1]: file fiel
 converted static.shop.test:8443 / POST /form / request.headers[0]: the captured `Authorization` value is not kept; the request uses the secret `static_shop_test_token` of the Capture environment (static.shop.test-8443/POST -form.yml)
 dropped entries[4]: entry is not an http or https request (-)
 dropped entries[5]: entry is not an http or https request (-)
+converted collection: runs use the environment `Capture` by default, as the first environment imported (opencollection.yml)
 needs-input entries[0].request.headers[5]: the secret `api_shop_test_username` has no value; enter it before sending (environments/Capture.yml)
 needs-input entries[0].request.headers[5]: the secret `api_shop_test_password` has no value; enter it before sending (environments/Capture.yml)
 needs-input entries[0].request.headers[6]: the secret `api_shop_test_cookie` has no value; enter it before sending (environments/Capture.yml)

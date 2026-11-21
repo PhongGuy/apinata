@@ -166,7 +166,7 @@ fn unresolved_and_cyclic_variables_fail_the_request() {
         url_of(&c, &ctx, "m.yml"),
         Err(ResolveError::UndefinedVariable {
             name: "missing".to_owned(),
-            hint: None
+            hint: Some(UndefinedHint::Undeclared)
         })
     );
     assert_eq!(

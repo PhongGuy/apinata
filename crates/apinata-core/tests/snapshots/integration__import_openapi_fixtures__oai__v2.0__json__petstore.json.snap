@@ -19,6 +19,8 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Environment
   apinata:
     openapi:
       ops:
@@ -189,3 +191,5 @@ info:
 
 request:
   auth: inherit
+
+note Converted opencollection.yml | collection | runs use the environment `Environment` by default, as the first environment imported

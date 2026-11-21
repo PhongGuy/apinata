@@ -33,3 +33,4 @@ extensions:
 == report
 Converted digest-auth-headers / auth: `digest` auth is not supported; imported as no auth (digest-auth-headers.yml)
 Dropped digest-auth-headers / testScript: scripts are not imported (digest-auth-headers.yml)
+NeedsInput collection: needs a value: `url`; nothing imported defines it, so add it to the collection's variables or an environment before sending (-)

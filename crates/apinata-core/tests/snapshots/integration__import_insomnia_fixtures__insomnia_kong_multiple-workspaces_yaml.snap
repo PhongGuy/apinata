@@ -46,7 +46,10 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Base Environment 1
 -- report
+Converted collection: runs use the environment `Base Environment 1` by default, as the first environment imported (opencollection.yml)
 # Collection 2
 == Request in collection 2.yml
 info:
@@ -91,4 +94,7 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Base Environment 2
 -- report
+Converted collection: runs use the environment `Base Environment 2` by default, as the first environment imported (opencollection.yml)

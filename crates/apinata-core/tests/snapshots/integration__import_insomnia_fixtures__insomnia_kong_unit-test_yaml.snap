@@ -16,6 +16,8 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Base Environment
 == request A.yml
 info:
   name: request A
@@ -61,3 +63,4 @@ settings:
   forwardAuthorizationHeader: false
 -- report
 Dropped collection / testSuites: test suites are not imported
+Converted collection: runs use the environment `Base Environment` by default, as the first environment imported (opencollection.yml)
