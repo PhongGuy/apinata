@@ -295,6 +295,7 @@ mod graphql_docs;
 mod graphql_editor;
 mod graphql_highlight;
 mod graphql_hover;
+mod graphql_hover_close;
 mod graphql_hover_diagnostic;
 mod graphql_jump;
 mod graphql_live_check;
