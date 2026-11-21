@@ -299,11 +299,13 @@ fn assertion_list(
     docs: &[AssertionDoc],
 ) -> Result<Vec<Assertion>, String> {
     // The file format reads an unknown operator as `eq` of the whole text, so a new one is
-    // refused; an entry the file already holds unchanged keeps whatever it was written with.
+    // refused; an entry the file already holds with the same operator and value is kept as is.
     for d in docs {
-        let kept = current
-            .iter()
-            .any(|c| c.expression() == d.expression && c.operator() == d.operator);
+        let kept = current.iter().any(|c| {
+            c.expression() == d.expression
+                && c.operator() == d.operator
+                && c.value() == d.value.as_deref()
+        });
         if !kept && !assertion_operators().any(|op| op == d.operator) {
             let valid: Vec<&str> = assertion_operators().collect();
             return Err(format!(

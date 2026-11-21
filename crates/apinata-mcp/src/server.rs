@@ -14,8 +14,7 @@ use apinata_core::{
     ExecError, ExecOptions, ExecutionMode, Executor, GitOptions, IntrospectGuard,
     IntrospectOptions, ItemPath, OAuth2Error, Outcome, RunError, RunEvent, RunOptions, RuntimeVars,
     SCHEMA_BODY_LIMIT, ScriptPhase, ScriptTextKind, SecretStore, SyncDirection, TokenCache,
-    assertion_sensitive_values, introspect, plan_script_texts, request_secrets, script_texts,
-    send_one,
+    assertion_sensitive_values, introspect, request_secrets, script_texts, send_one,
 };
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::tool::ToolCallContext;
@@ -611,7 +610,8 @@ const INSTRUCTIONS: &str = "Apinata serves one API collection of YAML request fi
     with get_collection or list_items, read a request with read_request before changing it \
     with update_request, and send with send_request or run_folder. Sending to a host that is \
     not local, and running a script, needs the user's approval in the Apinata app; a refusal \
-    says so, and the call can be retried once approved.";
+    says so, and the call can be retried once approved. A JavaScript assertion is reported \
+    skipped until the user approves it in the app.";
 
 #[tool_router]
 impl ApinataServer {
@@ -1980,12 +1980,17 @@ impl ApinataServer {
             early.add_values(assertion_sensitive_values(file, &ctx));
         }
         self.remember(&early);
-        // One gate for the whole run, decided before any token is fetched or byte sent.
-        let hashes: Vec<String> = plan_script_texts(&plan, &ctx)
-            .into_iter()
-            .filter(|(_, t)| scripts::asks_approval(&t.kind))
-            .map(|(_, t)| t.hash)
+        // One gate for the whole run, decided before any token is fetched or byte sent. Each
+        // request's texts are filtered before they are pooled, so a real script is never hidden
+        // behind the same text in another request's assertion.
+        let mut hashes: Vec<String> = requests
+            .iter()
+            .flat_map(|(_, file)| script_texts(file, &ctx))
+            .filter(|t| scripts::asks_approval(&t.kind))
+            .map(|t| t.hash)
             .collect();
+        hashes.sort();
+        hashes.dedup();
         let scripts = scripts::gate(
             &hashes,
             skip,

@@ -367,6 +367,10 @@ pub(crate) fn resolve_line(err: &ResolveError, hidden: impl Fn(&str) -> bool) ->
 pub(crate) fn oauth2_message(err: &OAuth2Error, file: &RequestFile, ctx: &VarContext) -> String {
     match err {
         OAuth2Error::Resolve(e) => resolve_message(e, file, ctx),
+        // The endpoint answered, so the token request went out although the request did not.
+        e @ (OAuth2Error::Provider { .. } | OAuth2Error::InvalidResponse { .. }) => {
+            format!("{e}; only the token request was sent, not the request itself")
+        }
         other => format!("{other}; nothing was sent"),
     }
 }
@@ -536,6 +540,10 @@ pub(crate) fn body(
     }
 }
 
+/// How an unapproved JavaScript assertion can be made to run.
+const APPROVE_ASSERTION: &str = "the user can approve it by sending this request from the \
+                                 Apinata app and approving its scripts there";
+
 /// One assertion outcome as the agent sees it.
 pub(crate) fn assertion_doc(
     o: &AssertionOutcome,
@@ -569,6 +577,9 @@ pub(crate) fn assertion_doc(
                 None => format!("actual {actual}"),
             };
             ("fail", Some(message))
+        }
+        Verdict::Skipped { reason, .. } if reason.ends_with("` is not approved") => {
+            ("skipped", Some(format!("{reason}; {APPROVE_ASSERTION}")))
         }
         Verdict::Skipped { reason, .. } => ("skipped", Some(reason.clone())),
         _ => ("skipped", Some("unsupported in MCP".to_owned())),

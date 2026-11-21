@@ -103,3 +103,79 @@ async fn an_assertion_result_names_its_operator_expected_and_actual_values() {
     assert_eq!(assertion["value"], "201", "{assertion}");
     assert_eq!(assertion["actual"], "200", "{assertion}");
 }
+
+#[tokio::test]
+async fn update_request_refuses_a_new_value_for_a_kept_unknown_operator() {
+    let file = asserted("http://localhost/a", "res.status", "frobnicate", "1");
+    let server = TestServer::start(&[("opencollection.yml", ROOT), ("r.yml", &file)]).await;
+    let message = server
+        .err(
+            "update_request",
+            json!({"path": "r.yml", "assertions": [{"expression": "res.status",
+                "operator": "frobnicate", "value": "2", "enabled": true}]}),
+        )
+        .await;
+    assert!(
+        message.contains("unknown operator `frobnicate`"),
+        "{message}"
+    );
+}
+
+#[tokio::test]
+async fn a_skipped_javascript_assertion_says_how_to_approve_it() {
+    let mock = json_ok().await;
+    let file = asserted(&mock.uri(), "res.body.name.toUpperCase()", "eq", "ANN");
+    let server = TestServer::start(&[("opencollection.yml", ROOT), ("r.yml", &file)]).await;
+    let result = server.ok("send_request", json!({"path": "r.yml"})).await;
+    let message = result["assertions"][0]["message"].as_str().expect("reason");
+    assert!(message.contains("approve"), "{message}");
+    assert!(message.contains("Apinata app"), "{message}");
+}
+
+#[tokio::test]
+async fn an_approved_javascript_assertion_runs() {
+    let mock = json_ok().await;
+    let expression = "res.body.name.toUpperCase()";
+    let file = asserted(&mock.uri(), expression, "eq", "ANN");
+    let server = TestServer::start(&[("opencollection.yml", ROOT), ("r.yml", &file)]).await;
+    server.approve_scripts(&[expression]);
+    let result = server.ok("send_request", json!({"path": "r.yml"})).await;
+    let assertion = &result["assertions"][0];
+    assert_eq!(assertion["verdict"], "pass", "{assertion}");
+}
+
+#[tokio::test]
+async fn a_javascript_assertion_in_a_blocked_collection_is_skipped_and_sent() {
+    let mock = json_ok().await;
+    let file = asserted(&mock.uri(), "res.body.name.toUpperCase()", "eq", "ANN");
+    let server = TestServer::start(&[("opencollection.yml", ROOT), ("r.yml", &file)]).await;
+    server.block_scripts();
+    let result = server.ok("send_request", json!({"path": "r.yml"})).await;
+    let assertion = &result["assertions"][0];
+    assert_eq!(assertion["verdict"], "skipped", "{assertion}");
+    assert!(server.inbox().pending_scripts().expect("inbox").is_empty());
+    assert_eq!(mock.received_requests().await.expect("recorded").len(), 1);
+}
+
+#[tokio::test]
+async fn a_script_sharing_its_text_with_an_earlier_assertion_still_needs_approval() {
+    let mock = json_ok().await;
+    let text = "res.body.name.toUpperCase()";
+    let a = asserted(&mock.uri(), text, "eq", "ANN");
+    let b = format!(
+        "{}runtime:\n  scripts:\n    - type: before-request\n      code: \"{text}\"\n",
+        request("b", 2, "GET", &mock.uri())
+    );
+    let server = TestServer::start(&[
+        ("opencollection.yml", ROOT),
+        ("api/a.yml", &a),
+        ("api/b.yml", &b),
+    ])
+    .await;
+    let message = server.err("run_folder", json!({"path": "api"})).await;
+    assert!(message.contains("scripts need approval"), "{message}");
+    let pending = server.inbox().pending_scripts().expect("inbox");
+    assert_eq!(pending.len(), 1, "one filing");
+    assert_eq!(pending[0].hashes, [apinata_core::script_hash(text)]);
+    assert!(mock.received_requests().await.expect("recorded").is_empty());
+}

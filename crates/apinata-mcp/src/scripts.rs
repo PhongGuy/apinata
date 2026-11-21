@@ -43,7 +43,7 @@ fn not_filed(why: &str) -> String {
 }
 
 /// Whether a text of `kind` needs approval before a send. A JavaScript side of an assertion
-/// does not: unless already approved it is reported skipped, as the CLI reports it.
+/// does not: it runs only once approved in the app, and is reported skipped until then.
 pub(crate) fn asks_approval(kind: &ScriptTextKind) -> bool {
     !matches!(
         kind,
