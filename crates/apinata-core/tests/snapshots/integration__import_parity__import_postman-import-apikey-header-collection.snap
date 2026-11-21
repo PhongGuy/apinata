@@ -1,0 +1,36 @@
+---
+source: crates/apinata-core/tests/import_parity.rs
+expression: snapshot
+---
+Converted Headers with API Key / request.auth.api_key [Headers with API Key.yml]: the value is kept as the secret variable `headers_with_api_key_api_key`, not in the file
+Converted imported credentials [environments/Environment.yml]: the imported credentials are the secret variables `headers_with_api_key_api_key`; their values are kept in the secret store, not in the file
+== Headers with API Key.yml
+info:
+  name: Headers with API Key
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://api.com/users?X-API-KEY=12345
+  params:
+    - name: X-API-KEY
+      value: "12345"
+      type: query
+  auth:
+    type: apikey
+    key: hii
+    value: "{{headers_with_api_key_api_key}}"
+    placement: header
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== environments/Environment.yml
+name: Environment
+variables:
+  - secret: true
+    name: headers_with_api_key_api_key

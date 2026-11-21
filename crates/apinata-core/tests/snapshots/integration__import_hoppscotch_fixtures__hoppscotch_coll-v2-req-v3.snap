@@ -25,7 +25,7 @@ http:
       value: Inactive Header
       disabled: true
     - name: Authorization
-      value: Bearer token123
+      value: "{{req_v3_ii_authorization}}"
   params:
     - name: key
       value: value
@@ -36,7 +36,7 @@ http:
       disabled: true
   auth:
     type: bearer
-    token: token123
+    token: "{{req_v3_ii_token}}"
 
 settings:
   encodeUrl: true
@@ -44,6 +44,17 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+== environments/Environment.yml
+name: Environment
+variables:
+  - secret: true
+    name: req_v3_ii_token
+  - secret: true
+    name: req_v3_ii_authorization
+  - secret: true
+    name: req_v3_token
+  - secret: true
+    name: req_v3_authorization
 == opencollection.yml
 opencollection: 1.0.0
 
@@ -69,7 +80,7 @@ http:
       value: Inactive Header
       disabled: true
     - name: Authorization
-      value: Bearer token123
+      value: "{{req_v3_authorization}}"
   params:
     - name: key
       value: value
@@ -80,7 +91,7 @@ http:
       disabled: true
   auth:
     type: bearer
-    token: token123
+    token: "{{req_v3_token}}"
 
 settings:
   encodeUrl: true
@@ -90,4 +101,9 @@ settings:
   forwardAuthorizationHeader: false
 == report
 Dropped coll-v2-child / req-v3-II / testScript: scripts are not imported (coll-v2-child/req-v3-II.yml)
+Converted coll-v2-child / req-v3-II / request.auth.token: the value is kept as the secret variable `req_v3_ii_token`, not in the file (coll-v2-child/req-v3-II.yml)
+Converted coll-v2-child / req-v3-II / request.headers[1]: the value is kept as the secret variable `req_v3_ii_authorization`, not in the file (coll-v2-child/req-v3-II.yml)
 Dropped req-v3 / testScript: scripts are not imported (req-v3.yml)
+Converted req-v3 / request.auth.token: the value is kept as the secret variable `req_v3_token`, not in the file (req-v3.yml)
+Converted req-v3 / request.headers[1]: the value is kept as the secret variable `req_v3_authorization`, not in the file (req-v3.yml)
+Converted imported credentials: the imported credentials are the secret variables `req_v3_ii_token`, `req_v3_ii_authorization`, `req_v3_token`, `req_v3_authorization`; their values are kept in the secret store, not in the file (environments/Environment.yml)

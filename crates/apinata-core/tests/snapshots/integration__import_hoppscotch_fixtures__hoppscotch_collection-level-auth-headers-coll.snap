@@ -18,7 +18,7 @@ http:
   auth:
     type: basic
     username: username
-    password: password
+    password: "{{requestd_password}}"
 
 settings:
   encodeUrl: true
@@ -64,7 +64,7 @@ request:
   auth:
     type: apikey
     key: key
-    value: test-key
+    value: "{{folderb_api_key}}"
     placement: header
 == FolderA/RequestB.yml
 info:
@@ -108,6 +108,15 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+== environments/Environment.yml
+name: Environment
+variables:
+  - secret: true
+    name: collectiona_token
+  - secret: true
+    name: folderb_api_key
+  - secret: true
+    name: requestd_password
 == opencollection.yml
 opencollection: 1.0.0
 
@@ -120,7 +129,7 @@ request:
       value: Set at root collection
   auth:
     type: bearer
-    token: BearerToken
+    token: "{{collectiona_token}}"
 bundled: false
 extensions:
   bruno:
@@ -128,10 +137,14 @@ extensions:
       - node_modules
       - .git
 == report
+Converted collection / auth.token: the value is kept as the secret variable `collectiona_token`, not in the file (opencollection.yml)
+Converted FolderA / FolderB / auth.api_key: the value is kept as the secret variable `folderb_api_key`, not in the file (FolderA/FolderB/folder.yml)
 Dropped FolderA / FolderB / FolderC / RequestD / testScript: scripts are not imported (FolderA/FolderB/FolderC/RequestD.yml)
+Converted FolderA / FolderB / FolderC / RequestD / request.auth.password: the value is kept as the secret variable `requestd_password`, not in the file (FolderA/FolderB/FolderC/RequestD.yml)
 Dropped FolderA / FolderB / RequestC / testScript: scripts are not imported (FolderA/FolderB/RequestC.yml)
 Dropped FolderA / RequestB / testScript: scripts are not imported (FolderA/RequestB.yml)
 Dropped RequestA / testScript: scripts are not imported (RequestA.yml)
+Converted imported credentials: the imported credentials are the secret variables `collectiona_token`, `folderb_api_key`, `requestd_password`; their values are kept in the secret store, not in the file (environments/Environment.yml)
 ### collection 1: CollectionB
 == FolderA/RequestB.yml
 info:
@@ -175,6 +188,11 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+== environments/Environment.yml
+name: Environment
+variables:
+  - secret: true
+    name: collectionb_token
 == opencollection.yml
 opencollection: 1.0.0
 
@@ -187,7 +205,7 @@ request:
       value: Set at root collection
   auth:
     type: bearer
-    token: BearerToken
+    token: "{{collectionb_token}}"
 bundled: false
 extensions:
   bruno:
@@ -195,5 +213,7 @@ extensions:
       - node_modules
       - .git
 == report
+Converted collection / auth.token: the value is kept as the secret variable `collectionb_token`, not in the file (opencollection.yml)
 Dropped FolderA / RequestB / testScript: scripts are not imported (FolderA/RequestB.yml)
 Dropped RequestA / testScript: scripts are not imported (RequestA.yml)
+Converted imported credentials: the imported credentials are the secret variables `collectionb_token`; their values are kept in the secret store, not in the file (environments/Environment.yml)

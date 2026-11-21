@@ -324,7 +324,7 @@ http:
   url: https://echo.hoppscotch.io
   headers:
     - name: Cookie
-      value: session_id=abc123; user_token=xyz789; preferences=theme%3Ddark
+      value: "{{cookie_assertions_test_cookie}}"
       description: Test cookies
   auth: inherit
 
@@ -402,6 +402,15 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+== environments/Environment.yml
+name: Environment
+variables:
+  - secret: true
+    name: cookie_assertions_test_cookie
+  - secret: true
+    name: url_propertylist_helpers_test_authorization
+  - secret: true
+    name: propertylist_advanced_methods_test_authorization
 == execution-context-test.yml
 info:
   name: execution-context-test
@@ -1141,7 +1150,7 @@ http:
     - name: Content-Type
       value: application/json
     - name: Authorization
-      value: Bearer token123
+      value: "{{propertylist_advanced_methods_test_authorization}}"
   params:
     - name: filter
       value: active
@@ -1340,7 +1349,7 @@ http:
     - name: Content-Type
       value: application/json
     - name: Authorization
-      value: Bearer test-token
+      value: "{{url_propertylist_helpers_test_authorization}}"
   params:
     - name: filter
       value: active
@@ -1379,6 +1388,7 @@ Dropped expectation-methods-test / testScript: scripts are not imported (expecta
 Dropped chai-assertions-hopp-extended / testScript: scripts are not imported (chai-assertions-hopp-extended.yml)
 Dropped chai-assertions-pm-parity / testScript: scripts are not imported (chai-assertions-pm-parity.yml)
 Dropped cookie-assertions-test / testScript: scripts are not imported (cookie-assertions-test.yml)
+Converted cookie-assertions-test / request.headers[0]: the value is kept as the secret variable `cookie_assertions_test_cookie`, not in the file (cookie-assertions-test.yml)
 Dropped json-schema-validation-test / testScript: scripts are not imported (json-schema-validation-test.yml)
 Dropped charset-validation-test / testScript: scripts are not imported (charset-validation-test.yml)
 Dropped jsonpath-query-test / testScript: scripts are not imported (jsonpath-query-test.yml)
@@ -1397,8 +1407,10 @@ Dropped pm-url-property-mutations-test / testScript: scripts are not imported (p
 Dropped unsupported-features-test / testScript: scripts are not imported (unsupported-features-test.yml)
 Dropped url-propertylist-helpers-test / preRequestScript: scripts are not imported (url-propertylist-helpers-test.yml)
 Dropped url-propertylist-helpers-test / testScript: scripts are not imported (url-propertylist-helpers-test.yml)
+Converted url-propertylist-helpers-test / request.headers[1]: the value is kept as the secret variable `url_propertylist_helpers_test_authorization`, not in the file (url-propertylist-helpers-test.yml)
 Dropped propertylist-advanced-methods-test / preRequestScript: scripts are not imported (propertylist-advanced-methods-test.yml)
 Dropped propertylist-advanced-methods-test / testScript: scripts are not imported (propertylist-advanced-methods-test.yml)
+Converted propertylist-advanced-methods-test / request.headers[1]: the value is kept as the secret variable `propertylist_advanced_methods_test_authorization`, not in the file (propertylist-advanced-methods-test.yml)
 Dropped advanced-response-methods-test / testScript: scripts are not imported (advanced-response-methods-test.yml)
 Dropped advanced-chai-map-set-test / preRequestScript: scripts are not imported (advanced-chai-map-set-test.yml)
 Dropped advanced-chai-map-set-test / testScript: scripts are not imported (advanced-chai-map-set-test.yml)
@@ -1458,3 +1470,4 @@ Dropped Dynamic URL Construction / preRequestScript: scripts are not imported (D
 Dropped Dynamic URL Construction / testScript: scripts are not imported (Dynamic URL Construction.yml)
 Dropped crypto-module-test / preRequestScript: scripts are not imported (crypto-module-test.yml)
 Dropped crypto-module-test / testScript: scripts are not imported (crypto-module-test.yml)
+Converted imported credentials: the imported credentials are the secret variables `cookie_assertions_test_cookie`, `url_propertylist_helpers_test_authorization`, `propertylist_advanced_methods_test_authorization`; their values are kept in the secret store, not in the file (environments/Environment.yml)

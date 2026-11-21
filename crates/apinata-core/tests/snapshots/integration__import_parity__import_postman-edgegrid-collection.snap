@@ -1,0 +1,75 @@
+---
+source: crates/apinata-core/tests/import_parity.rs
+expression: snapshot
+---
+Converted collection / auth.access_token [opencollection.yml]: the value is kept as the secret variable `egdegrid_auth_access_token`, not in the file
+Converted collection / auth.client_token [opencollection.yml]: the value is kept as the secret variable `egdegrid_auth_client_token`, not in the file
+Converted collection / auth.client_secret [opencollection.yml]: the value is kept as the secret variable `egdegrid_auth_client_secret`, not in the file
+Converted Edgegrid auth -  request level / request.auth.access_token [Edgegrid auth -  request level.yml]: the value is kept as the secret variable `edgegrid_auth_request_level_access_token`, not in the file
+Converted Edgegrid auth -  request level / request.auth.client_token [Edgegrid auth -  request level.yml]: the value is kept as the secret variable `edgegrid_auth_request_level_client_token`, not in the file
+Converted Edgegrid auth -  request level / request.auth.client_secret [Edgegrid auth -  request level.yml]: the value is kept as the secret variable `edgegrid_auth_request_level_client_secret`, not in the file
+Converted imported credentials [environments/Environment.yml]: the imported credentials are the secret variables `egdegrid_auth_access_token`, `egdegrid_auth_client_token`, `egdegrid_auth_client_secret`, `edgegrid_auth_request_level_access_token`, `edgegrid_auth_request_level_client_token`, `edgegrid_auth_request_level_client_secret`; their values are kept in the secret store, not in the file
+== Edgegrid auth -  request level.yml
+info:
+  name: Edgegrid auth -  request level
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: http://localhost:6000/edgegrid/version/2
+  auth:
+    type: akamai-edgegrid
+    accessToken: "{{edgegrid_auth_request_level_access_token}}"
+    clientToken: "{{edgegrid_auth_request_level_client_token}}"
+    clientSecret: "{{edgegrid_auth_request_level_client_secret}}"
+    nonce: ec9d20ee-1e9b-4c1f-925a-request
+    timestamp: 20160804T07:00:00+0000
+    baseURL: https://akab-h05tnam3wl42son7nktnlnnx-kbob3i3v.luna.akamaiapis.request.net
+    headersToSign: ""
+    maxBodySize: 131072
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== environments/Environment.yml
+name: Environment
+variables:
+  - secret: true
+    name: egdegrid_auth_access_token
+  - secret: true
+    name: egdegrid_auth_client_token
+  - secret: true
+    name: egdegrid_auth_client_secret
+  - secret: true
+    name: edgegrid_auth_request_level_access_token
+  - secret: true
+    name: edgegrid_auth_request_level_client_token
+  - secret: true
+    name: edgegrid_auth_request_level_client_secret
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: EgdeGrid Auth
+
+request:
+  auth:
+    type: akamai-edgegrid
+    accessToken: "{{egdegrid_auth_access_token}}"
+    clientToken: "{{egdegrid_auth_client_token}}"
+    clientSecret: "{{egdegrid_auth_client_secret}}"
+    nonce: ec9d20ee-1e9b-4c1f-925a-f0017754f86c
+    timestamp: 20160804T07:00:00+0000
+    baseURL: https://akab-h05tnam3wl42son7nktnlnnx-kbob3i3v.luna.akamaiapis.net
+    headersToSign: ""
+    maxBodySize: 131072
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git

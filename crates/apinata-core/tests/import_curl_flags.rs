@@ -11,7 +11,7 @@ use tempfile::TempDir;
 const URL: &str = "https://x.test/a";
 
 fn parse(command: &str) -> ParsedCurl {
-    parse_curl(command).unwrap_or_else(|e| panic!("{command}: {e}"))
+    crate::common::reveal_curl(parse_curl(command).unwrap_or_else(|e| panic!("{command}: {e}")))
 }
 
 fn notes(parsed: &ParsedCurl) -> Vec<(String, NoteKind)> {
@@ -562,12 +562,14 @@ mod secrets {
     fn no_password_means_no_secret() {
         let parsed = parse("curl --aws-sigv4 aws:amz:r:s --user AKID https://x.test/a");
         assert!(parsed.request.secrets.is_empty());
-        assert!(
-            parse("curl -u a:b https://x.test/a")
-                .request
-                .secrets
-                .is_empty()
-        );
+        let basic = parse_curl("curl -u a:b https://x.test/a").expect("parses");
+        let names: Vec<&str> = basic
+            .request
+            .secrets
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect();
+        assert_eq!(names, ["x_test_password"], "only the password is a secret");
     }
 
     #[test]

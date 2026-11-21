@@ -47,8 +47,12 @@ fn add_request_writes_every_field() {
         r.auth(),
         AuthSpec::Basic {
             username: "u".into(),
-            password: "p:q".into()
+            password: "{{host_password}}".into()
         }
+    );
+    assert_eq!(
+        parsed.request.secrets[0].value, "p:q",
+        "the password waits for the store"
     );
     assert!(!r.settings().encode_url);
     assert!(!r.settings().forward_authorization_header);

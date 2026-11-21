@@ -14,6 +14,7 @@ mod load;
 mod openapi;
 mod place;
 mod postman;
+mod protect;
 pub(crate) use postman::pm_chain_at;
 mod request;
 mod source;

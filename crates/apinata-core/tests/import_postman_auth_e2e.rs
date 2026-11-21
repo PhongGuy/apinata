@@ -1,20 +1,25 @@
 //! Postman oauth2, awsv4 and digest auth, imported, written, loaded and sent against a mock
-//! server on 127.0.0.1: the written files must carry credentials the executor can use.
+//! server on 127.0.0.1: the credentials the import kept as secrets must reach the executor.
 
 use apinata_core::import::{ImportReport, NoteKind, parse_postman, write_collection};
 use apinata_core::{
     AuthorizeOptions, CancelHandle, Collection, ContextOptions, ExecOptions, Executor, ItemPath,
-    MemoryStore, TokenCache, VarContext, resolve,
+    MemoryStore, SecretStore, TokenCache, VarContext, resolve,
 };
 use md5::{Digest as _, Md5};
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 use tempfile::TempDir;
 use wiremock::matchers::{body_string_contains, header, header_regex, method, path, query_param};
 use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
 
 /// Import fixture `name` with its `HOST` placeholder pointing at `server`, write it and load it.
-fn import(name: &str, server: &MockServer) -> (TempDir, Collection, ImportReport) {
+/// The store holds the secret values the import took out of the files.
+fn import(
+    name: &str,
+    server: &MockServer,
+) -> (TempDir, Collection, ImportReport, Arc<MemoryStore>) {
     let text = fs::read_to_string(
         Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/fixtures/postman/own/{name}")),
     )
@@ -22,23 +27,25 @@ fn import(name: &str, server: &MockServer) -> (TempDir, Collection, ImportReport
     .replace("HOST", server.uri().trim_start_matches("http://"));
     let imported = parse_postman(text.as_bytes()).expect("parses");
     let parent = TempDir::new().expect("tempdir");
+    let store = Arc::new(MemoryStore::new());
     let (written, report) =
-        write_collection(parent.path(), &imported, &[], &MemoryStore::new()).expect("writes");
+        write_collection(parent.path(), &imported, &[], store.as_ref()).expect("writes");
     let collection = Collection::open(written.root()).expect("opens");
     assert!(
         collection.load_errors().is_empty(),
         "{:?}",
         collection.load_errors()
     );
-    (parent, collection, report)
+    (parent, collection, report, store)
 }
 
-fn context(c: &Collection) -> VarContext {
-    VarContext::new(
-        c,
-        ContextOptions::new().oauth2_tokens(TokenCache::in_memory()),
-    )
-    .expect("context")
+/// The context of the environment the import added for its secrets.
+fn context(c: &Collection, store: &Arc<MemoryStore>) -> VarContext {
+    let options = ContextOptions::new()
+        .env("Environment")
+        .secrets(Arc::clone(store) as Arc<dyn SecretStore>)
+        .oauth2_tokens(TokenCache::in_memory());
+    VarContext::new(c, options).expect("context")
 }
 
 fn executor() -> Executor {
@@ -67,13 +74,13 @@ async fn imported_oauth2_client_credentials_fetches_a_token_and_sends_it() {
         .expect(1)
         .mount(&server)
         .await;
-    let (_dir, c, report) = import("auth-oauth2.json", &server);
+    let (_dir, c, report, store) = import("auth-oauth2.json", &server);
     assert!(
         report.notes.iter().any(|n| n.kind == NoteKind::Dropped),
         "the disabled param is noted: {:?}",
         report.notes
     );
-    let ctx = context(&c);
+    let ctx = context(&c, &store);
     let file = c
         .request(&ItemPath::new("Client credentials.yml").expect("path"))
         .expect("request");
@@ -111,8 +118,8 @@ async fn imported_oauth2_query_placement_sends_the_token_in_the_url() {
         .expect(1)
         .mount(&server)
         .await;
-    let (_dir, c, _) = import("auth-oauth2.json", &server);
-    let ctx = context(&c);
+    let (_dir, c, _, store) = import("auth-oauth2.json", &server);
+    let ctx = context(&c, &store);
     let file = c
         .request(&ItemPath::new("Client credentials query.yml").expect("path"))
         .expect("request");
@@ -141,8 +148,8 @@ async fn imported_awsv4_signs_the_request() {
         .expect(1)
         .mount(&server)
         .await;
-    let (_dir, c, _) = import("auth-awsv4.json", &server);
-    let ctx = context(&c);
+    let (_dir, c, _, store) = import("auth-awsv4.json", &server);
+    let ctx = context(&c, &store);
     let file = c
         .request(&ItemPath::new("Signed request.yml").expect("path"))
         .expect("request");
@@ -205,8 +212,8 @@ async fn imported_digest_answers_the_challenge_with_the_imported_password() {
         .respond_with(DigestServer)
         .mount(&server)
         .await;
-    let (_dir, c, _) = import("auth-digest.json", &server);
-    let ctx = context(&c);
+    let (_dir, c, _, store) = import("auth-digest.json", &server);
+    let ctx = context(&c, &store);
     let file = c
         .request(&ItemPath::new("Digest protected.yml").expect("path"))
         .expect("request");

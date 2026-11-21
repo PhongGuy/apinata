@@ -7,7 +7,7 @@ mod entry;
 mod headers;
 mod json_members;
 mod model;
-mod secret_names;
+pub(super) mod secret_names;
 
 use super::budget::{ENTRIES, NOTE_BYTES};
 use super::load::Loaded;

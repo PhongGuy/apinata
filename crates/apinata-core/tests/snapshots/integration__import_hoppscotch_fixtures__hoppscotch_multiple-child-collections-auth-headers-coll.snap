@@ -3,6 +3,27 @@ source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
 expression: text
 ---
 ### collection 0: Multiple child collections with authorization, headers and variables set at each level
+== environments/Environment.yml
+name: Environment
+variables:
+  - secret: true
+    name: multiple_child_collections_with_authorization_headers_and_variables_set_at_each_level_password
+  - secret: true
+    name: folder_13_token
+  - secret: true
+    name: folder_13_request_password
+  - secret: true
+    name: folder_23_token
+  - secret: true
+    name: folder_23_request_password
+  - secret: true
+    name: folder_3_password
+  - secret: true
+    name: folder_33_token
+  - secret: true
+    name: folder_33_request_password
+  - secret: true
+    name: folder_3_request_password
 == folder-1/folder-1-request.yml
 info:
   name: folder-1-request
@@ -98,7 +119,7 @@ http:
   auth:
     type: basic
     username: testuser
-    password: testpass
+    password: "{{folder_13_request_password}}"
 
 settings:
   encodeUrl: true
@@ -120,7 +141,7 @@ request:
       value: Set at folder-13
   auth:
     type: bearer
-    token: test-token
+    token: "{{folder_13_token}}"
 == folder-1/folder.yml
 info:
   name: folder-1
@@ -229,7 +250,7 @@ http:
   auth:
     type: basic
     username: testuser
-    password: testpass
+    password: "{{folder_23_request_password}}"
 
 settings:
   encodeUrl: true
@@ -251,7 +272,7 @@ request:
       value: Set at folder-23
   auth:
     type: bearer
-    token: test-token
+    token: "{{folder_23_token}}"
 == folder-2/folder.yml
 info:
   name: folder-2
@@ -279,7 +300,7 @@ http:
   auth:
     type: basic
     username: testuser
-    password: testpass
+    password: "{{folder_3_request_password}}"
 
 settings:
   encodeUrl: true
@@ -365,7 +386,7 @@ http:
   auth:
     type: basic
     username: testuser
-    password: testpass
+    password: "{{folder_33_request_password}}"
 
 settings:
   encodeUrl: true
@@ -387,7 +408,7 @@ request:
       value: Set at folder-33
   auth:
     type: bearer
-    token: test-token
+    token: "{{folder_33_token}}"
 == folder-3/folder.yml
 info:
   name: folder-3
@@ -401,7 +422,7 @@ request:
   auth:
     type: basic
     username: testuser
-    password: testpass
+    password: "{{folder_3_password}}"
 == opencollection.yml
 opencollection: 1.0.0
 
@@ -417,7 +438,7 @@ request:
   auth:
     type: basic
     username: testuser
-    password: testpass
+    password: "{{multiple_child_collections_with_authorization_headers_and_variables_set_at_each_level_password}}"
   variables:
     - name: collection-variable
       value: collection-variable-value
@@ -445,16 +466,26 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 == report
+Converted collection / auth.password: the value is kept as the secret variable `multiple_child_collections_with_authorization_headers_and_variables_set_at_each_level_password`, not in the file (opencollection.yml)
 Dropped folder-1 / folder-11 / folder-11-request / testScript: scripts are not imported (folder-1/folder-11/folder-11-request.yml)
 Dropped folder-1 / folder-12 / folder-12-request / testScript: scripts are not imported (folder-1/folder-12/folder-12-request.yml)
+Converted folder-1 / folder-13 / auth.token: the value is kept as the secret variable `folder_13_token`, not in the file (folder-1/folder-13/folder.yml)
 Dropped folder-1 / folder-13 / folder-13-request / testScript: scripts are not imported (folder-1/folder-13/folder-13-request.yml)
+Converted folder-1 / folder-13 / folder-13-request / request.auth.password: the value is kept as the secret variable `folder_13_request_password`, not in the file (folder-1/folder-13/folder-13-request.yml)
 Dropped folder-1 / folder-1-request / testScript: scripts are not imported (folder-1/folder-1-request.yml)
 Dropped folder-2 / folder-21 / folder-21-request / testScript: scripts are not imported (folder-2/folder-21/folder-21-request.yml)
 Dropped folder-2 / folder-22 / folder-22-request / testScript: scripts are not imported (folder-2/folder-22/folder-22-request.yml)
+Converted folder-2 / folder-23 / auth.token: the value is kept as the secret variable `folder_23_token`, not in the file (folder-2/folder-23/folder.yml)
 Dropped folder-2 / folder-23 / folder-23-request / testScript: scripts are not imported (folder-2/folder-23/folder-23-request.yml)
+Converted folder-2 / folder-23 / folder-23-request / request.auth.password: the value is kept as the secret variable `folder_23_request_password`, not in the file (folder-2/folder-23/folder-23-request.yml)
 Dropped folder-2 / folder-2-request / testScript: scripts are not imported (folder-2/folder-2-request.yml)
+Converted folder-3 / auth.password: the value is kept as the secret variable `folder_3_password`, not in the file (folder-3/folder.yml)
 Dropped folder-3 / folder-31 / folder-31-request / testScript: scripts are not imported (folder-3/folder-31/folder-31-request.yml)
 Dropped folder-3 / folder-32 / folder-32-request / testScript: scripts are not imported (folder-3/folder-32/folder-32-request.yml)
+Converted folder-3 / folder-33 / auth.token: the value is kept as the secret variable `folder_33_token`, not in the file (folder-3/folder-33/folder.yml)
 Dropped folder-3 / folder-33 / folder-33-request / testScript: scripts are not imported (folder-3/folder-33/folder-33-request.yml)
+Converted folder-3 / folder-33 / folder-33-request / request.auth.password: the value is kept as the secret variable `folder_33_request_password`, not in the file (folder-3/folder-33/folder-33-request.yml)
 Dropped folder-3 / folder-3-request / testScript: scripts are not imported (folder-3/folder-3-request.yml)
+Converted folder-3 / folder-3-request / request.auth.password: the value is kept as the secret variable `folder_3_request_password`, not in the file (folder-3/folder-3-request.yml)
 Dropped root-collection-request / testScript: scripts are not imported (root-collection-request.yml)
+Converted imported credentials: the imported credentials are the secret variables `multiple_child_collections_with_authorization_headers_and_variables_set_at_each_level_password`, `folder_13_token`, `folder_13_request_password`, `folder_23_token`, `folder_23_request_password`, `folder_3_password`, `folder_33_token`, `folder_33_request_password`, `folder_3_request_password`; their values are kept in the secret store, not in the file (environments/Environment.yml)

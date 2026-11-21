@@ -139,3 +139,38 @@ pub fn check_tree(
     let report = apinata_core::check_collection(dir.path(), opts).expect("checks");
     (dir, report)
 }
+
+/// `parsed` with each credential the import moved into a secret variable put back in place and
+/// the notes asking for those secrets removed, so a test can pin what a curl command maps to.
+/// Secrets with a fixed name, such as the AWS secret key, stay as parsed.
+pub fn reveal_curl(
+    mut parsed: apinata_core::import::ParsedCurl,
+) -> apinata_core::import::ParsedCurl {
+    use apinata_core::AuthSpec;
+    let moved =
+        |source: &str| source.starts_with("curl auth.") || source.starts_with("curl headers[");
+    let (revealed, kept) = std::mem::take(&mut parsed.request.secrets)
+        .into_iter()
+        .partition::<Vec<_>, _>(|s| moved(&s.source));
+    parsed.request.secrets = kept;
+    parsed.notes.retain(|n| !moved(&n.source));
+    let put_back = |value: &mut String| {
+        if let Some(s) = revealed
+            .iter()
+            .find(|s| *value == format!("{{{{{}}}}}", s.name))
+        {
+            *value = s.value.clone();
+        }
+    };
+    match &mut parsed.request.auth {
+        AuthSpec::Basic { password, .. }
+        | AuthSpec::Digest { password, .. }
+        | AuthSpec::Ntlm { password, .. } => put_back(password),
+        AuthSpec::Bearer { token } => put_back(token),
+        _ => {}
+    }
+    for header in &mut parsed.request.headers {
+        put_back(&mut header.value);
+    }
+    parsed
+}

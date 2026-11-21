@@ -19,7 +19,7 @@ pub(super) const HEADERS: [&str; 11] = [
 ];
 
 /// Whether `name` is a credential header from `HEADERS`.
-pub(super) fn is_header(name: &str) -> bool {
+pub(in crate::import) fn is_header(name: &str) -> bool {
     matches_any(name, &HEADERS)
 }
 

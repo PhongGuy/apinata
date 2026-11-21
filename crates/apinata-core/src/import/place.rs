@@ -1,15 +1,18 @@
 //! Placing an imported collection's items into a folder of an existing collection.
 //!
-//! The bundle is written by [`write_collection`] into a scratch directory and only its items
-//! are copied across, so the target's own root file, environments and folder settings are never
-//! touched. This is the one routine the CLI and the MCP server share.
+//! The bundle is written like [`write_collection`](super::write_collection) into a scratch
+//! directory and only its items are copied across, so the target's own root file,
+//! environments and folder settings are never touched. This is the one routine the CLI and
+//! the MCP server share.
 
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use super::protect::protect_collection;
 use super::{
-    ImportBundle, ImportError, ImportReport, record_spec_baseline, write::write_collection,
+    ImportBundle, ImportError, ImportReport, ImportedRequest, ImportedSecret, record_spec_baseline,
+    store_request_secrets, write::write_staged,
 };
 use crate::collection::Collection;
 use crate::item_path::ItemPath;
@@ -73,10 +76,11 @@ pub fn ensure_folder(
 }
 
 /// Write `bundle`'s items directly into the existing `folder` of `collection`, then reload.
-/// No environment is written and no secret is stored, so `secrets` is only what core asks
-/// for. A name already in the folder is refused with [`ImportError::Exists`] and nothing is
-/// written. An OpenAPI bundle also records the folder's baseline, which lets a later update find
-/// its requests. A failure removes what this call copied and nothing else.
+/// No environment is written; a credential taken out of an item is kept as a secret variable
+/// of the collection's only environment, its value in `secrets`, or noted as not stored. A
+/// name already in the folder is refused with [`ImportError::Exists`] and nothing is written.
+/// An OpenAPI bundle also records the folder's baseline, which lets a later update find its
+/// requests. A failure removes what this call copied and nothing else.
 pub fn place_items(
     collection: &mut Collection,
     folder: &ItemPath,
@@ -87,7 +91,17 @@ pub fn place_items(
         path: std::env::temp_dir(),
         source,
     })?;
-    let (staged, mut report) = write_collection(scratch.path(), &bundle.collection, &[], secrets)?;
+    // The root is not placed, so only the items' credentials move into secret variables; they
+    // are kept in the target's environment once the files are in place.
+    let mut imported = bundle.collection.clone();
+    let declared = collection
+        .environments()
+        .iter()
+        .flat_map(|e| e.variables().into_iter().map(|v| v.name))
+        .collect::<Vec<_>>();
+    let taken = protect_collection(&mut imported, declared, false);
+    let (staged, mut report) =
+        write_staged(scratch.path(), &imported, &[], secrets, &mut |_| Ok(()))?;
     // A folder never records a source, so the staged root's note about one does not apply.
     if let Some(skip) = super::update::unrecorded_note(bundle.collection.spec_from.as_ref()) {
         report.notes.retain(|n| n.detail != skip.detail);
@@ -129,6 +143,16 @@ pub fn place_items(
             return Err(e);
         }
     }
+    let mut holder = ImportedRequest::new("GET", "");
+    holder.secrets = taken
+        .into_iter()
+        .map(|t| ImportedSecret {
+            name: t.name,
+            value: t.value,
+            source: t.source,
+        })
+        .collect();
+    store_request_secrets(collection, &holder, None, secrets, &mut report.notes);
     let requests = report
         .items
         .iter()

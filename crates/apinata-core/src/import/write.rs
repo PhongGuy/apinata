@@ -3,6 +3,7 @@
 //! once the collection exists at its final root.
 
 use super::environment::{store_secrets, write_environment_file};
+use super::protect::{add_to_environments, protect_collection};
 use super::update::{
     SpecBaseline, file_field_hashes, operation_key, record_source, unrecorded_note,
 };
@@ -22,7 +23,9 @@ use std::path::Path;
 
 /// Write `imported` and `envs` as a new collection directory in `parent_dir`, named after the
 /// collection as Bruno's import names it, and store the environments' secret values in
-/// `secrets`. Returns the opened collection and a report whose notes name the files written.
+/// `secrets`. Literal credentials become secret variables of every environment (of a new
+/// `Environment` when there is none), each noted by name, so no file holds their values.
+/// Returns the opened collection and a report whose notes name the files written.
 ///
 /// Fails with `Create` when the collection's own name cannot be a directory name, `Exists` when
 /// the target appears while writing, and otherwise with the failing step's error; a failure
@@ -38,6 +41,26 @@ pub fn write_collection(
 
 /// The same, with a hook called on the staged root just before the rename (tests inject faults).
 pub(crate) fn write_collection_with(
+    parent_dir: &Path,
+    imported: &ImportedCollection,
+    envs: &[ImportedEnvironment],
+    secrets: &dyn SecretStore,
+    before_rename: &mut dyn FnMut(&Path) -> io::Result<()>,
+) -> Result<(Collection, ImportReport), ImportError> {
+    // Credentials move into secret variables of the environments, whose writer stores the
+    // values once the collection is in place.
+    let mut imported = imported.clone();
+    let mut envs = envs.to_vec();
+    let declared = envs
+        .iter()
+        .flat_map(|e| e.variables.iter().map(|v| v.name.clone()));
+    let taken = protect_collection(&mut imported, declared.collect::<Vec<_>>(), true);
+    add_to_environments(&mut envs, &taken);
+    write_staged(parent_dir, &imported, &envs, secrets, before_rename)
+}
+
+/// [`write_collection_with`] for a collection whose credentials are already protected.
+pub(super) fn write_staged(
     parent_dir: &Path,
     imported: &ImportedCollection,
     envs: &[ImportedEnvironment],

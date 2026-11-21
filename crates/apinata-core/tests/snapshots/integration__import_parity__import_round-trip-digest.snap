@@ -8,6 +8,33 @@ Dropped collection / auth [opencollection.yml]: `qop` is not carried over: negot
 Dropped collection / auth [opencollection.yml]: `opaque` is not carried over: negotiated from the server challenge
 Dropped collection / auth [opencollection.yml]: `nonceCount` is not carried over: negotiated from the server challenge
 Dropped collection / auth [opencollection.yml]: `clientNonce` is not carried over: negotiated from the server challenge
+Converted Own auth / request.auth.password [Own auth.yml]: the value is kept as the secret variable `own_auth_password`, not in the file
+Converted imported credentials [environments/Environment.yml]: the imported credentials are the secret variables `own_auth_password`; their values are kept in the secret store, not in the file
+== Own auth.yml
+info:
+  name: Own auth
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: http://localhost:3000/health
+  auth:
+    type: digest
+    username: test
+    password: "{{own_auth_password}}"
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== environments/Environment.yml
+name: Environment
+variables:
+  - secret: true
+    name: own_auth_password
 == opencollection.yml
 opencollection: 1.0.0
 

@@ -22,7 +22,10 @@ fn a_digest_command_becomes_a_digest_request_with_no_note_about_dropped_credenti
     let file = fs::read_to_string(dir.path().join("d.yml")).unwrap();
     assert!(file.contains("type: digest"), "{file}");
     assert!(file.contains("username: a"), "{file}");
-    assert!(file.contains("password: b"), "{file}");
+    assert!(
+        file.contains("password: \"{{x_test_password}}\""),
+        "the password is a secret variable: {file}"
+    );
 }
 
 const AWS: &str = "curl --aws-sigv4 aws:amz:us-east-1:s --user AKID:TOPSECRET https://x.test/d";
