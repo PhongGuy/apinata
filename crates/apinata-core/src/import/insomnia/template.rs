@@ -3,16 +3,25 @@
 use super::{Budget, Crumbs};
 use crate::import::{DocumentError, ImportNote, NoteKind};
 
-/// A value with its member-path placeholders rewritten.
+/// A value with its member-path placeholders and template tags rewritten.
 pub(super) struct Rewritten {
     pub(super) text: String,
-    /// Every other `{{ }}` and `{% %}` construct, as written and in order.
-    pub(super) kept: Vec<String>,
+    /// Every other `{{ }}` and `{% %}` construct, in order.
+    pub(super) kept: Vec<Kept>,
 }
 
-/// Rewrite member-path placeholders to `{{path}}`; every other `{{ }}` and `{% %}` stays as
-/// written and is listed in `kept`, in order. An unclosed `{{` or `{%` is plain text.
-/// The output is never longer than the input.
+/// A construct with no equivalent.
+pub(super) struct Kept {
+    /// The construct as written in the input.
+    pub(super) written: String,
+    /// The variable a tag was written as; `None` when the construct stays as written.
+    pub(super) variable: Option<String>,
+}
+
+/// Rewrite member-path placeholders to `{{path}}` and each named `{% tag ... %}` to `{{tag}}`,
+/// so sending stops on the undefined variable until the user gives it a value. Every other
+/// `{{ }}` and `{% %}` stays as written. Each construct but a member path is listed in `kept`,
+/// in order. An unclosed `{{` or `{%` is plain text. The output is never longer than the input.
 pub(super) fn rewrite(text: &str) -> Rewritten {
     let mut out = String::with_capacity(text.len());
     let mut kept = Vec::new();
@@ -58,8 +67,19 @@ pub(super) fn rewrite(text: &str) -> Rewritten {
             out.push_str(path);
             out.push_str("}}");
         } else {
-            out.push_str(whole);
-            kept.push(whole.to_owned());
+            let variable = (close == "%}").then(|| tag_name(body)).flatten();
+            match variable {
+                Some(name) => {
+                    out.push_str("{{");
+                    out.push_str(name);
+                    out.push_str("}}");
+                }
+                None => out.push_str(whole),
+            }
+            kept.push(Kept {
+                written: whole.to_owned(),
+                variable: variable.map(str::to_owned),
+            });
         }
         rest = &rest[end + 4..];
     }
@@ -68,7 +88,7 @@ pub(super) fn rewrite(text: &str) -> Rewritten {
 }
 
 /// `rewrite(text).text`, pushing one `NeedsInput` note sourced `trail / at` naming every kept
-/// construct when there is any.
+/// construct, and the variable to set for each tag, when there is any.
 pub(super) fn apply(
     text: &str,
     trail: &[String],
@@ -77,15 +97,53 @@ pub(super) fn apply(
     budget: &mut Budget,
 ) -> Result<String, DocumentError> {
     let Rewritten { text, kept } = rewrite(text);
-    if !kept.is_empty() {
-        let listed: Vec<String> = kept.iter().map(|k| format!("`{k}`")).collect();
-        let detail = format!(
+    let mut parts = Vec::new();
+    let literal: Vec<String> = kept
+        .iter()
+        .filter(|k| k.variable.is_none())
+        .map(|k| format!("`{}`", k.written))
+        .collect();
+    if !literal.is_empty() {
+        parts.push(format!(
             "{} has no equivalent and is kept as written; replace it before sending",
-            listed.join(", ")
-        );
+            literal.join(", ")
+        ));
+    }
+    let (mut written, mut names) = (Vec::new(), Vec::new());
+    for (k, name) in kept.iter().filter_map(|k| Some((k, k.variable.as_ref()?))) {
+        written.push(format!("`{}` as `{{{{{name}}}}}`", k.written));
+        let quoted = format!("`{name}`");
+        if !names.contains(&quoted) {
+            names.push(quoted);
+        }
+    }
+    if !written.is_empty() {
+        parts.push(format!(
+            "a template tag has no equivalent, so each is written as a variable: {}; give {} a value before sending",
+            written.join(", "),
+            names.join(", ")
+        ));
+    }
+    if !parts.is_empty() {
+        let detail = parts.join("; ");
         notes.push(budget.note(trail, at, NoteKind::NeedsInput, detail)?);
     }
     Ok(text)
+}
+
+/// The leading name of a tag body such as `now 'iso-8601'`, when it can name a plain variable:
+/// it starts with a letter or `_`, so it never reads as a generated `$` variable.
+fn tag_name(body: &str) -> Option<&str> {
+    let len = body
+        .bytes()
+        .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_')
+        .count();
+    let name = &body[..len];
+    let starts_well = name
+        .bytes()
+        .next()
+        .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_');
+    starts_well.then_some(name)
 }
 
 /// `ident ( '.' ident | '[' digits ']' )*`, with `ident = [A-Za-z_$][A-Za-z0-9_$]*`.
@@ -152,25 +210,48 @@ mod tests {
         }
     }
 
+    fn written(out: &super::Rewritten) -> Vec<(&str, Option<&str>)> {
+        out.kept
+            .iter()
+            .map(|k| (k.written.as_str(), k.variable.as_deref()))
+            .collect()
+    }
+
     #[test]
-    fn filters_expressions_and_tags_stay_literal_and_are_listed() {
+    fn filters_and_expressions_stay_literal_and_are_listed() {
         for input in [
             "{{ x | upper }}",
             "{{ _['a-b'] }}",
             "{{ a + 1 }}",
-            "{% uuid 'v4' %}",
             "{{ _.a.b. }}",
             "{{ 1a }}",
             "{{ }}",
         ] {
             let out = rewrite(input);
             assert_eq!(out.text, input);
-            assert_eq!(out.kept, [input]);
+            assert_eq!(written(&out), [(input, None)]);
         }
-        let out = rewrite("{{ _.a }}/{% now 'millis', '' %}/{{ x|lower }}");
-        assert_eq!(out.text, "{{a}}/{% now 'millis', '' %}/{{ x|lower }}");
-        assert_eq!(out.kept, ["{% now 'millis', '' %}", "{{ x|lower }}"]);
         assert!(rewrite("{% unclosed").kept.is_empty());
+    }
+
+    #[test]
+    fn tags_become_variables_named_after_the_tag() {
+        let out = rewrite("{{ _.a }}/{% now 'millis', '' %}/{{ x|lower }}/{%uuid%}");
+        assert_eq!(out.text, "{{a}}/{{now}}/{{ x|lower }}/{{uuid}}");
+        assert_eq!(
+            written(&out),
+            [
+                ("{% now 'millis', '' %}", Some("now")),
+                ("{{ x|lower }}", None),
+                ("{%uuid%}", Some("uuid")),
+            ]
+        );
+        // A tag without a name a variable could carry stays as written.
+        for input in ["{% %}", "{% 1x %}", "{% $guid %}", "{%%}"] {
+            let out = rewrite(input);
+            assert_eq!(out.text, input);
+            assert_eq!(written(&out), [(input, None)]);
+        }
     }
 
     #[test]
@@ -186,7 +267,7 @@ mod tests {
     fn the_whole_context_is_kept_and_listed() {
         let out = rewrite("{{ _ }}");
         assert_eq!(out.text, "{{ _ }}");
-        assert_eq!(out.kept, ["{{ _ }}"]);
+        assert_eq!(written(&out), [("{{ _ }}", None)]);
         assert_eq!(rewrite("{{ _._ }}").text, "{{_}}");
     }
 }

@@ -697,7 +697,7 @@ fn templates_are_rewritten_in_values_and_tags_are_noted() {
         "authentication": {"type": "basic", "username": "{{ _.user }}", "password": "{% prompt 'p' %}"}}),
     );
     let q = &r.request;
-    assert_eq!(q.url, "{{base}}/u/{% uuid 'v4' %}?n={{page}}");
+    assert_eq!(q.url, "{{base}}/u/{{uuid}}?n={{page}}");
     assert_eq!(q.params, [Param::new("n", "{{page}}", ParamKind::Query)]);
     assert_eq!(q.headers, [KeyValue::new("{{ _.h }}", "{{ x | upper }}")]);
     assert_eq!(q.body, BodySpec::Json("{\"a\": \"{{a.b}}\"}".into()));
@@ -705,7 +705,7 @@ fn templates_are_rewritten_in_values_and_tags_are_noted() {
         q.auth,
         AuthSpec::Basic {
             username: "{{user}}".into(),
-            password: "{% prompt 'p' %}".into()
+            password: "{{prompt}}".into()
         }
     );
     let needs: Vec<&ImportNote> = r
@@ -791,7 +791,7 @@ fn each_sub_environment_is_the_base_deep_merged_under_it() {
         "n=30000",
         "on=true",
         "none=",
-        "t={% uuid 'v4' %}",
+        "t={{uuid}}",
     ];
     assert_eq!(listed(&envs[0]), common);
     assert_eq!(
@@ -807,7 +807,7 @@ fn each_sub_environment_is_the_base_deep_merged_under_it() {
             "n=30000",
             "on=true",
             "none=",
-            "t={% uuid 'v4' %}",
+            "t={{uuid}}",
             "extra=1.5"
         ]
     );
