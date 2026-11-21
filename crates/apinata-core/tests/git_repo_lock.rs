@@ -41,8 +41,11 @@ fn a_second_holder_waits_then_is_busy_and_succeeds_once_the_first_drops() {
     );
     assert!(started.elapsed() >= SHORT, "busy only after the wait");
 
+    // A sibling test may be mid-spawn with a copy of the dropped descriptor until its exec, so
+    // the release can lag the drop; take the lock with the lock's own wait, not a bare try.
     drop(first);
-    held(&repo, &options);
+    let again = repo_lock(&repo, Duration::from_secs(30), &options).expect("free after the drop");
+    assert!(again.is_held(), "a repository takes a real lock");
 }
 
 #[test]
