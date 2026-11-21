@@ -144,6 +144,8 @@ fn check(case: &Case) {
 const FORM_TYPE: Pairs = &[("Content-Type", "application/x-www-form-urlencoded")];
 const NOT_A_FORM: &str =
     "Bruno makes one form field named after the whole text; curl sends it as is";
+const JSON_ACCEPT: &str =
+    "Bruno sets only Content-Type for --json; curl also sends Accept: application/json";
 const NO_MULTIPART_HEADER: &str = "Bruno adds a multipart Content-Type header without a boundary";
 
 fn bruno_cases() -> Vec<Case> {
@@ -182,7 +184,8 @@ fn bruno_cases() -> Vec<Case> {
             .query(&[("page", "1"), ("limit", "10"), ("sort", "asc")]),
         case("no-protocol", "curl echo.usebruno.com", "GET", "https://echo.usebruno.com"),
         case("json-flag", r#"curl --json '{"name": "John Doe", "email": "john@example.com"}' https://api.example.com/users"#, "POST", "https://api.example.com/users")
-            .headers(&[("Content-Type", "application/json")]).body(json("{\n  \"name\": \"John Doe\",\n  \"email\": \"john@example.com\"\n}")),
+            .headers(&[("Content-Type", "application/json"), ("Accept", "application/json")]).body(json("{\n  \"name\": \"John Doe\",\n  \"email\": \"john@example.com\"\n}"))
+            .differs(JSON_ACCEPT),
         case("insecure", "curl -k https://api.example.com", "GET", "https://api.example.com")
             .note("curl flag -k", Dropped).differs("Bruno drops -k silently"),
         case("get-data", r#"curl -G -d "name=John" -d "age=30" https://api.example.com/users"#, "GET", "https://api.example.com/users?name=John&age=30")
@@ -206,7 +209,7 @@ fn every_bruno_case_maps_as_stated() {
 }
 
 fn probes() -> Vec<Case> {
-    use NoteKind::Dropped;
+    use NoteKind::{Converted, Dropped};
     vec![
         case("probe-templates", r#"curl '{{baseUrl}}/users/{{id}}?q={{q}}' -H 'Authorization: Bearer {{token}}' -H 'Content-Type: application/json' -d '{"id": {{id}}}'"#, "POST", "{{baseUrl}}/users/{{id}}?q={{q}}")
             .headers(&[("Authorization", "Bearer {{token}}"), ("Content-Type", "application/json")]).query(&[("q", "{{q}}")])
@@ -234,8 +237,11 @@ fn probes() -> Vec<Case> {
             .headers(&[("Content-Type", "multipart/form-data")]).body(text("a=1"))
             .differs("Bruno stores the raw data as the multipart part list; curl sends the text as is"),
         case("probe-invalid-json", r#"curl --json '{"a": 1,}' https://api.example.com"#, "POST", "https://api.example.com")
-            .headers(&[("Content-Type", "application/json")]).body(json(r#"{"a": 1,}"#))
-            .differs("Bruno's tolerant formatter re-indents text that is not JSON; it is kept as written"),
+            .headers(&[("Content-Type", "application/json"), ("Accept", "application/json")]).body(json(r#"{"a": 1,}"#))
+            .differs("Bruno's tolerant formatter re-indents text that is not JSON; it is kept as written, and curl also sends Accept"),
+        case("probe-referer", "curl -e 'https://from.example/;auto' -L https://api.example.com", "GET", "https://api.example.com")
+            .headers(&[("Referer", "https://from.example/")]).note("curl flag -e", Converted)
+            .differs("Bruno drops -e silently; curl sends the URL as a Referer header"),
     ]
 }
 

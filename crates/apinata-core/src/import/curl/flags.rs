@@ -101,6 +101,7 @@ pub(crate) enum Known {
     MaxTime,
     MaxRedirs,
     Location,
+    Referer,
 }
 
 /// The options mapped onto a request, keyed by curl's long name: Bruno's FLAG_CATEGORIES
@@ -130,6 +131,7 @@ pub(crate) fn known(long: &str) -> Option<Known> {
         "max-time" => Known::MaxTime,
         "max-redirs" => Known::MaxRedirs,
         "location" => Known::Location,
+        "referer" => Known::Referer,
         _ => return None,
     })
 }
@@ -328,13 +330,19 @@ mod tests {
             assert!(known(option.long).is_some(), "{long}");
         }
         // The options after Bruno's table are Apinata's own mappings.
-        for long in ["oauth2-bearer", "aws-sigv4", "max-time", "max-redirs"] {
+        for long in [
+            "oauth2-bearer",
+            "aws-sigv4",
+            "max-time",
+            "max-redirs",
+            "referer",
+        ] {
             let option = lookup(&format!("--{long}")).expect(long);
             assert!(option.takes_value && known(option.long).is_some(), "{long}");
         }
         assert_eq!(
             options().iter().filter(|o| known(o.long).is_some()).count(),
-            bruno.len() + 5
+            bruno.len() + 6
         );
         assert!(
             !lookup("--location").expect("location").takes_value && known("location").is_some()

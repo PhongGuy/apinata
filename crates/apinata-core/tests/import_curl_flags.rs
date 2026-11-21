@@ -348,6 +348,70 @@ fn the_combined_command_from_the_issue_maps_everything() {
     assert_eq!(notes(&parsed), []);
 }
 
+fn headers(parsed: &ParsedCurl) -> Vec<(&str, &str)> {
+    parsed
+        .request
+        .headers
+        .iter()
+        .map(|h| (h.name.as_str(), h.value.as_str()))
+        .collect()
+}
+
+#[test]
+fn referer_becomes_a_header_and_the_last_one_wins() {
+    let parsed = parse(&format!("curl -e http://x.invalid/ -H 'X-A: 1' {URL}"));
+    assert_eq!(
+        headers(&parsed),
+        [("X-A", "1"), ("Referer", "http://x.invalid/")]
+    );
+    assert_eq!(notes(&parsed), []);
+    let parsed = parse(&format!(
+        "curl --referer http://a.invalid/ --referer=http://b.invalid/ {URL}"
+    ));
+    assert_eq!(headers(&parsed), [("Referer", "http://b.invalid/")]);
+    // An empty value clears an earlier one, as curl does.
+    let parsed = parse(&format!("curl -e http://a.invalid/ -e '' {URL}"));
+    assert_eq!(headers(&parsed), []);
+    assert_eq!(notes(&parsed), []);
+}
+
+#[test]
+fn referer_auto_is_stripped_with_a_note() {
+    let parsed = parse(&format!("curl -L -e 'http://x.invalid/;auto' {URL}"));
+    assert_eq!(headers(&parsed), [("Referer", "http://x.invalid/")]);
+    assert_eq!(notes(&parsed), [note("curl flag -e", NoteKind::Converted)]);
+    assert!(parsed.notes[0].detail.contains(";auto"));
+    let parsed = parse(&format!("curl -L --referer ';auto' {URL}"));
+    assert_eq!(headers(&parsed), []);
+    assert_eq!(
+        notes(&parsed),
+        [note("curl flag --referer", NoteKind::Dropped)]
+    );
+}
+
+#[test]
+fn a_referer_header_wins_over_the_flag() {
+    let parsed = parse(&format!(
+        "curl -e http://a.invalid/ -H 'referer: http://h.invalid/' {URL}"
+    ));
+    assert_eq!(headers(&parsed), [("referer", "http://h.invalid/")]);
+    assert_eq!(notes(&parsed), [note("curl flag -e", NoteKind::Dropped)]);
+}
+
+#[test]
+fn json_and_referer_from_the_issue_are_both_sent() {
+    let parsed = parse(r#"curl --json '{"a":1}' -e http://x.invalid/ http://127.0.0.1:1/p"#);
+    assert_eq!(
+        headers(&parsed),
+        [
+            ("Referer", "http://x.invalid/"),
+            ("Content-Type", "application/json"),
+            ("Accept", "application/json")
+        ]
+    );
+    assert_eq!(notes(&parsed), []);
+}
+
 // A value each option accepts, so the sweep exercises its mapping rather than its error path.
 fn sample_value(long: &str) -> &'static str {
     match long {

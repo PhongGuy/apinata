@@ -238,14 +238,47 @@ fn form_fields_become_multipart_parts() {
 #[test]
 fn json_flag_sets_the_content_type_unless_given() {
     let parsed = parse(r#"curl --json '{"a":1}' https://x.test"#);
-    assert_eq!(headers(&parsed), [("Content-Type", "application/json")]);
+    assert_eq!(
+        headers(&parsed),
+        [
+            ("Content-Type", "application/json"),
+            ("Accept", "application/json")
+        ]
+    );
     assert_eq!(parsed.request.method, "POST");
     let parsed =
         parse(r#"curl -H 'content-type: application/vnd.x+json' --json '{"a":1}' https://x.test"#);
     assert_eq!(
         headers(&parsed),
-        [("content-type", "application/vnd.x+json")]
+        [
+            ("content-type", "application/vnd.x+json"),
+            ("Accept", "application/json")
+        ]
     );
+}
+
+#[test]
+fn json_flag_sets_accept_unless_the_command_sets_its_own() {
+    let parsed = parse(r#"curl --json '{"a":1}' -H 'accept: text/plain' https://x.test"#);
+    assert_eq!(
+        headers(&parsed),
+        [
+            ("accept", "text/plain"),
+            ("Content-Type", "application/json")
+        ]
+    );
+    // Repeated pieces still add the header once, and `-G` keeps it as curl does.
+    let parsed = parse(r#"curl -G --json a=1 --json b https://x.test"#);
+    assert_eq!(
+        headers(&parsed),
+        [
+            ("Content-Type", "application/json"),
+            ("Accept", "application/json")
+        ]
+    );
+    // Plain data never asks for JSON.
+    let parsed = parse(r#"curl -H 'Content-Type: application/json' -d '{"a":1}' https://x.test"#);
+    assert_eq!(headers(&parsed), [("Content-Type", "application/json")]);
 }
 
 #[test]
