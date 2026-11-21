@@ -367,6 +367,15 @@ pub enum ImportError {
         /// The directory the collection would be written to.
         path: PathBuf,
     },
+    /// The collection folder could not be made in its parent, which is missing, read-only
+    /// or on a full disk.
+    #[error("cannot create {}: {}", path.display(), crate::export::save_reason(*kind, path))]
+    CannotCreate {
+        /// The collection folder that was not created.
+        path: PathBuf,
+        /// What kind of failure stopped it.
+        kind: std::io::ErrorKind,
+    },
     /// A file system call failed.
     #[error("{}: {source}", path.display())]
     Io {

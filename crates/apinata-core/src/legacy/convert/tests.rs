@@ -299,3 +299,21 @@ fn new_folder_io_errors_name_the_target_not_the_staging_path() {
         assert_eq!(path, &dir.join(victim));
     }
 }
+
+#[test]
+fn a_missing_folder_is_named_in_plain_words_without_the_staging_path() {
+    let src = tempfile::tempdir().unwrap();
+    let base = tempfile::tempdir().unwrap();
+    legacy(src.path());
+    let plan = plan_conversion(src.path()).unwrap();
+    let gone = base.path().join("gone");
+    let err = convert(&plan, ConvertTarget::NewFolderIn(gone.clone())).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        format!(
+            "cannot create {}: the folder {} does not exist",
+            gone.join("Legacy").display(),
+            gone.display()
+        )
+    );
+}

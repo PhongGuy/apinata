@@ -23,21 +23,26 @@ impl WriteError {
     }
 }
 
-// The reason names the folder or the disk, never the temporary file the write went through.
 impl std::fmt::Display for WriteError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "cannot write {}: ", self.path.display())?;
-        let folder = folder(&self.path).display();
-        match self.kind() {
-            ErrorKind::NotFound => write!(f, "the folder {folder} does not exist"),
-            ErrorKind::PermissionDenied | ErrorKind::ReadOnlyFilesystem => {
-                write!(f, "you do not have permission to save files in {folder}")
-            }
-            ErrorKind::StorageFull | ErrorKind::QuotaExceeded => write!(f, "the disk is full"),
-            ErrorKind::IsADirectory => write!(f, "a folder already has that name"),
-            ErrorKind::NotADirectory => write!(f, "part of the folder path is a file"),
-            other => write!(f, "{other}"),
+        let reason = save_reason(self.kind(), &self.path);
+        write!(f, "cannot write {}: {reason}", self.path.display())
+    }
+}
+
+/// Why `path` could not be saved, in plain words from the failure's kind. It names the folder
+/// or the disk, never a temporary file the write went through, and never an OS error code.
+pub(crate) fn save_reason(kind: ErrorKind, path: &Path) -> String {
+    let folder = folder(path).display();
+    match kind {
+        ErrorKind::NotFound => format!("the folder {folder} does not exist"),
+        ErrorKind::PermissionDenied | ErrorKind::ReadOnlyFilesystem => {
+            format!("you do not have permission to save files in {folder}")
         }
+        ErrorKind::StorageFull | ErrorKind::QuotaExceeded => "the disk is full".to_owned(),
+        ErrorKind::IsADirectory => "a folder already has that name".to_owned(),
+        ErrorKind::NotADirectory => "part of the folder path is a file".to_owned(),
+        other => other.to_string(),
     }
 }
 

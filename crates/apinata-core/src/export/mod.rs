@@ -20,6 +20,7 @@ pub use har::{HarExchange, HarRefusal, har, har_log, sent_exchange};
 pub use html::{html, html_with};
 pub use openapi::openapi;
 pub use postman::{postman, postman_with};
+pub(crate) use write::save_reason;
 pub use write::{WriteError, write_atomic};
 
 /// An item kind as the sidebar spells it, for notes about items an export leaves out.
