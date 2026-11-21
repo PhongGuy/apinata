@@ -41,6 +41,8 @@ pub struct CollectionModel {
     open_error: Option<String>,
     /// The open failed because the root is in the legacy .bru format.
     legacy: bool,
+    /// The open failed because the root is an empty folder.
+    empty_folder: bool,
     /// A panic stopped the actor.
     stopped: bool,
     received: u64,
@@ -115,6 +117,7 @@ impl CollectionModel {
                 snapshot: None,
                 open_error: None,
                 legacy: false,
+                empty_folder: false,
                 stopped: false,
                 received: 0,
                 notices: Vec::new(),
@@ -233,6 +236,11 @@ impl CollectionModel {
         self.legacy
     }
 
+    /// Whether the open failed because the root is an empty folder a collection could fill.
+    pub fn is_empty_folder(&self) -> bool {
+        self.empty_folder
+    }
+
     /// Whether a panic stopped the actor.
     pub fn stopped(&self) -> bool {
         self.stopped
@@ -293,6 +301,10 @@ impl CollectionModel {
             Update::OpenFailed(e) => self.refuse(e),
             Update::LegacyFormat(e) => {
                 self.legacy = true;
+                self.refuse(e);
+            }
+            Update::EmptyFolder(e) => {
+                self.empty_folder = true;
                 self.refuse(e);
             }
             Update::Stopped => {

@@ -45,6 +45,8 @@ pub enum Update {
     OpenFailed(String),
     /// The collection is in the legacy .bru format; the actor has stopped.
     LegacyFormat(String),
+    /// The root is an empty folder, one a new collection could fill; the actor has stopped.
+    EmptyFolder(String),
     /// A panic stopped the actor; it applies nothing more.
     Stopped,
 }
@@ -106,6 +108,10 @@ pub async fn run_actor(
         }
         Ok(Err(e @ OpenError::LegacyFormat { .. })) => {
             let _ = updates.send(Update::LegacyFormat(e.to_string())).await;
+            return;
+        }
+        Ok(Err(e @ OpenError::NotACollection { .. })) if Collection::is_empty_dir(&root) => {
+            let _ = updates.send(Update::EmptyFolder(e.to_string())).await;
             return;
         }
         Ok(Err(e)) => {
