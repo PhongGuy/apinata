@@ -371,6 +371,16 @@ pub(crate) fn evaluate_with(
         .collect()
 }
 
+/// `text` in backticks for a reason, unless it already is a template literal carrying its own.
+fn quoted_once(text: &str) -> String {
+    let trimmed = text.trim();
+    if trimmed.len() > 1 && trimmed.starts_with('`') && trimmed.ends_with('`') {
+        trimmed.to_owned()
+    } else {
+        format!("`{trimmed}`")
+    }
+}
+
 /// The skip reason for an expression that reads a truncated body.
 pub(crate) fn truncated_reason(expression: &str) -> String {
     format!(
@@ -428,7 +438,8 @@ fn verdict(
         },
         Err(RhsError::TemplateLiteral) => Verdict::Skipped {
             reason: format!(
-                "right side `{text}` is a template literal, which needs a JavaScript runtime"
+                "right side {} is a template literal, which needs a JavaScript runtime",
+                quoted_once(&text)
             ),
         },
         Err(RhsError::NotJs) => Verdict::Skipped {
@@ -866,6 +877,17 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn a_template_literal_reason_quotes_the_value_once() {
+        let res = Response::new(200);
+        let verdict = run("res.status", "eq", Some("`Ali${'ce'}`"), &res, json!({}));
+        let Verdict::Skipped { reason } = verdict else {
+            panic!("not skipped: {verdict:?}");
+        };
+        assert!(!reason.contains("``"), "{reason}");
+        assert!(reason.contains("`Ali${'ce'}`"), "{reason}");
     }
 
     #[test]

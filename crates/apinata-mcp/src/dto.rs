@@ -62,11 +62,17 @@ pub(crate) struct QueryMismatchDoc {
     pub note: String,
 }
 
+/// The value of `enabled` when a row leaves it out.
+fn enabled_by_default() -> bool {
+    true
+}
+
 #[derive(Serialize, Deserialize, JsonSchema, Clone, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct KeyValueDoc {
     pub name: String,
     pub value: String,
+    #[serde(default = "enabled_by_default")]
     pub enabled: bool,
 }
 
@@ -83,6 +89,7 @@ pub(crate) struct ParamDoc {
     pub name: String,
     pub value: String,
     pub kind: ParamKindDoc,
+    #[serde(default = "enabled_by_default")]
     pub enabled: bool,
 }
 
@@ -94,6 +101,7 @@ pub(crate) struct VarDoc {
     pub value: String,
     #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
     pub value_type: Option<String>,
+    #[serde(default = "enabled_by_default")]
     pub enabled: bool,
 }
 
@@ -139,6 +147,7 @@ pub(crate) struct MultipartFieldDoc {
     pub name: String,
     pub value: MultipartValueDoc,
     pub content_type: String,
+    #[serde(default = "enabled_by_default")]
     pub enabled: bool,
 }
 
@@ -410,6 +419,7 @@ pub(crate) struct AssertionDoc {
     pub operator: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
+    #[serde(default = "enabled_by_default")]
     pub enabled: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,

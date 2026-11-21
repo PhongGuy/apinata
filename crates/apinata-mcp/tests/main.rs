@@ -69,6 +69,7 @@ mod resource_notify;
 mod resource_safety;
 mod resources;
 mod restore_item;
+mod row_defaults;
 mod run_fail_on_status;
 mod run_folder;
 mod run_retry;
