@@ -78,6 +78,8 @@ pub struct ImportNote {
     /// The written file the note concerns, `/`-separated and relative to the collection root;
     /// `None` until the writer places it.
     pub file: Option<String>,
+    /// The variables this note already asks a value for, so no later note repeats them.
+    pub(crate) asks_for: Vec<String>,
 }
 
 impl ImportNote {
@@ -92,6 +94,7 @@ impl ImportNote {
             kind,
             detail: detail.into(),
             file: None,
+            asks_for: Vec::new(),
         }
     }
 }

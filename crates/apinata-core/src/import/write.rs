@@ -70,19 +70,36 @@ pub(crate) fn write_collection_with(
         !taken.is_empty(),
         before_rename,
     )?;
-    let unset = crate::check::unset_names(&collection);
-    if !unset.is_empty() {
-        let names: Vec<String> = unset.iter().map(|n| format!("`{n}`")).collect();
-        let them = if names.len() == 1 { "it" } else { "them" };
-        let detail = format!(
-            "needs a value: {}; nothing imported defines {them}, so add {them} to the collection's variables or an environment before sending",
-            names.join(", ")
-        );
-        // No file is named: the note asks for a value, it does not describe a written file.
-        let note = ImportNote::new("collection", NoteKind::NeedsInput, detail);
-        report.notes.push(note);
-    }
+    push_unset_note(&collection, &|_| true, &mut report.notes);
     Ok((collection, report))
+}
+
+/// Push one note naming the variables the requests `written` accepts write that nothing in
+/// `collection` defines, leaving out those another note in `notes` already asks a value for.
+pub(super) fn push_unset_note(
+    collection: &Collection,
+    written: &dyn Fn(&str) -> bool,
+    notes: &mut Vec<ImportNote>,
+) {
+    let asked: HashSet<&str> = notes
+        .iter()
+        .flat_map(|n| n.asks_for.iter().map(String::as_str))
+        .collect();
+    let names: Vec<String> = crate::check::unset_names(collection, written)
+        .iter()
+        .filter(|n| !asked.contains(n.as_str()))
+        .map(|n| format!("`{n}`"))
+        .collect();
+    if names.is_empty() {
+        return;
+    }
+    let them = if names.len() == 1 { "it" } else { "them" };
+    let detail = format!(
+        "needs a value: {}; nothing imported defines {them}, so add {them} to the collection's variables or an environment before sending",
+        names.join(", ")
+    );
+    // No file is named: the note asks for a value, it does not describe a written file.
+    notes.push(ImportNote::new("collection", NoteKind::NeedsInput, detail));
 }
 
 /// [`write_collection_with`] for a collection whose credentials are already protected. The

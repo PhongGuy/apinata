@@ -183,6 +183,8 @@ fn run_and_mcp_refuse_a_legacy_root_and_point_at_convert() {
         .stderr(contains(message));
 }
 
+// The expected text is POSIX quoting; Windows quotes with double quotes instead.
+#[cfg(unix)]
 #[test]
 fn the_convert_hint_quotes_a_root_with_spaces() {
     let parent = tempfile::tempdir().unwrap();

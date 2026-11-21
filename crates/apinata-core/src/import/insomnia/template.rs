@@ -109,24 +109,26 @@ pub(super) fn apply(
             literal.join(", ")
         ));
     }
-    let (mut written, mut names) = (Vec::new(), Vec::new());
+    let (mut written, mut names) = (Vec::new(), Vec::<String>::new());
     for (k, name) in kept.iter().filter_map(|k| Some((k, k.variable.as_ref()?))) {
         written.push(format!("`{}` as `{{{{{name}}}}}`", k.written));
-        let quoted = format!("`{name}`");
-        if !names.contains(&quoted) {
-            names.push(quoted);
+        if !names.contains(name) {
+            names.push(name.clone());
         }
     }
     if !written.is_empty() {
+        let quoted: Vec<String> = names.iter().map(|n| format!("`{n}`")).collect();
         parts.push(format!(
             "a template tag has no equivalent, so each is written as a variable: {}; give {} a value before sending",
             written.join(", "),
-            names.join(", ")
+            quoted.join(", ")
         ));
     }
     if !parts.is_empty() {
         let detail = parts.join("; ");
-        notes.push(budget.note(trail, at, NoteKind::NeedsInput, detail)?);
+        let mut note = budget.note(trail, at, NoteKind::NeedsInput, detail)?;
+        note.asks_for = names;
+        notes.push(note);
     }
     Ok(text)
 }

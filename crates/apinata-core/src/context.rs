@@ -961,13 +961,7 @@ impl VarContext {
                 environments: defining.into_iter().map(str::to_owned).collect(),
             });
         }
-        // Only a name a variable could hold gets the remedy; dynamic, prompt and host-env
-        // names have their own sources.
-        let definable = !name.is_empty()
-            && !name.starts_with(['$', '?'])
-            && !name.starts_with("process.env.")
-            && !name.contains(|c: char| c.is_whitespace() || c == '{' || c == '}');
-        definable.then_some(UndefinedHint::Undeclared)
+        definable_name(name).then_some(UndefinedHint::Undeclared)
     }
 
     /// Whether naming the undefined or cyclic variable `name` could reveal a sensitive value:
@@ -1498,6 +1492,15 @@ fn is_public_oauth2_field(name: &str) -> bool {
     ["token_type", "expires_in", "scope", "created_at"]
         .iter()
         .any(|field| name.ends_with(&format!(".{field}")))
+}
+
+/// Whether `name` is one a collection or environment variable could hold; dynamic, prompt and
+/// host-env names have their own sources, so advice to define them would mislead.
+pub(crate) fn definable_name(name: &str) -> bool {
+    !name.is_empty()
+        && !name.starts_with(['$', '?'])
+        && !name.starts_with("process.env.")
+        && !name.contains(|c: char| c.is_whitespace() || c == '{' || c == '}')
 }
 
 #[cfg(test)]
