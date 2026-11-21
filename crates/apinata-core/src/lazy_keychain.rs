@@ -167,6 +167,53 @@ impl SecretStore for TimeoutStore {
     }
 }
 
+/// Why the platform keychain is not used for this run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct KeychainUnavailable {
+    /// Plain words for the user, such as "it did not answer in time".
+    pub reason: String,
+    /// What the platform reported, for logs only; empty after a timeout.
+    pub detail: String,
+}
+
+/// Open the platform keychain and check that it answers, by reading an entry that cannot exist
+/// within `limit`; the probe never writes. The store comes back with every call bounded by
+/// `limit`.
+pub fn open_keychain(limit: Duration) -> Result<Arc<dyn SecretStore>, KeychainUnavailable> {
+    let opened = KeychainStore::new().map(|k| Arc::new(k) as Arc<dyn SecretStore>);
+    checked(opened, limit)
+}
+
+fn checked(
+    opened: Result<Arc<dyn SecretStore>, SecretError>,
+    limit: Duration,
+) -> Result<Arc<dyn SecretStore>, KeychainUnavailable> {
+    let unavailable = |reason: &str, detail: String| KeychainUnavailable {
+        reason: reason.to_owned(),
+        detail,
+    };
+    let store = opened.map_err(|e| unavailable("it could not be reached", e.to_string()))?;
+    // Opening the store does not talk to the platform service, so a read is the first sign of a
+    // service that is registered but never answers; a hung read is left on its own thread.
+    let (tx, rx) = mpsc::channel();
+    let probed = Arc::clone(&store);
+    thread::spawn(move || {
+        let _ = tx.send(probed.get(&SecretKey::new("", "", "keychain-probe")));
+    });
+    match rx.recv_timeout(limit) {
+        Ok(Ok(_)) => Ok(Arc::new(TimeoutStore::new(store, limit))),
+        Ok(Err(e)) => Err(unavailable("it did not answer", e.to_string())),
+        Err(RecvTimeoutError::Timeout) => {
+            Err(unavailable("it did not answer in time", String::new()))
+        }
+        Err(RecvTimeoutError::Disconnected) => Err(unavailable(
+            "it did not answer",
+            "the keychain call failed".to_owned(),
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -356,5 +403,93 @@ mod tests {
         let bounded = TimeoutStore::new(inner, Duration::from_secs(5));
         let got = bounded.list(std::path::Path::new("/a")).unwrap();
         assert_eq!(got, [SecretKey::new("/a", "dev", "x")]);
+    }
+
+    /// A store that records every call and answers each read with `answer`.
+    struct Probed {
+        answer: Result<Option<String>, SecretError>,
+        calls: std::sync::Mutex<Vec<&'static str>>,
+    }
+
+    impl Probed {
+        fn new(answer: Result<Option<String>, SecretError>) -> Arc<Probed> {
+            Arc::new(Probed {
+                answer,
+                calls: Default::default(),
+            })
+        }
+    }
+
+    impl SecretStore for Probed {
+        fn get(&self, _: &SecretKey) -> Result<Option<String>, SecretError> {
+            self.calls.lock().unwrap().push("get");
+            self.answer.clone()
+        }
+        fn set(&self, _: &SecretKey, _: &str) -> Result<(), SecretError> {
+            self.calls.lock().unwrap().push("set");
+            Ok(())
+        }
+        fn delete(&self, _: &SecretKey) -> Result<(), SecretError> {
+            self.calls.lock().unwrap().push("delete");
+            Ok(())
+        }
+    }
+
+    fn opened(store: Arc<Probed>) -> Result<Arc<dyn SecretStore>, SecretError> {
+        Ok(store)
+    }
+
+    #[test]
+    fn a_keychain_that_has_no_probe_entry_is_kept_and_only_read() {
+        let store = Probed::new(Ok(None));
+        let kept = checked(opened(Arc::clone(&store)), Duration::from_secs(5));
+        assert!(kept.is_ok());
+        assert_eq!(*store.calls.lock().unwrap(), ["get"]);
+    }
+
+    #[test]
+    fn a_keychain_whose_read_fails_falls_back_in_plain_words() {
+        let raw = "Couldn't access platform storage: SS error: result not returned from SS API";
+        let store = Probed::new(Err(SecretError::Unavailable {
+            message: raw.into(),
+        }));
+        let why = checked(opened(Arc::clone(&store)), Duration::from_secs(5))
+            .err()
+            .expect("falls back");
+        assert_eq!(why.reason, "it did not answer");
+        assert!(why.detail.contains(raw), "{}", why.detail);
+        assert_eq!(*store.calls.lock().unwrap(), ["get"]);
+    }
+
+    #[test]
+    fn a_keychain_that_does_not_answer_in_time_falls_back() {
+        let started = Instant::now();
+        let why = checked(Ok(Arc::new(Hung::default())), Duration::from_millis(200))
+            .err()
+            .expect("falls back");
+        assert_eq!(why.reason, "it did not answer in time");
+        assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    #[test]
+    fn a_keychain_that_cannot_be_opened_falls_back_in_plain_words() {
+        let why = checked(
+            Err(SecretError::Unavailable {
+                message: "SS error".into(),
+            }),
+            Duration::from_secs(5),
+        )
+        .err()
+        .expect("falls back");
+        assert_eq!(why.reason, "it could not be reached");
+        assert!(why.detail.contains("SS error"), "{}", why.detail);
+    }
+
+    #[test]
+    fn a_panicking_probe_falls_back() {
+        let why = checked(Ok(Arc::new(Panicky::default())), Duration::from_secs(5))
+            .err()
+            .expect("falls back");
+        assert_eq!(why.reason, "it did not answer");
     }
 }

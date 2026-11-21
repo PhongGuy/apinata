@@ -6,9 +6,7 @@ use apinata_app::persist::Paths;
 use apinata_app::updates::Updates;
 use apinata_app::watch::set::notify_factory;
 use apinata_core::SystemTrash;
-use apinata_core::{
-    GitOptions, KEYCHAIN_TIMEOUT, KeychainStore, MemoryStore, SecretStore, TimeoutStore,
-};
+use apinata_core::{GitOptions, KEYCHAIN_TIMEOUT, MemoryStore, SecretStore, open_keychain};
 use gpui_kit::AppContext;
 use std::ffi::OsString;
 use std::sync::Arc;
@@ -44,22 +42,22 @@ fn main() {
                 eprintln!("apinata: no home directory for settings");
                 return cx.quit();
             };
-            // Connecting to the keychain can block, so it runs off the main thread; without
-            // one, secrets live in memory for this run and the user is told so.
-            let keychain = cx.background_spawn(async { KeychainStore::new() });
+            // Opening and probing the keychain can block, so it runs off the main thread; a
+            // keychain that is missing or does not answer leaves secrets in memory for this run.
+            let keychain = cx.background_spawn(async { open_keychain(KEYCHAIN_TIMEOUT) });
             cx.spawn(async move |cx| {
                 let (store, mut notes): (Arc<dyn SecretStore>, Vec<String>) = match keychain.await {
-                    // A hung secret service must not stall a background read for good.
-                    Ok(k) => (
-                        Arc::new(TimeoutStore::new(Arc::new(k), KEYCHAIN_TIMEOUT)),
-                        Vec::new(),
-                    ),
-                    Err(e) => {
+                    Ok(store) => (store, Vec::new()),
+                    Err(why) => {
+                        if !why.detail.is_empty() {
+                            eprintln!("apinata: keychain unavailable: {}", why.detail);
+                        }
                         cx.update(|cx| cx.set_global(VolatileSecrets));
                         (
                             Arc::new(MemoryStore::new()),
                             vec![format!(
-                                "Keychain unavailable ({e}); secrets last until quit."
+                                "Keychain unavailable ({}); secrets last until quit.",
+                                why.reason
                             )],
                         )
                     }
