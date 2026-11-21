@@ -393,6 +393,58 @@ fn get_token_signs_in_for_the_code_flow(cx: &mut TestAppContext) {
     );
 }
 
+fn focused(cx: &mut TestAppContext, win: AnyWindowHandle, id: &'static str) -> Option<bool> {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.find(id).focused()
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn closing_the_sign_in_gives_focus_back_to_get_token(cx: &mut TestAppContext) {
+    use apinata_app::oauth2_signin;
+    http_ready(cx);
+    let uri = "http://127.0.0.1:9";
+    let file = format!(
+        "{}  auth:\n    type: oauth2\n    flow: authorization_code\n    authorizationUrl: \"{uri}/authorize\"\n    accessTokenUrl: \"{uri}/token\"\n    credentials:\n      clientId: app\n",
+        request("a", "http://x.test/r")
+    );
+    let col = write_tree(&[("opencollection.yml", ROOT), ("a.yml", &file)]);
+    let s = started(cx, &col);
+    cx.update(|cx| {
+        oauth2_signin::set_opener(std::sync::Arc::new(|_: &str, _: &mut gpui_kit::App| {}), cx)
+    });
+    let tab = open_tab(cx, &s.ws, &s.root, "a.yml");
+    frame(cx, s.win);
+    let view = s
+        .shell
+        .read_with(cx, |sh, cx| sh.tab_area().read(cx).editor(tab).cloned())
+        .expect("an editor");
+    let panel = request_panel(cx, &view);
+    cx.update_window(s.win, |_, w, cx| {
+        w.activate_window();
+        w.click(("section", Section::Auth as usize), cx);
+        w.render_frame(cx);
+        w.click("oauth2-client-id", cx)
+    })
+    .unwrap();
+    frame(cx, s.win);
+    assert_eq!(focused(cx, s.win, "oauth2-client-id"), Some(true));
+    // A mouse press on Get token leaves focus in Client ID, the field typed last.
+    cx.update_window(s.win, |_, w, cx| w.click("oauth2-get-token", cx))
+        .unwrap();
+    wait_real(cx, |cx| {
+        cx.update(|cx| oauth2_signin::showing(cx)).is_some()
+    });
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| w.click("oauth2-signin-cancel", cx))
+        .unwrap();
+    settle_panel(cx, &panel);
+    frame(cx, s.win);
+    assert_eq!(focused(cx, s.win, "oauth2-get-token"), Some(true));
+}
+
 #[gpui_kit::test]
 fn an_auth_edit_reads_the_status_again(cx: &mut TestAppContext) {
     use apinata_app::oauth2_editor::OAuth2Toggle;

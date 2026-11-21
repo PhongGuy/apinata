@@ -32,8 +32,8 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, AnyView, App, Bounds, ClickEvent, ClipboardItem, ElementId, Empty, Entity,
     FocusHandle, Focusable, Global, Pixels, Point, Rems, Role, ScrollHandle, SharedString,
-    StyleRefinement, Subscription, Task, TestSupportExt, Window, actions, canvas, div, relative,
-    rems,
+    StyleRefinement, Subscription, Task, TestSupportExt, WeakFocusHandle, Window, actions, canvas,
+    div, relative, rems,
 };
 
 use crate::app::AppState;
@@ -890,6 +890,11 @@ impl RequestEditor {
     /// a rename or move the tab followed sends the new path.
     /// While the request runs, sending again cancels it instead, as the slot's button does.
     pub fn send(&mut self, _: &SendRequest, _window: &mut Window, cx: &mut Context<Self>) {
+        self.send_from(None, cx);
+    }
+
+    // Sends as `send` does; a sign-in dialog the send opens hands focus to `opener` on closing.
+    fn send_from(&mut self, opener: Option<WeakFocusHandle>, cx: &mut Context<Self>) {
         // A hover card left open would sit over the response that is about to arrive.
         self.graphql.update(cx, |g, cx| g.close_hovers(cx));
         if self.cancel_running(cx) {
@@ -900,8 +905,10 @@ impl RequestEditor {
         };
         self.commit_pending_secret(cx);
         let key = history_key(self.workspace.read(cx), self.tab);
-        self.send_model
-            .update(cx, |m, cx| m.send_keyed(&root, item, key, cx));
+        self.send_model.update(cx, |m, cx| {
+            m.sign_in_returns_to(opener);
+            m.send_keyed(&root, item, key, cx)
+        });
     }
 
     /// Does what the slot's button shows: Stop ends a streaming body and keeps what arrived,
@@ -3340,9 +3347,12 @@ impl RequestEditor {
                         .w_full()
                         .label("Send")
                         .tooltip_with_action("Send", &SendRequest, Some(KEY_CONTEXT))
-                        .on_click(
-                            cx.listener(|this, _, window, cx| this.send(&SendRequest, window, cx)),
-                        ),
+                        // A press leaves focus where it was, so a sign-in this send opens
+                        // returns to the slot instead, which keeps the Auth tab where it is.
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            let slot = this.slot_focus.downgrade();
+                            this.send_from(Some(slot), cx)
+                        })),
                 ),
             )
             .into_any_element()

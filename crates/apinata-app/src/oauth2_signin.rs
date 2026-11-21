@@ -18,7 +18,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyWindowHandle, App, AppContext, ClipboardItem, Entity, Global, Result, SharedString,
-    TestSupportExt, Window, div,
+    TestSupportExt, WeakFocusHandle, Window, div,
 };
 
 use crate::style::SPACE_3;
@@ -45,6 +45,7 @@ enum Message {
     Open {
         id: u64,
         prompt: AuthorizationPrompt,
+        opener: Option<WeakFocusHandle>,
         reply: async_channel::Sender<Answer>,
     },
     Done(u64),
@@ -55,6 +56,8 @@ struct Entry {
     showing: Showing,
     reply: async_channel::Sender<Answer>,
     paste: Option<Entity<InputState>>,
+    /// The control that started the sign-in, which takes focus back when the dialog closes.
+    opener: Option<WeakFocusHandle>,
     /// The dialog is on screen; false while queued and once the user answered it.
     open: bool,
 }
@@ -98,6 +101,12 @@ pub fn set_opener(opener: Opener, cx: &mut App) {
 
 /// `AuthorizeOptions` carrying the app authorizer once `install` ran, plain otherwise.
 pub fn authorize_options(cx: &App) -> AuthorizeOptions {
+    authorize_options_from(None, cx)
+}
+
+/// [`authorize_options`] whose sign-in dialog hands focus to `opener` when it closes, rather
+/// than to whatever held focus when it opened.
+pub fn authorize_options_from(opener: Option<WeakFocusHandle>, cx: &App) -> AuthorizeOptions {
     let options = AuthorizeOptions::new();
     match cx.try_global::<SignIn>() {
         Some(SignIn {
@@ -107,6 +116,7 @@ pub fn authorize_options(cx: &App) -> AuthorizeOptions {
         }) => options.authorizer(Arc::new(AppAuthorizer {
             messages: messages.clone(),
             next_id: Arc::clone(next_id),
+            opener,
         })),
         _ => options,
     }
@@ -121,6 +131,7 @@ pub fn showing(cx: &App) -> Option<Showing> {
 struct AppAuthorizer {
     messages: async_channel::Sender<Message>,
     next_id: Arc<AtomicU64>,
+    opener: Option<WeakFocusHandle>,
 }
 
 /// Tells the dialog loop that core stopped waiting on prompt `id`, however the sign-in ended.
@@ -142,13 +153,19 @@ impl Authorizer for AppAuthorizer {
     ) -> Pin<Box<dyn Future<Output = Answer> + Send>> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let messages = self.messages.clone();
+        let opener = self.opener.clone();
         Box::pin(async move {
             let _done = DoneGuard {
                 id,
                 messages: messages.clone(),
             };
             let (reply, answer) = async_channel::bounded(1);
-            let open = Message::Open { id, prompt, reply };
+            let open = Message::Open {
+                id,
+                prompt,
+                opener,
+                reply,
+            };
             if messages.send(open).await.is_err() {
                 return Err(AuthorizeCancelled);
             }
@@ -162,7 +179,12 @@ fn handle(message: Message, window: &mut Window, cx: &mut App) {
     match message {
         // A caller that gave up before its prompt arrived needs no dialog and no browser.
         Message::Open { reply, .. } if reply.is_closed() => {}
-        Message::Open { id, prompt, reply } => {
+        Message::Open {
+            id,
+            prompt,
+            opener,
+            reply,
+        } => {
             let host = url::Url::parse(&prompt.url)
                 .ok()
                 .and_then(|u| u.host_str().map(str::to_owned))
@@ -180,6 +202,7 @@ fn handle(message: Message, window: &mut Window, cx: &mut App) {
                 },
                 reply,
                 paste,
+                opener,
                 open: false,
             };
             let queue = &mut cx.global_mut::<SignIn>().queue;
@@ -212,13 +235,19 @@ fn show_front(window: &mut Window, cx: &mut App) {
     };
     front.open = true;
     let (id, url, paste) = (front.id, front.showing.url.clone(), front.paste.clone());
-    let opener = state.opener.clone();
+    let back = front.opener.as_ref().and_then(WeakFocusHandle::upgrade);
+    let browser = state.opener.clone();
+    // The kit gives focus back to whatever held it when a dialog opened. A mouse press on a
+    // button takes no focus, so the starting control takes it now, or the field typed last would.
+    if let Some(handle) = back {
+        window.focus(&handle, cx);
+    }
     open_dialog(id, paste.clone(), window, cx);
     if let Some(input) = paste {
         input.update(cx, |i, cx| i.focus(window, cx));
     }
-    if let Some(opener) = opener {
-        opener(&url, cx);
+    if let Some(browser) = browser {
+        browser(&url, cx);
     }
 }
 
@@ -362,7 +391,8 @@ mod tests {
     use gpui_kit::component::WindowExt as _;
     use gpui_kit::test::TestWindowExt as _;
     use gpui_kit::{
-        AnyWindowHandle, AppContext as _, Context, IntoElement, Render, TestAppContext, Window,
+        AnyWindowHandle, AppContext as _, Context, FocusHandle, InteractiveElement as _,
+        IntoElement, ParentElement as _, Render, TestAppContext, WeakFocusHandle, Window,
         WindowOptions, div,
     };
     use std::sync::Arc;
@@ -403,6 +433,15 @@ mod tests {
     }
 
     fn open(cx: &mut TestAppContext, id: u64, reply: async_channel::Sender<Answer>) {
+        open_from(cx, id, None, reply);
+    }
+
+    fn open_from(
+        cx: &mut TestAppContext,
+        id: u64,
+        opener: Option<WeakFocusHandle>,
+        reply: async_channel::Sender<Answer>,
+    ) {
         let messages = cx.update(|cx| cx.global::<SignIn>().messages.clone().unwrap());
         let prompt = AuthorizationPrompt::new(
             "http://127.0.0.1:9/authorize".into(),
@@ -410,7 +449,12 @@ mod tests {
             "http://127.0.0.1:9/cb".into(),
         );
         messages
-            .try_send(Message::Open { id, prompt, reply })
+            .try_send(Message::Open {
+                id,
+                prompt,
+                opener,
+                reply,
+            })
             .unwrap();
         cx.run_until_parked();
     }
@@ -427,6 +471,53 @@ mod tests {
             !cx.update_window(win, |_, w, cx| w.has_active_dialog(cx))
                 .unwrap()
         );
+    }
+
+    // Two focus stops, standing in for the form's first field and the control that signed in.
+    struct Form {
+        field: FocusHandle,
+        opener: FocusHandle,
+    }
+
+    impl Render for Form {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .child(div().track_focus(&self.field))
+                .child(div().track_focus(&self.opener))
+        }
+    }
+
+    #[gpui_kit::test]
+    fn closing_the_dialog_focuses_its_opener(cx: &mut TestAppContext) {
+        window(cx);
+        let (win, form) = cx
+            .update(|cx| {
+                gpui_kit::open_window(WindowOptions::default(), cx, |_, cx| {
+                    cx.new(|cx| Form {
+                        field: cx.focus_handle(),
+                        opener: cx.focus_handle(),
+                    })
+                })
+            })
+            .unwrap();
+        let (field, opener) = cx.update(|cx| {
+            let f = form.read(cx);
+            (f.field.clone(), f.opener.clone())
+        });
+        cx.update(|cx| install(win, cx));
+        // A mouse press on the opener leaves focus in the field typed last.
+        cx.update_window(win, |_, w, cx| w.focus(&field, cx))
+            .unwrap();
+        let (reply, _answer) = async_channel::bounded(1);
+        open_from(cx, 7, Some(opener.downgrade()), reply);
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.click("oauth2-signin-cancel", cx)
+        })
+        .unwrap();
+        cx.run_until_parked();
+        let focused = cx.update_window(win, |_, w, cx| w.focused(cx)).unwrap();
+        assert_eq!(focused, Some(opener));
     }
 
     #[gpui_kit::test]

@@ -15,7 +15,7 @@ use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
-use gpui_kit::{App, Entity, Result, Task, TestSupportExt, Window, div};
+use gpui_kit::{App, Entity, FocusHandle, Result, Task, TestSupportExt, Window, div};
 
 use crate::command::{Command, Target};
 use crate::send_model::plan_message;
@@ -90,6 +90,8 @@ pub struct TokenPanel {
     read: Option<Task<()>>,
     action: Option<Task<()>>,
     reads_started: usize,
+    // Get token's own focus, which a sign-in dialog it opened hands back on closing.
+    get_focus: FocusHandle,
     _ticker: Task<()>,
 }
 
@@ -119,6 +121,7 @@ impl TokenPanel {
             read: None,
             action: None,
             reads_started: 0,
+            get_focus: cx.focus_handle(),
             _ticker: ticker,
         };
         panel.reread(cx);
@@ -170,7 +173,8 @@ impl TokenPanel {
             self.action_note = None;
             return cx.notify();
         }
-        let how = crate::oauth2_signin::authorize_options(cx);
+        let opener = Some(self.get_focus.downgrade());
+        let how = crate::oauth2_signin::authorize_options_from(opener, cx);
         self.act(Action::Get(how), cx);
     }
 
@@ -499,6 +503,7 @@ impl Render for TokenPanel {
                             Button::new("oauth2-get-token")
                                 .solid_ring(cx)
                                 .label("Get token")
+                                .track_focus(&self.get_focus)
                                 .lock(busy, cx)
                                 .on_click(cx.listener(|p, _, _, cx| p.get_token(cx))),
                         )
