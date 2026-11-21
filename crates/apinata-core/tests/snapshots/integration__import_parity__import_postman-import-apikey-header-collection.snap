@@ -3,6 +3,7 @@ source: crates/apinata-core/tests/import_parity.rs
 expression: snapshot
 ---
 Converted Headers with API Key / request.auth.api_key [Headers with API Key.yml]: the value is kept as the secret variable `headers_with_api_key_api_key`, not in the file
+Converted collection [opencollection.yml]: runs use the environment `Environment` by default, since it holds the imported credentials
 Converted imported credentials [environments/Environment.yml]: the imported credentials are the secret variables `headers_with_api_key_api_key`; their values are kept in the secret store, not in the file
 == Headers with API Key.yml
 info:
@@ -34,3 +35,31 @@ name: Environment
 variables:
   - secret: true
     name: headers_with_api_key_api_key
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: My Collection
+
+docs:
+  content: |-
+    ### Welcome to Postman! This is your first collection. 
+
+    Collections are your starting point for building and testing APIs. You can use this one to:
+
+    • Group related requests
+    • Test your API in real-world scenarios
+    • Document and share your requests
+
+    Update the name and overview whenever you’re ready to make it yours.
+
+    [Learn more about Postman Collections.](https://learning.postman.com/docs/collections/collections-overview/)
+  type: text/markdown
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+    presets:
+      defaultEnvironment: Environment

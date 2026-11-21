@@ -32,7 +32,7 @@ pub use format::{
 };
 pub use place::{Placed, ensure_folder, place_items};
 pub use postman::{parse_postman, parse_postman_environment};
-pub use request::{add_request, store_request_secrets};
+pub use request::{add_request, claim_secret_names, store_request_secrets};
 pub use source::{ImportSource, SourceError, classify_source};
 pub use update::{
     ChangedField, FieldHashes, PrunedRequest, RecordedSpec, RequestChange, SpecBaseline,

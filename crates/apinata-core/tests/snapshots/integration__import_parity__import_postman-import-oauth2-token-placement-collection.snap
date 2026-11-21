@@ -4,6 +4,7 @@ expression: snapshot
 ---
 Converted OAuth2 Token in Header / request.auth.client_secret [OAuth2 Token in Header.yml]: the value is kept as the secret variable `oauth2_token_in_header_client_secret`, not in the file
 Converted OAuth2 Token in URL / request.auth.client_secret [OAuth2 Token in URL.yml]: the value is kept as the secret variable `oauth2_token_in_url_client_secret`, not in the file
+Converted collection [opencollection.yml]: runs use the environment `Environment` by default, since it holds the imported credentials
 Converted imported credentials [environments/Environment.yml]: the imported credentials are the secret variables `oauth2_token_in_header_client_secret`, `oauth2_token_in_url_client_secret`; their values are kept in the secret store, not in the file
 == OAuth2 Token in Header.yml
 info:
@@ -82,3 +83,16 @@ variables:
     name: oauth2_token_in_header_client_secret
   - secret: true
     name: oauth2_token_in_url_client_secret
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: OAuth2 Token Placement
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+    presets:
+      defaultEnvironment: Environment

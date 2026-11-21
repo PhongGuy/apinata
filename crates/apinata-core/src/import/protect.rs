@@ -3,9 +3,16 @@
 //! handed to the caller to keep in an environment and the secret store.
 
 use super::har::secret_names;
-use super::{ImportNote, ImportedCollection, ImportedEnvironment, ImportedItem, NoteKind};
-use crate::edit::{AuthSpec, KeyValue, VarValue};
+use super::{
+    ImportBundle, ImportNote, ImportedCollection, ImportedEnvironment, ImportedItem,
+    ImportedRequest, NoteKind,
+};
+use crate::collection::Collection;
+use crate::edit::{
+    AuthSpec, BodySpec, KeyValue, MultipartValue, OAuth1KeyKind, ParamKind, VarValue,
+};
 use crate::env_file::EnvVariable;
+use crate::secrets::{MemoryStore, SecretStore};
 use std::collections::{HashMap, HashSet};
 
 /// A literal taken out of a file: the variable that now holds it and the value.
@@ -64,9 +71,66 @@ pub(crate) fn slug(text: &str) -> String {
     out
 }
 
-/// A value worth hiding: not blank and not already (partly) a variable reference.
+/// A value worth hiding: not blank, and not just variable references, optionally after an
+/// auth scheme word such as `Bearer`, which hold nothing secret themselves.
 fn is_literal(value: &str) -> bool {
-    !value.trim().is_empty() && !value.contains("{{")
+    if value.trim().is_empty() {
+        return false;
+    }
+    let mut rest = String::new();
+    let mut tail = value;
+    while let Some(open) = tail.find("{{") {
+        rest.push_str(&tail[..open]);
+        match tail[open..].find("}}") {
+            Some(close) => tail = &tail[open + close + 2..],
+            None => {
+                rest.push_str(&tail[open..]);
+                tail = "";
+            }
+        }
+    }
+    rest.push_str(tail);
+    let rest = rest.trim();
+    let scheme = ["bearer", "basic", "token", "digest"]
+        .iter()
+        .any(|word| rest.eq_ignore_ascii_case(word));
+    !(rest.is_empty() || (scheme && value.contains("{{")))
+}
+
+/// Names one owner's secrets `<owner>_<kind>` and records each one taken.
+struct Taker<'a> {
+    owner: String,
+    names: &'a mut SecretNames,
+    found: &'a mut Vec<Found>,
+}
+
+impl Taker<'_> {
+    fn new<'a>(owner: &str, names: &'a mut SecretNames, found: &'a mut Vec<Found>) -> Taker<'a> {
+        let owner = match slug(owner).trim_matches('_') {
+            "" => "request".to_owned(),
+            trimmed => trimmed.to_owned(),
+        };
+        Taker {
+            owner,
+            names,
+            found,
+        }
+    }
+
+    /// The reference for `value`, taking it as a secret when it is a literal.
+    fn take(&mut self, member: String, kind: &str, value: &mut String) {
+        if !is_literal(value) {
+            return;
+        }
+        let name = self
+            .names
+            .name_for(&format!("{}_{kind}", self.owner), value);
+        self.found.push(Found {
+            member,
+            name: name.clone(),
+            value: std::mem::replace(value, format!("{{{{{name}}}}}")),
+        });
+    }
 }
 
 /// Replace each literal secret of `auth` and `headers` with a reference named after `owner`,
@@ -79,34 +143,153 @@ pub(crate) fn protect_parts(
     names: &mut SecretNames,
     found: &mut Vec<Found>,
 ) {
-    let owner = match slug(owner).trim_matches('_') {
-        "" => "request".to_owned(),
-        trimmed => trimmed.to_owned(),
-    };
-    let mut take = |member: String, kind: &str, value: &mut String| {
-        if !is_literal(value) {
-            return;
-        }
-        let name = names.name_for(&format!("{owner}_{kind}"), value);
-        found.push(Found {
-            member,
-            name: name.clone(),
-            value: std::mem::replace(value, format!("{{{{{name}}}}}")),
-        });
-    };
+    let mut taker = Taker::new(owner, names, found);
     for (kind, value) in auth_secrets(auth) {
-        take(format!("{at}auth.{kind}"), kind, value);
+        taker.take(format!("{at}auth.{kind}"), kind, value);
     }
     for (i, header) in headers.iter_mut().enumerate() {
-        let lower = header.name.to_ascii_lowercase();
-        let credential = matches!(
-            lower.as_str(),
-            "authorization" | "proxy-authorization" | "cookie"
-        ) || secret_names::is_header(&header.name);
-        if credential {
+        if is_credential_header(&header.name) {
             let kind = slug(&header.name);
-            take(format!("{at}headers[{i}]"), &kind, &mut header.value);
+            taker.take(format!("{at}headers[{i}]"), &kind, &mut header.value);
         }
+    }
+}
+
+fn is_credential_header(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    matches!(
+        lower.as_str(),
+        "authorization" | "proxy-authorization" | "cookie"
+    ) || secret_names::is_header(name)
+}
+
+/// [`protect_parts`] for a request, plus the URL's userinfo password, credential query
+/// params (in the URL and the params alike) and credential form fields.
+pub(crate) fn protect_request(
+    owner: &str,
+    at: &str,
+    request: &mut ImportedRequest,
+    names: &mut SecretNames,
+    found: &mut Vec<Found>,
+) {
+    protect_parts(
+        owner,
+        at,
+        &mut request.auth,
+        &mut request.headers,
+        names,
+        found,
+    );
+    let mut taker = Taker::new(owner, names, found);
+    let url_member = format!("{at}url");
+    if let Some(range) = userinfo_password(&request.url) {
+        let mut password = request.url[range.clone()].to_owned();
+        taker.take(url_member.clone(), "url_password", &mut password);
+        request.url.replace_range(range, &password);
+    }
+    request.url = rewrite_query(&request.url, |key, value| {
+        let kind = slug(secret_names::leaf(key));
+        taker.take(url_member.clone(), &kind, value);
+    });
+    for (i, param) in request.params.iter_mut().enumerate() {
+        if param.kind == ParamKind::Query && secret_names::is_query(&param.name) {
+            let kind = slug(secret_names::leaf(&param.name));
+            taker.take(format!("{at}params[{i}]"), &kind, &mut param.value);
+        }
+    }
+    match &mut request.body {
+        BodySpec::FormUrlEncoded(fields) => {
+            for (i, field) in fields.iter_mut().enumerate() {
+                if secret_names::is_field(&field.name) {
+                    let kind = slug(secret_names::leaf(&field.name));
+                    taker.take(format!("{at}body[{i}]"), &kind, &mut field.value);
+                }
+            }
+        }
+        BodySpec::Multipart(fields) => {
+            for (i, field) in fields.iter_mut().enumerate() {
+                if let MultipartValue::Text(value) = &mut field.value
+                    && secret_names::is_field(&field.name)
+                {
+                    let kind = slug(secret_names::leaf(&field.name));
+                    taker.take(format!("{at}body[{i}]"), &kind, value);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The byte range of the password in a `scheme://user:password@host` URL, when it has one.
+fn userinfo_password(url: &str) -> Option<std::ops::Range<usize>> {
+    let colon = url.find(':')?;
+    let scheme = &url[..colon];
+    let is_scheme = !scheme.is_empty()
+        && scheme
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
+    if !is_scheme {
+        return None;
+    }
+    // The authority follows the scheme's `:` and any run of slashes, up to a path, query or
+    // fragment; its last `@` ends the userinfo.
+    let start = url.len() - url[colon + 1..].trim_start_matches(['/', '\\']).len();
+    let end = url[start..]
+        .find(['/', '\\', '?', '#'])
+        .map_or(url.len(), |i| start + i);
+    let at_sign = url[start..end].rfind('@').map(|i| start + i)?;
+    let sep = url[start..at_sign].find(':').map(|i| start + i)?;
+    (sep + 1 < at_sign).then_some(sep + 1..at_sign)
+}
+
+/// `url` with `take` given the raw value of each credential pair of its query, every other
+/// byte as written.
+fn rewrite_query(url: &str, mut take: impl FnMut(&str, &mut String)) -> String {
+    let hash = url.find('#').unwrap_or(url.len());
+    let Some(q) = url[..hash].find('?') else {
+        return url.to_owned();
+    };
+    let pairs: Vec<String> = url[q + 1..hash]
+        .split('&')
+        .map(|pair| match pair.split_once('=') {
+            Some((key, value)) if secret_names::is_query(key) => {
+                let mut value = value.to_owned();
+                take(key, &mut value);
+                format!("{key}={value}")
+            }
+            _ => pair.to_owned(),
+        })
+        .collect();
+    format!("{}{}{}", &url[..=q], pairs.join("&"), &url[hash..])
+}
+
+/// Point every `{{old}}` reference of `request` at `{{new}}` instead.
+pub(crate) fn rename_reference(request: &mut ImportedRequest, old: &str, new: &str) {
+    let (from, to) = (format!("{{{{{old}}}}}"), format!("{{{{{new}}}}}"));
+    let rename = |text: &mut String| {
+        if text.contains(&from) {
+            *text = text.replace(&from, &to);
+        }
+    };
+    rename(&mut request.url);
+    request.params.iter_mut().for_each(|p| rename(&mut p.value));
+    request
+        .headers
+        .iter_mut()
+        .for_each(|h| rename(&mut h.value));
+    auth_secrets(&mut request.auth)
+        .into_iter()
+        .for_each(|(_, value)| rename(value));
+    match &mut request.body {
+        BodySpec::FormUrlEncoded(fields) => fields.iter_mut().for_each(|f| rename(&mut f.value)),
+        BodySpec::Multipart(fields) => {
+            for field in fields {
+                if let MultipartValue::Text(value) = &mut field.value {
+                    rename(value);
+                }
+            }
+        }
+        _ => {}
     }
 }
 
@@ -131,6 +314,13 @@ fn auth_secrets(auth: &mut AuthSpec) -> Vec<(&'static str, &mut String)> {
             ("consumer_secret", spec.consumer_secret.as_mut()),
             ("access_token", spec.access_token.as_mut()),
             ("access_token_secret", spec.access_token_secret.as_mut()),
+            (
+                "private_key",
+                spec.private_key
+                    .as_mut()
+                    .filter(|k| k.kind == OAuth1KeyKind::Text)
+                    .map(|k| &mut k.value),
+            ),
         ]
         .into_iter()
         .filter_map(|(kind, value)| value.map(|v| (kind, v)))
@@ -170,6 +360,8 @@ fn tree_names(collection: &ImportedCollection) -> Vec<String> {
 
 /// A secret taken out of an imported collection, with the note source it came from.
 pub(crate) struct Taken {
+    /// Whether it came from the collection's own auth or headers.
+    pub(crate) root: bool,
     pub(crate) source: String,
     pub(crate) name: String,
     pub(crate) value: String,
@@ -219,15 +411,7 @@ fn protect_items(
             }
             ImportedItem::Request(r) => {
                 let trail = format!("{trail}{} / ", r.name);
-                let request = &mut r.request;
-                protect_parts(
-                    &r.name,
-                    "request.",
-                    &mut request.auth,
-                    &mut request.headers,
-                    names,
-                    &mut found,
-                );
+                protect_request(&r.name, "request.", &mut r.request, names, &mut found);
                 record(&trail, &mut found, &mut r.notes, out);
             }
         }
@@ -247,11 +431,27 @@ fn record(trail: &str, found: &mut Vec<Found>, notes: &mut Vec<ImportNote>, out:
             ),
         ));
         out.push(Taken {
+            root: trail == "collection / ",
             source,
             name: f.name,
             value: f.value,
         });
     }
+}
+
+/// `bundle` with its credentials protected and named as [`write_collection`] names them on
+/// a first import, from the bundle alone.
+///
+/// [`write_collection`]: super::write_collection
+pub(crate) fn protect_bundle(bundle: &ImportBundle) -> (ImportBundle, Vec<Taken>) {
+    let mut out = bundle.clone();
+    let declared: Vec<String> = bundle
+        .environments
+        .iter()
+        .flat_map(|e| e.variables.iter().map(|v| v.name.clone()))
+        .collect();
+    let taken = protect_collection(&mut out.collection, declared, true);
+    (out, taken)
 }
 
 /// Declare each of `taken` as a secret variable with its value in every one of `envs`, adding
@@ -293,6 +493,112 @@ pub(crate) fn add_to_environments(envs: &mut Vec<ImportedEnvironment>, taken: &[
     }
 }
 
+/// Make `env` the collection's default environment when it has none, so a run without a
+/// named environment finds the imported secrets. Best effort: a failed save leaves no default.
+pub(crate) fn default_to(collection: &mut Collection, env: &str) {
+    if collection.file().presets().default_environment().is_empty() {
+        let file = collection.file_mut();
+        file.set_default_environment(env);
+        if file.save().is_err() {
+            let _ = collection.revert(&collection.root().join(crate::collection::ROOT_FILE));
+        }
+    }
+}
+
+/// Keep `taken` in an existing collection: declared as secret variables of every environment
+/// (of a new `Environment` when there is none), each value stored where none is yet, so a
+/// secret already holding a value keeps it. `store` `None` stores nothing. What could not be
+/// stored is noted as needing input and listed in `to_enter`.
+pub(crate) fn keep_taken(
+    collection: &mut Collection,
+    taken: &[Taken],
+    store: Option<&dyn SecretStore>,
+    notes: &mut Vec<ImportNote>,
+    to_enter: &mut Vec<(String, String)>,
+) {
+    if taken.is_empty() {
+        return;
+    }
+    let mut needs = |env: &str, t: &Taken, why: String| {
+        let mut note = ImportNote::new(
+            t.source.clone(),
+            NoteKind::NeedsInput,
+            format!(
+                "the secret `{}` was not stored ({why}); enter it before sending",
+                t.name
+            ),
+        );
+        note.file = Some(format!("environments/{env}.yml"));
+        notes.push(note);
+        to_enter.push((env.to_owned(), t.name.clone()));
+    };
+    if collection.environments().is_empty() {
+        // Creating an environment writes no secret, so a throwaway store keeps the real one out.
+        if let Err(e) = collection.create_environment("Environment", &MemoryStore::new()) {
+            for t in taken {
+                needs("Environment", t, e.to_string());
+            }
+            return;
+        }
+    }
+    let names: Vec<String> = collection
+        .environments()
+        .iter()
+        .map(|e| e.name().to_owned())
+        .collect();
+    for env in &names {
+        let Some(environment) = collection.environment_mut(env) else {
+            continue;
+        };
+        let before = environment.variables();
+        let mut variables = before.clone();
+        let mut kept = Vec::new();
+        for t in taken {
+            match variables.iter().find(|v| v.name == t.name) {
+                Some(v) if v.secret => kept.push(t),
+                Some(_) => needs(
+                    env,
+                    t,
+                    format!("`{}` is a plain variable of `{env}`", t.name),
+                ),
+                None => {
+                    variables.push(EnvVariable::secret(t.name.clone()));
+                    kept.push(t);
+                }
+            }
+        }
+        if variables.len() != before.len() {
+            environment.set_variables(variables);
+            if let Err(e) = environment.save() {
+                environment.set_variables(before);
+                for t in kept {
+                    needs(env, t, e.to_string());
+                }
+                continue;
+            }
+        }
+        for t in kept {
+            let Some(store) = store else {
+                needs(env, t, "no secret store was given".to_owned());
+                continue;
+            };
+            let key = collection.secret_key(env, &t.name);
+            match store.get(&key) {
+                Ok(Some(_)) => {}
+                Ok(None) => {
+                    if let Err(e) = store.set(&key, &t.value) {
+                        needs(env, t, e.to_string());
+                    }
+                }
+                Err(e) => needs(env, t, e.to_string()),
+            }
+        }
+    }
+    if let Some(first) = names.first() {
+        default_to(collection, first);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -310,6 +616,8 @@ mod tests {
         assert!(is_literal("s3cret"));
         assert!(!is_literal("{{pw}}"));
         assert!(!is_literal("Bearer {{token}}"));
+        assert!(is_literal("session=s3cret; csrf={{c}}"));
+        assert!(is_literal("Bearer"));
         assert!(!is_literal("  "));
     }
 }

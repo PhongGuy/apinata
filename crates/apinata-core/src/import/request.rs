@@ -1,5 +1,6 @@
 //! Writing an imported request into a request file.
 
+use super::protect::rename_reference;
 use super::{ImportError, ImportNote, ImportedRequest, ImportedScripts, NoteKind};
 use crate::collection::Collection;
 use crate::edit::{AuthSpec, BodySpec};
@@ -10,6 +11,7 @@ use crate::js;
 use crate::request::{RequestFile, RequestKind};
 use crate::secrets::SecretStore;
 use serde_json::Value;
+use std::collections::HashSet;
 
 /// Create `name` under `parent`, apply `request`, save. When applying or saving fails, the new
 /// file is deleted again and that error returned. Fails with `Tree` for an unknown parent or
@@ -37,11 +39,64 @@ pub fn add_request(
     Ok(path)
 }
 
+/// Rename each secret of `request`, and its references, whose name `collection` already uses
+/// for something else: a plain variable, a variable of another environment, or a secret of the
+/// target environment (chosen as [`store_request_secrets`] chooses it) holding another value
+/// or none. A secret already holding the same value keeps its name. Call it before writing
+/// the request, so a later import never takes over an earlier request's secret.
+pub fn claim_secret_names(
+    collection: &Collection,
+    request: &mut ImportedRequest,
+    prefer: Option<&str>,
+    store: &dyn SecretStore,
+) {
+    let Ok(env) = target_environment(collection, prefer) else {
+        return;
+    };
+    let target = collection
+        .environment(&env)
+        .map(|e| e.variables())
+        .unwrap_or_default();
+    let mut taken: HashSet<String> = collection
+        .environments()
+        .iter()
+        .flat_map(|e| e.variables().into_iter().map(|v| v.name))
+        .chain(collection.file().vars().into_iter().map(|v| v.name))
+        .collect();
+    for i in 0..request.secrets.len() {
+        let (base, value) = (&request.secrets[i].name, &request.secrets[i].value);
+        let fits = |name: &str| match target.iter().find(|v| v.name == name) {
+            Some(v) if v.secret => matches!(
+                store.get(&collection.secret_key(&env, name)),
+                Ok(Some(stored)) if stored == *value
+            ),
+            Some(_) => false,
+            None => !taken.contains(name),
+        };
+        let name = (1..)
+            .map(|n| match n {
+                1 => base.clone(),
+                n => format!("{base}_{n}"),
+            })
+            .find(|name| fits(name))
+            .unwrap_or_else(|| base.clone());
+        if name != *base {
+            let old = base.clone();
+            rename_reference(request, &old, &name);
+            request.secrets[i].name = name.clone();
+        }
+        // A later secret of the same request must not land on this one.
+        taken.insert(name);
+    }
+}
+
 /// Keep each secret of `request` as a secret variable of one environment, with its value in
 /// `store`. The environment is `prefer`; a named one that does not exist stores nothing. With no
-/// `prefer` it is the only environment; with none to choose, when the variable name is taken by
-/// a plain variable, or when the store refuses, the secret's `NeedsInput` note stays in `notes` and says why. On success that note becomes a
-/// `Converted` one naming the environment. A value already stored for the variable is replaced.
+/// `prefer` it is the only environment. With none to choose, when the variable name is taken by
+/// a plain variable, when a different value is already stored for it (never replaced), or when
+/// the store refuses, the secret's `NeedsInput` note stays in `notes` and says why. On success
+/// that note becomes a `Converted` one naming the environment, which becomes the collection's
+/// default environment when it has none.
 pub fn store_request_secrets(
     collection: &mut Collection,
     request: &ImportedRequest,
@@ -81,17 +136,7 @@ fn keep_secret(
     prefer: Option<&str>,
     store: &dyn SecretStore,
 ) -> Result<String, String> {
-    // A name the caller gave is never swapped for another environment: a secret that lands
-    // somewhere unintended is worse than one that waits for input.
-    let env = match prefer {
-        Some(p) if collection.environment(p).is_some() => p.to_owned(),
-        Some(p) => return Err(collection.environment_not_found(p).to_string()),
-        None => match collection.environments() {
-            [only] => only.name().to_owned(),
-            [] => return Err("the collection has no environment".to_owned()),
-            _ => return Err("the collection has several environments".to_owned()),
-        },
-    };
+    let env = target_environment(collection, prefer)?;
     let environment = collection
         .environment_mut(&env)
         .ok_or_else(|| "the environment is gone".to_owned())?;
@@ -112,12 +157,32 @@ fn keep_secret(
             }
         }
     }
-    // A refusing store leaves the variable declared without a value; the note tells the
-    // user to enter it.
-    store
-        .set(&collection.secret_key(&env, name), value)
-        .map_err(|e| e.to_string())?;
+    // A value is stored only where none is: a secret another request uses keeps its own. A
+    // refusing store leaves the variable declared without a value; the note tells the user to
+    // enter it.
+    let key = collection.secret_key(&env, name);
+    match store.get(&key).map_err(|e| e.to_string())? {
+        Some(stored) if stored == value => {}
+        Some(_) => return Err(format!("`{name}` already holds a different value")),
+        None => store.set(&key, value).map_err(|e| e.to_string())?,
+    }
+    super::protect::default_to(collection, &env);
     Ok(env)
+}
+
+/// The environment an imported secret goes to: `prefer`, else the only one.
+fn target_environment(collection: &Collection, prefer: Option<&str>) -> Result<String, String> {
+    // A name the caller gave is never swapped for another environment: a secret that lands
+    // somewhere unintended is worse than one that waits for input.
+    match prefer {
+        Some(p) if collection.environment(p).is_some() => Ok(p.to_owned()),
+        Some(p) => Err(collection.environment_not_found(p).to_string()),
+        None => match collection.environments() {
+            [only] => Ok(only.name().to_owned()),
+            [] => Err("the collection has no environment".to_owned()),
+            _ => Err("the collection has several environments".to_owned()),
+        },
+    }
 }
 
 impl ImportedRequest {

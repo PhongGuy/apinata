@@ -9,11 +9,8 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use super::protect::protect_collection;
-use super::{
-    ImportBundle, ImportError, ImportReport, ImportedRequest, ImportedSecret, record_spec_baseline,
-    store_request_secrets, write::write_staged,
-};
+use super::protect::{keep_taken, protect_collection};
+use super::{ImportBundle, ImportError, ImportReport, record_spec_baseline, write::write_staged};
 use crate::collection::Collection;
 use crate::item_path::ItemPath;
 use crate::secrets::SecretStore;
@@ -76,8 +73,8 @@ pub fn ensure_folder(
 }
 
 /// Write `bundle`'s items directly into the existing `folder` of `collection`, then reload.
-/// No environment is written; a credential taken out of an item is kept as a secret variable
-/// of the collection's only environment, its value in `secrets`, or noted as not stored. A
+/// A credential taken out of an item is kept as a secret variable of every environment (of a
+/// new `Environment` when there is none), its value in `secrets`, or noted as not stored. A
 /// name already in the folder is refused with [`ImportError::Exists`] and nothing is written.
 /// An OpenAPI bundle also records the folder's baseline, which lets a later update find its
 /// requests. A failure removes what this call copied and nothing else.
@@ -101,7 +98,9 @@ pub fn place_items(
         .collect::<Vec<_>>();
     let taken = protect_collection(&mut imported, declared, false);
     let (staged, mut report) =
-        write_staged(scratch.path(), &imported, &[], secrets, &mut |_| Ok(()))?;
+        write_staged(scratch.path(), &imported, &[], secrets, false, &mut |_| {
+            Ok(())
+        })?;
     // A folder never records a source, so the staged root's note about one does not apply.
     if let Some(skip) = super::update::unrecorded_note(bundle.collection.spec_from.as_ref()) {
         report.notes.retain(|n| n.detail != skip.detail);
@@ -143,16 +142,13 @@ pub fn place_items(
             return Err(e);
         }
     }
-    let mut holder = ImportedRequest::new("GET", "");
-    holder.secrets = taken
-        .into_iter()
-        .map(|t| ImportedSecret {
-            name: t.name,
-            value: t.value,
-            source: t.source,
-        })
-        .collect();
-    store_request_secrets(collection, &holder, None, secrets, &mut report.notes);
+    keep_taken(
+        collection,
+        &taken,
+        Some(secrets),
+        &mut report.notes,
+        &mut report.secrets_to_enter,
+    );
     let requests = report
         .items
         .iter()

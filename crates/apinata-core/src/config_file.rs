@@ -375,6 +375,11 @@ impl CollectionFile {
         presets.write(&mut self.inner.doc, COLLECTION_TOP);
     }
 
+    /// Make `name` the environment a run uses when none is named.
+    pub fn set_default_environment(&mut self, name: &str) {
+        CollectionPresets::write_default_environment(&mut self.inner.doc, COLLECTION_TOP, name);
+    }
+
     /// The spec update baseline; `None` when `extensions.apinata.openapi.ops` is absent, and an
     /// empty baseline when it is an empty mapping.
     pub fn spec_baseline(&self) -> Option<SpecBaseline> {

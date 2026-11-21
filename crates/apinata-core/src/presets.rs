@@ -59,6 +59,13 @@ impl CollectionPresets {
         }
     }
 
+    /// Set `extensions.bruno.presets.defaultEnvironment` to `name`, in the writer's key order.
+    pub(crate) fn write_default_environment(doc: &mut Document, top: &[&str], name: &str) {
+        let order: &[&[&str]] = &[top, BRUNO, PRESETS];
+        let keys = [PATH[0], PATH[1], PATH[2], "defaultEnvironment"];
+        doc.set(&keys, Value::String(name.to_owned()), order);
+    }
+
     /// Write the type and URL as Bruno's writer does: each only when non-empty, `request` only
     /// while it holds a key, and `presets` and `bruno` only while they hold anything. Keys this
     /// reader does not know, `defaultEnvironment` included, stay. `extensions` stays, as the

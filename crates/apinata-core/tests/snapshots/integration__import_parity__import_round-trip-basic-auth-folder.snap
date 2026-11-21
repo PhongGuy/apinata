@@ -8,6 +8,7 @@ Converted Own Auth folder / auth.password [Own Auth folder/folder.yml]: the valu
 Converted Own Auth folder / Own Auth / request.auth.password [Own Auth folder/Own Auth.yml]: the value is kept as the secret variable `own_auth_password_2`, not in the file
 Converted No Auth / Own Auth / request.auth.password [No Auth/Own Auth.yml]: the value is kept as the secret variable `own_auth_password_3`, not in the file
 Converted Own Auth / request.auth.password [Own Auth.yml]: the value is kept as the secret variable `own_auth_password_4`, not in the file
+Converted collection [opencollection.yml]: runs use the environment `Environment` by default, since it holds the imported credentials
 Converted imported credentials [environments/Environment.yml]: the imported credentials are the secret variables `basic_auth_password`, `own_auth_password`, `own_auth_folder_password`, `own_auth_password_2`, `own_auth_password_3`, `own_auth_password_4`; their values are kept in the secret store, not in the file
 == Inherited Folder/Own Auth.yml
 info:
@@ -132,3 +133,5 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Environment

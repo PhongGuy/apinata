@@ -4,7 +4,7 @@ mod body;
 mod flags;
 mod shell;
 
-use super::protect::{SecretNames, protect_parts};
+use super::protect::{SecretNames, protect_request};
 use super::{ImportNote, ImportedRequest, ImportedSecret, NoteKind};
 use crate::edit::{AuthSpec, KeyValue, Param, ParamKind, RequestSettings, Timeout};
 use crate::url_params::{parse_path_params, parse_query_params, split_on_first};
@@ -475,8 +475,7 @@ impl Mapper {
         let declared: Vec<String> = self.secrets.iter().map(|s| s.name.clone()).collect();
         let mut names = SecretNames::new(declared);
         let mut found = Vec::new();
-        let (auth, headers) = (&mut request.auth, &mut request.headers);
-        protect_parts(&host, "", auth, headers, &mut names, &mut found);
+        protect_request(&host, "", request, &mut names, &mut found);
         for f in found {
             let source = format!("curl {}", f.member);
             let detail = format!(

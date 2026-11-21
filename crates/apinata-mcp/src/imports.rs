@@ -3,7 +3,9 @@
 
 use apinata_core::Collection;
 use apinata_core::SecretStore;
-use apinata_core::import::{RequestFormat, add_request, parse_request, store_request_secrets};
+use apinata_core::import::{
+    RequestFormat, add_request, claim_secret_names, parse_request, store_request_secrets,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -63,6 +65,8 @@ pub(crate) fn import_request(
     };
     let parent = item_path(&a.parent)?;
     let mut parsed = parse_request(format, &a.text).map_err(|e| e.to_string())?;
+    // Names are settled before the file is written, so no earlier secret is taken over.
+    claim_secret_names(c, &mut parsed.request, a.environment.as_deref(), store);
     let path = add_request(c, &parent, &a.name, &parsed.request).map_err(|e| e.to_string())?;
     // A secret the command carries goes to the named environment (nothing is stored if it does
     // not exist), else to the collection's only one, and to the store; otherwise a note says

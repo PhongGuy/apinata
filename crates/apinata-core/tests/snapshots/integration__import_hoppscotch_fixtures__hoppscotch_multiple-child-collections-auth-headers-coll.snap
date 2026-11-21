@@ -448,6 +448,8 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Environment
 == root-collection-request.yml
 info:
   name: root-collection-request
@@ -488,4 +490,5 @@ Converted folder-3 / folder-33 / folder-33-request / request.auth.password: the 
 Dropped folder-3 / folder-3-request / testScript: scripts are not imported (folder-3/folder-3-request.yml)
 Converted folder-3 / folder-3-request / request.auth.password: the value is kept as the secret variable `folder_3_request_password`, not in the file (folder-3/folder-3-request.yml)
 Dropped root-collection-request / testScript: scripts are not imported (root-collection-request.yml)
+Converted collection: runs use the environment `Environment` by default, since it holds the imported credentials (opencollection.yml)
 Converted imported credentials: the imported credentials are the secret variables `multiple_child_collections_with_authorization_headers_and_variables_set_at_each_level_password`, `folder_13_token`, `folder_13_request_password`, `folder_23_token`, `folder_23_request_password`, `folder_3_password`, `folder_33_token`, `folder_33_request_password`, `folder_3_request_password`; their values are kept in the secret store, not in the file (environments/Environment.yml)

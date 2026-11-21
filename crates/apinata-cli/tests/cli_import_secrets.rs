@@ -83,3 +83,152 @@ fn without_the_keychain_the_password_is_left_to_enter() {
         serde_json::json!([{"environment": "Environment", "variable": "create_user_password"}])
     );
 }
+
+/// A collection with the environment `dev`, and the store file beside it.
+fn collection_with_dev(work: &Path) -> std::path::PathBuf {
+    let root = work.join("col");
+    fs::create_dir_all(root.join("environments")).unwrap();
+    fs::write(root.join("opencollection.yml"), crate::common::ROOT).unwrap();
+    fs::write(root.join("environments/dev.yml"), "name: dev\n").unwrap();
+    root
+}
+
+/// The stored values as `variable=value`, sorted.
+fn stored(work: &Path) -> Vec<String> {
+    let text = fs::read_to_string(work.join("secrets.json")).unwrap_or_else(|_| "[]".into());
+    let entries: Vec<Value> = serde_json::from_str(&text).unwrap();
+    let mut rows: Vec<String> = entries
+        .iter()
+        .map(|e| {
+            format!(
+                "{}={}",
+                e["variable"].as_str().unwrap(),
+                e["value"].as_str().unwrap()
+            )
+        })
+        .collect();
+    rows.sort();
+    rows
+}
+
+fn with_store(work: &Path) -> assert_cmd::Command {
+    let mut cmd = apinata();
+    cmd.env("APINATA_TEST_SECRETS_FILE", work.join("secrets.json"))
+        .env("XDG_RUNTIME_DIR", work.join("xdg"));
+    cmd
+}
+
+#[test]
+fn a_second_request_import_with_another_password_never_overwrites_the_first() {
+    let work = tempfile::tempdir().unwrap();
+    let root = collection_with_dev(work.path());
+    for (name, command) in [
+        ("A", "curl -u a:first-pw http://localhost:8080/x"),
+        ("B", "curl -u a:second-pw http://localhost:9090/x"),
+    ] {
+        with_store(work.path())
+            .args(["import", "request", "--name", name, "--collection"])
+            .arg(&root)
+            .write_stdin(command)
+            .assert()
+            .code(0);
+    }
+    assert_eq!(
+        stored(work.path()),
+        [
+            "localhost_password=first-pw",
+            "localhost_password_2=second-pw"
+        ]
+    );
+    let b = fs::read_to_string(root.join("B.yml")).unwrap();
+    assert!(b.contains("{{localhost_password_2}}"), "{b}");
+}
+
+async fn any_ok() -> wiremock::MockServer {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::any())
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    server
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn send_save_never_overwrites_an_earlier_saved_secret() {
+    let server = any_ok().await;
+    let work = tempfile::tempdir().unwrap();
+    let root = collection_with_dev(work.path());
+    for (file, password) in [("A.yml", "first-pw"), ("B.yml", "second-pw")] {
+        with_store(work.path())
+            .current_dir(work.path())
+            .args(["send", "--save"])
+            .arg(root.join(file))
+            .arg("--curl")
+            .arg(format!("curl -u a:{password} {}/x", server.uri()))
+            .assert()
+            .code(0);
+    }
+    assert_eq!(
+        stored(work.path()),
+        [
+            "127_0_0_1_password=first-pw",
+            "127_0_0_1_password_2=second-pw"
+        ]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn send_save_stores_the_value_given_with_env_var() {
+    let server = any_ok().await;
+    let work = tempfile::tempdir().unwrap();
+    let root = collection_with_dev(work.path());
+    with_store(work.path())
+        .current_dir(work.path())
+        .args(["send", "--save"])
+        .arg(root.join("K.yml"))
+        .args(["--env-var", "127_0_0_1_x_api_key=given-key"])
+        .arg("--curl")
+        .arg(format!(
+            "curl -H 'X-Api-Key: parsed-key' {}/k",
+            server.uri()
+        ))
+        .assert()
+        .code(0);
+    assert_eq!(stored(work.path()), ["127_0_0_1_x_api_key=given-key"]);
+    let sent = &server.received_requests().await.unwrap()[0];
+    assert_eq!(sent.headers.get("x-api-key").unwrap(), "given-key");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_run_without_env_uses_the_environment_the_import_chose() {
+    let server = wiremock::MockServer::start().await;
+    // `bob:run-pw` as Basic credentials.
+    wiremock::Mock::given(wiremock::matchers::header(
+        "authorization",
+        "Basic Ym9iOnJ1bi1wdw==",
+    ))
+    .respond_with(wiremock::ResponseTemplate::new(200))
+    .expect(1)
+    .mount(&server)
+    .await;
+    let work = tempfile::tempdir().unwrap();
+    let input = work.path().join("shop.json");
+    let text = POSTMAN
+        .replace("https://x.test/u", &format!("{}/u", server.uri()))
+        .replace("cli-pw-s3cret", "run-pw");
+    fs::write(&input, text).unwrap();
+    let into = work.path().join("into");
+    fs::create_dir_all(&into).unwrap();
+    with_store(work.path())
+        .args(["import", "collection"])
+        .arg(&input)
+        .arg("--into")
+        .arg(&into)
+        .assert()
+        .code(0);
+    with_store(work.path())
+        .arg("run")
+        .arg(into.join("Shop"))
+        .assert()
+        .code(0);
+}

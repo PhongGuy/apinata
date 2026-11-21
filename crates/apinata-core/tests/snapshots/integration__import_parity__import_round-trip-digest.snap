@@ -9,6 +9,7 @@ Dropped collection / auth [opencollection.yml]: `opaque` is not carried over: ne
 Dropped collection / auth [opencollection.yml]: `nonceCount` is not carried over: negotiated from the server challenge
 Dropped collection / auth [opencollection.yml]: `clientNonce` is not carried over: negotiated from the server challenge
 Converted Own auth / request.auth.password [Own auth.yml]: the value is kept as the secret variable `own_auth_password`, not in the file
+Converted collection [opencollection.yml]: runs use the environment `Environment` by default, since it holds the imported credentials
 Converted imported credentials [environments/Environment.yml]: the imported credentials are the secret variables `own_auth_password`; their values are kept in the secret store, not in the file
 == Own auth.yml
 info:
@@ -52,3 +53,5 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Environment

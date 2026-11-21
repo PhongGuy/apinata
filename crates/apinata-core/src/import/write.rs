@@ -56,15 +56,25 @@ pub(crate) fn write_collection_with(
         .flat_map(|e| e.variables.iter().map(|v| v.name.clone()));
     let taken = protect_collection(&mut imported, declared.collect::<Vec<_>>(), true);
     add_to_environments(&mut envs, &taken);
-    write_staged(parent_dir, &imported, &envs, secrets, before_rename)
+    let default_env = !taken.is_empty();
+    write_staged(
+        parent_dir,
+        &imported,
+        &envs,
+        secrets,
+        default_env,
+        before_rename,
+    )
 }
 
-/// [`write_collection_with`] for a collection whose credentials are already protected.
+/// [`write_collection_with`] for a collection whose credentials are already protected; with
+/// `default_env` the first environment becomes the default, since it holds their secrets.
 pub(super) fn write_staged(
     parent_dir: &Path,
     imported: &ImportedCollection,
     envs: &[ImportedEnvironment],
     secrets: &dyn SecretStore,
+    default_env: bool,
     before_rename: &mut dyn FnMut(&Path) -> io::Result<()>,
 ) -> Result<(Collection, ImportReport), ImportError> {
     // A name that sanitises to nothing would make `unique_dir_name` probe `parent_dir` itself
@@ -120,6 +130,17 @@ pub(super) fn write_staged(
         .iter()
         .map(|env| write_environment_file(&mut collection, env))
         .collect::<Result<Vec<_>, _>>()?;
+    if let (true, Some(first)) = (default_env, written.first()) {
+        let root_file = collection.file_mut();
+        root_file.set_default_environment(&first.name);
+        root_file.save()?;
+        let detail = format!(
+            "runs use the environment `{}` by default, since it holds the imported credentials",
+            first.name
+        );
+        let note = ImportNote::new("collection", NoteKind::Converted, detail);
+        report.notes.extend(placed(&[note], ROOT_FILE.to_owned()));
+    }
     drop(collection);
 
     before_rename(&staged).map_err(|source| io_error(&staged, source))?;

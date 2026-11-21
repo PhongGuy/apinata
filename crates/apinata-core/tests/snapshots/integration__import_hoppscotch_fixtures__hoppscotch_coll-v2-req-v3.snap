@@ -19,7 +19,7 @@ info:
 
 http:
   method: GET
-  url: https://echo.hoppscotch.io?key=value
+  url: https://echo.hoppscotch.io?key={{req_v3_ii_key}}
   headers:
     - name: Inactive-Header
       value: Inactive Header
@@ -28,7 +28,7 @@ http:
       value: "{{req_v3_ii_authorization}}"
   params:
     - name: key
-      value: value
+      value: "{{req_v3_ii_key}}"
       type: query
     - name: inactive-key
       value: inactive-param
@@ -52,9 +52,17 @@ variables:
   - secret: true
     name: req_v3_ii_authorization
   - secret: true
+    name: req_v3_ii_key
+  - secret: true
+    name: req_v3_ii_key
+  - secret: true
     name: req_v3_token
   - secret: true
     name: req_v3_authorization
+  - secret: true
+    name: req_v3_key
+  - secret: true
+    name: req_v3_key
 == opencollection.yml
 opencollection: 1.0.0
 
@@ -66,6 +74,8 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Environment
 == req-v3.yml
 info:
   name: req-v3
@@ -74,7 +84,7 @@ info:
 
 http:
   method: GET
-  url: https://echo.hoppscotch.io?key=value
+  url: https://echo.hoppscotch.io?key={{req_v3_key}}
   headers:
     - name: Inactive-Header
       value: Inactive Header
@@ -83,7 +93,7 @@ http:
       value: "{{req_v3_authorization}}"
   params:
     - name: key
-      value: value
+      value: "{{req_v3_key}}"
       type: query
     - name: inactive-key
       value: inactive-param
@@ -103,7 +113,12 @@ settings:
 Dropped coll-v2-child / req-v3-II / testScript: scripts are not imported (coll-v2-child/req-v3-II.yml)
 Converted coll-v2-child / req-v3-II / request.auth.token: the value is kept as the secret variable `req_v3_ii_token`, not in the file (coll-v2-child/req-v3-II.yml)
 Converted coll-v2-child / req-v3-II / request.headers[1]: the value is kept as the secret variable `req_v3_ii_authorization`, not in the file (coll-v2-child/req-v3-II.yml)
+Converted coll-v2-child / req-v3-II / request.url: the value is kept as the secret variable `req_v3_ii_key`, not in the file (coll-v2-child/req-v3-II.yml)
+Converted coll-v2-child / req-v3-II / request.params[0]: the value is kept as the secret variable `req_v3_ii_key`, not in the file (coll-v2-child/req-v3-II.yml)
 Dropped req-v3 / testScript: scripts are not imported (req-v3.yml)
 Converted req-v3 / request.auth.token: the value is kept as the secret variable `req_v3_token`, not in the file (req-v3.yml)
 Converted req-v3 / request.headers[1]: the value is kept as the secret variable `req_v3_authorization`, not in the file (req-v3.yml)
-Converted imported credentials: the imported credentials are the secret variables `req_v3_ii_token`, `req_v3_ii_authorization`, `req_v3_token`, `req_v3_authorization`; their values are kept in the secret store, not in the file (environments/Environment.yml)
+Converted req-v3 / request.url: the value is kept as the secret variable `req_v3_key`, not in the file (req-v3.yml)
+Converted req-v3 / request.params[0]: the value is kept as the secret variable `req_v3_key`, not in the file (req-v3.yml)
+Converted collection: runs use the environment `Environment` by default, since it holds the imported credentials (opencollection.yml)
+Converted imported credentials: the imported credentials are the secret variables `req_v3_ii_token`, `req_v3_ii_authorization`, `req_v3_ii_key`, `req_v3_ii_key`, `req_v3_token`, `req_v3_authorization`, `req_v3_key`, `req_v3_key`; their values are kept in the secret store, not in the file (environments/Environment.yml)

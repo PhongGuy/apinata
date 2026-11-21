@@ -9,8 +9,8 @@ use std::process::ExitCode;
 
 use anyhow::{Context, anyhow, bail};
 use apinata_core::import::{
-    ImportedRequest, ImportedSecret, NoteKind, RequestFormat, add_request, parse_request,
-    store_request_secrets,
+    ImportedRequest, ImportedSecret, NoteKind, RequestFormat, add_request, claim_secret_names,
+    parse_request, store_request_secrets,
 };
 use apinata_core::{BodySpec, Collection, ItemPath, MultipartValue, StatusRule};
 use clap::Parser as _;
@@ -177,6 +177,12 @@ fn prepare(mut args: SendArgs) -> anyhow::Result<(RunArgs, tempfile::TempDir)> {
     let item = add_request(&mut scratch, &ItemPath::root(), "request", &parsed.request)?;
     let file = temp.path().join("send").join(item.as_str());
 
+    // A saved copy keeps the value the user gave for a secret over the one the command held.
+    let overrides: Vec<(String, String)> = args
+        .env_var
+        .iter()
+        .map(|v| (v.key.clone(), v.value.clone()))
+        .collect();
     let mut run_args = run_args(args, &file)?;
     run_args.env_var.extend(supplied.iter().map(|s| EnvVar {
         key: s.name.clone(),
@@ -190,6 +196,11 @@ fn prepare(mut args: SendArgs) -> anyhow::Result<(RunArgs, tempfile::TempDir)> {
     if let Some((root, parent, name)) = save {
         // A saved file runs from any directory, so one inside the collection is kept relative.
         let mut saved = parsed.request.clone();
+        for secret in &mut saved.secrets {
+            if let Some((_, value)) = overrides.iter().find(|(key, _)| *key == secret.name) {
+                secret.value = value.clone();
+            }
+        }
         map_file_paths(&mut saved.body, |path| {
             Ok(apinata_core::collection_relative(&root, Path::new(path)))
         })?;
@@ -318,12 +329,15 @@ fn write_saved(
     no_keychain: bool,
 ) -> anyhow::Result<ItemPath> {
     let mut collection = Collection::open(root)?;
-    let item = add_request(&mut collection, parent, name, request)?;
-    eprintln!("saved {}", root.join(item.as_str()).display());
-    // The saved file refers to its credentials, so their values go where an import keeps them.
-    let mut notes = Vec::new();
+    // The saved file refers to its credentials, so their values go where an import keeps them,
+    // under names no earlier request already uses for another value.
     let store = crate::import::secret_store(no_keychain);
-    store_request_secrets(&mut collection, request, None, store.as_ref(), &mut notes);
+    let mut request = request.clone();
+    claim_secret_names(&collection, &mut request, None, store.as_ref());
+    let item = add_request(&mut collection, parent, name, &request)?;
+    eprintln!("saved {}", root.join(item.as_str()).display());
+    let mut notes = Vec::new();
+    store_request_secrets(&mut collection, &request, None, store.as_ref(), &mut notes);
     crate::import::print_notes(&notes);
     Ok(item)
 }

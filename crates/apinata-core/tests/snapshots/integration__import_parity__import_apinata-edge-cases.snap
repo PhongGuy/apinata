@@ -6,6 +6,7 @@ Converted collection / variable[0].key [opencollection.yml]: the variable `base 
 Converted Users / Get user / request.url.raw [Users/Get user.yml]: the URL fragment `#frag` was removed
 Renamed Users / a-b [Users/a-b 1.yml]: the name `a-b` cannot be used as a file name here, so it was written to `Users/a-b 1.yml`; the display name is kept
 Converted Settings / request.auth.password [Settings.yml]: the value is kept as the secret variable `settings_password`, not in the file
+Converted collection [opencollection.yml]: runs use the environment `Environment` by default, since it holds the imported credentials
 Converted imported credentials [environments/Environment.yml]: the imported credentials are the secret variables `settings_password`; their values are kept in the secret store, not in the file
 == Settings.yml
 info:
@@ -113,3 +114,5 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Environment

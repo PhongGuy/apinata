@@ -15,7 +15,7 @@ use tempfile::TempDir;
 const V21: &str = "https://schema.getpostman.com/json/collection/v2.1.0/collection.json";
 
 /// Every file under `root`, concatenated.
-fn all_text(root: &Path) -> String {
+pub(crate) fn all_text(root: &Path) -> String {
     let mut out = String::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
@@ -32,7 +32,7 @@ fn all_text(root: &Path) -> String {
 }
 
 /// The value stored for `var` in any environment of `c`.
-fn stored(c: &Collection, store: &MemoryStore, var: &str) -> Option<String> {
+pub(crate) fn stored(c: &Collection, store: &MemoryStore, var: &str) -> Option<String> {
     c.environments().iter().find_map(|env| {
         store
             .get(&c.secret_key(env.name(), var))
@@ -46,7 +46,7 @@ fn stored(c: &Collection, store: &MemoryStore, var: &str) -> Option<String> {
 }
 
 /// Import `input` as a new collection; returns the collection, the report and the store.
-fn import(input: &str) -> (TempDir, Collection, ImportReport, MemoryStore) {
+pub(crate) fn import(input: &str) -> (TempDir, Collection, ImportReport, MemoryStore) {
     let parent = TempDir::new().expect("tempdir");
     let bundles =
         parse_collections(None, input.as_bytes(), &CollectionOptions::default()).expect("parses");
@@ -63,7 +63,7 @@ fn import(input: &str) -> (TempDir, Collection, ImportReport, MemoryStore) {
 
 /// Each `(variable, value)`: no file holds the value, the store does, and a note names the
 /// variable without its value.
-fn assert_protected(
+pub(crate) fn assert_protected(
     c: &Collection,
     report: &ImportReport,
     store: &MemoryStore,
@@ -96,7 +96,7 @@ fn assert_protected(
     }
 }
 
-fn postman(items: &str) -> String {
+pub(crate) fn postman(items: &str) -> String {
     format!(r#"{{"info":{{"name":"Shop","schema":"{V21}"}},"item":[{items}]}}"#)
 }
 

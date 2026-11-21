@@ -23,6 +23,8 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Base Environment
 == sends request with basic authentication.yml
 info:
   name: sends request with basic authentication
@@ -71,4 +73,5 @@ Converted sends request with oauth1 / authentication: `oauth1` authentication is
 Converted sends request with basic authentication / request.auth.password: the value is kept as the secret variable `sends_request_with_basic_authentication_password`, not in the file (sends request with basic authentication.yml)
 Converted sends request with basic authentication / request.headers[0]: the value is kept as the secret variable `sends_request_with_basic_authentication_authorization`, not in the file (sends request with basic authentication.yml)
 Dropped collection / cookieJar: cookies are not imported
+Converted collection: runs use the environment `Base Environment` by default, since it holds the imported credentials (opencollection.yml)
 Converted imported credentials: the imported credentials are the secret variables `sends_request_with_basic_authentication_password`, `sends_request_with_basic_authentication_authorization`; their values are kept in the secret store, not in the file (environments/Base Environment.yml)

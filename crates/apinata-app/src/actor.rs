@@ -8,9 +8,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use apinata_core::import::{
-    ImportBundle, ImportReport, ImportedEnvironment, ImportedRequest, PrunedRequest, TakeSpec,
-    UpdateOptions, UpdateSummary, add_environment, apply_update, can_update, plan_update,
-    recorded_spec, store_request_secrets,
+    ImportBundle, ImportReport, ImportedEnvironment, ImportedRequest, ImportedSecret,
+    PrunedRequest, TakeSpec, UpdateOptions, UpdateSummary, add_environment, apply_update,
+    can_update, claim_secret_names, plan_update, recorded_spec, store_request_secrets,
 };
 use apinata_core::team::ConflictCopies;
 use apinata_core::{
@@ -177,7 +177,7 @@ struct Actor {
     /// The active environment's name, if any.
     selected: Option<String>,
     // The item the last `ApplyImport` landed on, for the `StoreImportSecrets` that follows it.
-    applied_import: Option<ItemPath>,
+    applied_import: Option<(ItemPath, Vec<ImportedSecret>)>,
     cache: SnapshotCache,
     context: ContextCache,
     seq: u64,
@@ -321,9 +321,17 @@ impl Actor {
                     row: None,
                 })
             }
-            Command::ApplyImport { item, request } => {
+            Command::ApplyImport { item, mut request } => {
+                // Names are settled before the request lands, so no earlier secret is taken
+                // over; the secrets that follow are stored under the names settled here.
+                claim_secret_names(
+                    &self.collection,
+                    &mut request,
+                    self.selected.as_deref(),
+                    &*self.store,
+                );
                 let applied = self.apply_import(&item, &request);
-                self.applied_import = applied.is_ok().then_some(item);
+                self.applied_import = applied.is_ok().then(|| (item, request.secrets.clone()));
                 applied
             }
             Command::StoreImportSecrets {
@@ -333,11 +341,18 @@ impl Actor {
                 reply,
             } => {
                 // Only the import that just applied to this item may store its secrets.
-                let applied = self.applied_import.take().as_ref() == Some(&item);
-                if applied && !request.secrets.is_empty() {
+                let claimed = match self.applied_import.take() {
+                    Some((at, secrets)) if at == item => Some(secrets),
+                    _ => None,
+                };
+                let mut request = request;
+                if let Some(secrets) = &claimed {
+                    request.secrets = secrets.clone();
+                }
+                if claimed.is_some() && !request.secrets.is_empty() {
                     self.cache.touch_all();
                 }
-                if applied {
+                if claimed.is_some() {
                     store_request_secrets(
                         &mut self.collection,
                         &request,
@@ -1532,7 +1547,7 @@ impl Actor {
         if !has_baseline(&self.collection, folder.as_ref()) {
             return Err(NO_BASELINE.to_owned());
         }
-        let options = update_options(prune, folder, Vec::new());
+        let options = update_options(prune, folder, Vec::new(), &self.store);
         let summary = plan_update(&self.collection, bundle, &options).map_err(|e| e.to_string())?;
         self.need_trash(&summary)?;
         Ok(summary)
@@ -1564,7 +1579,7 @@ impl Actor {
         if self.collection.file().is_dirty() || folder_unsaved(self.collection.tree()) {
             return Err(UNSAVED_UPDATE.to_owned());
         }
-        let options = update_options(prune, folder, take);
+        let options = update_options(prune, folder, take, &self.store);
         if prune {
             let planned =
                 plan_update(&self.collection, bundle, &options).map_err(|e| e.to_string())?;
@@ -2342,8 +2357,14 @@ const NO_BASELINE: &str = "Not imported from a spec, so it cannot be updated";
 const TRASH_UNAVAILABLE: &str = "The trash is not available, so nothing was removed. Turn off removing missing requests, or fix the system trash.";
 const UNSAVED_UPDATE: &str = "Save or discard your unsaved edits in this collection first";
 
-fn update_options(prune: bool, folder: Option<ItemPath>, take: Vec<ItemPath>) -> UpdateOptions {
+fn update_options(
+    prune: bool,
+    folder: Option<ItemPath>,
+    take: Vec<ItemPath>,
+    store: &Arc<dyn SecretStore>,
+) -> UpdateOptions {
     let mut options = UpdateOptions::default();
+    options.secrets = Some(Arc::clone(store));
     options.prune = prune;
     options.folder = folder;
     options.take_spec = take.into_iter().map(TakeSpec::request).collect();
