@@ -411,6 +411,12 @@ pub(crate) fn send_result(
             crate::dto::QUERY_MISMATCH_NOTE
         ));
     }
+    // A GraphQL failure answers 200, so its errors are named beside the status as a warning.
+    if file.kind() == apinata_core::RequestKind::Graphql
+        && let Some(errors) = apinata_core::graphql_errors(response.body())
+    {
+        warnings.push(redactor.scrub(&errors.summary()));
+    }
     let (stream_end, events) = stream_fields(response);
     SendResult {
         status: response.status(),

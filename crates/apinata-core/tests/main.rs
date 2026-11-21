@@ -224,6 +224,7 @@ mod graphql_parity;
 mod graphql_query_insert;
 mod graphql_query_outline;
 mod graphql_query_remove;
+mod graphql_response_errors;
 mod graphql_schema_model;
 mod graphql_schema_sdl;
 mod graphql_sdl_print;

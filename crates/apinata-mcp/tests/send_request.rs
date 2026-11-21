@@ -304,3 +304,41 @@ async fn the_send_request_description_covers_the_memory_jar_and_dropped_credenti
         assert!(description.contains(phrase), "{phrase}: {description}");
     }
 }
+
+fn graphql(url: &str) -> String {
+    format!(
+        "info:\n  name: r\n  type: graphql\ngraphql:\n  method: POST\n  url: \"{url}\"\n  body:\n    query: \"{{ me }}\"\n"
+    )
+}
+
+const GRAPHQL_ERRORS: &str = r#"{"data":{"me":null},"errors":[{"message":"m","path":["me"]}]}"#;
+
+#[tokio::test]
+async fn a_graphql_response_with_errors_carries_their_summary_in_warnings() {
+    let mock = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(GRAPHQL_ERRORS, "application/json"))
+        .mount(&mock)
+        .await;
+    let server = start(&graphql(&format!("{}/gql", mock.uri()))).await;
+    let result = server.ok("send_request", json!({"path": "r.yml"})).await;
+    assert!(
+        result["warnings"]
+            .as_array()
+            .expect("warnings")
+            .contains(&json!("1 GraphQL error, partial data: m (at me)")),
+        "{result}"
+    );
+}
+
+#[tokio::test]
+async fn a_rest_response_with_errors_has_no_graphql_warning() {
+    let mock =
+        mock(ResponseTemplate::new(200).set_body_raw(GRAPHQL_ERRORS, "application/json")).await;
+    let server = start(&get(&format!("{}/", mock.uri()), "")).await;
+    let result = server.ok("send_request", json!({"path": "r.yml"})).await;
+    assert!(
+        !result["warnings"].to_string().contains("GraphQL"),
+        "{result}"
+    );
+}

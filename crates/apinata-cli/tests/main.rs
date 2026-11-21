@@ -49,6 +49,7 @@ mod cli_git_sync;
 mod cli_git_sync_errors;
 mod cli_global_env;
 mod cli_graphql;
+mod cli_graphql_errors;
 mod cli_graphql_fmt;
 mod cli_graphql_schema;
 mod cli_graphql_validate;

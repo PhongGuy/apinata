@@ -14,6 +14,11 @@ pub fn set_quiet(quiet: bool) {
     QUIET.store(quiet, Ordering::Relaxed);
 }
 
+/// Whether `--quiet` silences these warning lines.
+pub fn quiet() -> bool {
+    QUIET.load(Ordering::Relaxed)
+}
+
 /// The warning line for each planned request whose two sides disagree, by item path.
 pub fn lines(plan: &RunPlan) -> HashMap<ItemPath, String> {
     plan.items()

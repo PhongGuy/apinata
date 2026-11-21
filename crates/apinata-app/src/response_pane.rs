@@ -331,6 +331,7 @@ fn as_sentence(text: &str) -> String {
 
 // A result, held weakly so it can be told apart, and its console lines redacted.
 type RedactedConsole = (Weak<RequestResult>, Rc<[ConsoleEntry]>);
+type GraphqlSummary = (Weak<RequestResult>, Option<SharedString>);
 
 // A Timeline value as shown masked and as shown revealed; the eye exists when they differ.
 #[derive(Clone)]
@@ -653,6 +654,8 @@ pub struct ResponsePane {
     console_filter: Option<ConsoleLevel>,
     // The shown result's console lines redacted once per result, as renders repeat.
     console_redacted: RefCell<Option<RedactedConsole>>,
+    // The shown result's GraphQL errors summary, read from its body once per result.
+    graphql_summary: RefCell<Option<GraphqlSummary>>,
     // The Timeline's masked values and reveals for the shown result.
     timeline_masks: RefCell<Option<ResultMasks>>,
     target: Option<HistoryTarget>,
@@ -818,6 +821,7 @@ impl ResponsePane {
             live_headers: HashMap::new(),
             console_filter: None,
             console_redacted: RefCell::default(),
+            graphql_summary: RefCell::default(),
             timeline_masks: RefCell::default(),
             target: None,
             key: None,
@@ -2182,7 +2186,7 @@ impl ResponsePane {
     // when the body was cut at the size limit, and when a kept response was received.
     fn status_line(
         &self,
-        result: &RequestResult,
+        result: &Arc<RequestResult>,
         window: &Window,
         cx: &Context<Self>,
     ) -> Option<AnyElement> {
@@ -2301,6 +2305,25 @@ impl ResponsePane {
                 .child(width_probe(&self.min.status))
                 .into_any_element(),
         ];
+        // A GraphQL failure answers 200, so its errors read beside the status as a warning,
+        // cut at a fixed width with the whole summary in the tooltip.
+        before.extend(self.graphql_summary(result, cx).map(|text| {
+            div()
+                .id("response-graphql-errors")
+                .test_support()
+                .flex_none()
+                .max_w(style::RESPONSE_ADDRESS_MAX)
+                .truncate()
+                .px(style::SPACE_2)
+                .rounded(cx.theme().radius)
+                .bg(crate::theme::status_fill(crate::theme::Status::Warning, cx))
+                .text_color(cx.theme().warning)
+                .text_size(style::TEXT_SMALL)
+                .aria_label(text.clone())
+                .child(text.clone())
+                .tooltip(ui::text_tooltip("response-graphql-errors-tooltip", text))
+                .into_any_element()
+        }));
         if self.elapsed {
             before.push(muted("response-time", format_time(r.response_time())).into_any_element());
         }
@@ -3248,6 +3271,28 @@ impl ResponsePane {
             ResponseTab::Compare => self.compare_body(window, cx),
             ResponseTab::Events => self.events_body(cx),
         }
+    }
+
+    /// The summary of `r`'s GraphQL errors, redacted, when this pane's request is GraphQL and
+    /// the body carries a non-empty `errors` array.
+    fn graphql_summary(&self, r: &Arc<RequestResult>, cx: &App) -> Option<SharedString> {
+        let (root, item) = self.target.as_ref().and_then(|target| target(cx))?;
+        let workspace = self.send.read(cx).workspace().read(cx);
+        let view = workspace.request(&root, &item, cx)?;
+        if view.kind != apinata_core::RequestKind::Graphql {
+            return None;
+        }
+        let mut cache = self.graphql_summary.borrow_mut();
+        if let Some((shown, text)) = &*cache
+            && Weak::ptr_eq(shown, &Arc::downgrade(r))
+        {
+            return text.clone();
+        }
+        let text = (r.response.as_ref())
+            .and_then(|response| apinata_core::graphql_errors(response.body()))
+            .map(|errors| SharedString::from(r.redact(&errors.summary())));
+        *cache = Some((Arc::downgrade(r), text.clone()));
+        text
     }
 
     /// The console lines of `r` with its secrets redacted, as the session log shows them.
