@@ -138,7 +138,9 @@ pub(crate) fn request_for<'a: 'o, 'o>(
         .filter_map(text)
         .find(|s| !s.is_empty());
     let docs = text("description").unwrap_or_default();
+    let operation_id = text("operationId").filter(|id| !id.is_empty());
     let copied = chosen.map_or(op.path.len() + 8, str::len)
+        + operation_id.map_or(0, str::len)
         + "{{baseUrl}}".len()
         + 2 * op.path.len()
         + docs.len()
@@ -166,6 +168,7 @@ pub(crate) fn request_for<'a: 'o, 'o>(
         seq: 0,
         request,
         notes,
+        operation_id: operation_id.map(str::to_owned),
     })
 }
 

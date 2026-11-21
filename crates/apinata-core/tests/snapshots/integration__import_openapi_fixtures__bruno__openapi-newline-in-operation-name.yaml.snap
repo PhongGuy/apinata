@@ -110,6 +110,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: 45e96729ea8f3b21
           file: Get users with newline.yml
+          operationId: getUsersWithNewline
         POST /users:
           target: fd5684d8ea61b64c
           headers: 7ace431cb61584cb
@@ -120,5 +121,6 @@ extensions:
           method: fde2a9b76b8de2ff
           examples: d7796f649335f5ec
           file: Create user with multiple newlines.yml
+          operationId: createUserWithNewlines
 
 note Converted opencollection.yml | collection | runs use the environment `Example server` by default, as the first environment imported

@@ -1,9 +1,10 @@
 //! `import_collection`: parse a collection or API description and add its requests to the
 //! served collection as an ordinary folder, so they appear in every list tool.
 //!
-//! Only the items are taken. The import is written by core into a scratch directory and copied
-//! under `<into>/<collection name>/`; the imported root's own settings and every environment
-//! are reported as skipped. Imported credentials become secret variables whose values go to the
+//! Only the items are taken, with an OpenAPI description's environments (its server URL). The
+//! import is written by core into a scratch directory and copied under
+//! `<into>/<collection name>/`; the imported root's own settings and other environments are
+//! reported as skipped. Imported credentials become secret variables whose values go to the
 //! server's secret store.
 
 use std::fs;
@@ -11,9 +12,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use apinata_core::import::{
-    CollectionFormat, CollectionOptions, GroupBy, ImportBundle, ImportError, SpecLocation,
-    TakeSpec, UpdateOptions, UpdateSummary, apply_update, can_update, ensure_folder,
-    parse_collections, place_items, plan_update, recorded_spec,
+    CollectionFormat, CollectionOptions, GroupBy, ImportBundle, ImportError, ImportNote,
+    SpecLocation, TakeSpec, UpdateOptions, UpdateSummary, add_environment, apply_update,
+    can_update, ensure_folder, parse_collections, place_items, plan_update, recorded_spec,
 };
 use apinata_core::{AuthSpec, Collection, ItemPath, SecretStore, Trash, TrashLog};
 use schemars::JsonSchema;
@@ -107,7 +108,7 @@ pub(crate) enum NoteEntry {
 pub(crate) struct UpdateNoteDoc {
     /// Where in the input the note comes from.
     pub source: String,
-    /// `dropped`, `converted`, `renamed` or `needs-input`.
+    /// `dropped`, `converted`, `renamed`, `needs-input` or `skipped` (nothing was done).
     pub kind: String,
     /// What happened to it.
     pub detail: String,
@@ -128,7 +129,8 @@ pub(crate) struct UpdateReport {
     pub changed: Vec<ChangedDoc>,
     /// Matched requests with nothing to refresh.
     pub kept: Vec<String>,
-    /// Requests whose spec-owned fields were edited locally and stay as they are.
+    /// Requests whose spec-owned fields were edited locally: the edits stay and the
+    /// description's change to them was not applied; name them in `take_spec` to take it.
     pub edited: Vec<String>,
     /// For those requests, the spec-owned fields found edited (such as `method`).
     pub edited_fields: Vec<ChangedDoc>,
@@ -162,6 +164,9 @@ pub(crate) struct ImportedFolder {
     pub requests: usize,
     /// The folders written inside it, at any depth.
     pub folders: usize,
+    /// The environments added to the collection for it: an OpenAPI description's servers,
+    /// which its requests' `{{baseUrl}}` needs to be sent.
+    pub environments: Vec<String>,
 }
 
 /// The arguments after validation, before the input is known.
@@ -513,14 +518,25 @@ fn place_bundles(
         update: None,
     };
     for bundle in bundles {
-        // Environments are never written, so the report cannot mention a secret to enter.
         let folder = c
             .create_folder(&into, &bundle.collection.name)
             .map_err(|e| e.to_string())?;
+        // An OpenAPI description's environments hold its server URL, so they are added before
+        // the items, whose unset-variable note then sees them; a failure takes them back.
+        let (environments, env_notes) = match kept_environments(c, bundle, secrets) {
+            Ok(kept) => kept,
+            Err(e) => {
+                let _ = fs::remove_dir_all(c.root().join(folder.as_str()));
+                return Err(format!("cannot write the imported environments: {e}"));
+            }
+        };
         let placed = match place_items(c, &folder, bundle, secrets) {
             Ok(placed) => placed,
             Err(e) => {
                 let _ = fs::remove_dir_all(c.root().join(folder.as_str()));
+                for name in &environments {
+                    let _ = c.delete_environment(name, secrets);
+                }
                 return Err(format!("cannot write the imported items: {e}"));
             }
         };
@@ -528,11 +544,12 @@ fn place_bundles(
             path: folder.to_string(),
             requests: placed.requests,
             folders: placed.report.items.len() - placed.requests,
+            environments,
         });
         result.skipped.extend(skipped(bundle));
         result
             .notes
-            .extend(placed.report.notes.into_iter().map(|n| {
+            .extend(env_notes.into_iter().chain(placed.report.notes).map(|n| {
                 NoteEntry::Import(NoteDoc {
                     source: n.source,
                     kind: n.kind.id().to_owned(),
@@ -541,6 +558,35 @@ fn place_bundles(
             }));
     }
     Ok(result)
+}
+
+/// Add the environments of an OpenAPI `bundle` to `c`, returning their names and notes; other
+/// formats keep none. A failure removes the ones this call added.
+fn kept_environments(
+    c: &mut Collection,
+    bundle: &ImportBundle,
+    secrets: &dyn SecretStore,
+) -> Result<(Vec<String>, Vec<ImportNote>), ImportError> {
+    let mut names = Vec::new();
+    let mut notes = Vec::new();
+    if !bundle.collection.spec_source {
+        return Ok((names, notes));
+    }
+    for env in &bundle.environments {
+        match add_environment(c, env, secrets) {
+            Ok((name, report)) => {
+                names.push(name);
+                notes.extend(report.notes);
+            }
+            Err(e) => {
+                for name in &names {
+                    let _ = c.delete_environment(name, secrets);
+                }
+                return Err(e);
+            }
+        }
+    }
+    Ok((names, notes))
 }
 
 /// A core folder error as this tool words it, naming the `into` argument.
@@ -555,9 +601,11 @@ fn folder_error(e: ImportError) -> String {
 fn skipped(bundle: &ImportBundle) -> Vec<String> {
     let root = &bundle.collection;
     let name = &root.name;
+    // An OpenAPI description's environments are kept, so only other formats skip theirs.
     let mut out: Vec<String> = bundle
         .environments
         .iter()
+        .filter(|_| !root.spec_source)
         .map(|e| format!("{name}: environment `{}`", e.name))
         .collect();
     let scripts = !root.scripts.pre_request.trim().is_empty()

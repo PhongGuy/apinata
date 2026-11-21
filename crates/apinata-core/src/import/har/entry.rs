@@ -157,6 +157,7 @@ pub(super) fn map(
         seq: 0,
         request,
         notes,
+        operation_id: None,
     };
     Ok(Some((host, item)))
 }

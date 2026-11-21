@@ -8,8 +8,8 @@ use crate::error::TreeError;
 use crate::item_path::ItemPath;
 use crate::js::js_trim;
 use crate::naming::{
-    create_unique, create_unique_numbered, sanitize_name, suffixed, unique_rename_target,
-    validate_name,
+    create_unique, create_unique_numbered, next_unique, sanitize_name, suffixed,
+    unique_rename_target, validate_name,
 };
 use crate::opaque::OpaqueItem;
 use crate::order;
@@ -335,6 +335,25 @@ pub(super) fn folder_stem(parent: &ItemPath, name: &str) -> Result<String, TreeE
 }
 
 impl Collection {
+    /// The item path creating a request (or with `folder`, a folder) named `name` in `parent`
+    /// would take, as [`Collection::create_request`] and [`Collection::create_folder`] pick it;
+    /// `parent` may be a folder still to be created. Paths `claimed` accepts count as taken.
+    pub(crate) fn next_item_path(
+        &self,
+        parent: &ItemPath,
+        name: &str,
+        folder: bool,
+        claimed: &dyn Fn(&Path) -> bool,
+    ) -> Option<ItemPath> {
+        let dir = self.root.join(parent.as_str());
+        let found = if folder {
+            next_unique(&dir, &folder_stem(parent, name).ok()?, None, claimed)?
+        } else {
+            next_unique(&dir, &request_stem(name).ok()?, Some("yml"), claimed)?
+        };
+        parent.join(&found.file_name()?.to_string_lossy())
+    }
+
     /// Create a request named `name` in the folder `parent`, as a GET with an empty URL and the
     /// next `seq` among its siblings. The file is `<sanitised name>.yml`, with Bruno's numeric
     /// suffix when that is taken. Returns the new item's path.

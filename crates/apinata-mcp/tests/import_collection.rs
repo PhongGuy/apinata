@@ -1077,3 +1077,33 @@ async fn a_placed_import_stores_its_credentials_in_the_servers_store() {
         "{out}"
     );
 }
+
+const SERVED: &str = r#"{"openapi":"3.0.0","info":{"title":"Served","version":"1"},
+"servers":[{"url":"http://127.0.0.1:1/v1"}],
+"paths":{"/pets":{"get":{"summary":"List pets"}}}}"#;
+
+#[tokio::test]
+async fn an_openapi_import_keeps_the_environment_holding_the_server_url() {
+    let server = shop().await;
+    let out = server
+        .ok("import_collection", json!({"text": SERVED}))
+        .await;
+    let env = &out["collections"][0]["environments"];
+    assert_eq!(env.as_array().map(Vec::len), Some(1), "{out}");
+    let name = env[0].as_str().unwrap();
+    let text = fs::read_to_string(server.root().join(format!("environments/{name}.yml"))).unwrap();
+    assert!(text.contains("baseUrl"), "{text}");
+    assert!(text.contains("http://127.0.0.1:1/v1"), "{text}");
+    let notes = out["notes"].to_string();
+    assert!(!notes.contains("nothing imported defines"), "{notes}");
+    assert!(!out["skipped"].to_string().contains("environment"), "{out}");
+}
+
+#[tokio::test]
+async fn an_update_without_a_baseline_notes_it_as_skipped() {
+    let server = shop().await;
+    let out = server
+        .ok("import_collection", json!({"text": V2, "update": true}))
+        .await;
+    assert_eq!(out["notes"][0]["kind"], "skipped", "{out}");
+}

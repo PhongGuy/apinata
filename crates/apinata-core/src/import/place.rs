@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 use super::protect::{Held, keep_taken, protect_collection};
 use super::write::{push_unset_note, write_staged};
-use super::{ImportBundle, ImportError, ImportReport, record_spec_baseline};
+use super::{ImportBundle, ImportError, ImportReport};
 use crate::collection::Collection;
 use crate::item_path::ItemPath;
 use crate::secrets::SecretStore;
@@ -137,7 +137,8 @@ pub fn place_items(
                     .try_fold(folder.clone(), |p, segment| p.join(segment))
             })
             .collect();
-        if let Err(e) = record_spec_baseline(collection, folder, &placed) {
+        let ids = super::update::spec_operation_ids(&imported.items);
+        if let Err(e) = super::write::record_baseline(collection, folder, &placed, &ids) {
             undo(&copied);
             collection.reload();
             return Err(e);

@@ -299,6 +299,7 @@ mod import_update_prune;
 mod import_update_prune_restore;
 mod import_update_recorded;
 mod import_update_reference;
+mod import_update_rename;
 mod import_update_source;
 mod import_update_support;
 mod import_update_take;

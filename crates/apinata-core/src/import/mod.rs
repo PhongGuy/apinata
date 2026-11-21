@@ -61,6 +61,8 @@ pub enum NoteKind {
     Renamed,
     /// The input was carried over but needs a value from the user, such as a secret.
     NeedsInput,
+    /// Nothing was done, and the detail says why, such as an update with no baseline.
+    Skipped,
 }
 
 /// One entry of an import report.
@@ -211,6 +213,9 @@ pub struct ImportedRequestItem {
     pub request: ImportedRequest,
     /// Notes about this request.
     pub notes: Vec<ImportNote>,
+    /// The OpenAPI operationId it was made from; `None` for other formats or when the
+    /// operation has none.
+    pub operation_id: Option<String>,
 }
 
 /// A folder with its own settings and children.

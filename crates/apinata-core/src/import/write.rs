@@ -16,7 +16,7 @@ use crate::error::{OpenError, TreeError};
 use crate::item_path::ItemPath;
 use crate::naming::sanitize_name;
 use crate::secrets::SecretStore;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::io::{self, ErrorKind};
 use std::path::Path;
@@ -160,7 +160,8 @@ pub(super) fn write_staged(
         report
             .notes
             .extend(placed(unrecorded.as_slice(), ROOT_FILE.to_owned()));
-        record_spec_baseline(&mut collection, &ItemPath::root(), &report.items)?;
+        let ids = super::update::spec_operation_ids(&imported.items);
+        record_baseline(&mut collection, &ItemPath::root(), &report.items, &ids)?;
     }
     let written = envs
         .iter()
@@ -223,6 +224,17 @@ pub fn record_spec_baseline(
     folder: &ItemPath,
     items: &[ItemPath],
 ) -> Result<(), ImportError> {
+    record_baseline(collection, folder, items, &BTreeMap::new())
+}
+
+/// [`record_spec_baseline`], also recording each operation's id from `ids` (by operation key),
+/// so a later update can follow an operation whose path moved.
+pub(crate) fn record_baseline(
+    collection: &mut Collection,
+    folder: &ItemPath,
+    items: &[ItemPath],
+    ids: &BTreeMap<String, String>,
+) -> Result<(), ImportError> {
     let mut baseline = SpecBaseline::default();
     for (path, file) in items
         .iter()
@@ -231,6 +243,7 @@ pub fn record_spec_baseline(
         let key = operation_key(file.method(), file.url());
         if baseline.get(&key).is_none() {
             baseline.insert(key.clone(), file_field_hashes(file));
+            baseline.set_operation_id(key.clone(), ids.get(&key).cloned());
             baseline.set_file(key, path.as_str().to_owned());
         }
     }

@@ -238,6 +238,7 @@ extensions:
           method: d8ad8056c4645ee4
           examples: 7ace431cb61584cb
           file: deletePet.yml
+          operationId: deletePet
         GET /pets:
           target: 363cb9d7326c3f9f
           headers: 7ace431cb61584cb
@@ -248,6 +249,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: 05698ad51424fb4d
           file: findPets.yml
+          operationId: findPets
         GET /pets/{}:
           target: efa2652a70a02e4e
           headers: 7ace431cb61584cb
@@ -258,6 +260,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: de7a99aefd4e07ca
           file: find pet by id.yml
+          operationId: find pet by id
         POST /pets:
           target: 0e47e1edc3566744
           headers: 7ace431cb61584cb
@@ -268,5 +271,6 @@ extensions:
           method: fde2a9b76b8de2ff
           examples: 0d94dc920ee31ff0
           file: addPet.yml
+          operationId: addPet
 
 note Converted opencollection.yml | collection | runs use the environment `Environment` by default, as the first environment imported

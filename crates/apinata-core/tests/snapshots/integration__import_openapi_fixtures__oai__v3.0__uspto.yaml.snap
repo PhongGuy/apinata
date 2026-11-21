@@ -185,6 +185,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: ed090d80e9004340
           file: metadata/List available data sets.yml
+          operationId: list-data-sets
         GET /{}/{}/fields:
           target: 542937b614b13dde
           headers: 7ace431cb61584cb
@@ -195,6 +196,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: 9eaad973caedc959
           file: metadata/Provides the general information about the API and the list of fields that can be used to query the dataset.yml
+          operationId: list-searchable-fields
         POST /{}/{}/records:
           target: c09df23771d726cf
           headers: 7ace431cb61584cb
@@ -205,6 +207,7 @@ extensions:
           method: fde2a9b76b8de2ff
           examples: 1ad66714722d1884
           file: search/Provides search capability for the data set with the given search criteria.yml
+          operationId: perform-search
 
 === search/Provides search capability for the data set with the given search criteria.yml
 info:
