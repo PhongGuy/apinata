@@ -35,6 +35,8 @@ pub const TOKEN_ID_HINT: &str =
     "Names the saved token. Settings with the same ID and URL share it.";
 /// The hint under "Token to send".
 pub const TOKEN_SOURCE_HINT: &str = "Which token from the provider's reply goes on the request.";
+/// The hint under an empty "Header prefix".
+pub const EMPTY_PREFIX_HINT: &str = "Empty, so the token is sent without a prefix.";
 /// The hint under "Client authentication".
 pub const CLIENT_AUTH_HINT: &str =
     "How the client ID and secret are sent: in the body or as a Basic auth header.";
@@ -92,6 +94,7 @@ impl OAuth2Field {
             OAuth2Field::Username => Some("jdoe"),
             OAuth2Field::Scope => Some("read write"),
             OAuth2Field::State => Some("Random text checked on return"),
+            OAuth2Field::HeaderPrefix => Some("Bearer"),
             _ => None,
         }
     }
@@ -1068,7 +1071,11 @@ impl Render for OAuth2Editor {
                 let invalid = self.missing.contains(&f);
                 let row =
                     checked_field(f.label(), f.id(), self.input(f), vars, invalid, window, cx);
-                let row = match f.hint() {
+                // The "Bearer" placeholder is only a suggestion, so an empty prefix says the
+                // token goes out bare.
+                let bare =
+                    f == OAuth2Field::HeaderPrefix && self.input(f).read(cx).value().is_empty();
+                let row = match f.hint().or(bare.then_some(EMPTY_PREFIX_HINT)) {
                     Some(hint) => row.hint(SharedString::from(format!("{}-hint", f.id())), hint),
                     None => row,
                 };

@@ -14,8 +14,9 @@ use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, AnyView, App, Bounds, Div, Entity, EventEmitter, Focusable, PathPromptOptions,
-    Pixels, Rems, Result, SharedString, Subscription, Task, TestSupportExt, Window, div,
+    AnyElement, AnyView, App, Bounds, DispatchPhase, Div, Entity, EventEmitter, Focusable,
+    PathPromptOptions, Pixels, Rems, Result, ScrollEvent, SharedString, Subscription, Task,
+    TestSupportExt, Window, canvas, div,
 };
 
 use crate::command::Edit;
@@ -142,6 +143,7 @@ impl GraphqlSection {
         });
         let on_change = |this: &mut Self, _, event: &InputEvent, cx: &mut Context<Self>| {
             if matches!(event, InputEvent::Change) {
+                this.close_hovers(cx);
                 this.emit(cx);
             }
         };
@@ -158,6 +160,7 @@ impl GraphqlSection {
             // schedules a check.
             cx.subscribe(&query, |this, _, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {
+                    this.close_hovers(cx);
                     this.emit(cx);
                     if this.beautify_error.take().is_some() {
                         cx.notify();
@@ -214,6 +217,17 @@ impl GraphqlSection {
             crate::ui::sync_editor_text(editor, text, window, cx);
         }
         cx.notify();
+    }
+
+    /// Closes both editors' hover and diagnostic cards, which would otherwise stay put over
+    /// text that moved under them.
+    pub fn close_hovers(&self, cx: &mut App) {
+        for editor in [&self.query, &self.variables] {
+            editor.update(cx, |e, cx| {
+                e.clear_hover_state(cx);
+                e.clear_diagnostic_popover(cx);
+            });
+        }
     }
 
     /// The query editor.
@@ -643,10 +657,26 @@ impl Render for GraphqlSection {
                 .relative()
                 .child(div().absolute().inset_0().child(panel))
         });
+        // A wheel turn anywhere moves the text under an open card, so it closes the cards
+        // before anything scrolls; the kit closes them only when the pointer moves.
+        let section = cx.weak_entity();
+        let scroll_watch = canvas(
+            |_, _, _| {},
+            move |_, _, window, _| {
+                window.on_mouse_event(move |_: &ScrollEvent, phase, _, cx| {
+                    if phase == DispatchPhase::Capture {
+                        section.update(cx, |s, cx| s.close_hovers(cx)).ok();
+                    }
+                });
+            },
+        )
+        .absolute()
+        .size_0();
         v_flex()
             .w_full()
             .flex_1()
             .gap_2()
+            .child(scroll_watch)
             .child(self.schema_row(cx))
             .child(
                 h_flex()

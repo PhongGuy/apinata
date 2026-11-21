@@ -272,6 +272,15 @@ fn collection_settings_opens_the_current_collections_settings(cx: &mut TestAppCo
     assert_eq!(std::fs::canonicalize(at).unwrap(), root);
 }
 
+#[test]
+fn cookies_sits_with_the_collection_commands() {
+    let entry = palette_items()
+        .into_iter()
+        .find(|e| e.label == "Cookies…")
+        .expect("Cookies… is in the palette");
+    assert_eq!(entry.group, PaletteGroup::Collection);
+}
+
 // A request in `users/` with one saved example.
 const SHOW_USER: &str = "info:\n  name: Show user\n  type: http\n  seq: 2\nhttp:\n  method: GET\n  url: http://x/users/1\nexamples:\n  - name: ok\n    request:\n      url: http://x/users/1\n      method: GET\n    response:\n      status: 200\n      statusText: OK\n";
 

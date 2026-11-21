@@ -238,3 +238,36 @@ fn the_docs_toggle_opens_the_panel_in_the_section(cx: &mut TestAppContext) {
     let s = host.read_with(cx, |h, _| h.view.clone());
     assert!(s.read_with(cx, |s, _| s.docs_open()));
 }
+
+#[gpui_kit::test]
+fn the_rows_sit_inside_the_lists_focus_border(cx: &mut TestAppContext) {
+    support::init(cx);
+    let url = "http://x.test/g";
+    let (win, panel) = cx
+        .update(|cx| {
+            gpui_kit::open_window(gpui_kit::WindowOptions::default(), cx, |w, cx| {
+                cx.new(|cx| DocsPanel::new(w, cx))
+            })
+        })
+        .unwrap();
+    panel.update(cx, |p, cx| p.set_url(url.into(), cx));
+    cx.update(|cx| {
+        let s = cx.default_global::<SchemaStore>();
+        let generation = s.begin(url);
+        s.finish(url, generation, Ok(schema()));
+    });
+    cx.run_until_parked();
+    let (list, row) = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            (
+                w.find("graphql-docs-list").bounds(),
+                w.find(("graphql-docs-row", 0usize)).bounds(),
+            )
+        })
+        .unwrap();
+    let inset = gpui_kit::px(4.);
+    assert!(row.left() - list.left() >= inset, "{row:?} in {list:?}");
+    assert!(row.top() - list.top() >= inset, "{row:?} in {list:?}");
+    assert!(list.right() - row.right() >= inset, "{row:?} in {list:?}");
+}

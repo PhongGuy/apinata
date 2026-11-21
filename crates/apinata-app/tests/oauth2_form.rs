@@ -468,3 +468,51 @@ fn a_folder_get_token_marks_its_missing_fields(cx: &mut TestAppContext) {
         Some("Access token URL and Client ID are empty")
     );
 }
+
+#[gpui_kit::test]
+fn an_empty_header_prefix_hints_bearer_and_says_the_token_goes_bare(cx: &mut TestAppContext) {
+    use apinata_app::oauth2_editor::{EMPTY_PREFIX_HINT, OAuth2Field};
+    http_ready(cx);
+    // The file asks for the header with an empty prefix, which sends the bare token.
+    let bare = format!("{BLANK}      placement:\n        header: \"\"\n");
+    let file = format!("{}  auth:\n{bare}", request("a", "http://x.test/r"));
+    let col = write_tree(&[("opencollection.yml", ROOT), ("a.yml", &file)]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, view) = editor_for(cx, &ws, &root, "a.yml", false);
+    cx.simulate_window_resize(
+        win,
+        gpui_kit::size(gpui_kit::px(1200.), gpui_kit::px(2400.)),
+    );
+    cx.update_window(win, |_, w, cx| {
+        w.click(("section", Section::Auth as usize), cx);
+        w.render_frame(cx)
+    })
+    .unwrap();
+    frame(cx, win);
+    let prefix = view.read_with(cx, |v, cx| {
+        v.auth()
+            .read(cx)
+            .oauth2()
+            .read(cx)
+            .input(OAuth2Field::HeaderPrefix)
+            .clone()
+    });
+    assert_eq!(
+        prefix.read_with(cx, |i, _| i.presentation().placeholder().to_string()),
+        "Bearer"
+    );
+    assert_eq!(prefix.read_with(cx, |i, _| i.value().to_string()), "");
+    let (row, hint) = (
+        bounds(cx, win, "oauth2-header-prefix-row"),
+        bounds(cx, win, "oauth2-header-prefix-hint"),
+    );
+    assert!(row.contains(&hint.origin) && hint.bottom() <= row.bottom());
+    assert_eq!(
+        EMPTY_PREFIX_HINT,
+        "Empty, so the token is sent without a prefix."
+    );
+
+    type_at_end(cx, win, None, "oauth2-header-prefix", "Bearer");
+    frame(cx, win);
+    assert!(!present(cx, win, "oauth2-header-prefix-hint"));
+}

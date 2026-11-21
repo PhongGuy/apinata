@@ -482,6 +482,14 @@ pub fn registry() -> Vec<Command> {
             shell(FolderSettings),
             &[],
         ),
+        // The jar is the collection's, so Cookies sits here; its id keeps the first prefix.
+        asks(command(
+            "environment.cookies",
+            "Cookies…",
+            Collection,
+            shell(OpenCookies),
+            &[],
+        )),
         command(
             "collection.run",
             "Run collection",
@@ -1244,13 +1252,6 @@ pub fn registry() -> Vec<Command> {
             "Export all environments to Postman…",
             Environment,
             shell(ExportEnvironments),
-            &[],
-        )),
-        asks(command(
-            "environment.cookies",
-            "Cookies…",
-            Environment,
-            shell(OpenCookies),
             &[],
         )),
         found_by(

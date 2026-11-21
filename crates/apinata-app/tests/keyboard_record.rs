@@ -188,7 +188,7 @@ fn swap_is_offered_only_for_one_conflict(cx: &mut TestAppContext) {
         message(cx, &s, "view.toggle_sidebar").as_deref(),
         Some(
             format!(
-                "{} is already used by Toggle theme, Cookies",
+                "{} is already used by Cookies, Toggle theme",
                 shown_chord("k")
             )
             .as_str()

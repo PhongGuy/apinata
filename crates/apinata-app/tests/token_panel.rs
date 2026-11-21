@@ -4,7 +4,7 @@ use crate::support;
 
 use apinata_app::config_editor::{ConfigEditor, ConfigTarget};
 use apinata_app::request_editor::{RequestEditor, Section};
-use apinata_app::token_panel::{TokenPanel, status_line};
+use apinata_app::token_panel::{TokenPanel, scope_line, status_line};
 use apinata_app::workspace::Workspace;
 use apinata_core::TokenStatus;
 use gpui_kit::test::TestWindowExt;
@@ -64,6 +64,20 @@ fn posts(cx: &mut TestAppContext, server: &MockServer, grant: &str) -> usize {
 }
 
 #[test]
+fn the_scope_line_shows_only_a_granted_scope() {
+    let now = SystemTime::now();
+    let with = |scope: Option<&str>| TokenStatus::new(now, None, false, scope.map(str::to_owned));
+    assert_eq!(scope_line(None), None);
+    assert_eq!(scope_line(Some(&with(None))), None);
+    assert_eq!(scope_line(Some(&with(Some("")))), None);
+    assert_eq!(scope_line(Some(&with(Some("  ")))), None);
+    assert_eq!(
+        scope_line(Some(&with(Some("read write")))).as_deref(),
+        Some("Scopes granted: read write")
+    );
+}
+
+#[test]
 fn status_lines_describe_the_token() {
     let now = SystemTime::now();
     let at = |secs: u64| Some(now + Duration::from_secs(secs));
@@ -101,11 +115,11 @@ fn status_lines_describe_the_token() {
     );
     assert_eq!(
         line(TokenStatus::new(now, None, true, None)),
-        "Valid, no expiry, refresh token"
+        "Valid, no expiry, has a refresh token"
     );
     assert_eq!(
         line(TokenStatus::new(now, Some(now), true, None)),
-        "Expired, refresh token"
+        "Expired, has a refresh token"
     );
 }
 
@@ -176,7 +190,7 @@ fn the_buttons_stay_in_view_after_a_token_appears(cx: &mut TestAppContext) {
     })
     .unwrap();
     panel.update(cx, |p, cx| p.get_token(cx));
-    wait_real(cx, |cx| status(cx, &panel).ends_with("refresh token"));
+    wait_real(cx, |cx| status(cx, &panel).ends_with("has a refresh token"));
     frame(cx, win);
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
@@ -217,11 +231,11 @@ fn refresh_appears_with_a_refresh_token_and_posts_one(cx: &mut TestAppContext) {
     let panel = request_panel(cx, &view);
     panel.update(cx, |p, cx| p.get_token(cx));
     wait_real(cx, |cx| {
-        status(cx, &panel) == "Valid, expires in 59 min, refresh token"
+        status(cx, &panel) == "Valid, expires in 59 min, has a refresh token"
     });
     panel.update(cx, |p, cx| p.refresh_token(cx));
     wait_real(cx, |cx| {
-        status(cx, &panel) == "Valid, expires in 1 min, refresh token"
+        status(cx, &panel) == "Valid, expires in 1 min, has a refresh token"
     });
     assert_eq!(posts(cx, &server, "refresh_token"), 1);
 }
@@ -657,7 +671,7 @@ fn the_scope_and_error_lines_sit_in_the_field_column(cx: &mut TestAppContext) {
     })
     .unwrap();
     panel.update(cx, |p, cx| p.get_token(cx));
-    wait_real(cx, |cx| status(cx, &panel).ends_with("refresh token"));
+    wait_real(cx, |cx| status(cx, &panel).ends_with("has a refresh token"));
     panel.update(cx, |p, cx| p.refresh_token(cx));
     settle_panel(cx, &panel);
     frame(cx, win);

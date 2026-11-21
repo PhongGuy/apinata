@@ -890,6 +890,8 @@ impl RequestEditor {
     /// a rename or move the tab followed sends the new path.
     /// While the request runs, sending again cancels it instead, as the slot's button does.
     pub fn send(&mut self, _: &SendRequest, _window: &mut Window, cx: &mut Context<Self>) {
+        // A hover card left open would sit over the response that is about to arrive.
+        self.graphql.update(cx, |g, cx| g.close_hovers(cx));
         if self.cancel_running(cx) {
             return;
         }
