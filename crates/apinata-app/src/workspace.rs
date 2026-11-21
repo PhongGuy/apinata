@@ -55,6 +55,11 @@ pub enum WorkspaceEvent {
         /// Why, for an error dialog.
         message: String,
     },
+    /// The folder at `root` is empty, so a collection could be created there; it was dropped.
+    EmptyFolder {
+        /// The empty folder.
+        root: PathBuf,
+    },
     /// The collection at `root` is in the legacy .bru format and was dropped unopened.
     LegacyFormat {
         /// The legacy root.
@@ -3645,14 +3650,18 @@ impl Workspace {
             self.kept_views.retain(|t, _| tabs.get(*t).is_some());
             self.forget_open(root, cx);
             let root = root.to_path_buf();
-            cx.emit(if model.read(cx).is_legacy() {
+            let model = model.read(cx);
+            let event = if model.is_legacy() {
                 WorkspaceEvent::LegacyFormat { root }
+            } else if model.is_empty_folder() {
+                WorkspaceEvent::EmptyFolder { root }
             } else {
                 WorkspaceEvent::OpenFailed {
                     root,
                     message: error,
                 }
-            });
+            };
+            cx.emit(event);
             return;
         }
         let first = model.read(cx).snapshot().is_some()

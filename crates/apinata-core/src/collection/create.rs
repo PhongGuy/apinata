@@ -35,6 +35,14 @@ impl Collection {
             .expect("an unbounded sequence has a free name")
     }
 
+    /// Whether `dir` is a directory [`Collection::create`] would fill: empty, or holding only
+    /// `.git`, `.gitignore`, `.gitattributes` or `.DS_Store`. False when it cannot be read.
+    pub fn is_empty_dir(dir: &Path) -> bool {
+        fs::read_dir(dir).is_ok_and(|mut entries| {
+            !entries.any(|e| e.is_ok_and(|e| !is_ignorable(&e.file_name())))
+        })
+    }
+
     /// Create `dir`, or fill an existing one that is empty or holds only `.git`, `.gitignore`,
     /// `.gitattributes` or `.DS_Store`, with the `opencollection.yml` an import writes for a
     /// collection called `name`, then open it.
@@ -60,8 +68,8 @@ impl Collection {
                 if !dir.is_dir() {
                     return Err(CreateError::Exists { path });
                 }
-                let mut entries = fs::read_dir(dir).map_err(io)?;
-                if entries.any(|e| e.is_ok_and(|e| !is_ignorable(&e.file_name()))) {
+                fs::read_dir(dir).map_err(io)?;
+                if !Self::is_empty_dir(dir) {
                     return Err(CreateError::NotEmpty { path });
                 }
                 false

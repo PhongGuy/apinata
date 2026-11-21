@@ -171,3 +171,17 @@ fn collection_name_is_none_for_an_empty_or_blank_name() {
         assert_eq!(apinata_core::collection_name(dir.path()), None, "{name}");
     }
 }
+
+#[test]
+fn a_directory_counts_as_empty_when_create_would_fill_it() {
+    let dir = TempDir::new().expect("tempdir");
+    let root = dir.path().join("repo");
+    fs::create_dir_all(root.join(".git")).expect("mkdir");
+    fs::write(root.join(".DS_Store"), "x").expect("write");
+    assert!(Collection::is_empty_dir(&root));
+    fs::write(root.join(".secret"), "x").expect("write");
+    assert!(!Collection::is_empty_dir(&root));
+    // A missing path or a file is not a directory create would fill.
+    assert!(!Collection::is_empty_dir(&dir.path().join("gone")));
+    assert!(!Collection::is_empty_dir(&root.join(".secret")));
+}

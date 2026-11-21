@@ -55,6 +55,7 @@ pub mod draft_file;
 pub mod draft_store;
 pub mod edit_history;
 pub mod edit_track;
+pub mod empty_folder;
 pub mod env_color;
 pub mod env_editor;
 pub mod env_selector;

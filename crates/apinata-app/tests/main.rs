@@ -239,6 +239,7 @@ mod editor_parity;
 mod editor_wrap;
 mod empty_details;
 mod empty_editors;
+mod empty_folder;
 mod empty_states;
 mod env_active;
 mod env_color;

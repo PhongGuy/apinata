@@ -1487,7 +1487,7 @@ impl Shell {
 
     // A collection already open becomes current and is revealed at once; a new one once it has
     // loaded. A folder of collections only opens them.
-    fn open(&mut self, root: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn open(&mut self, root: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
         let absolute = crate::workspace::absolute(&root);
         let is_open = |w: &Workspace| w.collections().iter().any(|c| c.root() == absolute);
         let was_open = is_open(self.workspace.read(cx));
@@ -1523,6 +1523,9 @@ impl Shell {
             }
             WorkspaceEvent::LegacyFormat { root } => {
                 crate::legacy_convert::offer(self, root.clone(), window, cx);
+            }
+            WorkspaceEvent::EmptyFolder { root } => {
+                crate::empty_folder::offer(root.clone(), window, cx);
             }
             WorkspaceEvent::Notices { root, notices, .. } => {
                 for notice in notices {
