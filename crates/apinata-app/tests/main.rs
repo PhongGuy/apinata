@@ -298,6 +298,7 @@ mod graphql_hover;
 mod graphql_hover_diagnostic;
 mod graphql_jump;
 mod graphql_live_check;
+mod graphql_response_errors;
 mod graphql_schema_store;
 mod graphql_section;
 mod graphql_variable_tools;

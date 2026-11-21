@@ -1,6 +1,6 @@
 //! Finding the collection around a path, planning its requests and running them through core.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -10,9 +10,9 @@ use anyhow::{Context, anyhow, bail};
 use apinata_core::{
     AuthorizeOptions, CancelHandle, Collection, ContextOptions, CookieJar, Environment,
     EnvironmentChoice, ExecOptions, ExecutionMode, Executor, GlobalEnvironments, HttpVersion,
-    IterationData, NetworkEntry, RequestResult, RunEvent, RunOptions, RunPlan, ScriptOptions,
-    SecretStore, SelectError, SessionLog, StreamBound, StreamEnd, StreamLimits, TagFilter,
-    TokenCache, VarContext,
+    ItemPath, IterationData, NetworkEntry, RequestResult, RunEvent, RunOptions, RunPlan,
+    ScriptOptions, SecretStore, SelectError, SessionLog, StreamBound, StreamEnd, StreamLimits,
+    TagFilter, TokenCache, VarContext,
 };
 
 use crate::import::{default_keychain, platform_store, secret_store};
@@ -359,6 +359,10 @@ pub async fn run(
     let body_files = show.body_files();
     let unfiltered = show.unfiltered();
     let mismatched = crate::query_notice::lines(&target.plan);
+    let graphql: HashSet<ItemPath> = (target.plan.items().zip(target.plan.requests()))
+        .filter(|(_, request)| request.kind() == apinata_core::RequestKind::Graphql)
+        .map(|(item, _)| item.clone())
+        .collect();
     let on_event: Box<dyn FnMut(RunEvent) + Send> = {
         let mut show = show;
         let record_har = har.as_ref().map(|h| h.recorder());
@@ -394,6 +398,15 @@ pub async fn run(
                     drain(log, &next);
                     for line in set_cookie_lines(result) {
                         eprintln!("{line}");
+                    }
+                }
+                // A GraphQL failure answers 200, so its errors are named as a warning.
+                if graphql.contains(&result.path) && !crate::query_notice::quiet() {
+                    let errors = (result.response.as_ref())
+                        .and_then(|r| apinata_core::graphql_errors(r.body()));
+                    if let Some(errors) = errors {
+                        let summary = result.redact(&errors.summary());
+                        eprintln!("warning: {}: {summary}", result.path);
                     }
                 }
                 if result.response.as_ref().is_some_and(|r| r.truncated()) {

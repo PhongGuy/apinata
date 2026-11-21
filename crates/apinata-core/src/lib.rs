@@ -45,6 +45,7 @@ pub mod export;
 mod git;
 mod global_env;
 mod graphql_query;
+mod graphql_response;
 mod graphql_schema;
 mod graphql_variables;
 #[cfg(test)]
@@ -219,6 +220,7 @@ pub use graphql_query::{
     QuerySeverity, QuerySyntaxError, SCHEMA_SKIP_NOTE, SchemaUse, check_query, format_query,
     query_outline, toggle_field, validate_query,
 };
+pub use graphql_response::{GraphqlErrors, graphql_errors};
 pub use graphql_schema::{
     Completion, CompletionKind, Directive, EnumValue, Field, INTROSPECTION_QUERY, InputValue,
     IntrospectError, IntrospectGuard, IntrospectOptions, Introspection, SCHEMA_BODY_LIMIT,
