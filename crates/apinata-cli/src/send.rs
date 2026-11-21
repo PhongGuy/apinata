@@ -258,6 +258,16 @@ fn command_text(args: &SendArgs) -> anyhow::Result<String> {
         .url
         .as_deref()
         .ok_or_else(|| anyhow!("give a URL, or a curl command with --curl"))?;
+    // A saved request file is sent by `run`; read as a URL it would become a hostless one.
+    let path = Path::new(url);
+    if matches!(
+        path.extension().and_then(|e| e.to_str()),
+        Some("yml" | "yaml")
+    ) && path.is_file()
+    {
+        let word = apinata_core::shell_word(url);
+        bail!("{url} is a request file, not a URL; send it with `apinata run {word}`");
+    }
     let mut words = vec!["curl".to_owned()];
     if let Some(method) = &args.method {
         words.extend(["-X".to_owned(), quote(method)]);

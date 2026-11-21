@@ -290,3 +290,35 @@ async fn an_unknown_key_inside_the_auth_document_names_it_and_its_object() {
     );
     assert!(!message.contains("SECRET-"), "{message}");
 }
+
+/// A number argument whose description gives a range from 1 declares that floor in its schema,
+/// so a client validating against the schema never offers the 0 the server refuses.
+#[tokio::test]
+async fn a_one_based_argument_declares_its_minimum() {
+    let server = start().await;
+    let mut checked = 0;
+    for tool in server.tools().await {
+        let schema = tool.input_schema.as_ref();
+        let Some(props) = schema.get("properties").and_then(Value::as_object) else {
+            continue;
+        };
+        for (name, prop) in props {
+            let prop = resolve(schema, prop);
+            let description = prop
+                .get("description")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            if !description.contains(" 1 to ") && !description.contains("(1 to ") {
+                continue;
+            }
+            checked += 1;
+            assert_eq!(
+                prop.get("minimum").and_then(Value::as_u64),
+                Some(1),
+                "{}.{name}: {prop}",
+                tool.name
+            );
+        }
+    }
+    assert!(checked >= 8, "only {checked} ranged arguments found");
+}

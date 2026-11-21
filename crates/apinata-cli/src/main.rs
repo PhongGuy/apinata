@@ -1934,6 +1934,14 @@ async fn run_once(args: &RunArgs) -> u8 {
             }
         }
         Err(e) => {
+            // A script parsing stdout still gets JSON when nothing matched; the exit stays 3.
+            if matches!(args.format, Format::Json) && e.is::<run::NothingToRun>() {
+                let empty = apinata_core::ResultsReport::new(
+                    std::iter::empty::<(String, String)>(),
+                    std::iter::empty::<&apinata_core::RequestResult>(),
+                );
+                out!("{}", empty.to_json());
+            }
             eprintln!("error: {e:#}");
             EXIT_USAGE
         }

@@ -19,6 +19,7 @@ pub(crate) struct SearchArgs {
     /// The most hits to return (1 to 500; larger is clamped). Giving `limit` or `offset` pages
     /// the search: the reply then has `total` and `has_more`.
     #[serde(default)]
+    #[schemars(range(min = 1))]
     pub limit: Option<usize>,
     /// How many hits to skip, to fetch the next page.
     #[serde(default)]

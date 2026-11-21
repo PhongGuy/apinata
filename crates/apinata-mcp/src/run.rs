@@ -57,14 +57,18 @@ pub(crate) struct RunArgs {
     #[serde(default)]
     pub exclude_tags: Vec<String>,
     /// For event-streams, end each after this many seconds; 30 when absent, 1 to 300.
+    #[schemars(range(min = 1))]
     pub stream_max_seconds: Option<u64>,
     /// For event-streams, end each after this many events; 10000 when absent, 1 to 100000.
+    #[schemars(range(min = 1))]
     pub stream_max_events: Option<u64>,
     /// Cap every request's timeout at this many seconds, 1 to 86400. The lower of a request's own
     /// timeout and this value applies; a request with none gets the cap.
+    #[schemars(range(min = 1, max = 86400))]
     pub timeout_secs: Option<u64>,
     /// Run the folder this many times, 1 to 100 (the iteration cap). With `data`, at most one
     /// pass per row. Each pass sees `iteration` (from 0) and `iterationCount`.
+    #[schemars(range(min = 1, max = 100))]
     pub iterations: Option<u64>,
     /// Rows of iteration data, one object per pass, at most 100. Each key becomes a variable
     /// for that pass; values bind as strings (numbers as JavaScript prints them, null as empty,

@@ -35,7 +35,7 @@ details > div { padding: 4px 12px 12px; overflow-x: auto; }
 .passed .badge, .pass { --c: var(--pass); }
 .failed .badge, .fail { --c: var(--fail); }
 .errored .badge { --c: var(--error); }
-.skipped .badge, .skipped { --c: var(--skip); }
+.skipped .badge, .skipped, .no-tests .badge { --c: var(--skip); }
 .badge { background: var(--c); }
 td.pass, td.fail, td.skipped { color: var(--c); font-weight: 600; }
 .name { font-weight: 600; }
@@ -109,11 +109,13 @@ pub(crate) fn render(report: &Report, generated: &str) -> String {
 
 /// One collapsible request: the headline in `<summary>`, then each non-empty section.
 fn write_request(out: &mut String, r: &ResultRow) {
-    let outcome = match r.outcome {
-        Outcome::Passed => "passed",
-        Outcome::Failed => "failed",
-        Outcome::Errored => "errored",
-        Outcome::Skipped => "skipped",
+    // A pass that checked nothing is badged neutrally, so the page never claims more than ran.
+    let (class, badge) = match r.outcome {
+        Outcome::Passed if r.no_tests => ("no-tests", "no tests"),
+        Outcome::Passed => ("passed", "passed"),
+        Outcome::Failed => ("failed", "failed"),
+        Outcome::Errored => ("errored", "errored"),
+        Outcome::Skipped => ("skipped", "skipped"),
     };
     // Any request that did not pass starts expanded so the reader lands on what went wrong.
     let open = if r.outcome == Outcome::Passed {
@@ -123,7 +125,7 @@ fn write_request(out: &mut String, r: &ResultRow) {
     };
     let _ = write!(
         out,
-        "<details class=\"request {outcome}\"{open}>\n<summary><span class=\"badge\">{outcome}</span> \
+        "<details class=\"request {class}\"{open}>\n<summary><span class=\"badge\">{badge}</span> \
          <span class=\"name\">{}</span> <span class=\"muted\">{}</span>",
         escape(&r.name),
         escape(&r.path)
@@ -332,6 +334,32 @@ mod tests {
         assert!(html.contains("not supported"));
         assert!(html.contains("3 users"));
         assert!(html.contains("userId"));
+    }
+
+    #[test]
+    fn a_passed_request_without_tests_gets_the_neutral_badge() {
+        let mut report = sample();
+        let row = report
+            .results
+            .iter_mut()
+            .find(|r| r.outcome == crate::results_report::report::Outcome::Passed)
+            .expect("a passed row");
+        row.no_tests = true;
+        row.assertions.clear();
+        row.tests.clear();
+        let html = render(&report, "2026-10-12 10:00:00 UTC");
+        assert!(
+            html.contains("<details class=\"request no-tests\">"),
+            "{html}"
+        );
+        assert!(
+            html.contains("<span class=\"badge\">no tests</span>"),
+            "{html}"
+        );
+        assert!(
+            !html.contains("<span class=\"badge\">passed</span>"),
+            "{html}"
+        );
     }
 
     #[test]

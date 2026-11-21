@@ -242,6 +242,11 @@ pub enum UndefinedHint {
         /// Those environments, sorted.
         environments: Vec<String>,
     },
+    /// Another request's post-response variable sets it, so that request must run first.
+    CapturedElsewhere {
+        /// Those requests' item paths, in collection order.
+        requests: Vec<String>,
+    },
     /// No environment and no variable of the collection, its folders or the request defines it.
     Undeclared,
 }
@@ -307,6 +312,22 @@ impl UndefinedHint {
                         "{name} is defined in environments {}; pass --env with one of them",
                         many.join(", ")
                     ),
+                }
+            }
+            (UndefinedHint::CapturedElsewhere { requests }, shell) => {
+                let (which, run) = match requests.as_slice() {
+                    [one] => (format!("request {one}"), "run that request first"),
+                    many => (
+                        format!("requests {}", many.join(", ")),
+                        "run one of them first",
+                    ),
+                };
+                match shell {
+                    HintShell::Cli => format!(
+                        "{name} is captured from the response of {which}; {run}, or pass --env-var {}",
+                        shell_word(&format!("{name}=VALUE"))
+                    ),
+                    _ => format!("{name} is captured from the response of {which}; {run}"),
                 }
             }
             (UndefinedHint::Undeclared, HintShell::Cli) => format!(

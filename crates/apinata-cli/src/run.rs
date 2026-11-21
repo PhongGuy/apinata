@@ -152,6 +152,18 @@ pub fn open_with(args: &RunArgs, keychain: Arc<dyn SecretStore>) -> anyhow::Resu
     Ok(target)
 }
 
+/// A run whose plan selects no request; the caller still owes a JSON reader an empty report.
+#[derive(Debug)]
+pub struct NothingToRun(String);
+
+impl std::fmt::Display for NothingToRun {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for NothingToRun {}
+
 /// The filter `--tags` and `--exclude-tags` ask for.
 fn tag_filter(args: &RunArgs) -> TagFilter {
     let parse = |list: &Option<String>| {
@@ -304,7 +316,7 @@ pub async fn run(
     let target = open(args)?;
     // A run that would send nothing is a usage error, so a typo in a tag cannot pass CI.
     if let Some(message) = target.plan.empty_message(&tag_filter(args)) {
-        bail!(message);
+        return Err(NothingToRun(message).into());
     }
     let data = data_file(args)?;
     let example = crate::example_cmd::plan(args, &target, data.as_ref())?;

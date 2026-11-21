@@ -421,3 +421,21 @@ fn completions_exit_0_and_3() {
 fn an_unknown_flag_exits_3() {
     assert_eq!(code_of(&["check", "--nonsense"], empty().path()), 3);
 }
+
+#[test]
+fn a_json_run_with_no_requests_still_prints_an_empty_report() {
+    let dir = write_tree(&[("opencollection.yml", ROOT)]);
+    let (mut c, _h) = cli();
+    let out = c
+        .current_dir(dir.path())
+        .args(["run", ".", "--format", "json"])
+        .output()
+        .expect("runs");
+    assert_eq!(out.status.code(), Some(3));
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout)
+        .unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(&out.stdout)));
+    assert_eq!(report["results"], serde_json::json!([]), "{report}");
+    assert_eq!(report["summary"]["requests"], 0, "{report}");
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("no requests to run"), "{err}");
+}

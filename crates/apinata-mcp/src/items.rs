@@ -14,9 +14,11 @@ pub(crate) struct ListItemsArgs {
     /// Levels to list below the folder: 1 is its direct items only, with a `child_count` on each
     /// folder instead of its items. Omit to nest in full.
     #[serde(default)]
+    #[schemars(range(min = 1))]
     depth: Option<usize>,
     /// The most direct items to return (1 to 500; larger is clamped). Omit for all.
     #[serde(default)]
+    #[schemars(range(min = 1))]
     limit: Option<usize>,
     /// How many direct items to skip, to fetch the next page.
     #[serde(default)]
