@@ -6,7 +6,8 @@
 //! - empty folders and empty-URL requests are kept (`empty_folders_and_urls_are_kept`);
 //! - arrays replace rather than merge by index (`arrays_replace`);
 //! - only a leading `_.` is stripped, and spaces only around the path (`only_a_leading_prefix_is_stripped`);
-//! - filters and tags stay literal with a note (`filters_and_tags_are_noted`);
+//! - filters stay literal and tags become a variable named after the tag, each with a note
+//!   (`filters_and_tags_are_noted`);
 //! - `{}` and disabled auth inherit, apikey maps (`auth_inherits_and_api_keys_map`);
 //! - enabled query params are appended to the URL (`query_params_join_the_url`);
 //! - a v5 file without `collection` and a spec document import (`more_documents_import`);
@@ -153,12 +154,14 @@ fn filters_and_tags_are_noted() {
         wrk("w"),
         req("r", "w", json!({"url": "{{ x | upper }}/{% uuid 'v4' %}"}))
     ]))));
-    assert_eq!(r.request.url, "{{ x | upper }}/{% uuid 'v4' %}");
-    assert!(
-        r.notes
-            .iter()
-            .any(|n| n.kind == NoteKind::NeedsInput && n.source == "r / url")
-    );
+    assert_eq!(r.request.url, "{{ x | upper }}/{{uuid}}");
+    let note = r
+        .notes
+        .iter()
+        .find(|n| n.kind == NoteKind::NeedsInput && n.source == "r / url")
+        .expect("a needs-input note");
+    assert!(note.detail.contains("`{% uuid 'v4' %}`"), "{}", note.detail);
+    assert!(note.detail.contains("`uuid`"), "{}", note.detail);
 }
 
 #[test]
