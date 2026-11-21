@@ -171,3 +171,24 @@ async fn the_run_wide_cap_bounds_the_token_fetch() {
     let error = report.results[0].error.as_ref().expect("an error");
     assert!(error.to_string().contains("run-wide timeout of"), "{error}");
 }
+
+#[tokio::test]
+async fn a_token_without_a_placement_is_sent_bare_in_the_header() {
+    let server = MockServer::start().await;
+    on_grant(&server, "client_credentials", token_response(json!({})), 1).await;
+    Mock::given(method("GET"))
+        .and(path("/r"))
+        .and(header("authorization", TOKEN))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let p = server.uri();
+    let auth = format!(
+        "    type: oauth2\n    flow: client_credentials\n    accessTokenUrl: \"{p}/token\"\n    credentials:\n      clientId: app\n    scope: read\n    tokenConfig:\n      id: main\n"
+    );
+    let a = request("a", 1, &format!("{p}/r"), &auth);
+    let f = Fixture::new(&[("opencollection.yml", ROOT), ("a.yml", &a)]);
+    let report = run_all(&f, RunOptions::new()).await;
+    assert_eq!(outcomes(&report), [Outcome::Passed]);
+}

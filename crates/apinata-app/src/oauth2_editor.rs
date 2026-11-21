@@ -178,8 +178,11 @@ impl OAuth2Field {
             OAuth2Field::Scope => &o.scope,
             OAuth2Field::State => &o.state,
             OAuth2Field::TokenId => &o.token_id,
+            // An unset placement sends the token bare, so its prefix reads empty rather than
+            // keeping the text an earlier spec left in the field.
             OAuth2Field::HeaderPrefix => match &o.token_placement {
                 TokenPlacement::Header { prefix } => prefix,
+                TokenPlacement::Unset => "",
                 _ => return None,
             },
             OAuth2Field::QueryKey => match &o.token_placement {
