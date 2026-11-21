@@ -238,3 +238,36 @@ fn yes_with_out_is_a_usage_error() {
         .stderr(contains("cannot be used with"));
     assert!(!target.exists());
 }
+
+// The reason names the folder and never shows the hidden staging folder.
+#[cfg(unix)]
+#[test]
+fn a_read_only_out_folder_is_named_in_plain_words() {
+    use std::os::unix::fs::PermissionsExt;
+    let src = legacy();
+    let parent = tempfile::tempdir().unwrap();
+    let mode = |m| fs::set_permissions(parent.path(), fs::Permissions::from_mode(m)).unwrap();
+    mode(0o555);
+    if fs::write(parent.path().join("probe"), "").is_ok() {
+        mode(0o755);
+        return; // running as root, which ignores directory permissions
+    }
+    let target = parent.path().join("new");
+    let out = apinata()
+        .arg("convert")
+        .arg(src.path())
+        .arg("--out")
+        .arg(&target)
+        .output()
+        .unwrap();
+    mode(0o755);
+    assert_eq!(
+        String::from_utf8_lossy(&out.stderr),
+        format!(
+            "error: cannot create {}: you do not have permission to save files in {}\n",
+            target.display(),
+            parent.path().display()
+        )
+    );
+    assert_eq!(out.status.code(), Some(3));
+}

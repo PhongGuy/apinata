@@ -122,7 +122,10 @@ fn new_folder(
     let staging = tempfile::Builder::new()
         .prefix(".apinata-convert-")
         .tempdir_in(parent)
-        .map_err(|e| io_error(parent, e))?;
+        .map_err(|e| ConvertError::CannotCreate {
+            path: dir.clone(),
+            kind: e.kind(),
+        })?;
     let staged = staging.path().join("collection");
     fs::create_dir(&staged).map_err(|e| io_error(&dir, e))?;
 

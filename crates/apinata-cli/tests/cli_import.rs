@@ -286,6 +286,39 @@ fn an_ancestor_that_is_a_file_fails_and_is_left_untouched() {
     assert_eq!(fs::read_to_string(&blocker).unwrap(), "keep");
 }
 
+// The reason is printed once, names the folder, and never shows the hidden staging folder.
+#[cfg(unix)]
+#[test]
+fn a_read_only_into_is_named_in_plain_words() {
+    use std::os::unix::fs::PermissionsExt;
+    let input = tempfile::tempdir().unwrap();
+    let into = tempfile::tempdir().unwrap();
+    let mode = |m| fs::set_permissions(into.path(), fs::Permissions::from_mode(m)).unwrap();
+    mode(0o555);
+    if fs::write(into.path().join("probe"), "").is_ok() {
+        mode(0o755);
+        return; // running as root, which ignores directory permissions
+    }
+    let out = apinata()
+        .args(["import", "collection", "--no-keychain"])
+        .arg(file(input.path(), "shop.json", &shop()))
+        .arg("--into")
+        .arg(into.path())
+        .output()
+        .unwrap();
+    mode(0o755);
+    let dir = fs::canonicalize(into.path()).unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&out.stderr),
+        format!(
+            "error: cannot create {}: you do not have permission to save files in {}\n",
+            dir.join("Shop").display(),
+            dir.display()
+        )
+    );
+    assert_eq!(out.status.code(), Some(3));
+}
+
 #[test]
 fn a_first_write_failure_removes_only_the_directories_it_created() {
     let input = tempfile::tempdir().unwrap();

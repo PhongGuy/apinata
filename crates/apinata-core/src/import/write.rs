@@ -121,10 +121,14 @@ pub(super) fn write_staged(
         Collection::unique_dir_name(parent_dir, &imported.name)
     };
     let target = parent_dir.join(sanitize_name(&name));
+    // The staging folder is hidden, so its failure is reported against the collection folder.
     let staging = tempfile::Builder::new()
         .prefix(".apinata-import-")
         .tempdir_in(parent_dir)
-        .map_err(|source| io_error(parent_dir, source))?;
+        .map_err(|source| ImportError::CannotCreate {
+            path: target.clone(),
+            kind: source.kind(),
+        })?;
     let staged = staging.path().join("collection");
 
     let mut collection = Collection::create(&staged, &name)?;
@@ -472,6 +476,42 @@ mod tests {
             entries(parent.path())
         );
         assert_eq!(store.0.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn a_missing_folder_is_named_in_plain_words_without_the_staging_path() {
+        let base = tempfile::TempDir::new().expect("tempdir");
+        let gone = base.path().join("gone");
+        let (imported, envs) = inputs();
+        let store = Counting::default();
+        let err = write_collection_with(&gone, &imported, &envs, &store, &mut |_| Ok(()))
+            .expect_err("no folder to write into");
+        assert_eq!(
+            err.to_string(),
+            format!(
+                "cannot create {}: the folder {} does not exist",
+                gone.join("c").display(),
+                gone.display()
+            )
+        );
+        assert!(std::error::Error::source(&err).is_none(), "{err:?}");
+    }
+
+    // Permissions and a full disk cannot be set up portably, so those come from the error kind.
+    #[test]
+    fn a_read_only_or_full_folder_is_named_in_plain_words() {
+        let err = |kind| ImportError::CannotCreate {
+            path: "/ro/Pets".into(),
+            kind,
+        };
+        assert_eq!(
+            err(ErrorKind::PermissionDenied).to_string(),
+            "cannot create /ro/Pets: you do not have permission to save files in /ro"
+        );
+        assert_eq!(
+            err(ErrorKind::StorageFull).to_string(),
+            "cannot create /ro/Pets: the disk is full"
+        );
     }
 
     #[test]
