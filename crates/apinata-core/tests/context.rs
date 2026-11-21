@@ -302,3 +302,45 @@ fn dotenv_overrides_beat_dotenv_and_are_secret() {
     );
     assert!(!format!("{ctx:?}").contains("held-aaaa"));
 }
+
+#[test]
+fn a_variable_another_request_captures_is_hinted_with_that_request() {
+    let capture = |name: &str, off: bool| {
+        let disabled = if off { "      disabled: true\n" } else { "" };
+        format!(
+            "runtime:\n  actions:\n    - type: set-variable\n      phase: after-response\n      selector:\n        expression: res.body.v\n      variable:\n        name: {name}\n{disabled}"
+        )
+    };
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        (
+            "a/login.yml",
+            &http("https://x.test/", &capture("token", false)),
+        ),
+        ("off.yml", &http("https://x.test/", &capture("gone", true))),
+        (
+            "self.yml",
+            &http("https://x.test/{{mine}}", &capture("mine", false)),
+        ),
+        ("me.yml", &http("https://x.test/{{token}}/{{gone}}", "")),
+    ]);
+    let c = Collection::open(dir.path()).expect("opens");
+    let ctx = VarContext::new(&c, ContextOptions::new()).expect("context");
+    let me = request(&c, "me.yml");
+    assert_eq!(
+        ctx.undefined_hint(me, "token"),
+        Some(UndefinedHint::CapturedElsewhere {
+            requests: vec!["a/login.yml".to_owned()]
+        })
+    );
+    // A disabled capture sets nothing, and a request cannot run before itself.
+    assert_eq!(
+        ctx.undefined_hint(me, "gone"),
+        Some(UndefinedHint::Undeclared)
+    );
+    let own = request(&c, "self.yml");
+    assert_eq!(
+        ctx.undefined_hint(own, "mine"),
+        Some(UndefinedHint::Undeclared)
+    );
+}

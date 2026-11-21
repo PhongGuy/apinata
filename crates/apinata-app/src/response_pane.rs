@@ -298,6 +298,8 @@ fn app_hint(hint: &UndefinedHint, name: &str) -> String {
             [one] => format!("{name} is defined in environment {one}"),
             many => format!("{name} is defined in environments {}", many.join(", ")),
         },
+        // The MCP wording offers no CLI flag, only running the capturing request first.
+        UndefinedHint::CapturedElsewhere { .. } => hint.mcp_text(name),
         // A future hint kind reads in the core's words until the app words it.
         other => other.cli_text(name),
     }

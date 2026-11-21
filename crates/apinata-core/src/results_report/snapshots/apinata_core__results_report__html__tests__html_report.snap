@@ -39,7 +39,7 @@ details > div { padding: 4px 12px 12px; overflow-x: auto; }
 .passed .badge, .pass { --c: var(--pass); }
 .failed .badge, .fail { --c: var(--fail); }
 .errored .badge { --c: var(--error); }
-.skipped .badge, .skipped { --c: var(--skip); }
+.skipped .badge, .skipped, .no-tests .badge { --c: var(--skip); }
 .badge { background: var(--c); }
 td.pass, td.fail, td.skipped { color: var(--c); font-weight: 600; }
 .name { font-weight: 600; }

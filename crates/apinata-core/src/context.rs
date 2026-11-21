@@ -207,6 +207,9 @@ pub struct VarContext {
     env_unstored: BTreeSet<String>,
     /// Each environment's defined variable names, secrets with or without a value; no values.
     env_names: BTreeMap<String, BTreeSet<String>>,
+    /// Each name an enabled request-level post-response variable sets, with the requests that
+    /// set it as (file, item path); clones share it.
+    captures: Arc<BTreeMap<String, Vec<(PathBuf, String)>>>,
     /// Environment-level names whose final value came from the secret store or a sensitive override.
     env_sensitive: BTreeSet<String>,
     /// The collection's `request` block, for header and auth defaults.
@@ -322,6 +325,8 @@ impl VarContext {
         for folder in collection.tree().folders() {
             collect_folders(folder, &root, &mut folders);
         }
+        let mut captures = BTreeMap::new();
+        collect_captures(collection, collection.tree(), &mut captures);
         let mut network = read_network(collection.root_document());
         network.certificates.extend(options.client_certificates);
         let flow = collection
@@ -349,6 +354,7 @@ impl VarContext {
             env_layer: env.vars,
             env_unstored: env.unstored,
             env_names,
+            captures: Arc::new(captures),
             env_sensitive: env.sensitive,
             folders,
             warnings,
@@ -961,7 +967,23 @@ impl VarContext {
                 environments: defining.into_iter().map(str::to_owned).collect(),
             });
         }
-        definable_name(name).then_some(UndefinedHint::Undeclared)
+        if !definable_name(name) {
+            return None;
+        }
+        // A request cannot run before itself, so its own capture is no remedy.
+        let own = fs::canonicalize(req.path()).ok();
+        let requests: Vec<String> = self
+            .captures
+            .get(name)
+            .into_iter()
+            .flatten()
+            .filter(|(file, _)| file != req.path() && fs::canonicalize(file).ok() != own)
+            .map(|(_, item)| item.clone())
+            .collect();
+        if !requests.is_empty() {
+            return Some(UndefinedHint::CapturedElsewhere { requests });
+        }
+        Some(UndefinedHint::Undeclared)
     }
 
     /// Whether naming the undefined or cyclic variable `name` could reveal a sensitive value:
@@ -1170,6 +1192,31 @@ fn collect_folders(folder: &Folder, root: &Path, out: &mut HashMap<PathBuf, Fold
     }
     for sub in folder.folders() {
         collect_folders(sub, root, out);
+    }
+}
+
+/// Record, under each name, the requests in `folder` and below whose enabled post-response
+/// variables set it, in collection order.
+fn collect_captures(
+    collection: &Collection,
+    folder: &Folder,
+    out: &mut BTreeMap<String, Vec<(PathBuf, String)>>,
+) {
+    for req in folder.requests() {
+        let Some(item) = collection.item_path(req.path()) else {
+            continue;
+        };
+        for var in req.post_response_vars() {
+            if var.enabled() && !var.name().is_empty() {
+                let setters = out.entry(var.name().to_owned()).or_default();
+                if !setters.iter().any(|(file, _)| file == req.path()) {
+                    setters.push((req.path().to_path_buf(), item.to_string()));
+                }
+            }
+        }
+    }
+    for sub in folder.folders() {
+        collect_captures(collection, sub, out);
     }
 }
 

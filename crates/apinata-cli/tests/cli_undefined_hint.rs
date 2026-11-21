@@ -91,3 +91,27 @@ fn a_name_nothing_defines_points_at_a_collection_variable_and_env_var() {
     let text = run("nowhere", &["--env-var", "nowhere=x"]);
     assert!(!text.contains("is not defined"), "{text}");
 }
+
+#[test]
+fn a_variable_another_request_captures_names_that_request() {
+    let login = "info:\n  name: login\n  type: http\n  seq: 1\nhttp:\n  method: GET\n  url: http://127.0.0.1:1/login\nruntime:\n  actions:\n    - type: set-variable\n      phase: after-response\n      selector:\n        expression: res.body.token\n      variable:\n        name: token\n";
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("auth/login.yml", login),
+        ("me.yml", &req("token")),
+    ]);
+    let (mut cmd, _home) = apinata();
+    let out = cmd
+        .arg("run")
+        .arg("--no-keychain")
+        .arg(dir.path().join("me.yml"))
+        .args(["--format", "json"])
+        .output()
+        .expect("runs");
+    let json: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        json["results"][0]["hint"],
+        "token is captured from the response of request auth/login.yml; run that request first, or pass --env-var token=VALUE",
+        "{json}"
+    );
+}

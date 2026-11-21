@@ -562,3 +562,17 @@ async fn a_zstd_reply_prints_the_decoded_body() {
         .code(0)
         .stdout("hello zstd");
 }
+
+#[test]
+fn a_request_file_argument_names_the_command_that_sends_it() {
+    let dir = cwd();
+    let file = dir.path().join("get.yml");
+    fs::write(&file, "info:\n  name: get\n  type: http\n").unwrap();
+    for arg in [file.to_str().unwrap(), "get.yml"] {
+        send(&dir).arg(arg).assert().code(3).stderr(
+            predicates::str::contains(format!("{arg} is a request file, not a URL"))
+                .and(predicates::str::contains(format!("apinata run {arg}")))
+                .and(predicates::str::contains("not a usable URL").not()),
+        );
+    }
+}

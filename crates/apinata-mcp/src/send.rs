@@ -40,11 +40,14 @@ pub(crate) struct SendArgs {
     #[serde(default)]
     pub skip_scripts: bool,
     /// For an event-stream, end it after this many seconds; 30 when absent, 1 to 300.
+    #[schemars(range(min = 1))]
     pub stream_max_seconds: Option<u64>,
     /// For an event-stream, end it after this many events; 10000 when absent, 1 to 100000.
+    #[schemars(range(min = 1))]
     pub stream_max_events: Option<u64>,
     /// Cap the request's timeout at this many seconds, 1 to 86400. The lower of the request's own
     /// timeout and this value applies; a request with none gets the cap.
+    #[schemars(range(min = 1, max = 86400))]
     pub timeout_secs: Option<u64>,
     /// Narrow the returned body text to what this expression matches: a JSONPath (RFC 9535) for
     /// a JSON response, an XPath 1.0 for an XML one, by content type. A path that can match
