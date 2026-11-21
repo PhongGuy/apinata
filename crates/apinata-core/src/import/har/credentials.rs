@@ -76,18 +76,7 @@ impl Credentials {
     }
 }
 
-/// `host` with each run of characters that are not ASCII alphanumeric as one `_`.
-pub(super) fn slug(host: &str) -> String {
-    let mut out = String::with_capacity(host.len());
-    for c in host.chars() {
-        if c.is_ascii_alphanumeric() {
-            out.push(c.to_ascii_lowercase());
-        } else if !out.ends_with('_') {
-            out.push('_');
-        }
-    }
-    out
-}
+pub(super) use crate::import::protect::slug;
 
 /// What an `Authorization` header maps to: Basic credentials or a Bearer token.
 enum Scheme {

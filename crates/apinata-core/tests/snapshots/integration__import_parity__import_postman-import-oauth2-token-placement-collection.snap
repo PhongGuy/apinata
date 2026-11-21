@@ -2,8 +2,10 @@
 source: crates/apinata-core/tests/import_parity.rs
 expression: snapshot
 ---
-Converted OAuth2 Token in Header / request.auth [OAuth2 Token in Header.yml]: `oauth2` authentication is not supported; set to none
-Converted OAuth2 Token in URL / request.auth [OAuth2 Token in URL.yml]: `oauth2` authentication is not supported; set to none
+Converted OAuth2 Token in Header / request.auth.client_secret [OAuth2 Token in Header.yml]: the value is kept as the secret variable `oauth2_token_in_header_client_secret`, not in the file
+Converted OAuth2 Token in URL / request.auth.client_secret [OAuth2 Token in URL.yml]: the value is kept as the secret variable `oauth2_token_in_url_client_secret`, not in the file
+Converted collection [opencollection.yml]: runs use the environment `Environment` by default, since it holds the imported credentials
+Converted imported credentials [environments/Environment.yml]: the imported credentials are the secret variables `oauth2_token_in_header_client_secret`, `oauth2_token_in_url_client_secret`; their values are kept in the secret store, not in the file
 == OAuth2 Token in Header.yml
 info:
   name: OAuth2 Token in Header
@@ -13,6 +15,25 @@ info:
 http:
   method: GET
   url: https://api.com/header
+  auth:
+    type: oauth2
+    flow: authorization_code
+    authorizationUrl: https://example.com/auth
+    accessTokenUrl: https://example.com/token
+    credentials:
+      clientId: client-id
+      clientSecret: "{{oauth2_token_in_header_client_secret}}"
+      placement: basic_auth_header
+    pkce:
+      disabled: true
+    tokenConfig:
+      id: credentials
+      placement:
+        header: Bearer
+      source: access_token
+    settings:
+      autoFetchToken: true
+      autoRefreshToken: false
 
 settings:
   encodeUrl: true
@@ -29,6 +50,25 @@ info:
 http:
   method: GET
   url: https://api.com/url
+  auth:
+    type: oauth2
+    flow: authorization_code
+    authorizationUrl: https://example.com/auth
+    accessTokenUrl: https://example.com/token
+    credentials:
+      clientId: client-id
+      clientSecret: "{{oauth2_token_in_url_client_secret}}"
+      placement: basic_auth_header
+    pkce:
+      disabled: true
+    tokenConfig:
+      id: credentials
+      placement:
+        query: access_token
+      source: access_token
+    settings:
+      autoFetchToken: true
+      autoRefreshToken: false
 
 settings:
   encodeUrl: true
@@ -36,3 +76,23 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+== environments/Environment.yml
+name: Environment
+variables:
+  - secret: true
+    name: oauth2_token_in_header_client_secret
+  - secret: true
+    name: oauth2_token_in_url_client_secret
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: OAuth2 Token Placement
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+    presets:
+      defaultEnvironment: Environment

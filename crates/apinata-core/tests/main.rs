@@ -285,6 +285,8 @@ mod import_postman_details;
 mod import_postman_graphql;
 mod import_scripts_e2e;
 mod import_scripts_write;
+mod import_secrets;
+mod import_secrets_edges;
 mod import_update_apply;
 mod import_update_baseline;
 mod import_update_folder;

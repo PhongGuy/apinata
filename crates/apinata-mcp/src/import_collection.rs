@@ -3,19 +3,19 @@
 //!
 //! Only the items are taken. The import is written by core into a scratch directory and copied
 //! under `<into>/<collection name>/`; the imported root's own settings and every environment
-//! are reported as skipped, and no secret store is ever involved.
+//! are reported as skipped. Imported credentials become secret variables whose values go to the
+//! server's secret store.
 
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use apinata_core::import::{
     CollectionFormat, CollectionOptions, GroupBy, ImportBundle, ImportError, SpecLocation,
     TakeSpec, UpdateOptions, UpdateSummary, apply_update, can_update, ensure_folder,
     parse_collections, place_items, plan_update, recorded_spec,
 };
-use apinata_core::{
-    AuthSpec, Collection, ItemPath, SecretError, SecretKey, SecretStore, Trash, TrashLog,
-};
+use apinata_core::{AuthSpec, Collection, ItemPath, SecretStore, Trash, TrashLog};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -363,37 +363,15 @@ pub(crate) fn parse(
     parse_collections(plan.format, input, &options).map_err(|e| e.to_string())
 }
 
-/// A store for `write_collection` that holds nothing: no environment is written, so core never
-/// asks, and anything that did ask would learn that no store is available.
-pub(crate) struct NoSecrets;
-
-impl NoSecrets {
-    fn refuse() -> SecretError {
-        SecretError::Unavailable {
-            message: "import_collection keeps no secrets".to_owned(),
-        }
-    }
-}
-
-impl SecretStore for NoSecrets {
-    fn get(&self, _: &SecretKey) -> Result<Option<String>, SecretError> {
-        Err(Self::refuse())
-    }
-    fn set(&self, _: &SecretKey, _: &str) -> Result<(), SecretError> {
-        Err(Self::refuse())
-    }
-    fn delete(&self, _: &SecretKey) -> Result<(), SecretError> {
-        Err(Self::refuse())
-    }
-}
-
 /// Refresh `c` from the description in `bundles` (core's update; a prune moves files to `bin`,
 /// recorded in `log` as `delete_item` records, and is refused when there is none), then reload. Needs exactly one OpenAPI bundle. A
-/// collection without a recorded baseline is left untouched and the response says so.
+/// collection without a recorded baseline is left untouched and the response says so. New
+/// credential values go to `secrets`.
 pub(crate) fn update(
     c: &mut Collection,
     plan: &Plan,
     bundles: &[ImportBundle],
+    secrets: Arc<dyn SecretStore>,
     bin: &dyn Trash,
     log: Option<TrashLog>,
 ) -> Result<ImportedCollections, String> {
@@ -410,6 +388,7 @@ pub(crate) fn update(
     options.folder = Some(folder.clone());
     options.trash_log = log;
     options.take_spec = plan.take_spec.clone();
+    options.secrets = Some(secrets);
     let has_baseline = can_update(c, &folder);
     let summary = if dry_run {
         plan_update(c, bundle, &options)
@@ -602,6 +581,7 @@ fn skipped(bundle: &ImportBundle) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use apinata_core::{SecretError, SecretKey};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[derive(Default)]
@@ -622,14 +602,14 @@ mod tests {
         }
     }
 
-    // A Postman collection with a secret-looking collection variable and an environment-like
-    // payload: whatever it holds, the store must see no call.
+    // A collection variable is root settings, which placing skips, so a request with no
+    // credential of its own leaves the store alone.
     const INPUT: &str = r#"{"info":{"name":"Col","schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
 "item":[{"name":"Get","request":{"method":"GET","url":"http://127.0.0.1:1/x"}}],
 "variable":[{"key":"token","value":"s3cret"}]}"#;
 
     #[test]
-    fn the_secret_store_is_never_touched() {
+    fn an_import_without_credentials_never_touches_the_secret_store() {
         let dir = tempfile::tempdir().unwrap();
         let mut c = Collection::create(dir.path(), "shop").unwrap();
         let args = ImportCollectionArgs {

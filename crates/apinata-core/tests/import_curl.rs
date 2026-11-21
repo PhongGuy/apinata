@@ -4,7 +4,7 @@ use apinata_core::import::{CurlError, CurlSyntax, NoteKind, ParsedCurl, parse_cu
 use apinata_core::{AuthSpec, ParamKind, RequestSettings, Timeout};
 
 fn parse(command: &str) -> ParsedCurl {
-    parse_curl(command).unwrap_or_else(|e| panic!("{command}: {e}"))
+    crate::common::reveal_curl(parse_curl(command).unwrap_or_else(|e| panic!("{command}: {e}")))
 }
 fn h(name: &str, value: &str) -> (String, String) {
     (name.to_owned(), value.to_owned())

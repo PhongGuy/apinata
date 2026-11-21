@@ -3,6 +3,38 @@ source: crates/apinata-core/tests/import_parity.rs
 expression: snapshot
 ---
 Dropped collection / auth [opencollection.yml]: the NTLM workstation has no counterpart
+Converted collection / auth.password [opencollection.yml]: the value is kept as the secret variable `ntlm_password`, not in the file
+Converted Own Auth / request.auth.password [Own Auth.yml]: the value is kept as the secret variable `own_auth_password`, not in the file
+Converted collection [opencollection.yml]: runs use the environment `Environment` by default, since it holds the imported credentials
+Converted imported credentials [environments/Environment.yml]: the imported credentials are the secret variables `ntlm_password`, `own_auth_password`; their values are kept in the secret store, not in the file
+== Own Auth.yml
+info:
+  name: Own Auth
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: http://localhost:3000/health
+  auth:
+    type: ntlm
+    username: NTLM_USER_2
+    password: "{{own_auth_password}}"
+    domain: ""
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== environments/Environment.yml
+name: Environment
+variables:
+  - secret: true
+    name: ntlm_password
+  - secret: true
+    name: own_auth_password
 == opencollection.yml
 opencollection: 1.0.0
 
@@ -13,7 +45,7 @@ request:
   auth:
     type: ntlm
     username: NTLM_user
-    password: pass
+    password: "{{ntlm_password}}"
     domain: example.com
 bundled: false
 extensions:
@@ -21,3 +53,5 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Environment

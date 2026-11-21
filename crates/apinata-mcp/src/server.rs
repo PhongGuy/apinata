@@ -56,7 +56,7 @@ use crate::graphql_query::{
     self, GraphqlFormatArgs, GraphqlFormatDoc, GraphqlValidateArgs, GraphqlValidateDoc, Source,
 };
 use crate::import_collection::{
-    self, FETCH_LABEL, ImportCollectionArgs, ImportedCollections, NoSecrets, RecordedSource,
+    self, FETCH_LABEL, ImportCollectionArgs, ImportedCollections, RecordedSource,
 };
 use crate::imports::{self, ImportRequestArgs, ImportedRequestResult};
 use crate::items::{self, ItemList, ListItemsArgs};
@@ -1519,11 +1519,12 @@ impl ApinataServer {
         };
         let bundles = import_collection::parse(&plan, &input, default_name, source)?;
         let (bin, log) = (self.options.trash_bin(), self.options.trash_record());
+        let store = Arc::clone(&self.store);
         self.with_collection_write(move |c| {
             if plan.is_update() {
-                import_collection::update(c, &plan, &bundles, bin.as_ref(), log)
+                import_collection::update(c, &plan, &bundles, store, bin.as_ref(), log)
             } else {
-                import_collection::place(c, &plan, &bundles, &NoSecrets)
+                import_collection::place(c, &plan, &bundles, store.as_ref())
             }
             .map(Json)
         })

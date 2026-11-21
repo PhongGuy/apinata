@@ -10,6 +10,7 @@ use reference::update_baseline;
 pub use reference::{RecordedSpec, SpecLocation, can_update, recorded_spec};
 pub(crate) use reference::{record_source, unrecorded_note};
 
+use super::protect::{held_names, keep_taken, protect_bundle};
 use super::{
     ImportBundle, ImportError, ImportNote, ImportedItem, ImportedRequest, NoteKind, add_request,
 };
@@ -24,7 +25,7 @@ pub(crate) use fields::write_examples;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// How an update treats vanished operations.
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 #[non_exhaustive]
 pub struct UpdateOptions {
     /// Move to the trash requests whose operation left the spec, when they are still as generated.
@@ -42,6 +43,22 @@ pub struct UpdateOptions {
     /// not; a path the update does not match to an operation fails it with
     /// [`ImportError::NotMatched`] before anything is written.
     pub take_spec: Vec<TakeSpec>,
+    /// Where the values of credentials the spec writes are kept; `None` keeps none, so each
+    /// one is left for the user to enter.
+    pub secrets: Option<std::sync::Arc<dyn crate::secrets::SecretStore>>,
+}
+
+impl std::fmt::Debug for UpdateOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UpdateOptions")
+            .field("prune", &self.prune)
+            .field("folder", &self.folder)
+            .field("trash_log", &self.trash_log)
+            .field("undo_in_session", &self.undo_in_session)
+            .field("take_spec", &self.take_spec)
+            .field("secrets", &self.secrets.is_some())
+            .finish()
+    }
 }
 
 /// A request, by the path an update summary reports, that takes the spec's values.
@@ -239,6 +256,8 @@ pub fn apply_update(
     o: &UpdateOptions,
     bin: Option<&dyn Trash>,
 ) -> Result<UpdateSummary, ImportError> {
+    let (protected, taken) = protect_bundle(bundle, held(c, o));
+    let bundle = &protected;
     let Plan {
         mut summary,
         actions,
@@ -384,6 +403,15 @@ pub fn apply_update(
         let detail = format!("updated, but the spec record could not be saved: {e}");
         summary.notes.push(note("opencollection.yml", detail, None));
     }
+    // The spec's credentials are written as references; their values join the environments.
+    let requests: Vec<_> = taken.into_iter().filter(|t| !t.root).collect();
+    keep_taken(
+        c,
+        &requests,
+        o.secrets.as_deref(),
+        &mut summary.notes,
+        &mut Vec::new(),
+    );
     Ok(summary)
 }
 
@@ -739,12 +767,25 @@ fn predicted_path(
     path.join(&format!("{}.yml", sanitize_name(name)))
 }
 
+/// The secret names `c` already holds, when `o` can read its secrets.
+fn held(c: &Collection, o: &UpdateOptions) -> super::protect::Held {
+    o.secrets
+        .as_deref()
+        .map(|store| held_names(c, store))
+        .unwrap_or_default()
+}
+
 /// The one planner behind `plan_update` and `apply_update`.
 pub(crate) fn plan(
     c: &Collection,
     bundle: &ImportBundle,
     o: &UpdateOptions,
 ) -> Result<Plan, ImportError> {
+    // Credentials become references named as the import named them, so a protected file
+    // hashes the same as the spec on every update; a name the collection holds for another
+    // value is passed over, the same way each time.
+    let (protected, _) = protect_bundle(bundle, held(c, o));
+    let bundle = &protected;
     let mut summary = UpdateSummary::default();
     let mut actions = Vec::new();
 

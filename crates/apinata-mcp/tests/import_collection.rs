@@ -1001,3 +1001,79 @@ async fn restore_pruned_and_scrub_are_listed_as_local_writes() {
         (None, Some(false), Some(true), Some(false))
     );
 }
+
+const KEYS_V1: &str = r#"{"openapi":"3.0.3","info":{"title":"Keys","version":"1"},
+  "servers":[{"url":"https://x.test"}],
+  "paths":{"/a":{"get":{"operationId":"getA","parameters":[
+    {"name":"X-Api-Key","in":"header","schema":{"type":"string"},"example":"mcp-key-50"}],
+    "responses":{"200":{"description":"ok"}}}}}}"#;
+
+const KEYS_V2: &str = r#"{"openapi":"3.0.3","info":{"title":"Keys","version":"2"},
+  "servers":[{"url":"https://x.test"}],
+  "paths":{"/a":{"get":{"operationId":"getA","parameters":[
+    {"name":"X-Api-Key","in":"header","schema":{"type":"string"},"example":"mcp-key-50"}],
+    "responses":{"200":{"description":"ok"}}}},
+   "/b":{"get":{"operationId":"getB","parameters":[
+    {"name":"X-Api-Key","in":"header","schema":{"type":"string"},"example":"mcp-key-51"}],
+    "responses":{"200":{"description":"ok"}}}}}}"#;
+
+/// Every value the server's store holds for a valueless secret of the served collection.
+fn stored_values(server: &TestServer) -> Vec<String> {
+    use apinata_core::{Collection, SecretStore, VarValue};
+    let c = Collection::open(server.root()).expect("opens");
+    let mut values = Vec::new();
+    for env in c.environments() {
+        for v in env.variables() {
+            if v.secret && v.value == VarValue::Text(String::new()) {
+                let key = c.secret_key(env.name(), &v.name);
+                values.extend(server.store().get(&key).expect("get"));
+            }
+        }
+    }
+    values
+}
+
+#[tokio::test]
+async fn an_update_stores_a_new_spec_credential_in_the_servers_store() {
+    use apinata_core::MemoryStore;
+    use apinata_core::import::{CollectionOptions, parse_collections, write_collection};
+    let parent = tempfile::tempdir().unwrap();
+    let v1 = parse_collections(None, KEYS_V1.as_bytes(), &CollectionOptions::default()).unwrap();
+    let (c, _) = write_collection(
+        parent.path(),
+        &v1[0].collection,
+        &v1[0].environments,
+        &MemoryStore::new(),
+    )
+    .unwrap();
+    let server = TestServer::start_owned(&files_under(c.root())).await;
+    server
+        .ok(
+            "import_collection",
+            json!({"text": KEYS_V2, "update": true}),
+        )
+        .await;
+    let text: String = all(&server).into_iter().map(|(_, t)| t).collect();
+    assert!(!text.contains("mcp-key-51"), "{text}");
+    assert!(
+        stored_values(&server).contains(&"mcp-key-51".to_owned()),
+        "{:?}",
+        stored_values(&server)
+    );
+}
+
+#[tokio::test]
+async fn a_placed_import_stores_its_credentials_in_the_servers_store() {
+    let server = shop().await;
+    let input = r#"{"info":{"name":"Col","schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+"item":[{"name":"Get","request":{"method":"GET","url":"http://127.0.0.1:1/x",
+"auth":{"type":"bearer","bearer":[{"key":"token","value":"mcp-tok-52"}]}}}]}"#;
+    let out = server.ok("import_collection", json!({"text": input})).await;
+    let text: String = all(&server).into_iter().map(|(_, t)| t).collect();
+    assert!(!text.contains("mcp-tok-52"), "{text}");
+    assert_eq!(
+        stored_values(&server),
+        vec!["mcp-tok-52".to_owned()],
+        "{out}"
+    );
+}

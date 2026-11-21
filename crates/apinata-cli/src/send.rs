@@ -8,7 +8,10 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use anyhow::{Context, anyhow, bail};
-use apinata_core::import::{ImportedRequest, NoteKind, RequestFormat, add_request, parse_request};
+use apinata_core::import::{
+    ImportedRequest, ImportedSecret, NoteKind, RequestFormat, add_request, claim_secret_names,
+    parse_request, store_request_secrets,
+};
 use apinata_core::{BodySpec, Collection, ItemPath, MultipartValue, StatusRule};
 use clap::Parser as _;
 
@@ -147,6 +150,18 @@ fn prepare(mut args: SendArgs) -> anyhow::Result<(RunArgs, tempfile::TempDir)> {
     if args.curl.is_none() {
         parsed.notes.retain(|n| n.kind != NoteKind::Converted);
     }
+    // Credentials the parse moved into secret variables are handed to this run as secret
+    // overrides, unless the user gave one; the notes asking for them do not apply.
+    let supplied: Vec<ImportedSecret> = parsed
+        .request
+        .secrets
+        .iter()
+        .filter(|s| !args.env_var.iter().any(|v| v.key == s.name))
+        .cloned()
+        .collect();
+    parsed
+        .notes
+        .retain(|n| !supplied.iter().any(|s| s.source == n.source));
     for note in &mut parsed.notes {
         note.file = None;
     }
@@ -162,7 +177,18 @@ fn prepare(mut args: SendArgs) -> anyhow::Result<(RunArgs, tempfile::TempDir)> {
     let item = add_request(&mut scratch, &ItemPath::root(), "request", &parsed.request)?;
     let file = temp.path().join("send").join(item.as_str());
 
+    // A saved copy keeps the value the user gave for a secret over the one the command held.
+    let overrides: Vec<(String, String)> = args
+        .env_var
+        .iter()
+        .map(|v| (v.key.clone(), v.value.clone()))
+        .collect();
     let mut run_args = run_args(args, &file)?;
+    run_args.env_var.extend(supplied.iter().map(|s| EnvVar {
+        key: s.name.clone(),
+        value: s.value.clone(),
+        from_env: true,
+    }));
     // `validate` has already printed its reason; the empty error only carries the exit.
     if crate::validate(&run_args).is_some() {
         return Err(anyhow!(Reported));
@@ -170,10 +196,15 @@ fn prepare(mut args: SendArgs) -> anyhow::Result<(RunArgs, tempfile::TempDir)> {
     if let Some((root, parent, name)) = save {
         // A saved file runs from any directory, so one inside the collection is kept relative.
         let mut saved = parsed.request.clone();
+        for secret in &mut saved.secrets {
+            if let Some((_, value)) = overrides.iter().find(|(key, _)| *key == secret.name) {
+                secret.value = value.clone();
+            }
+        }
         map_file_paths(&mut saved.body, |path| {
             Ok(apinata_core::collection_relative(&root, Path::new(path)))
         })?;
-        let item = write_saved(&root, &parent, &name, &saved)?;
+        let item = write_saved(&root, &parent, &name, &saved, run_args.no_keychain)?;
         run_args.example_target = Some((root, item));
     }
     run_args.path = Some(file);
@@ -295,10 +326,19 @@ fn write_saved(
     parent: &ItemPath,
     name: &str,
     request: &ImportedRequest,
+    no_keychain: bool,
 ) -> anyhow::Result<ItemPath> {
     let mut collection = Collection::open(root)?;
-    let item = add_request(&mut collection, parent, name, request)?;
+    // The saved file refers to its credentials, so their values go where an import keeps them,
+    // under names no earlier request already uses for another value.
+    let store = crate::import::secret_store(no_keychain);
+    let mut request = request.clone();
+    claim_secret_names(&collection, &mut request, None, store.as_ref());
+    let item = add_request(&mut collection, parent, name, &request)?;
     eprintln!("saved {}", root.join(item.as_str()).display());
+    let mut notes = Vec::new();
+    store_request_secrets(&mut collection, &request, None, store.as_ref(), &mut notes);
+    crate::import::print_notes(&notes);
     Ok(item)
 }
 

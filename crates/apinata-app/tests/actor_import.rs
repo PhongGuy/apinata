@@ -295,6 +295,54 @@ fn an_imported_aws_secret_is_stored_in_the_only_environment(cx: &mut TestAppCont
 }
 
 #[gpui_kit::test]
+fn a_second_pasted_password_never_overwrites_the_first(cx: &mut TestAppContext) {
+    let dir = support::write_tree(&[
+        ("opencollection.yml", support::ROOT),
+        ("a.yml", &support::request("a", "http://x/0")),
+        ("b.yml", &support::request("b", "http://x/1")),
+        ("environments/dev.yml", "name: dev\n"),
+    ]);
+    let store = Arc::new(MemoryStore::new());
+    let model = open_with(cx, &dir, store.clone());
+    // Both ports share the host slug, so both pastes start from the same variable name.
+    for (item, command) in [
+        ("a.yml", "curl -u u:first-pw http://localhost:8080/x"),
+        ("b.yml", "curl -u u:second-pw http://localhost:9090/x"),
+    ] {
+        let request = curl(command);
+        let (reply, _answer) = async_channel::bounded(1);
+        send(
+            cx,
+            &model,
+            Command::ApplyImport {
+                item: ip(item),
+                request: request.clone(),
+            },
+        );
+        // The shell sends the secrets as parsed; the actor stores them under the claimed names.
+        send(
+            cx,
+            &model,
+            Command::StoreImportSecrets {
+                item: ip(item),
+                request,
+                notes: Vec::new(),
+                reply,
+            },
+        );
+        cx.run_until_parked();
+    }
+    let root = fs::canonicalize(dir.path()).unwrap();
+    let value = |var: &str| {
+        store
+            .get(&SecretKey::new(root.clone(), "dev", var))
+            .unwrap()
+    };
+    assert_eq!(value("localhost_password").as_deref(), Some("first-pw"));
+    assert_eq!(value("localhost_password_2").as_deref(), Some("second-pw"));
+}
+
+#[gpui_kit::test]
 fn a_secret_is_not_stored_when_its_import_did_not_apply(cx: &mut TestAppContext) {
     let dir = support::write_tree(&[
         ("opencollection.yml", support::ROOT),

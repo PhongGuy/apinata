@@ -1,0 +1,363 @@
+---
+source: crates/apinata-core/tests/import_parity.rs
+expression: snapshot
+---
+Converted type 1 / request.auth.consumer_secret [type 1.yml]: the value is kept as the secret variable `type_1_consumer_secret`, not in the file
+Converted type 1 / request.auth.access_token [type 1.yml]: the value is kept as the secret variable `type_1_access_token`, not in the file
+Converted type 1 / request.auth.access_token_secret [type 1.yml]: the value is kept as the secret variable `type_1_access_token_secret`, not in the file
+Converted type 2 / request.auth.consumer_secret [type 2.yml]: the value is kept as the secret variable `type_2_consumer_secret`, not in the file
+Converted type 2 / request.auth.access_token [type 2.yml]: the value is kept as the secret variable `type_2_access_token`, not in the file
+Converted type 2 / request.auth.access_token_secret [type 2.yml]: the value is kept as the secret variable `type_2_access_token_secret`, not in the file
+Converted type 3 / request.auth.consumer_secret [type 3.yml]: the value is kept as the secret variable `type_3_consumer_secret`, not in the file
+Converted type 3 / request.auth.access_token [type 3.yml]: the value is kept as the secret variable `type_3_access_token`, not in the file
+Converted type 3 / request.auth.access_token_secret [type 3.yml]: the value is kept as the secret variable `type_3_access_token_secret`, not in the file
+Converted type 4 / request.auth.consumer_secret [type 4.yml]: the value is kept as the secret variable `type_4_consumer_secret`, not in the file
+Converted type 4 / request.auth.access_token [type 4.yml]: the value is kept as the secret variable `type_4_access_token`, not in the file
+Converted type 4 / request.auth.access_token_secret [type 4.yml]: the value is kept as the secret variable `type_4_access_token_secret`, not in the file
+Converted type5 / request.auth.consumer_secret [type5.yml]: the value is kept as the secret variable `type5_consumer_secret`, not in the file
+Converted type5 / request.auth.access_token [type5.yml]: the value is kept as the secret variable `type5_access_token`, not in the file
+Converted type5 / request.auth.access_token_secret [type5.yml]: the value is kept as the secret variable `type5_access_token_secret`, not in the file
+Converted type5 / request.auth.private_key [type5.yml]: the value is kept as the secret variable `type5_private_key`, not in the file
+Converted type6 / request.auth.consumer_secret [type6.yml]: the value is kept as the secret variable `type6_consumer_secret`, not in the file
+Converted type6 / request.auth.access_token [type6.yml]: the value is kept as the secret variable `type6_access_token`, not in the file
+Converted type6 / request.auth.access_token_secret [type6.yml]: the value is kept as the secret variable `type6_access_token_secret`, not in the file
+Converted type6 / request.auth.private_key [type6.yml]: the value is kept as the secret variable `type6_private_key`, not in the file
+Converted type7 / request.auth.consumer_secret [type7.yml]: the value is kept as the secret variable `type7_consumer_secret`, not in the file
+Converted type7 / request.auth.access_token [type7.yml]: the value is kept as the secret variable `type7_access_token`, not in the file
+Converted type7 / request.auth.access_token_secret [type7.yml]: the value is kept as the secret variable `type7_access_token_secret`, not in the file
+Converted type7 / request.auth.private_key [type7.yml]: the value is kept as the secret variable `type7_private_key`, not in the file
+Converted Optional values / request.auth.consumer_secret [Optional values.yml]: the value is kept as the secret variable `optional_values_consumer_secret`, not in the file
+Converted Optional values / request.auth.access_token [Optional values.yml]: the value is kept as the secret variable `optional_values_access_token`, not in the file
+Converted Optional values / request.auth.access_token_secret [Optional values.yml]: the value is kept as the secret variable `optional_values_access_token_secret`, not in the file
+Converted Optional values / request.auth.private_key [Optional values.yml]: the value is kept as the secret variable `optional_values_private_key`, not in the file
+Converted collection [opencollection.yml]: runs use the environment `Environment` by default, since it holds the imported credentials
+Converted imported credentials [environments/Environment.yml]: the imported credentials are the secret variables `type_1_consumer_secret`, `type_1_access_token`, `type_1_access_token_secret`, `type_2_consumer_secret`, `type_2_access_token`, `type_2_access_token_secret`, `type_3_consumer_secret`, `type_3_access_token`, `type_3_access_token_secret`, `type_4_consumer_secret`, `type_4_access_token`, `type_4_access_token_secret`, `type5_consumer_secret`, `type5_access_token`, `type5_access_token_secret`, `type5_private_key`, `type6_consumer_secret`, `type6_access_token`, `type6_access_token_secret`, `type6_private_key`, `type7_consumer_secret`, `type7_access_token`, `type7_access_token_secret`, `type7_private_key`, `optional_values_consumer_secret`, `optional_values_access_token`, `optional_values_access_token_secret`, `optional_values_private_key`; their values are kept in the secret store, not in the file
+== Optional values.yml
+info:
+  name: Optional values
+  type: http
+  seq: 8
+
+http:
+  method: GET
+  url: http://localhost:3000/health
+  auth:
+    type: oauth1
+    consumerKey: key
+    consumerSecret: "{{optional_values_consumer_secret}}"
+    accessToken: "{{optional_values_access_token}}"
+    accessTokenSecret: "{{optional_values_access_token_secret}}"
+    callbackUrl: url
+    verifier: verifier
+    signatureMethod: RSA-SHA512
+    privateKey:
+      type: text
+      value: "{{optional_values_private_key}}"
+    version: "1.0"
+    placement: header
+    includeBodyHash: false
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== environments/Environment.yml
+name: Environment
+variables:
+  - secret: true
+    name: type_1_consumer_secret
+  - secret: true
+    name: type_1_access_token
+  - secret: true
+    name: type_1_access_token_secret
+  - secret: true
+    name: type_2_consumer_secret
+  - secret: true
+    name: type_2_access_token
+  - secret: true
+    name: type_2_access_token_secret
+  - secret: true
+    name: type_3_consumer_secret
+  - secret: true
+    name: type_3_access_token
+  - secret: true
+    name: type_3_access_token_secret
+  - secret: true
+    name: type_4_consumer_secret
+  - secret: true
+    name: type_4_access_token
+  - secret: true
+    name: type_4_access_token_secret
+  - secret: true
+    name: type5_consumer_secret
+  - secret: true
+    name: type5_access_token
+  - secret: true
+    name: type5_access_token_secret
+  - secret: true
+    name: type5_private_key
+  - secret: true
+    name: type6_consumer_secret
+  - secret: true
+    name: type6_access_token
+  - secret: true
+    name: type6_access_token_secret
+  - secret: true
+    name: type6_private_key
+  - secret: true
+    name: type7_consumer_secret
+  - secret: true
+    name: type7_access_token
+  - secret: true
+    name: type7_access_token_secret
+  - secret: true
+    name: type7_private_key
+  - secret: true
+    name: optional_values_consumer_secret
+  - secret: true
+    name: optional_values_access_token
+  - secret: true
+    name: optional_values_access_token_secret
+  - secret: true
+    name: optional_values_private_key
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Oauth1
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+    presets:
+      defaultEnvironment: Environment
+== type 1.yml
+info:
+  name: type 1
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: http://localhost:3000/health
+  auth:
+    type: oauth1
+    consumerKey: key
+    consumerSecret: "{{type_1_consumer_secret}}"
+    accessToken: "{{type_1_access_token}}"
+    accessTokenSecret: "{{type_1_access_token_secret}}"
+    callbackUrl: url
+    verifier: verifier
+    signatureMethod: HMAC-SHA1
+    timestamp: timestamp
+    nonce: nonce
+    version: "1.0"
+    realm: realm
+    placement: header
+    includeBodyHash: true
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== type 2.yml
+info:
+  name: type 2
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: http://localhost:3000/health
+  auth:
+    type: oauth1
+    consumerKey: key
+    consumerSecret: "{{type_2_consumer_secret}}"
+    accessToken: "{{type_2_access_token}}"
+    accessTokenSecret: "{{type_2_access_token_secret}}"
+    callbackUrl: url
+    verifier: verifier
+    signatureMethod: HMAC-SHA256
+    timestamp: timestamp
+    nonce: nonce
+    version: "1.0"
+    realm: realm
+    placement: header
+    includeBodyHash: true
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== type 3.yml
+info:
+  name: type 3
+  type: http
+  seq: 3
+
+http:
+  method: GET
+  url: http://localhost:3000/health
+  auth:
+    type: oauth1
+    consumerKey: key
+    consumerSecret: "{{type_3_consumer_secret}}"
+    accessToken: "{{type_3_access_token}}"
+    accessTokenSecret: "{{type_3_access_token_secret}}"
+    callbackUrl: url
+    verifier: verifier
+    signatureMethod: HMAC-SHA512
+    timestamp: timestamp
+    nonce: nonce
+    version: "1.0"
+    realm: realm
+    placement: query
+    includeBodyHash: true
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== type 4.yml
+info:
+  name: type 4
+  type: http
+  seq: 4
+
+http:
+  method: GET
+  url: http://localhost:3000/health
+  auth:
+    type: oauth1
+    consumerKey: key
+    consumerSecret: "{{type_4_consumer_secret}}"
+    accessToken: "{{type_4_access_token}}"
+    accessTokenSecret: "{{type_4_access_token_secret}}"
+    callbackUrl: url
+    verifier: verifier
+    signatureMethod: PLAINTEXT
+    timestamp: timestamp
+    nonce: nonce
+    version: "1.0"
+    realm: realm
+    placement: header
+    includeBodyHash: true
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== type5.yml
+info:
+  name: type5
+  type: http
+  seq: 5
+
+http:
+  method: GET
+  url: http://localhost:3000/health
+  auth:
+    type: oauth1
+    consumerKey: key
+    consumerSecret: "{{type5_consumer_secret}}"
+    accessToken: "{{type5_access_token}}"
+    accessTokenSecret: "{{type5_access_token_secret}}"
+    callbackUrl: url
+    verifier: verifier
+    signatureMethod: RSA-SHA1
+    privateKey:
+      type: text
+      value: "{{type5_private_key}}"
+    timestamp: timestamp
+    nonce: nonce
+    version: "1.0"
+    realm: realm
+    placement: header
+    includeBodyHash: true
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== type6.yml
+info:
+  name: type6
+  type: http
+  seq: 6
+
+http:
+  method: GET
+  url: http://localhost:3000/health
+  auth:
+    type: oauth1
+    consumerKey: key
+    consumerSecret: "{{type6_consumer_secret}}"
+    accessToken: "{{type6_access_token}}"
+    accessTokenSecret: "{{type6_access_token_secret}}"
+    callbackUrl: url
+    verifier: verifier
+    signatureMethod: RSA-SHA256
+    privateKey:
+      type: text
+      value: "{{type6_private_key}}"
+    timestamp: timestamp
+    nonce: nonce
+    version: "1.0"
+    realm: realm
+    placement: header
+    includeBodyHash: true
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== type7.yml
+info:
+  name: type7
+  type: http
+  seq: 7
+
+http:
+  method: GET
+  url: http://localhost:3000/health
+  auth:
+    type: oauth1
+    consumerKey: key
+    consumerSecret: "{{type7_consumer_secret}}"
+    accessToken: "{{type7_access_token}}"
+    accessTokenSecret: "{{type7_access_token_secret}}"
+    callbackUrl: url
+    verifier: verifier
+    signatureMethod: RSA-SHA512
+    privateKey:
+      type: text
+      value: "{{type7_private_key}}"
+    timestamp: timestamp
+    nonce: nonce
+    version: "1.0"
+    realm: realm
+    placement: header
+    includeBodyHash: true
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

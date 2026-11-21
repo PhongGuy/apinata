@@ -4,6 +4,7 @@ mod body;
 mod flags;
 mod shell;
 
+use super::protect::{SecretNames, protect_request};
 use super::{ImportNote, ImportedRequest, ImportedSecret, NoteKind};
 use crate::edit::{AuthSpec, KeyValue, Param, ParamKind, RequestSettings, Timeout};
 use crate::url_params::{parse_path_params, parse_query_params, split_on_first};
@@ -464,6 +465,32 @@ impl Mapper {
         }
     }
 
+    /// Each literal password, token or credential header becomes a secret variable named after
+    /// the host, as a HAR capture names them; the value waits for the secret store.
+    fn protect(&mut self, request: &mut ImportedRequest) {
+        let host = url::Url::parse(&request.url)
+            .ok()
+            .and_then(|u| u.host_str().map(str::to_owned))
+            .unwrap_or_default();
+        let declared: Vec<String> = self.secrets.iter().map(|s| s.name.clone()).collect();
+        let mut names = SecretNames::new(declared);
+        let mut found = Vec::new();
+        protect_request(&host, "", request, &mut names, &mut found);
+        for f in found {
+            let source = format!("curl {}", f.member);
+            let detail = format!(
+                "the value is not written to the file; it needs the secret variable `{}`",
+                f.name
+            );
+            self.note(usize::MAX, source.clone(), NoteKind::NeedsInput, detail);
+            self.secrets.push(ImportedSecret {
+                name: f.name,
+                value: f.value,
+                source,
+            });
+        }
+    }
+
     fn finish(mut self) -> Result<ParsedCurl, CurlError> {
         let url = with_scheme(self.url.take().ok_or(CurlError::MissingUrl)?);
         if let Some(at) = self.cookie_at {
@@ -493,6 +520,7 @@ impl Mapper {
             &mut self.notes,
         );
         request.auth = self.auth();
+        self.protect(&mut request);
         request.secrets = std::mem::take(&mut self.secrets);
         // The URL is what curl sends. Encoding is turned off where it would change it, or where
         // a variable's value might, since a send with encoding off warns it is not honoured.

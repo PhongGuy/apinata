@@ -96,6 +96,9 @@ fn basic(user: &str, password: &str) -> AuthSpec {
 
 fn check(case: &Case) {
     let parsed = parse_curl(case.input).unwrap_or_else(|e| panic!("{}: {e}", case.id));
+    // The mapping is pinned with the credentials in place; keeping them out of files is
+    // checked on its own.
+    let parsed = crate::common::reveal_curl(parsed);
     let r = &parsed.request;
     assert_eq!(
         (r.method.as_str(), r.url.as_str()),

@@ -19,7 +19,7 @@ pub(super) const HEADERS: [&str; 11] = [
 ];
 
 /// Whether `name` is a credential header from `HEADERS`.
-pub(super) fn is_header(name: &str) -> bool {
+pub(in crate::import) fn is_header(name: &str) -> bool {
     matches_any(name, &HEADERS)
 }
 
@@ -44,7 +44,7 @@ pub(super) const FIELDS: [&str; 14] = [
 ];
 
 /// Whether `name` is a credential form, multipart or JSON field from `FIELDS`.
-pub(super) fn is_field(name: &str) -> bool {
+pub(in crate::import) fn is_field(name: &str) -> bool {
     matches_any(leaf(name), &FIELDS)
 }
 
@@ -65,7 +65,7 @@ pub(super) const QUERY_ONLY: [&str; 10] = [
 ];
 
 /// Whether `name` is a credential query parameter, from `FIELDS` or `QUERY_ONLY`.
-pub(super) fn is_query(name: &str) -> bool {
+pub(in crate::import) fn is_query(name: &str) -> bool {
     let name = leaf(name);
     matches_any(name, &FIELDS) || matches_any(name, &QUERY_ONLY)
 }
@@ -73,7 +73,7 @@ pub(super) fn is_query(name: &str) -> bool {
 /// The part of `name` a server's nested-parameter parser stores the value under: trailing `[]`
 /// and all-digit `[0]` segments are list positions and dropped, then the last `[...]` segment is
 /// the leaf. A name whose final bracket is not closed is its own leaf.
-pub(super) fn leaf(name: &str) -> &str {
+pub(in crate::import) fn leaf(name: &str) -> &str {
     let mut rest = name;
     while let Some(open) = rest.strip_suffix(']').and_then(|r| r.rfind('[')) {
         let inner = &rest[open + 1..rest.len() - 1];

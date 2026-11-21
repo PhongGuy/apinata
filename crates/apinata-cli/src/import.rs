@@ -13,9 +13,9 @@ use apinata_core::import::{
     CollectionFormat, CollectionOptions, EnvironmentFormat, FetchError, GroupBy, ImportBundle,
     ImportError, ImportNote, ImportReport, ImportSource, RequestFormat, SourceError, SourceFetch,
     SpecLocation, TakeSpec, UpdateOptions, UpdateSummary, add_environment, add_request,
-    apply_update, classify_source, default_import_name, ensure_folder, fetch_source,
-    parse_collections, parse_environments, parse_request, place_items, plan_update, recorded_spec,
-    store_request_secrets, write_collection,
+    apply_update, claim_secret_names, classify_source, default_import_name, ensure_folder,
+    fetch_source, parse_collections, parse_environments, parse_request, place_items, plan_update,
+    recorded_spec, store_request_secrets, write_collection,
 };
 use apinata_core::{
     Collection, Folder, ItemPath, PacSource, SecretError, SecretKey, SecretStore, SystemTrash,
@@ -302,8 +302,15 @@ fn import_request(args: &RequestArgs) -> anyhow::Result<Imported> {
         None => default_name(&parsed.request.url),
     };
     let mut collection = Collection::open(&root)?;
-    let item = add_request(&mut collection, &parent, &name, &parsed.request)?;
     let secrets = secret_store(args.no_keychain);
+    // Names are settled before the file is written, so no earlier secret is taken over.
+    claim_secret_names(
+        &collection,
+        &mut parsed.request,
+        args.env.as_deref(),
+        secrets.as_ref(),
+    );
+    let item = add_request(&mut collection, &parent, &name, &parsed.request)?;
     store_request_secrets(
         &mut collection,
         &parsed.request,
@@ -566,6 +573,7 @@ fn update_options(args: &CollectionArgs) -> anyhow::Result<UpdateOptions> {
         .map(|raw| ItemPath::new(raw).ok_or_else(|| anyhow!("invalid folder path: {raw}")))
         .transpose()?;
     update.take_spec = args.take_spec.clone();
+    update.secrets = Some(secret_store(args.no_keychain));
     Ok(update)
 }
 

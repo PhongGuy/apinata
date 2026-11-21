@@ -19,16 +19,16 @@ info:
 
 http:
   method: GET
-  url: https://echo.hoppscotch.io?key=value
+  url: https://echo.hoppscotch.io?key={{req_v2_ii_key}}
   headers:
     - name: Inactive-Header
       value: Inactive Header
       disabled: true
     - name: Authorization
-      value: Bearer token123
+      value: "{{req_v2_ii_authorization}}"
   params:
     - name: key
-      value: value
+      value: "{{req_v2_ii_key}}"
       type: query
     - name: inactive-key
       value: inactive-param
@@ -36,7 +36,7 @@ http:
       disabled: true
   auth:
     type: bearer
-    token: token123
+    token: "{{req_v2_ii_token}}"
 
 settings:
   encodeUrl: true
@@ -44,6 +44,25 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+== environments/Environment.yml
+name: Environment
+variables:
+  - secret: true
+    name: req_v2_ii_token
+  - secret: true
+    name: req_v2_ii_authorization
+  - secret: true
+    name: req_v2_ii_key
+  - secret: true
+    name: req_v2_ii_key
+  - secret: true
+    name: req_v2_token
+  - secret: true
+    name: req_v2_authorization
+  - secret: true
+    name: req_v2_key
+  - secret: true
+    name: req_v2_key
 == opencollection.yml
 opencollection: 1.0.0
 
@@ -55,6 +74,8 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Environment
 == req-v2.yml
 info:
   name: req-v2
@@ -63,16 +84,16 @@ info:
 
 http:
   method: GET
-  url: https://echo.hoppscotch.io?key=value
+  url: https://echo.hoppscotch.io?key={{req_v2_key}}
   headers:
     - name: Inactive-Header
       value: Inactive Header
       disabled: true
     - name: Authorization
-      value: Bearer token123
+      value: "{{req_v2_authorization}}"
   params:
     - name: key
-      value: value
+      value: "{{req_v2_key}}"
       type: query
     - name: inactive-key
       value: inactive-param
@@ -80,7 +101,7 @@ http:
       disabled: true
   auth:
     type: bearer
-    token: token123
+    token: "{{req_v2_token}}"
 
 settings:
   encodeUrl: true
@@ -90,4 +111,14 @@ settings:
   forwardAuthorizationHeader: false
 == report
 Dropped coll-v2-child / req-v2-II / testScript: scripts are not imported (coll-v2-child/req-v2-II.yml)
+Converted coll-v2-child / req-v2-II / request.auth.token: the value is kept as the secret variable `req_v2_ii_token`, not in the file (coll-v2-child/req-v2-II.yml)
+Converted coll-v2-child / req-v2-II / request.headers[1]: the value is kept as the secret variable `req_v2_ii_authorization`, not in the file (coll-v2-child/req-v2-II.yml)
+Converted coll-v2-child / req-v2-II / request.url: the value is kept as the secret variable `req_v2_ii_key`, not in the file (coll-v2-child/req-v2-II.yml)
+Converted coll-v2-child / req-v2-II / request.params[0]: the value is kept as the secret variable `req_v2_ii_key`, not in the file (coll-v2-child/req-v2-II.yml)
 Dropped req-v2 / testScript: scripts are not imported (req-v2.yml)
+Converted req-v2 / request.auth.token: the value is kept as the secret variable `req_v2_token`, not in the file (req-v2.yml)
+Converted req-v2 / request.headers[1]: the value is kept as the secret variable `req_v2_authorization`, not in the file (req-v2.yml)
+Converted req-v2 / request.url: the value is kept as the secret variable `req_v2_key`, not in the file (req-v2.yml)
+Converted req-v2 / request.params[0]: the value is kept as the secret variable `req_v2_key`, not in the file (req-v2.yml)
+Converted collection: runs use the environment `Environment` by default, since it holds the imported credentials (opencollection.yml)
+Converted imported credentials: the imported credentials are the secret variables `req_v2_ii_token`, `req_v2_ii_authorization`, `req_v2_ii_key`, `req_v2_ii_key`, `req_v2_token`, `req_v2_authorization`, `req_v2_key`, `req_v2_key`; their values are kept in the secret store, not in the file (environments/Environment.yml)
