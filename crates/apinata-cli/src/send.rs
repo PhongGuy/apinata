@@ -265,7 +265,8 @@ fn command_text(args: &SendArgs) -> anyhow::Result<String> {
         Some("yml" | "yaml")
     ) && path.is_file()
     {
-        bail!("{url} is a request file, not a URL; send it with `apinata run {url}`");
+        let word = apinata_core::shell_word(url);
+        bail!("{url} is a request file, not a URL; send it with `apinata run {word}`");
     }
     let mut words = vec!["curl".to_owned()];
     if let Some(method) = &args.method {

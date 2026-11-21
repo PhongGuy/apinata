@@ -576,3 +576,19 @@ fn a_request_file_argument_names_the_command_that_sends_it() {
         );
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn a_request_file_hint_quotes_a_path_with_spaces() {
+    let dir = cwd();
+    fs::write(
+        dir.path().join("my get.yml"),
+        "info:\n  name: get\n  type: http\n",
+    )
+    .unwrap();
+    send(&dir)
+        .arg("my get.yml")
+        .assert()
+        .code(3)
+        .stderr(predicates::str::contains("apinata run 'my get.yml'"));
+}
