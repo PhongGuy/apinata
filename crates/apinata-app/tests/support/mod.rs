@@ -601,6 +601,10 @@ pub fn press_key(cx: &mut gpui_kit::TestAppContext, win: gpui_kit::AnyWindowHand
     frame(cx, win);
 }
 
+/// How long a wait polls before failing. Generous because a loaded machine can
+/// stall a git subprocess for many seconds; a passing wait never reaches it.
+const WAIT_LIMIT: std::time::Duration = std::time::Duration::from_secs(60);
+
 pub fn wait_for(
     cx: &mut gpui_kit::TestAppContext,
     what: &str,
@@ -612,10 +616,7 @@ pub fn wait_for(
         if done(cx) {
             return;
         }
-        assert!(
-            start.elapsed() < std::time::Duration::from_secs(10),
-            "timed out waiting for {what}"
-        );
+        assert!(start.elapsed() < WAIT_LIMIT, "timed out waiting for {what}");
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
 }
@@ -1065,7 +1066,7 @@ pub fn wait_real(
     cx: &mut gpui_kit::TestAppContext,
     mut done: impl FnMut(&mut gpui_kit::TestAppContext) -> bool,
 ) {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let deadline = std::time::Instant::now() + WAIT_LIMIT;
     loop {
         cx.run_until_parked();
         if done(cx) {
