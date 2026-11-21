@@ -479,6 +479,7 @@ impl DocsPanel {
             .on_action(cx.listener(|this, _: &ListBack, _, cx| this.back(cx)))
             .relative()
             .size_full()
+            .p(style::SPACE_1)
             .child(list)
             .when(focused, |d| {
                 d.child(ui::ring_overlay("graphql-docs-list-ring", cx))
@@ -508,6 +509,7 @@ impl DocsPanel {
         let theme = cx.theme();
         let base = div()
             .id(("graphql-docs-row", ix))
+            .px(style::SPACE_1)
             .whitespace_nowrap()
             .text_size(style::TEXT_SMALL);
         match &self.rows[ix] {
