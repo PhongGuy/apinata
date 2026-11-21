@@ -46,6 +46,7 @@ const IDS: &[&str] = &[
     "collection.toggle_mock",
     "collection.settings",
     "collection.folder_settings",
+    "environment.cookies",
     "collection.run",
     "collection.check",
     "collection.check_secret_renames",
@@ -140,7 +141,6 @@ const IDS: &[&str] = &[
     "environment.import",
     "environment.export",
     "environment.export_all",
-    "environment.cookies",
     "environment.variables_overview",
     "environment.runtime_variables",
     "environment.manage_globals",
@@ -480,7 +480,12 @@ fn ids_are_stable_unique_and_grouped() {
     assert_eq!(ids, IDS);
     for c in &cmds {
         let (group, name) = c.id.split_once('.').expect(c.id);
-        assert_eq!(group, c.group.label().to_lowercase(), "{}", c.id);
+        // An id is never renamed, so a command moved to another group keeps its first prefix.
+        let first = match c.id {
+            "environment.cookies" => "environment".to_owned(),
+            _ => c.group.label().to_lowercase(),
+        };
+        assert_eq!(group, first, "{}", c.id);
         assert!(
             name.chars()
                 .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_')
