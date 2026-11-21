@@ -684,6 +684,8 @@ impl SendModel {
         self.running = false;
         self.waiting = false;
         self.since = None;
+        // The send may have stored cookies, or its scripts changed the jar.
+        executor::jar_changed(cx);
         cx.notify();
     }
 

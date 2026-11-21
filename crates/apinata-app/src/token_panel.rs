@@ -325,6 +325,8 @@ impl TokenPanel {
                 p.apply(outcome, is_action, &cache.persistence());
                 if is_action {
                     p.action = None;
+                    // A token request may have stored cookies.
+                    executor::jar_changed(cx);
                 } else {
                     p.read = None;
                 }

@@ -187,6 +187,17 @@ pub fn save_cookies(jar: &CookieJar) {
     }
 }
 
+/// Set again on every change the app makes to the shared jar; each view of the jar observes it
+/// and relists, since the jar itself has no change signal.
+pub struct JarChanged;
+
+impl Global for JarChanged {}
+
+/// Tells every view of the shared cookie jar to relist.
+pub fn jar_changed(cx: &mut App) {
+    cx.set_global(JarChanged);
+}
+
 /// The shared executor, or `None` when `install` has not succeeded.
 pub fn shared(cx: &App) -> Option<Arc<Executor>> {
     cx.try_global::<SharedExecutor>().map(|s| Arc::clone(&s.0))

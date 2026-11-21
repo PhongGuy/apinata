@@ -272,6 +272,8 @@ impl DownloadModel {
     fn end(&mut self, state: DownloadState, cx: &mut Context<Self>) {
         self.state = state;
         self.cancel = None;
+        // The download sends through the shared jar, so it may have stored cookies.
+        executor::jar_changed(cx);
         cx.notify();
     }
 }

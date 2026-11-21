@@ -913,6 +913,8 @@ impl RunnerModel {
         self.retrying = None;
         self.cancel = None;
         self.waiting = false;
+        // The run's requests and scripts may have changed the jar.
+        executor::jar_changed(cx);
         cx.notify();
     }
 

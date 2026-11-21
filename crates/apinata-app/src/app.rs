@@ -337,7 +337,10 @@ impl LatePassword {
 pub fn load_saved_cookies(jar: Arc<CookieJar>, cx: &mut App) {
     cx.spawn(async move |cx| {
         let dropped = cx.background_spawn(async move { jar.load() }).await;
-        cx.update(|cx| note_dropped_cookies(dropped, cx));
+        cx.update(|cx| {
+            note_dropped_cookies(dropped, cx);
+            crate::executor::jar_changed(cx);
+        });
     })
     .detach();
 }

@@ -70,7 +70,11 @@ pub fn load_from_server(
             Ok(Err(message)) => Err(message.into()),
             Err(_) => Err("the schema load stopped".into()),
         };
-        cx.update(|cx| finish_and_keep(url, generation, result, cx));
+        cx.update(|cx| {
+            // The introspection request goes through the shared jar and may have stored cookies.
+            executor::jar_changed(cx);
+            finish_and_keep(url, generation, result, cx)
+        });
     })
     .detach();
 }

@@ -21,7 +21,7 @@ use gpui_kit::{
     Task, TestSupportExt, Window, div, px,
 };
 
-use crate::executor::{save_cookies, shared};
+use crate::executor::{JarChanged, jar_changed, save_cookies, shared};
 use crate::import_report::failure_text;
 use crate::kv_grid::{ActionShow, action_slot};
 use crate::response_pane::NAME_MASK;
@@ -200,15 +200,16 @@ impl CookieJarView {
     /// Lists the shared jar, with an empty domain search.
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search by domain"));
-        let subscriptions =
-            vec![
-                cx.subscribe_in(&search, window, |this, input, event: &InputEvent, _, cx| {
-                    if let InputEvent::Change = event {
-                        this.query = input.read(cx).value().to_string();
-                        cx.notify();
-                    }
-                }),
-            ];
+        let subscriptions = vec![
+            cx.subscribe_in(&search, window, |this, input, event: &InputEvent, _, cx| {
+                if let InputEvent::Change = event {
+                    this.query = input.read(cx).value().to_string();
+                    cx.notify();
+                }
+            }),
+            // A send or another view changing the jar relists it here too.
+            cx.observe_global::<JarChanged>(|this, cx| this.refresh(cx)),
+        ];
         let mut view = CookieJarView {
             cookies: Vec::new(),
             available: false,
@@ -577,6 +578,7 @@ impl CookieJarView {
 
     // After an edit: relist, then write the jar off the UI thread.
     fn changed(&mut self, cx: &mut Context<Self>) {
+        jar_changed(cx);
         self.refresh(cx);
         if let Some(exec) = shared(cx) {
             cx.background_spawn(async move { save_cookies(exec.cookies()) })
