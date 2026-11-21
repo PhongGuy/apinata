@@ -1,3 +1,7 @@
 target/
 node_modules/
 /THIRD-PARTY-CRATES.md
+
+# Pending insta snapshots are reviewed, never committed.
+*.snap.new
+*.pending-snap
