@@ -5,7 +5,7 @@
 use apinata_core::{
     Assertion, AuthSpec, BodySpec, EditError, FileEntry, FolderPatch, KeyValue, MultipartField,
     MultipartValue, Param, ParamKind, RequestFile, RequestSettings, Timeout, VarValue, Variable,
-    normalize_method,
+    assertion_operators, normalize_method,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -298,6 +298,24 @@ fn assertion_list(
     current: Vec<Assertion>,
     docs: &[AssertionDoc],
 ) -> Result<Vec<Assertion>, String> {
+    // The file format reads an unknown operator as `eq` of the whole text, so a new one is
+    // refused; an entry the file already holds with the same operator and value is kept as is.
+    for d in docs {
+        let kept = current.iter().any(|c| {
+            c.expression() == d.expression
+                && c.operator() == d.operator
+                && c.value() == d.value.as_deref()
+        });
+        if !kept && !assertion_operators().any(|op| op == d.operator) {
+            let valid: Vec<&str> = assertion_operators().collect();
+            return Err(format!(
+                "assertion `{}`: unknown operator `{}`; use one of {}",
+                d.expression,
+                d.operator,
+                valid.join(", ")
+            ));
+        }
+    }
     let list = merge(
         current,
         docs,

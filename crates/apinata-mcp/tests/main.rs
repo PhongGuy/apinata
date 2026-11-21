@@ -21,6 +21,7 @@ mod network_support;
 mod ntlm_support;
 
 mod argument_errors;
+mod assertion_checks;
 mod bodies;
 mod body_filter;
 mod check;
@@ -87,6 +88,7 @@ mod send_set_cookies;
 mod send_stream;
 mod send_url_headers;
 mod serde_defaults;
+mod server_info;
 mod subscription;
 mod tree_tools;
 mod trusted_hosts;

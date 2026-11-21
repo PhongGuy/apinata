@@ -110,11 +110,17 @@ pub(crate) struct BodyDoc {
     pub filter_error: Option<String>,
 }
 
-/// One assertion's verdict: `pass`, `fail` or `skipped`, with why for the last two.
+/// One assertion's verdict: `pass`, `fail` or `skipped`, with why for the last two. It names
+/// the check as written and, on a fail, the left side's actual value.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub(crate) struct AssertionDoc {
     pub expression: String,
+    pub operator: String,
+    /// The expected value as the file writes it; absent for an operator that takes none.
+    pub value: Option<String>,
     pub verdict: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actual: Option<String>,
     pub message: Option<String>,
 }
 
@@ -364,6 +370,10 @@ pub(crate) fn resolve_line(err: &ResolveError, hidden: impl Fn(&str) -> bool) ->
 pub(crate) fn oauth2_message(err: &OAuth2Error, file: &RequestFile, ctx: &VarContext) -> String {
     match err {
         OAuth2Error::Resolve(e) => resolve_message(e, file, ctx),
+        // The endpoint answered, so the token request went out although the request did not.
+        e @ (OAuth2Error::Provider { .. } | OAuth2Error::InvalidResponse { .. }) => {
+            format!("{e}; only the token request was sent, not the request itself")
+        }
         other => format!("{other}; nothing was sent"),
     }
 }
@@ -533,12 +543,20 @@ pub(crate) fn body(
     }
 }
 
+/// How an unapproved JavaScript assertion can be made to run.
+const APPROVE_ASSERTION: &str = "the user can approve it by sending this request from the \
+                                 Apinata app and approving its scripts there";
+
 /// One assertion outcome as the agent sees it.
 pub(crate) fn assertion_doc(
     o: &AssertionOutcome,
     file: &RequestFile,
     ctx: &VarContext,
 ) -> AssertionDoc {
+    let actual = match o.verdict() {
+        Verdict::Fail { actual, .. } => Some(actual.clone()),
+        _ => None,
+    };
     let (verdict, message) = match o.verdict() {
         Verdict::Pass => ("pass", None),
         Verdict::Fail { actual, detail, .. } => {
@@ -563,12 +581,19 @@ pub(crate) fn assertion_doc(
             };
             ("fail", Some(message))
         }
+        Verdict::Skipped { reason, .. } if reason.ends_with("` is not approved") => {
+            ("skipped", Some(format!("{reason}; {APPROVE_ASSERTION}")))
+        }
         Verdict::Skipped { reason, .. } => ("skipped", Some(reason.clone())),
         _ => ("skipped", Some("unsupported in MCP".to_owned())),
     };
+    let assertion = o.assertion();
     AssertionDoc {
-        expression: o.assertion().expression().to_owned(),
+        expression: assertion.expression().to_owned(),
+        operator: assertion.operator().to_owned(),
+        value: assertion.value().map(str::to_owned),
         verdict: verdict.to_owned(),
+        actual,
         message,
     }
 }

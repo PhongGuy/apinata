@@ -376,3 +376,13 @@ async fn after_a_dismiss_the_agent_is_told_it_may_ask_again() {
         "re-filed"
     );
 }
+
+#[tokio::test]
+async fn a_refused_redirect_hop_says_the_earlier_hop_was_sent() {
+    let (mock, server) = redirected("http://api.example.com/next", "Key9-value").await;
+    let message = server.err("send_request", json!({"path": "r.yml"})).await;
+    assert!(message.contains("(hop 1)"), "{message}");
+    assert!(!message.contains("nothing was sent"), "{message}");
+    assert!(message.contains("hop 0 was sent"), "{message}");
+    assert_eq!(mock.received_requests().await.expect("recorded").len(), 1);
+}

@@ -506,3 +506,24 @@ async fn a_collection_fetch_withholds_a_cyclic_name_written_inside_a_secret() {
     let server = collection_server(&p, LOOPY_DEV).await;
     assert_withheld(&server, "", &p, (LOOPY_VALUE, "loopy", CYCLIC)).await;
 }
+
+#[tokio::test]
+async fn a_token_endpoint_redirect_says_only_the_token_request_was_sent() {
+    let mock = MockServer::start().await;
+    Mock::given(path("/token"))
+        .respond_with(
+            ResponseTemplate::new(307).insert_header("location", "http://api.example.com/token"),
+        )
+        .mount(&mock)
+        .await;
+    let request = get(
+        &format!("{}/r", mock.uri()),
+        &auth(&format!("{}/token", mock.uri())),
+    );
+    let server = TestServer::start(&[("opencollection.yml", ROOT), ("r.yml", &request)]).await;
+    let message = server.err("send_request", json!({"path": "r.yml"})).await;
+    assert!(
+        message.contains("only the token request was sent, not the request itself"),
+        "{message}"
+    );
+}
