@@ -1666,7 +1666,7 @@ fn place_oauth2_token(
             set_header(headers, "Authorization".to_owned(), token.clone());
         }
     }
-    let expired = entry.is_expired(SystemTime::now());
+    let expired = entry.has_lapsed(SystemTime::now());
     let mut secrets = cfg.secrets;
     secrets.push(token.clone());
     Ok(Some((secrets, expired, token)))
