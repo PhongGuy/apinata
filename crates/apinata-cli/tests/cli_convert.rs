@@ -184,6 +184,25 @@ fn run_and_mcp_refuse_a_legacy_root_and_point_at_convert() {
 }
 
 #[test]
+fn the_convert_hint_quotes_a_root_with_spaces() {
+    let parent = tempfile::tempdir().unwrap();
+    let root = parent.path().join("my old api");
+    fs::create_dir(&root).unwrap();
+    fs::write(
+        root.join("bruno.json"),
+        r#"{"version": "1", "name": "Legacy", "type": "collection"}"#,
+    )
+    .unwrap();
+    let quoted = format!("`apinata convert '{}' --out <new dir>`", root.display());
+    apinata()
+        .arg("run")
+        .arg(&root)
+        .assert()
+        .code(3)
+        .stderr(contains(quoted));
+}
+
+#[test]
 fn a_dry_run_into_an_existing_folder_fails_like_the_real_run() {
     let src = legacy();
     let parent = tempfile::tempdir().unwrap();

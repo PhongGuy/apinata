@@ -54,6 +54,9 @@ pub struct Finding {
     severity: Severity,
     kind: FindingKind,
     message: String,
+    /// The undefined variable an `UndefinedVariable` finding is about, for the import report.
+    #[serde(skip)]
+    variable: Option<String>,
 }
 
 impl Finding {
@@ -70,7 +73,19 @@ impl Finding {
             severity,
             kind,
             message: message.into(),
+            variable: None,
         }
+    }
+
+    /// The finding naming `name` as the undefined variable it is about.
+    pub(crate) fn about(mut self, name: &str) -> Self {
+        self.variable = Some(name.to_owned());
+        self
+    }
+
+    /// The undefined variable the finding is about, if any.
+    pub(crate) fn variable(&self) -> Option<&str> {
+        self.variable.as_deref()
     }
 
     /// The item's path relative to the collection root, with `/` separators.

@@ -236,6 +236,8 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Production server
   apinata:
     openapi:
       ops:
@@ -281,6 +283,7 @@ extensions:
           file: Create user.yml
 
 note Converted Admin get users.yml | paths./admin/users.get.security | `oauth2` uses placeholder variables: set their values in the environment
+note Converted opencollection.yml | collection | runs use the environment `Production server` by default, as the first environment imported
 note NeedsInput environments/Production server.yml | components.securitySchemes | the secret `token` has no value; enter it before sending
 note NeedsInput environments/Production server.yml | components.securitySchemes | the secret `clientSecret` has no value; enter it before sending
 secret Production server token

@@ -945,7 +945,7 @@ impl VarContext {
     }
 
     /// Why `name` is undefined for `req` and how to supply it, from names only; `None` when the
-    /// name cannot be shown safely or no environment explains it.
+    /// name cannot be shown safely or is not one a variable can hold.
     pub fn undefined_hint(&self, req: &RequestFile, name: &str) -> Option<UndefinedHint> {
         if self.name_inside_sensitive_value(req, name) {
             return None;
@@ -956,9 +956,18 @@ impl VarContext {
             return Some(self.secret_hint(environment, name));
         }
         let defining = self.other_envs_defining(name);
-        (!defining.is_empty()).then(|| UndefinedHint::DefinedElsewhere {
-            environments: defining.into_iter().map(str::to_owned).collect(),
-        })
+        if !defining.is_empty() {
+            return Some(UndefinedHint::DefinedElsewhere {
+                environments: defining.into_iter().map(str::to_owned).collect(),
+            });
+        }
+        // Only a name a variable could hold gets the remedy; dynamic, prompt and host-env
+        // names have their own sources.
+        let definable = !name.is_empty()
+            && !name.starts_with(['$', '?'])
+            && !name.starts_with("process.env.")
+            && !name.contains(|c: char| c.is_whitespace() || c == '{' || c == '}');
+        definable.then_some(UndefinedHint::Undeclared)
     }
 
     /// Whether naming the undefined or cyclic variable `name` could reveal a sensitive value:

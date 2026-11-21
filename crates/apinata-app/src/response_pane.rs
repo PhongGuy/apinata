@@ -144,7 +144,11 @@ pub fn describe_error(error: &RunError, details: &str, env: Option<&str>) -> Err
         let (mut sentence, add) = undefined_sentence(name, env);
         // The hint says why it is undefined; the app words the remedy with its own controls.
         let mut use_environments = Vec::new();
-        if let Some(hint) = error.hint() {
+        // An undeclared name needs no words: the block's add button is the remedy.
+        let hint = error
+            .hint()
+            .filter(|h| !matches!(h, UndefinedHint::Undeclared));
+        if let Some(hint) = hint {
             sentence = format!("{sentence} {}.", app_hint(hint, name));
             if let UndefinedHint::DefinedElsewhere { environments } = hint {
                 use_environments = environments.clone();

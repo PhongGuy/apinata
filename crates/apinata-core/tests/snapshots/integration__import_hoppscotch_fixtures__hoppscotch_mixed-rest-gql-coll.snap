@@ -83,3 +83,4 @@ extensions:
 Dropped Inherited / GQL nested in folder / testScript: scripts are not imported (Inherited/GQL nested in folder.yml)
 Dropped REST echo / testScript: scripts are not imported (REST echo.yml)
 Dropped GQL env templated header / testScript: scripts are not imported (GQL env templated header.yml)
+NeedsInput collection: needs a value: `greeting`; nothing imported defines it, so add it to the collection's variables or an environment before sending (-)

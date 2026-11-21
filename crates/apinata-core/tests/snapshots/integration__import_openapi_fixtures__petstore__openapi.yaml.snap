@@ -35,6 +35,8 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Environment 1
   apinata:
     openapi:
       ops:
@@ -1895,5 +1897,6 @@ note Dropped user/Create user.yml | paths./user.post.requestBody.content | `appl
 note Dropped user/Create user.yml | paths./user.post.requestBody.content | `application/x-www-form-urlencoded` was not imported; only the first media type is
 note Dropped user/Update user resource.yml | paths./user/{username}.put.requestBody.content | `application/xml` was not imported; only the first media type is
 note Dropped user/Update user resource.yml | paths./user/{username}.put.requestBody.content | `application/x-www-form-urlencoded` was not imported; only the first media type is
+note Converted opencollection.yml | collection | runs use the environment `Environment 1` by default, as the first environment imported
 note NeedsInput environments/Environment 1.yml | components.securitySchemes | the secret `apiKey` has no value; enter it before sending
 secret Environment 1 apiKey

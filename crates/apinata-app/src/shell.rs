@@ -1211,8 +1211,8 @@ impl Shell {
         crate::import_link::open(cx.weak_entity(), window, cx);
     }
 
-    /// Opens what an import wrote, each in the first environment its import produced so its
-    /// first send has the variables, then its report and any failure behind it.
+    /// Opens what an import wrote, each in the default environment its import recorded, then
+    /// its report and any failure behind it.
     pub(crate) fn landed(
         &mut self,
         roots: Written,
@@ -1221,11 +1221,7 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        for (root, environment) in roots {
-            if let Some(name) = environment {
-                self.workspace
-                    .update(cx, |w, _| w.select_on_open(&root, name));
-            }
+        for root in roots {
             self.open(root, window, cx);
         }
         if let Some(report) = report {
@@ -3918,8 +3914,8 @@ pub fn parse_bundles_with(
 
 const ENVIRONMENT_FILE: &str = "This is an environment file, not a collection. To add it, open a collection and choose Import environment.";
 
-// Each written root with the first environment its import produced.
-pub(crate) type Written = Vec<(PathBuf, Option<String>)>;
+// Each written root, in order.
+pub(crate) type Written = Vec<PathBuf>;
 
 // Writes `bundles` in order into `parent`, stopping at the first failure. Answers the roots
 // written, their merged report (none if nothing landed), and the failure naming what was not
@@ -3934,8 +3930,7 @@ pub(crate) fn write_bundles(
     for (i, bundle) in bundles.iter().enumerate() {
         match write_collection(parent, &bundle.collection, &bundle.environments, store) {
             Ok((collection, report)) => {
-                let first = report.environments.first().cloned();
-                roots.push((collection.root().to_path_buf(), first));
+                roots.push(collection.root().to_path_buf());
                 merged.notes.extend(report.notes);
                 merged.items.extend(report.items);
                 merged.environments.extend(report.environments);

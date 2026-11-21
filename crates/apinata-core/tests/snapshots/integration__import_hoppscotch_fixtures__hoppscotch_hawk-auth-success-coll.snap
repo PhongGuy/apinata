@@ -33,3 +33,4 @@ extensions:
 == report
 Converted hawk-auth-headers / auth: `hawk` auth is not supported; imported as no auth (hawk-auth-headers.yml)
 Dropped hawk-auth-headers / testScript: scripts are not imported (hawk-auth-headers.yml)
+NeedsInput collection: needs a value: `url`; nothing imported defines it, so add it to the collection's variables or an environment before sending (-)

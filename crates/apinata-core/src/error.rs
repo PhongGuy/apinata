@@ -5,6 +5,7 @@ use crate::item_path::ItemPath;
 use crate::not_found::{env_text, not_found_text};
 use crate::secret_renames::SecretName;
 use crate::secrets::SecretError;
+use crate::shell_word::shell_word;
 use std::path::{Path, PathBuf};
 
 /// Why a stored secret may not move to its renamed key.
@@ -241,6 +242,8 @@ pub enum UndefinedHint {
         /// Those environments, sorted.
         environments: Vec<String>,
     },
+    /// No environment and no variable of the collection, its folders or the request defines it.
+    Undeclared,
 }
 
 /// Which front end a hint is worded for, since each offers different remedies.
@@ -269,7 +272,8 @@ impl UndefinedHint {
     pub fn text(&self, name: &str, shell: HintShell) -> String {
         match (self, shell) {
             (UndefinedHint::SecretWithoutValue { environment }, HintShell::Cli) => format!(
-                "{name} is a secret in environment {environment} with no value; pass --env-var {name}=VALUE or set it in the app's environment editor"
+                "{name} is a secret in environment {environment} with no value; pass --env-var {} or set it in the app's environment editor",
+                shell_word(&format!("{name}=VALUE"))
             ),
             (UndefinedHint::SecretWithoutValue { environment }, HintShell::Mcp) => format!(
                 "{name} is a secret in environment {environment} with no value; set it in the app's environment editor"
@@ -281,7 +285,8 @@ impl UndefinedHint {
                 },
                 HintShell::Cli,
             ) => format!(
-                "{name} is a secret in environment {environment}; its stored value could not be read ({reason}); pass --env-var {name}=VALUE or set it in the app's environment editor"
+                "{name} is a secret in environment {environment}; its stored value could not be read ({reason}); pass --env-var {} or set it in the app's environment editor",
+                shell_word(&format!("{name}=VALUE"))
             ),
             (
                 UndefinedHint::SecretUnreadable {
@@ -294,13 +299,23 @@ impl UndefinedHint {
             ),
             (UndefinedHint::DefinedElsewhere { environments }, HintShell::Cli) => {
                 match environments.as_slice() {
-                    [one] => format!("{name} is defined in environment {one}; pass --env {one}"),
+                    [one] => format!(
+                        "{name} is defined in environment {one}; pass --env {}",
+                        shell_word(one)
+                    ),
                     many => format!(
                         "{name} is defined in environments {}; pass --env with one of them",
                         many.join(", ")
                     ),
                 }
             }
+            (UndefinedHint::Undeclared, HintShell::Cli) => format!(
+                "no environment or collection variable defines {name}; add it to the collection's variables or pass --env-var {}",
+                shell_word(&format!("{name}=VALUE"))
+            ),
+            (UndefinedHint::Undeclared, HintShell::Mcp) => format!(
+                "no environment or collection variable defines {name}; add it to the collection's variables"
+            ),
             (UndefinedHint::DefinedElsewhere { environments }, HintShell::Mcp) => {
                 match environments.as_slice() {
                     [one] => {

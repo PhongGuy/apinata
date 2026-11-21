@@ -188,6 +188,8 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Environment 1
   apinata:
     openapi:
       ops:
@@ -242,6 +244,7 @@ extensions:
           examples: 570b53594047c226
           file: Misc/Echo id.yml
 
+note Converted opencollection.yml | collection | runs use the environment `Environment 1` by default, as the first environment imported
 note NeedsInput environments/Environment 1.yml | components.securitySchemes | the secret `username` has no value; enter it before sending
 note NeedsInput environments/Environment 1.yml | components.securitySchemes | the secret `password` has no value; enter it before sending
 secret Environment 1 username

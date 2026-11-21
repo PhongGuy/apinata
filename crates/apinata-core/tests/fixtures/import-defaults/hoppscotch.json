@@ -1,0 +1,11 @@
+{"v": 2, "name": "Hopp Demo", "folders": [
+  {"v": 2, "name": "Orders", "folders": [], "requests": [
+    {"v": "1", "name": "Get order", "method": "GET", "endpoint": "<<base>>/orders/7", "params": [{"key": "expand", "value": "items", "active": true}], "headers": [{"key": "Accept", "value": "application/json", "active": true}],
+     "preRequestScript": "pw.env.set('x','1');", "testScript": "pw.test('ok', () => { pw.expect(pw.response.status).toBe(200); });",
+     "auth": {"authType": "bearer", "authActive": true, "token": "hopp-tok"}, "body": {"contentType": null, "body": null}}
+  ], "auth": {"authType": "inherit", "authActive": true}, "headers": []}],
+ "requests": [
+    {"v": "1", "name": "Create order", "method": "POST", "endpoint": "<<base>>/orders", "params": [], "headers": [], "preRequestScript": "", "testScript": "",
+     "auth": {"authType": "basic", "authActive": true, "username": "u", "password": "p"}, "body": {"contentType": "application/json", "body": "{\"qty\": 2}"}}
+ ],
+ "auth": {"authType": "none", "authActive": true}, "headers": []}

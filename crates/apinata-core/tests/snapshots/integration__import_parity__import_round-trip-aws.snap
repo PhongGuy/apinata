@@ -7,6 +7,7 @@ Converted Own Auth / request.auth.secret_access_key [Own Auth.yml]: the value is
 Converted Own Auth / request.auth.session_token [Own Auth.yml]: the value is kept as the secret variable `own_auth_session_token`, not in the file
 Converted collection [opencollection.yml]: runs use the environment `Environment` by default, since it holds the imported credentials
 Converted imported credentials [environments/Environment.yml]: the imported credentials are the secret variables `aws_secret_access_key`, `own_auth_secret_access_key`, `own_auth_session_token`; their values are kept in the secret store, not in the file
+NeedsInput collection [-]: needs a value: `token`; nothing imported defines it, so add it to the collection's variables or an environment before sending
 == Own Auth.yml
 info:
   name: Own Auth

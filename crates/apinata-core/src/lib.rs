@@ -112,6 +112,7 @@ mod secret_renames;
 mod secrets;
 mod sequence;
 mod session_log;
+mod shell_word;
 mod sigv4;
 pub mod sse;
 mod stream;
@@ -312,6 +313,7 @@ pub use secrets::{EnvWarning, MemoryStore, SecretError, SecretKey, SecretStore};
 pub use session_log::{
     ConsoleLine, LogLimits, LogSlice, LoggedBody, LoggedHop, NetworkEntry, SendSource, SessionLog,
 };
+pub use shell_word::shell_word;
 pub use stream::{StreamBound, StreamEnd, StreamEvent, StreamLimits, StreamOptions};
 pub use system_trash::SystemTrash;
 pub use tags::{TagFilter, normalize_tags};

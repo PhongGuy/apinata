@@ -121,12 +121,14 @@ fn several_environments_are_listed_sorted() {
 }
 
 #[test]
-fn a_name_nobody_defines_has_no_hint() {
+fn a_name_nobody_defines_points_at_the_collection_variables() {
     let t = req_text("nowhere");
     let (_d, c) = collection(&[("nowhere.yml", &t)]);
     assert_eq!(
-        hint_for(&c, ContextOptions::new().env("dev"), "nowhere.yml"),
-        None
+        hint_for(&c, ContextOptions::new().env("dev"), "nowhere.yml").as_deref(),
+        Some(
+            "no environment or collection variable defines nowhere; add it to the collection's variables or pass --env-var nowhere=VALUE"
+        )
     );
 }
 

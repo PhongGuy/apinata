@@ -8,3 +8,4 @@ Dropped Empty String Method [-]: the request has no method
 Dropped Whitespace-Only Method [-]: the request has no method
 Dropped API Folder / Nested Missing Method [-]: the request has no method
 Dropped API Folder / Deep Subfolder / Deep Bad Method [-]: the request has no method
+NeedsInput collection [-]: needs a value: `userId`; nothing imported defines it, so add it to the collection's variables or an environment before sending

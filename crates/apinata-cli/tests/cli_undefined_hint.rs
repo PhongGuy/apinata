@@ -75,7 +75,19 @@ fn json_carries_the_hint_key() {
 
 #[test]
 fn json_leaves_the_key_out_when_there_is_no_hint() {
+    // A dynamic name is never a variable to declare, so nothing is hinted.
     let json: Value =
-        serde_json::from_str(&run("nowhere", &["--env", "dev", "--format", "json"])).unwrap();
+        serde_json::from_str(&run("$nowhere", &["--env", "dev", "--format", "json"])).unwrap();
+    assert_eq!(json["results"][0]["outcome"], "errored", "{json}");
     assert!(json["results"][0].get("hint").is_none(), "{json}");
+}
+
+#[test]
+fn a_name_nothing_defines_points_at_a_collection_variable_and_env_var() {
+    let text = run("nowhere", &[]);
+    let hint = "no environment or collection variable defines nowhere; add it to the collection's variables or pass --env-var nowhere=VALUE";
+    assert!(text.contains(&format!("\n   hint: {hint}\n")), "{text}");
+    // The remedy works as printed, with no environment selected.
+    let text = run("nowhere", &["--env-var", "nowhere=x"]);
+    assert!(!text.contains("is not defined"), "{text}");
 }

@@ -170,6 +170,8 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Environment 1
   apinata:
     openapi:
       ops:
@@ -299,3 +301,5 @@ request:
 docs:
   content: Search a data set
   type: text/markdown
+
+note Converted opencollection.yml | collection | runs use the environment `Environment 1` by default, as the first environment imported

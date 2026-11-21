@@ -145,3 +145,4 @@ Dropped assertions / failure / testScript: scripts are not imported (assertions/
 Dropped request-level-errors / invalid-url / testScript: scripts are not imported (request-level-errors/invalid-url.yml)
 Dropped request-level-errors / test-script-reference-error / testScript: scripts are not imported (request-level-errors/test-script-reference-error.yml)
 Dropped request-level-errors / non-existent-env-var / testScript: scripts are not imported (request-level-errors/non-existent-env-var.yml)
+NeedsInput collection: needs a value: `key`; nothing imported defines it, so add it to the collection's variables or an environment before sending (-)

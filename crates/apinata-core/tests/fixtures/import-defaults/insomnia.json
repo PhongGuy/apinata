@@ -1,0 +1,8 @@
+{"_type": "export", "__export_format": 4, "__export_source": "insomnia.desktop.app:v2023.5.8", "resources": [
+ {"_id": "wrk_1", "_type": "workspace", "parentId": null, "name": "Pets"},
+ {"_id": "env_1", "_type": "environment", "parentId": "wrk_1", "name": "Base Environment", "data": {"host": "http://127.0.0.1:8765"}},
+ {"_id": "fld_1", "_type": "request_group", "parentId": "wrk_1", "name": "Pets folder"},
+ {"_id": "req_1", "_type": "request", "parentId": "fld_1", "name": "Get pet", "method": "GET", "url": "{{ _.host }}/pets/1", "headers": [{"name": "Accept", "value": "application/json"}], "parameters": [{"name": "full", "value": "true"}], "authentication": {"type": "bearer", "token": "pet-token"}, "body": {}},
+ {"_id": "req_2", "_type": "request", "parentId": "wrk_1", "name": "Add pet", "method": "POST", "url": "{{ _.host }}/pets", "headers": [{"name": "Content-Type", "value": "application/json"}], "body": {"mimeType": "application/json", "text": "{\"name\":\"Rex\"}"}, "authentication": {}},
+ {"_id": "req_3", "_type": "request", "parentId": "wrk_1", "name": "Templated", "method": "GET", "url": "{{ _.host }}/now?t={% now 'iso-8601', '' %}", "headers": [], "body": {}, "authentication": {}}
+]}

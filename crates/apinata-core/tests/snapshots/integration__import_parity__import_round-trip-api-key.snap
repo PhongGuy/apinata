@@ -1,0 +1,5 @@
+---
+source: crates/apinata-core/tests/import_parity.rs
+expression: snapshot
+---
+NeedsInput collection [-]: needs a value: `client_id`; nothing imported defines it, so add it to the collection's variables or an environment before sending

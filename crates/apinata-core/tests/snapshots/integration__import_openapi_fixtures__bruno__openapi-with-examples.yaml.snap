@@ -277,6 +277,8 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Production server
   apinata:
     openapi:
       ops:
@@ -310,3 +312,5 @@ extensions:
           method: fde2a9b76b8de2ff
           examples: c249d4a3a16b4e0c
           file: Create a new user.yml
+
+note Converted opencollection.yml | collection | runs use the environment `Production server` by default, as the first environment imported

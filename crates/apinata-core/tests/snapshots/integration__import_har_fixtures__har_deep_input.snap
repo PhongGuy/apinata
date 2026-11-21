@@ -48,8 +48,11 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Capture
 == report
 converted insomnia.rest / POST /foo/bar / request.headers[1]: the captured `Cookie` value is not kept; the request uses the secret `insomnia_rest_cookie` of the Capture environment (insomnia.rest/POST -foo-bar.yml)
 dropped entries[0]: entry is not an http or https request (-)
+converted collection: runs use the environment `Capture` by default, as the first environment imported (opencollection.yml)
 needs-input entries[1].request.headers[1]: the secret `insomnia_rest_cookie` has no value; enter it before sending (environments/Capture.yml)
 secrets_to_enter: [("Capture", "insomnia_rest_cookie")]

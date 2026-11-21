@@ -52,6 +52,8 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Environment
   apinata:
     openapi:
       ops:
@@ -65,3 +67,5 @@ extensions:
           method: bb94048e39bc5ef4
           examples: 7ace431cb61584cb
           file: custom-tag/get pet by id.yml
+
+note Converted opencollection.yml | collection | runs use the environment `Environment` by default, as the first environment imported

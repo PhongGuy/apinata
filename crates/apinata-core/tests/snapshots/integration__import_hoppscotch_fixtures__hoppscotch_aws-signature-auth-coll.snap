@@ -63,3 +63,4 @@ Converted aws-signature-auth-headers / auth: `aws-signature` auth is not support
 Dropped aws-signature-auth-headers / testScript: scripts are not imported (aws-signature-auth-headers.yml)
 Converted aws-signature-auth-query-params / auth: `aws-signature` auth is not supported; imported as no auth (aws-signature-auth-query-params.yml)
 Dropped aws-signature-auth-query-params / testScript: scripts are not imported (aws-signature-auth-query-params.yml)
+NeedsInput collection: needs a value: `url`; nothing imported defines it, so add it to the collection's variables or an environment before sending (-)

@@ -760,6 +760,8 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Production server
   apinata:
     openapi:
       ops:
@@ -845,6 +847,7 @@ extensions:
           file: Users/Update user.yml
 
 note Converted opencollection.yml | security | only the first security requirement's first scheme, `bearerAuth`, is used
+note Converted opencollection.yml | collection | runs use the environment `Production server` by default, as the first environment imported
 note NeedsInput environments/Production server.yml | components.securitySchemes | the secret `token` has no value; enter it before sending
 note NeedsInput environments/Staging server.yml | components.securitySchemes | the secret `token` has no value; enter it before sending
 note NeedsInput environments/Development server.yml | components.securitySchemes | the secret `token` has no value; enter it before sending

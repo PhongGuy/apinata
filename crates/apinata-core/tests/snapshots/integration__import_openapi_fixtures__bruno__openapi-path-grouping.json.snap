@@ -103,6 +103,8 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Test server
   apinata:
     openapi:
       ops:
@@ -146,3 +148,5 @@ extensions:
           method: bb94048e39bc5ef4
           examples: 7ace431cb61584cb
           file: Get user by ID.yml
+
+note Converted opencollection.yml | collection | runs use the environment `Test server` by default, as the first environment imported

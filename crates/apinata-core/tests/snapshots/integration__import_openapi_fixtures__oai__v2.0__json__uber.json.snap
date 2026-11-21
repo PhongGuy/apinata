@@ -398,6 +398,8 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Environment
   apinata:
     openapi:
       ops:
@@ -451,3 +453,5 @@ extensions:
           method: bb94048e39bc5ef4
           examples: 85d03a58a03ca4dc
           file: Products/Product Types.yml
+
+note Converted opencollection.yml | collection | runs use the environment `Environment` by default, as the first environment imported

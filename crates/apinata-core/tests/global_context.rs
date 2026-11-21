@@ -121,7 +121,7 @@ fn global_secrets_come_from_the_store_under_the_global_key() {
         url(&c, &bare, "tok.yml"),
         Err(ResolveError::UndefinedVariable {
             name: "tok".into(),
-            hint: None
+            hint: Some(apinata_core::UndefinedHint::Undeclared)
         })
     );
 }
@@ -206,7 +206,7 @@ fn a_global_environment_never_sets_the_environment_name() {
         url(&c, &only, "name.yml"),
         Err(ResolveError::UndefinedVariable {
             name: "__name__".into(),
-            hint: None
+            hint: Some(apinata_core::UndefinedHint::Undeclared)
         })
     );
     let both =

@@ -38,8 +38,9 @@ pub fn find_root(path: &Path) -> anyhow::Result<&Path> {
         }
         if apinata_core::legacy::is_legacy_collection(dir) {
             bail!(
-                "{0} is in the legacy .bru format; convert it with `apinata convert {0} --out <new dir>`",
-                dir.display()
+                "{} is in the legacy .bru format; convert it with `apinata convert {} --out <new dir>`",
+                dir.display(),
+                apinata_core::shell_word(&dir.to_string_lossy())
             );
         }
     }

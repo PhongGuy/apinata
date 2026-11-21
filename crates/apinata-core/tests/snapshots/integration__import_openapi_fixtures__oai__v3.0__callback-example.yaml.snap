@@ -82,3 +82,4 @@ docs: subscribes a client to receive out-of-band data
 
 note NeedsInput opencollection.yml | servers | no server gives an absolute URL; set `baseUrl` in an environment before sending
 note Dropped subscribes a client to receive out-of-band data.yml | paths./streams.post.callbacks | callbacks are not imported
+note NeedsInput - | collection | needs a value: `baseUrl`; nothing imported defines it, so add it to the collection's variables or an environment before sending

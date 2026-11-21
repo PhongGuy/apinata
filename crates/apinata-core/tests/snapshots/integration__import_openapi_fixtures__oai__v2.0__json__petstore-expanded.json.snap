@@ -223,6 +223,8 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Environment
   apinata:
     openapi:
       ops:
@@ -266,3 +268,5 @@ extensions:
           method: fde2a9b76b8de2ff
           examples: 0d94dc920ee31ff0
           file: addPet.yml
+
+note Converted opencollection.yml | collection | runs use the environment `Environment` by default, as the first environment imported

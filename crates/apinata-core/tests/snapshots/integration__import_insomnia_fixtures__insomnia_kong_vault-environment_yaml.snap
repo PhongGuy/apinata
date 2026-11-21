@@ -30,7 +30,10 @@ extensions:
     ignore:
       - node_modules
       - .git
+    presets:
+      defaultEnvironment: Base Environment
 -- report
+Converted collection: runs use the environment `Base Environment` by default, as the first environment imported (opencollection.yml)
 NeedsInput data.__insomnia_vault.secret: the secret `vault.secret` has no value; enter it before sending (environments/global vault env with secret.yml)
 NeedsInput data.__insomnia_vault.foo: the secret `vault.foo` has no value; enter it before sending (environments/global vault env with secret.yml)
 NeedsInput data.__insomnia_vault.hello: the secret `vault.hello` has no value; enter it before sending (environments/global vault env with secret.yml)
