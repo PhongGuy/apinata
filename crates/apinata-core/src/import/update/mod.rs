@@ -313,9 +313,10 @@ pub fn apply_update(
                     }
                     Err(e) => {
                         let at = predicted.as_ref();
+                        let source = label_of(&request.method, &request.url);
                         summary
                             .notes
-                            .push(note(&key, format!("not added: {e}"), at));
+                            .push(note(&source, format!("not added: {e}"), at));
                     }
                 }
             }
@@ -791,14 +792,19 @@ fn predicted_path(
     folders: &[String],
     name: &str,
     pending: &mut Pending,
-) -> Option<ItemPath> {
+) -> Result<ItemPath, ImportError> {
     let mut path = base.clone();
     let mut current = c.folder(base);
     for folder in folders {
         let existing = current.and_then(|f| f.folders().iter().find(|d| d.name() == folder));
         current = existing;
         path = match existing {
-            Some(d) => c.item_path(d.path())?,
+            Some(d) => {
+                c.item_path(d.path())
+                    .ok_or_else(|| crate::error::TreeError::InvalidName {
+                        name: folder.clone(),
+                    })?
+            }
             None => {
                 let key = (path.clone(), folder.clone());
                 if let Some(made) = pending.folders.get(&key) {
@@ -821,22 +827,28 @@ impl Pending {
         parent: &ItemPath,
         name: &str,
         folder: bool,
-    ) -> Option<ItemPath> {
+    ) -> Result<ItemPath, ImportError> {
         let claimed = &self.claimed;
         let made = c.next_item_path(parent, name, folder, &|p| claimed.contains(p))?;
         self.claimed.insert(c.root().join(made.as_str()));
-        Some(made)
+        Ok(made)
     }
 }
 
 /// A request's method and path as notes name it: `GET /pets/:id`, without the base URL
-/// variable or the query.
+/// (a leading variable or a scheme and host) or the query.
 fn label(f: &RequestFile) -> String {
-    let mut rest = f.url();
+    label_of(f.method(), f.url())
+}
+
+fn label_of(method: &str, url: &str) -> String {
+    let mut rest = url;
     if let Some(after) = rest.strip_prefix("{{")
         && let Some(end) = after.find("}}")
     {
         rest = &after[end + 2..];
+    } else if let Some((_, after)) = rest.split_once("://") {
+        rest = after.find('/').map_or("", |at| &after[at..]);
     }
     let path = rest.split(['?', '#']).next().unwrap_or("");
     let path = if path.starts_with('/') {
@@ -844,7 +856,7 @@ fn label(f: &RequestFile) -> String {
     } else {
         format!("/{path}")
     };
-    format!("{} {path}", f.method().to_uppercase())
+    format!("{} {path}", method.to_uppercase())
 }
 
 /// Each operationId of `items` that names exactly one operation, by operation key.
@@ -1004,15 +1016,25 @@ pub(crate) fn plan(
                 Some((locate(&baseline, &by_path, &by_key, from)?, from.to_owned()))
             });
         let Some((matches, recorded_key)) = found else {
-            if let Some(path) = predicted_path(c, &scope, &folders, &item.name, &mut pending) {
-                summary.added.push(path);
-                actions.push(Action::Add {
-                    folders,
-                    name: item.name.clone(),
-                    request: request.clone(),
-                    key,
-                    operation_id: id,
-                });
+            // A name the writer would refuse is reported here, so the preview says what the
+            // write would.
+            match predicted_path(c, &scope, &folders, &item.name, &mut pending) {
+                Ok(path) => {
+                    summary.added.push(path);
+                    actions.push(Action::Add {
+                        folders,
+                        name: item.name.clone(),
+                        request: request.clone(),
+                        key,
+                        operation_id: id,
+                    });
+                }
+                Err(e) => {
+                    let source = label_of(&request.method, &request.url);
+                    summary
+                        .notes
+                        .push(note(&source, format!("not added: {e}"), None));
+                }
             }
             continue;
         };

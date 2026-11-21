@@ -336,22 +336,31 @@ pub(super) fn folder_stem(parent: &ItemPath, name: &str) -> Result<String, TreeE
 
 impl Collection {
     /// The item path creating a request (or with `folder`, a folder) named `name` in `parent`
-    /// would take, as [`Collection::create_request`] and [`Collection::create_folder`] pick it;
-    /// `parent` may be a folder still to be created. Paths `claimed` accepts count as taken.
+    /// would take, as [`Collection::create_request`] and [`Collection::create_folder`] pick it,
+    /// failing as they would for the name; `parent` may be a folder still to be created. Paths
+    /// `claimed` accepts count as taken.
     pub(crate) fn next_item_path(
         &self,
         parent: &ItemPath,
         name: &str,
         folder: bool,
         claimed: &dyn Fn(&Path) -> bool,
-    ) -> Option<ItemPath> {
+    ) -> Result<ItemPath, TreeError> {
         let dir = self.root.join(parent.as_str());
-        let found = if folder {
-            next_unique(&dir, &folder_stem(parent, name).ok()?, None, claimed)?
+        let (stem, ext) = if folder {
+            (folder_stem(parent, name)?, None)
         } else {
-            next_unique(&dir, &request_stem(name).ok()?, Some("yml"), claimed)?
+            (request_stem(name)?, Some("yml"))
         };
-        parent.join(&found.file_name()?.to_string_lossy())
+        let first = ext.map_or_else(|| stem.clone(), |e| format!("{stem}.{e}"));
+        self.refuse_hidden(&dir.join(first), name)?;
+        let invalid = || TreeError::InvalidName {
+            name: name.to_owned(),
+        };
+        let found = next_unique(&dir, &stem, ext, claimed)
+            .ok_or_else(|| create_error(name, &dir, ErrorKind::AlreadyExists.into()))?;
+        let file = found.file_name().ok_or_else(invalid)?;
+        parent.join(&file.to_string_lossy()).ok_or_else(invalid)
     }
 
     /// Create a request named `name` in the folder `parent`, as a GET with an empty URL and the

@@ -294,6 +294,7 @@ mod import_update_folder;
 mod import_update_identity;
 mod import_update_key;
 mod import_update_method;
+mod import_update_moves;
 mod import_update_plan;
 mod import_update_prune;
 mod import_update_prune_restore;

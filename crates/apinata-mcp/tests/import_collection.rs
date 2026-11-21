@@ -1107,3 +1107,27 @@ async fn an_update_without_a_baseline_notes_it_as_skipped() {
         .await;
     assert_eq!(out["notes"][0]["kind"], "skipped", "{out}");
 }
+
+#[tokio::test]
+async fn a_second_openapi_import_gets_its_own_environment() {
+    let server = shop().await;
+    let first = server
+        .ok("import_collection", json!({"text": SERVED}))
+        .await;
+    let env_file = |out: &Value| {
+        let name = out["collections"][0]["environments"][0]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        server.root().join(format!("environments/{name}.yml"))
+    };
+    let first_file = env_file(&first);
+    let before = fs::read_to_string(&first_file).unwrap();
+    let second = server
+        .ok("import_collection", json!({"text": SERVED}))
+        .await;
+    let second_file = env_file(&second);
+    assert_ne!(first_file, second_file);
+    assert!(second_file.is_file());
+    assert_eq!(fs::read_to_string(&first_file).unwrap(), before);
+}

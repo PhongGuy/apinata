@@ -13,8 +13,9 @@ use std::sync::Arc;
 
 use apinata_core::import::{
     CollectionFormat, CollectionOptions, GroupBy, ImportBundle, ImportError, ImportNote,
-    SpecLocation, TakeSpec, UpdateOptions, UpdateSummary, add_environment, apply_update,
-    can_update, ensure_folder, parse_collections, place_items, plan_update, recorded_spec,
+    ImportReport, ImportedEnvironment, SpecLocation, TakeSpec, UpdateOptions, UpdateSummary,
+    add_environment, apply_update, can_update, ensure_folder, parse_collections, place_items,
+    plan_update, recorded_spec,
 };
 use apinata_core::{AuthSpec, Collection, ItemPath, SecretStore, Trash, TrashLog};
 use schemars::JsonSchema;
@@ -561,25 +562,47 @@ fn place_bundles(
 }
 
 /// Add the environments of an OpenAPI `bundle` to `c`, returning their names and notes; other
-/// formats keep none. A failure removes the ones this call added.
+/// formats keep none. A failure removes every environment this call created, a half-written
+/// one included, with its stored secrets.
 fn kept_environments(
     c: &mut Collection,
     bundle: &ImportBundle,
     secrets: &dyn SecretStore,
+) -> Result<(Vec<String>, Vec<ImportNote>), ImportError> {
+    keep_with(c, bundle, secrets, &mut |c, env, secrets| {
+        add_environment(c, env, secrets)
+    })
+}
+
+type AddEnvironment<'a> = dyn FnMut(
+        &mut Collection,
+        &ImportedEnvironment,
+        &dyn SecretStore,
+    ) -> Result<(String, ImportReport), ImportError>
+    + 'a;
+
+fn keep_with(
+    c: &mut Collection,
+    bundle: &ImportBundle,
+    secrets: &dyn SecretStore,
+    add: &mut AddEnvironment<'_>,
 ) -> Result<(Vec<String>, Vec<ImportNote>), ImportError> {
     let mut names = Vec::new();
     let mut notes = Vec::new();
     if !bundle.collection.spec_source {
         return Ok((names, notes));
     }
+    let before = environment_names(c);
     for env in &bundle.environments {
-        match add_environment(c, env, secrets) {
+        match add(c, env, secrets) {
             Ok((name, report)) => {
                 names.push(name);
                 notes.extend(report.notes);
             }
             Err(e) => {
-                for name in &names {
+                // The failed write may have created its file before failing, so every name that
+                // was not there before goes, not only the ones that reported success.
+                for name in environment_names(c).difference(&before) {
                     let _ = c.delete_environment(name, secrets);
                 }
                 return Err(e);
@@ -587,6 +610,13 @@ fn kept_environments(
         }
     }
     Ok((names, notes))
+}
+
+fn environment_names(c: &Collection) -> std::collections::BTreeSet<String> {
+    c.environments()
+        .iter()
+        .map(|e| e.name().to_owned())
+        .collect()
 }
 
 /// A core folder error as this tool words it, naming the `into` argument.
@@ -629,7 +659,7 @@ fn skipped(bundle: &ImportBundle) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use apinata_core::{SecretError, SecretKey};
+    use apinata_core::{MemoryStore, SecretError, SecretKey};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[derive(Default)]
@@ -655,6 +685,36 @@ mod tests {
     const INPUT: &str = r#"{"info":{"name":"Col","schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
 "item":[{"name":"Get","request":{"method":"GET","url":"http://127.0.0.1:1/x"}}],
 "variable":[{"key":"token","value":"s3cret"}]}"#;
+
+    const SERVED: &str = r#"{"openapi":"3.0.0","info":{"title":"Served","version":"1"},
+"servers":[{"url":"http://127.0.0.1:1/v1"}],"paths":{"/pets":{"get":{"summary":"List"}}}}"#;
+
+    #[test]
+    fn a_failed_environment_write_takes_back_what_it_created() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut c = Collection::create(dir.path(), "shop").unwrap();
+        c.create_environment("Mine", &MemoryStore::new()).unwrap();
+        let bundle = parse_collections(None, SERVED.as_bytes(), &CollectionOptions::default())
+            .unwrap()
+            .remove(0);
+        assert!(!bundle.environments.is_empty());
+        let store = MemoryStore::new();
+        // The write creates its file, then fails as a failed save would.
+        let err = keep_with(&mut c, &bundle, &store, &mut |c, env, store| {
+            c.create_environment(&env.name, store).unwrap();
+            Err(ImportError::Folder {
+                problem: "save failed".to_owned(),
+            })
+        });
+        assert!(err.is_err());
+        let names: Vec<String> = environment_names(&c).into_iter().collect();
+        assert_eq!(names, ["Mine"]);
+        let files: Vec<_> = fs::read_dir(c.root().join("environments"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(files, ["Mine.yml"]);
+    }
 
     #[test]
     fn an_import_without_credentials_never_touches_the_secret_store() {
