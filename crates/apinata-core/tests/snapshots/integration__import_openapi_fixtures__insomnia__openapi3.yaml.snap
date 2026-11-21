@@ -203,6 +203,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: 7ace431cb61584cb
           file: Auth/Make basic auth request.yml
+          operationId: basicAuth
         GET /delay/seconds/{}:
           target: 8df7f8842671f054
           headers: 7ace431cb61584cb
@@ -213,6 +214,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: 7ace431cb61584cb
           file: Misc/Delay by seconds.yml
+          operationId: delayByDuration
         GET /file/dummy.csv:
           target: 62e7b914ced6202f
           headers: 7ace431cb61584cb
@@ -223,6 +225,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: 7ace431cb61584cb
           file: File/Get dummy CSV file.yml
+          operationId: dummyCsvFile
         GET /file/dummy.pdf:
           target: 8cf5e5a6d7d25641
           headers: 7ace431cb61584cb
@@ -233,6 +236,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: 7ace431cb61584cb
           file: File/Get dummy PDF file.yml
+          operationId: dummyPdfFile
         GET /pets/{}:
           target: a56ee25cc2b89d39
           headers: 7ace431cb61584cb
@@ -243,6 +247,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: 570b53594047c226
           file: Misc/Echo id.yml
+          operationId: echoId
 
 note Converted opencollection.yml | collection | runs use the environment `Environment 1` by default, as the first environment imported
 note NeedsInput environments/Environment 1.yml | components.securitySchemes | the secret `username` has no value; enter it before sending

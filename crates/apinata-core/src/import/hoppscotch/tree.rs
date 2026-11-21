@@ -234,6 +234,7 @@ fn request(
         seq,
         request: request?,
         notes,
+        operation_id: None,
     }))
 }
 
@@ -266,6 +267,7 @@ fn graphql_request(
         seq,
         request: request?,
         notes,
+        operation_id: None,
     }))
 }
 

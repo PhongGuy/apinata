@@ -2,6 +2,7 @@
 //! turn display names into file names and check them.
 
 use crate::js::is_js_whitespace;
+use std::fs;
 use std::io::{self, ErrorKind};
 use std::path::{Path, PathBuf};
 
@@ -82,6 +83,20 @@ pub(crate) fn suffixed(base: &str, ext: Option<&str>, n: u32) -> String {
         name.push_str(ext);
     }
     name
+}
+
+/// The path [`create_unique`] would claim for `base` in `dir` now, treating the paths
+/// `claimed` accepts as taken too, so a preview of several writes names what they will write.
+pub(crate) fn next_unique(
+    dir: &Path,
+    base: &str,
+    ext: Option<&str>,
+    claimed: &dyn Fn(&Path) -> bool,
+) -> Option<PathBuf> {
+    let base = truncate_for_suffix(base, ext);
+    (0..=199)
+        .map(|n| dir.join(suffixed(&base, ext, n)))
+        .find(|p| fs::symlink_metadata(p).is_err() && !claimed(p))
 }
 
 /// Claim `base`, `base 1` ... `base 199` (truncated first): `create` failing with

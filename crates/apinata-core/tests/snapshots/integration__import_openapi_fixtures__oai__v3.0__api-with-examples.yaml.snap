@@ -241,6 +241,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: 0ddc39ab08f7dd60
           file: List API versions.yml
+          operationId: listVersionsv2
         GET /v2:
           target: b0232563e699e0f3
           headers: 7ace431cb61584cb
@@ -251,6 +252,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: 6a39e59069a93592
           file: Show API version details.yml
+          operationId: getVersionDetailsv2
 
 note NeedsInput opencollection.yml | servers | no server gives an absolute URL; set `baseUrl` in an environment before sending
 note NeedsInput - | collection | needs a value: `baseUrl`; nothing imported defines it, so add it to the collection's variables or an environment before sending

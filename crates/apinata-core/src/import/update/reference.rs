@@ -42,7 +42,15 @@ pub fn recorded_spec(c: &Collection) -> Option<RecordedSpec> {
     let location = if lower.starts_with("http://") || lower.starts_with("https://") {
         SpecLocation::Link(source)
     } else {
-        SpecLocation::File(c.root().join(source))
+        // The record climbs from the real root, so a `..` is taken off the resolved one.
+        let climbs = Path::new(&source)
+            .components()
+            .any(|p| p == std::path::Component::ParentDir);
+        let root = match climbs {
+            true => resolve(c.root()).unwrap_or_else(|| c.root().to_path_buf()),
+            false => c.root().to_path_buf(),
+        };
+        SpecLocation::File(lexical(&root.join(source)))
     };
     let group_by = match group.as_deref() {
         Some("path") => GroupBy::Path,
@@ -103,6 +111,25 @@ fn stored_path(path: &Path, root: &Path) -> Option<String> {
         .iter()
         .map(|c| c.as_os_str().to_string_lossy().into_owned());
     Some(up.chain(down).collect::<Vec<String>>().join("/"))
+}
+
+// `p` with each `..` taking off the part before it and `.` dropped, without touching the disk,
+// so a recorded `../spec.yml` reads as the file it names.
+fn lexical(p: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    for part in p.components() {
+        match part {
+            Component::CurDir => {}
+            Component::ParentDir
+                if matches!(out.components().next_back(), Some(Component::Normal(_))) =>
+            {
+                out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 // The real path of `p`; a part not created yet (a collection still being written) is joined

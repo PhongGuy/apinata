@@ -364,6 +364,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: 676095420b4b1f8a
           file: getRepositoriesByOwner.yml
+          operationId: getRepositoriesByOwner
         GET /2.0/repositories/{}/{}:
           target: ab77cd4749361ed2
           headers: 7ace431cb61584cb
@@ -374,6 +375,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: 79e77fea072f6ccc
           file: getRepository.yml
+          operationId: getRepository
         GET /2.0/repositories/{}/{}/pullrequests:
           target: f10519ecb4764da3
           headers: 7ace431cb61584cb
@@ -384,6 +386,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: 1d49e1dfc52cab2b
           file: getPullRequestsByRepository.yml
+          operationId: getPullRequestsByRepository
         GET /2.0/repositories/{}/{}/pullrequests/{}:
           target: a68a76db4f86ff6a
           headers: 7ace431cb61584cb
@@ -394,6 +397,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: e7459a1560baa2b5
           file: getPullRequestsById.yml
+          operationId: getPullRequestsById
         GET /2.0/users/{}:
           target: 22743641212fd2a9
           headers: 7ace431cb61584cb
@@ -404,6 +408,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: 34c6f827021200fd
           file: getUserByName.yml
+          operationId: getUserByName
         POST /2.0/repositories/{}/{}/pullrequests/{}/merge:
           target: 14edf905db113073
           headers: 7ace431cb61584cb
@@ -414,6 +419,7 @@ extensions:
           method: fde2a9b76b8de2ff
           examples: 7ace431cb61584cb
           file: mergePullRequest.yml
+          operationId: mergePullRequest
 
 note NeedsInput opencollection.yml | servers | no server gives an absolute URL; set `baseUrl` in an environment before sending
 note Dropped getUserByName.yml | paths./2.0/users/{username}.get.responses.200.links | response links are not imported

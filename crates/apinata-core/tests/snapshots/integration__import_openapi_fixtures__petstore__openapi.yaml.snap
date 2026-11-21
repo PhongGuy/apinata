@@ -50,6 +50,7 @@ extensions:
           method: d8ad8056c4645ee4
           examples: 7ace431cb61584cb
           file: pet/Deletes a pet.yml
+          operationId: deletePet
         DELETE /store/order/{}:
           target: 7c1dae09a3c2baa6
           headers: 7ace431cb61584cb
@@ -60,6 +61,7 @@ extensions:
           method: d8ad8056c4645ee4
           examples: 7ace431cb61584cb
           file: store/Delete purchase order by identifier.yml
+          operationId: deleteOrder
         DELETE /user/{}:
           target: 248ec40b3acc2587
           headers: 7ace431cb61584cb
@@ -70,6 +72,7 @@ extensions:
           method: d8ad8056c4645ee4
           examples: 7ace431cb61584cb
           file: user/Delete user resource.yml
+          operationId: deleteUser
         GET /pet/findByStatus:
           target: 6659d3e0fe3b7294
           headers: 7ace431cb61584cb
@@ -80,6 +83,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: ba939a0d9e41f719
           file: pet/Finds Pets by status.yml
+          operationId: findPetsByStatus
         GET /pet/findByTags:
           target: 4b353dc8c39d22e1
           headers: 7ace431cb61584cb
@@ -90,6 +94,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: 40bc133d670a2396
           file: pet/Finds Pets by tags.yml
+          operationId: findPetsByTags
         GET /pet/{}:
           target: 505b7dbb2e5ac824
           headers: 7ace431cb61584cb
@@ -100,6 +105,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: 52930809e7db8836
           file: pet/Find pet by ID.yml
+          operationId: getPetById
         GET /store/inventory:
           target: ee379feeff07d77b
           headers: 7ace431cb61584cb
@@ -110,6 +116,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: 2a693bbd6a54ede3
           file: store/Returns pet inventories by status.yml
+          operationId: getInventory
         GET /store/order/{}:
           target: a1b5da84c13e0edb
           headers: 7ace431cb61584cb
@@ -120,6 +127,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: ff668ec91825c5f7
           file: store/Find purchase order by ID.yml
+          operationId: getOrderById
         GET /user/login:
           target: 7facc1680f53ceb5
           headers: 7ace431cb61584cb
@@ -130,6 +138,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: bf01b650106d9ea1
           file: user/Logs user into the system.yml
+          operationId: loginUser
         GET /user/logout:
           target: 7a80e066e47bfe10
           headers: 7ace431cb61584cb
@@ -140,6 +149,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: 7ace431cb61584cb
           file: user/Logs out current logged in user session.yml
+          operationId: logoutUser
         GET /user/{}:
           target: 53c4b64a1967890f
           headers: 7ace431cb61584cb
@@ -150,6 +160,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: de2bab45d7cb7cd8
           file: user/Get user by user name.yml
+          operationId: getUserByName
         POST /pet:
           target: 3561051dad38cdc1
           headers: 7ace431cb61584cb
@@ -160,6 +171,7 @@ extensions:
           method: fde2a9b76b8de2ff
           examples: f973fd4c248a473d
           file: pet/Add a new pet to the store.yml
+          operationId: addPet
         POST /pet/{}:
           target: f461d3b4d3a1f6b3
           headers: 7ace431cb61584cb
@@ -170,6 +182,7 @@ extensions:
           method: fde2a9b76b8de2ff
           examples: 4d5281bc831d0906
           file: pet/Updates a pet in the store with form data.yml
+          operationId: updatePetWithForm
         POST /pet/{}/uploadImage:
           target: b9a87ecbd86feb79
           headers: 7ace431cb61584cb
@@ -180,6 +193,7 @@ extensions:
           method: fde2a9b76b8de2ff
           examples: ebf3fc283e263e2c
           file: pet/Uploads an image.yml
+          operationId: uploadFile
         POST /store/order:
           target: 3826160129f0e11c
           headers: 7ace431cb61584cb
@@ -190,6 +204,7 @@ extensions:
           method: fde2a9b76b8de2ff
           examples: 5b06f496a1920cd8
           file: store/Place an order for a pet.yml
+          operationId: placeOrder
         POST /user:
           target: 494ce4fc3702909f
           headers: 7ace431cb61584cb
@@ -200,6 +215,7 @@ extensions:
           method: fde2a9b76b8de2ff
           examples: 6bbc2cc74b2bc6ea
           file: user/Create user.yml
+          operationId: createUser
         POST /user/createWithList:
           target: 6c4366ed414581d1
           headers: 7ace431cb61584cb
@@ -210,6 +226,7 @@ extensions:
           method: fde2a9b76b8de2ff
           examples: c09a53da8797cbac
           file: user/Creates list of users with given input array.yml
+          operationId: createUsersWithListInput
         PUT /pet:
           target: 3561051dad38cdc1
           headers: 7ace431cb61584cb
@@ -220,6 +237,7 @@ extensions:
           method: 651ba8f38be35d73
           examples: 225460fab7aeaee2
           file: pet/Update an existing pet.yml
+          operationId: updatePet
         PUT /user/{}:
           target: 64f411ba3ea33ac9
           headers: 7ace431cb61584cb
@@ -230,6 +248,7 @@ extensions:
           method: 651ba8f38be35d73
           examples: 7ace431cb61584cb
           file: user/Update user resource.yml
+          operationId: updateUser
 
 === pet/Add a new pet to the store.yml
 info:

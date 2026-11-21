@@ -281,6 +281,7 @@ impl NoteKind {
             NoteKind::Converted => "converted",
             NoteKind::Renamed => "renamed",
             NoteKind::NeedsInput => "needs-input",
+            NoteKind::Skipped => "skipped",
         }
     }
 }

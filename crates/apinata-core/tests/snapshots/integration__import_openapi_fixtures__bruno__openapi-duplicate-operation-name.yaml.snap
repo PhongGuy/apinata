@@ -146,6 +146,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: f1da3fe373dcce10
           file: Get Users (GET).yml
+          operationId: getProducts
         GET /users:
           target: fd5684d8ea61b64c
           headers: 7ace431cb61584cb
@@ -156,6 +157,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: 45e96729ea8f3b21
           file: Get Users.yml
+          operationId: getUsers
         POST /users:
           target: fd5684d8ea61b64c
           headers: 7ace431cb61584cb
@@ -166,6 +168,7 @@ extensions:
           method: fde2a9b76b8de2ff
           examples: d7796f649335f5ec
           file: Get Users (POST).yml
+          operationId: createUser
 
 note Renamed Get Users (POST).yml | paths./users.post | renamed to `Get Users (POST)` because another request here has the same name
 note Renamed Get Users (GET).yml | paths./products.get | renamed to `Get Users (GET)` because another request here has the same name

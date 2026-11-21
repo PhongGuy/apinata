@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use yaml_serde::{Mapping, Value};
 
 const FILE: &str = "file";
+const OPERATION_ID: &str = "operationId";
 const OPS: [&str; 4] = ["extensions", "apinata", "openapi", "ops"];
 const FOLDERS: [&str; 4] = ["extensions", "apinata", "openapi", "folders"];
 const SOURCE: [&str; 4] = ["extensions", "apinata", "openapi", "source"];
@@ -24,6 +25,7 @@ const OPENAPI_ORDER: &[&str] = &["source", "groupBy", "ops", "folders"];
 pub struct SpecBaseline {
     ops: BTreeMap<String, FieldHashes>,
     files: BTreeMap<String, String>,
+    ids: BTreeMap<String, String>,
 }
 
 impl SpecBaseline {
@@ -43,6 +45,26 @@ impl SpecBaseline {
         self.files.insert(key, file);
     }
 
+    /// The spec's operationId for `key` when it was last imported or updated, if it had one
+    /// that no other operation shared.
+    pub fn operation_id(&self, key: &str) -> Option<&str> {
+        self.ids.get(key).map(String::as_str)
+    }
+
+    /// Record `id` as the operationId of `key`, or forget it with `None`.
+    pub fn set_operation_id(&mut self, key: String, id: Option<String>) {
+        match id {
+            Some(id) => self.ids.insert(key, id),
+            None => self.ids.remove(&key),
+        };
+    }
+
+    /// Forget the ids of keys with no recorded hashes, which are never written.
+    pub(crate) fn drop_unrecorded_ids(&mut self) {
+        let ops = &self.ops;
+        self.ids.retain(|key, _| ops.contains_key(key));
+    }
+
     /// Record `hashes` for `key`, replacing any earlier entry.
     pub fn insert(&mut self, key: String, hashes: FieldHashes) {
         self.ops.insert(key, hashes);
@@ -51,6 +73,7 @@ impl SpecBaseline {
     /// Forget `key`; whether it was recorded.
     pub fn remove(&mut self, key: &str) -> bool {
         self.files.remove(key);
+        self.ids.remove(key);
         self.ops.remove(key).is_some()
     }
 
@@ -105,6 +128,9 @@ impl SpecBaseline {
                 Some((f, hash))
             });
             baseline.insert(key.clone(), FieldHashes::new(pairs));
+            if let Some(id) = fields.get(OPERATION_ID).and_then(js::yaml_to_string) {
+                baseline.set_operation_id(key.clone(), Some(id));
+            }
             if let Some(file) = fields.get(FILE).and_then(js::yaml_to_string) {
                 baseline.set_file(key, file);
             }
@@ -139,6 +165,9 @@ impl SpecBaseline {
             }
             if let Some(file) = self.files.get(key) {
                 fields.insert(Value::from(FILE), Value::String(file.to_owned()));
+            }
+            if let Some(id) = self.ids.get(key) {
+                fields.insert(Value::from(OPERATION_ID), Value::String(id.to_owned()));
             }
             ops.insert(Value::from(key.as_str()), Value::Mapping(fields));
         }

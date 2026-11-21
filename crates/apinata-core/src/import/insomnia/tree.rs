@@ -470,6 +470,7 @@ pub(super) fn items(
                     seq,
                     request,
                     notes,
+                    operation_id: None,
                 }));
             }
             Kind::Folder(mut source, children) => {

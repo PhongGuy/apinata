@@ -292,6 +292,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: 9c740fd826a185f7
           file: Get all users.yml
+          operationId: getUsers
         GET /users/{}:
           target: ee30cc74a44ebbd7
           headers: 7ace431cb61584cb
@@ -302,6 +303,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: 17618a72d73f8606
           file: Get user by ID.yml
+          operationId: getUserById
         POST /users:
           target: fd5684d8ea61b64c
           headers: 7ace431cb61584cb
@@ -312,5 +314,6 @@ extensions:
           method: fde2a9b76b8de2ff
           examples: c249d4a3a16b4e0c
           file: Create a new user.yml
+          operationId: createUser
 
 note Converted opencollection.yml | collection | runs use the environment `Production server` by default, as the first environment imported

@@ -16,7 +16,6 @@ use super::{
 };
 use crate::collection::{Collection, Folder, Trashed};
 use crate::item_path::ItemPath;
-use crate::naming::sanitize_name;
 use crate::request::{RequestFile, RequestKind};
 use crate::script::ScriptPhase;
 use crate::trash::Trash;
@@ -300,6 +299,7 @@ pub fn apply_update(
                 name,
                 request,
                 key,
+                operation_id,
             } => {
                 let predicted = planned_adds.next();
                 // Hash first, so a failure cannot leave a written file without its entry.
@@ -307,18 +307,20 @@ pub fn apply_update(
                 match add_one(c, &scope, &folders, &name, &request) {
                     Ok(real) => {
                         baseline.insert(key.clone(), hashes);
+                        baseline.set_operation_id(key.clone(), operation_id);
                         baseline.set_file(key, real.as_str().to_owned());
                         summary.added.push(real);
                     }
                     Err(e) => {
                         let at = predicted.as_ref();
+                        let source = label_of(&request.method, &request.url);
                         summary
                             .notes
-                            .push(note(&key, format!("not added: {e}"), at));
+                            .push(note(&source, format!("not added: {e}"), at));
                     }
                 }
             }
-            Action::Prune { path, key } => {
+            Action::Prune { path, key, label } => {
                 // As a delete does: hold the log's lock and read the folder again first.
                 let record = o.trash_log.as_ref().map(|log| log.locked(c.root()));
                 if let Some(parent) = path.parent() {
@@ -332,7 +334,7 @@ pub fn apply_update(
                         if let Some(why) = trashed.renumber_failure() {
                             let detail =
                                 format!("removed, but siblings were not renumbered: {why}");
-                            summary.notes.push(note(&key, detail, Some(&path)));
+                            summary.notes.push(note(&label, detail, Some(&path)));
                         }
                         // Each prune is its own entry in the run's batch, so a restore can bring back
                         // one or all of them.
@@ -352,7 +354,7 @@ pub fn apply_update(
                             Some(Err(why)) => Some(unrestorable(&why)),
                         };
                         if let Some(detail) = detail {
-                            summary.notes.push(note(&key, detail, Some(&path)));
+                            summary.notes.push(note(&label, detail, Some(&path)));
                         }
                         summary.trashed.push(PrunedRequest {
                             trashed,
@@ -366,13 +368,27 @@ pub fn apply_update(
                         summary.pruned.retain(|p| *p != path);
                         summary
                             .notes
-                            .push(note(&key, format!("not pruned: {e}"), Some(&path)));
+                            .push(note(&label, format!("not pruned: {e}"), Some(&path)));
                     }
                 }
             }
             Action::DropStale { key } => {
                 baseline.remove(&key);
             }
+            // The operation's path moved: its record, file and id move to the new key.
+            Action::Rekey { from, to } => {
+                if let Some(hashes) = baseline.get(&from).cloned() {
+                    let file = baseline.file(&from).map(str::to_owned);
+                    let id = baseline.operation_id(&from).map(str::to_owned);
+                    baseline.remove(&from);
+                    baseline.insert(to.clone(), hashes);
+                    baseline.set_operation_id(to.clone(), id);
+                    if let Some(file) = file {
+                        baseline.set_file(to, file);
+                    }
+                }
+            }
+            Action::RecordId { key, id } => baseline.set_operation_id(key, id),
             // A link stands only beside a record, so a failed take of an unrecorded request
             // leaves it unlinked as well.
             Action::Relink { key, path } => {
@@ -382,6 +398,7 @@ pub fn apply_update(
             }
         }
     }
+    baseline.drop_unrecorded_ids();
     if baseline != c.file().spec_baseline_in(&scope).unwrap_or_default() {
         c.file_mut().set_spec_baseline_in(&scope, &baseline);
     }
@@ -702,13 +719,26 @@ pub(crate) enum Action {
         name: String,
         request: ImportedRequest,
         key: String,
+        operation_id: Option<String>,
     },
     Prune {
         path: ItemPath,
         key: String,
+        /// The request's method and path, as its notes name it.
+        label: String,
     },
     DropStale {
         key: String,
+    },
+    /// The operation's path changed under the same operationId; its record moves to the new key.
+    Rekey {
+        from: String,
+        to: String,
+    },
+    /// The spec's operationId of a matched operation, or `None` when it has no unique one.
+    RecordId {
+        key: String,
+        id: Option<String>,
     },
     /// The operation's request was found somewhere other than the recorded file.
     Relink {
@@ -746,25 +776,120 @@ fn bundle_requests<'a>(
     }
 }
 
-/// Where a new request in `folders` would be written: an existing same-name folder is reused,
-/// otherwise the sanitised name stands in for the folder to be created.
+/// The folders and files the adds planned so far will create, so each later add is named
+/// after them as the writes, done in the same order, will name it.
+#[derive(Default)]
+struct Pending {
+    folders: BTreeMap<(ItemPath, String), ItemPath>,
+    claimed: BTreeSet<std::path::PathBuf>,
+}
+
+/// Where a new request in `folders` would be written, picked as `add_one` picks it: an existing
+/// same-name folder is reused, and each new folder or file takes the first free name.
 fn predicted_path(
     c: &Collection,
     base: &ItemPath,
     folders: &[String],
     name: &str,
-) -> Option<ItemPath> {
+    pending: &mut Pending,
+) -> Result<ItemPath, ImportError> {
     let mut path = base.clone();
     let mut current = c.folder(base);
     for folder in folders {
         let existing = current.and_then(|f| f.folders().iter().find(|d| d.name() == folder));
-        match existing {
-            Some(d) => path = c.item_path(d.path())?,
-            None => path = path.join(&sanitize_name(folder))?,
-        }
         current = existing;
+        path = match existing {
+            Some(d) => {
+                c.item_path(d.path())
+                    .ok_or_else(|| crate::error::TreeError::InvalidName {
+                        name: folder.clone(),
+                    })?
+            }
+            None => {
+                let key = (path.clone(), folder.clone());
+                if let Some(made) = pending.folders.get(&key) {
+                    made.clone()
+                } else {
+                    let made = pending.claim(c, &path, folder, true)?;
+                    pending.folders.insert(key, made.clone());
+                    made
+                }
+            }
+        };
     }
-    path.join(&format!("{}.yml", sanitize_name(name)))
+    pending.claim(c, &path, name, false)
+}
+
+impl Pending {
+    fn claim(
+        &mut self,
+        c: &Collection,
+        parent: &ItemPath,
+        name: &str,
+        folder: bool,
+    ) -> Result<ItemPath, ImportError> {
+        let claimed = &self.claimed;
+        let made = c.next_item_path(parent, name, folder, &|p| claimed.contains(p))?;
+        self.claimed.insert(c.root().join(made.as_str()));
+        Ok(made)
+    }
+}
+
+/// A request's method and path as notes name it: `GET /pets/:id`, without the base URL
+/// (a leading variable or a scheme and host) or the query.
+fn label(f: &RequestFile) -> String {
+    label_of(f.method(), f.url())
+}
+
+fn label_of(method: &str, url: &str) -> String {
+    let mut rest = url;
+    if let Some(after) = rest.strip_prefix("{{")
+        && let Some(end) = after.find("}}")
+    {
+        rest = &after[end + 2..];
+    } else if let Some((_, after)) = rest.split_once("://") {
+        rest = after.find('/').map_or("", |at| &after[at..]);
+    }
+    let path = rest.split(['?', '#']).next().unwrap_or("");
+    let path = if path.starts_with('/') {
+        path.to_owned()
+    } else {
+        format!("/{path}")
+    };
+    format!("{} {path}", method.to_uppercase())
+}
+
+/// Each operationId of `items` that names exactly one operation, by operation key.
+pub(crate) fn spec_operation_ids(items: &[ImportedItem]) -> BTreeMap<String, String> {
+    let mut requests = Vec::new();
+    bundle_requests(items, &mut Vec::new(), &mut requests);
+    let mut count: BTreeMap<&str, usize> = BTreeMap::new();
+    for (_, item) in &requests {
+        if let Some(id) = &item.operation_id {
+            *count.entry(id).or_default() += 1;
+        }
+    }
+    requests
+        .iter()
+        .filter_map(|(_, item)| {
+            let id = item.operation_id.as_deref()?;
+            let key = operation_key(&item.request.method, &item.request.url);
+            (count.get(id) == Some(&1)).then(|| (key, id.to_owned()))
+        })
+        .collect()
+}
+
+/// The one recorded operation that had `id` and whose key the spec no longer lists.
+fn moved_from<'a>(
+    baseline: &'a SpecBaseline,
+    id: &str,
+    spec_keys: &BTreeSet<String>,
+) -> Option<&'a str> {
+    let mut found = baseline
+        .keys()
+        .filter(|k| baseline.operation_id(k) == Some(id));
+    let key = found.next()?;
+    (found.next().is_none() && !spec_keys.contains(key)).then_some(key)
 }
 
 /// The secret names `c` already holds, when `o` can read its secrets.
@@ -804,7 +929,8 @@ pub(crate) fn plan(
                 scope.as_str()
             )
         };
-        summary.notes.push(note("opencollection.yml", detail, None));
+        let skipped = ImportNote::new("opencollection.yml", NoteKind::Skipped, detail);
+        summary.notes.push(skipped);
         return Ok(Plan { summary, actions });
     };
     // Only the root records a source, so only a root update says one was not recorded.
@@ -859,6 +985,15 @@ pub(crate) fn plan(
     );
     let mut spec_keys = BTreeSet::new();
     let mut matched = BTreeSet::new();
+    // An operation the spec still names by a unique operationId is followed when its path
+    // moves; `moved` holds the old keys so they are not reported as orphans too.
+    let ids = spec_operation_ids(&bundle.collection.items);
+    let every_key: BTreeSet<String> = spec_requests
+        .iter()
+        .map(|(_, item)| operation_key(&item.request.method, &item.request.url))
+        .collect();
+    let mut moved = BTreeSet::new();
+    let mut pending = Pending::default();
     // Examples were not spec-owned before, and older imports wrote none.
     let absent = fields::absent_hash();
     for (folders, item) in spec_requests {
@@ -873,18 +1008,49 @@ pub(crate) fn plan(
             ));
             continue;
         }
-        let Some(matches) = locate(&baseline, &by_path, &by_key, &key) else {
-            if let Some(path) = predicted_path(c, &scope, &folders, &item.name) {
-                summary.added.push(path);
-                actions.push(Action::Add {
-                    folders,
-                    name: item.name.clone(),
-                    request: request.clone(),
-                    key,
-                });
+        let id = ids.get(&key).cloned();
+        let found = locate(&baseline, &by_path, &by_key, &key)
+            .map(|m| (m, key.clone()))
+            .or_else(|| {
+                let from = moved_from(&baseline, id.as_deref()?, &every_key)?;
+                Some((locate(&baseline, &by_path, &by_key, from)?, from.to_owned()))
+            });
+        let Some((matches, recorded_key)) = found else {
+            // A name the writer would refuse is reported here, so the preview says what the
+            // write would.
+            match predicted_path(c, &scope, &folders, &item.name, &mut pending) {
+                Ok(path) => {
+                    summary.added.push(path);
+                    actions.push(Action::Add {
+                        folders,
+                        name: item.name.clone(),
+                        request: request.clone(),
+                        key,
+                        operation_id: id,
+                    });
+                }
+                Err(e) => {
+                    let source = label_of(&request.method, &request.url);
+                    summary
+                        .notes
+                        .push(note(&source, format!("not added: {e}"), None));
+                }
             }
             continue;
         };
+        if recorded_key != key {
+            moved.insert(recorded_key.clone());
+            actions.push(Action::Rekey {
+                from: recorded_key.clone(),
+                to: key.clone(),
+            });
+        }
+        if baseline.operation_id(&recorded_key) != id.as_deref() {
+            actions.push(Action::RecordId {
+                key: key.clone(),
+                id: id.clone(),
+            });
+        }
         let (path, file) = &matches[0];
         matched.insert(path.clone());
         let chosen: Vec<&TakeSpec> = o.take_spec.iter().filter(|t| t.path == *path).collect();
@@ -902,14 +1068,16 @@ pub(crate) fn plan(
         }
         // A request found anywhere but its recorded file is relinked, so a renamed or moved
         // file keeps its identity through later edits of its path.
-        if baseline.get(&key).is_some() && baseline.file(&key) != Some(path.as_str()) {
+        if baseline.get(&recorded_key).is_some()
+            && baseline.file(&recorded_key) != Some(path.as_str())
+        {
             actions.push(Action::Relink {
                 key: key.clone(),
                 path: path.clone(),
             });
         }
         // A request with no record that is named to take the spec is adopted as if first seen.
-        if adopting || (baseline.get(&key).is_none() && !chosen.is_empty()) {
+        if adopting || (baseline.get(&recorded_key).is_none() && !chosen.is_empty()) {
             adopt(
                 path,
                 file,
@@ -921,7 +1089,7 @@ pub(crate) fn plan(
             )?;
             continue;
         }
-        let Some(recorded) = baseline.get(&key) else {
+        let Some(recorded) = baseline.get(&recorded_key) else {
             summary.kept.push(path.clone());
             summary.notes.push(note(
                 &key,
@@ -1013,7 +1181,10 @@ pub(crate) fn plan(
         });
     }
 
-    for key in baseline.keys().filter(|k| !spec_keys.contains(*k)) {
+    for key in baseline
+        .keys()
+        .filter(|k| !spec_keys.contains(*k) && !moved.contains(*k))
+    {
         let Some((path, file)) = locate(&baseline, &by_path, &by_key, key).map(|mut m| m.remove(0))
         else {
             if o.prune {
@@ -1036,11 +1207,14 @@ pub(crate) fn plan(
                 actions.push(Action::Prune {
                     path: path.clone(),
                     key: key.to_owned(),
+                    label: label(file),
                 });
             }
-            Some(why) => summary
-                .notes
-                .push(note(key, format!("not pruned: {why}"), Some(&path))),
+            Some(why) => summary.notes.push(note(
+                &label(file),
+                format!("not pruned: {why}"),
+                Some(&path),
+            )),
         }
     }
     Ok(Plan { summary, actions })

@@ -238,6 +238,7 @@ fn items(
                     seq,
                     request: out_request,
                     notes,
+                    operation_id: None,
                 }));
             }
             Err(detail) => unwritten.push(ImportNote::new(crumb, NoteKind::Dropped, detail)),

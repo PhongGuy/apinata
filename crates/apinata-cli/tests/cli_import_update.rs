@@ -505,3 +505,16 @@ fn take_spec_naming_an_unknown_request_fails_and_writes_nothing() {
         .stderr(contains("unknown field colour"));
     assert_eq!(tree(&root), before);
 }
+
+#[test]
+fn an_edited_request_says_the_spec_change_was_not_applied_and_how_to_take_it() {
+    let parent = tempfile::tempdir().unwrap();
+    let root = first_import(parent.path());
+    let file = root.join("people/getUser.yml");
+    let text = fs::read_to_string(&file).unwrap();
+    fs::write(&file, text.replace("method: GET", "method: POST")).unwrap();
+    update(&root, &["--dry-run"]).code(0).stdout(contains(
+        "edited people/getUser.yml (method): spec change not applied; \
+         take it with --take-spec people/getUser.yml",
+    ));
+}

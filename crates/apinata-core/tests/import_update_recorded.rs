@@ -58,7 +58,11 @@ fn an_import_from_a_file_outside_the_collection_records_it_relative_to_the_root(
     let file = dir.path().join("specs/spec.json");
     fs::create_dir_all(file.parent().unwrap()).unwrap();
     fs::write(&file, spec("update-v1.json")).unwrap();
-    let b = from("update-v1.json", SpecLocation::File(file), GroupBy::Tags);
+    let b = from(
+        "update-v1.json",
+        SpecLocation::File(file.clone()),
+        GroupBy::Tags,
+    );
     let into = dir.path().join("collections");
     fs::create_dir_all(&into).unwrap();
     let (c, _) =
@@ -69,9 +73,10 @@ fn an_import_from_a_file_outside_the_collection_records_it_relative_to_the_root(
         "{text}"
     );
     let recorded = recorded_spec(&Collection::open(c.root()).unwrap()).expect("recorded");
+    // The recorded `..` is read back as the file it names, not a path that climbs.
     assert_eq!(
         recorded.location,
-        SpecLocation::File(c.root().join("../../specs/spec.json"))
+        SpecLocation::File(fs::canonicalize(&file).unwrap())
     );
     assert_eq!(recorded.group_by, GroupBy::Tags);
 }

@@ -34,6 +34,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: 33259f5133455200
           file: pets/List all pets.yml
+          operationId: listPets
         GET /pets/{}:
           target: 78b23447214a8b59
           headers: 7ace431cb61584cb
@@ -44,6 +45,7 @@ extensions:
           method: bb94048e39bc5ef4
           examples: d82b9c6c63ccc535
           file: pets/Info for a specific pet.yml
+          operationId: showPetById
         POST /pets:
           target: 0e47e1edc3566744
           headers: 7ace431cb61584cb
@@ -54,6 +56,7 @@ extensions:
           method: fde2a9b76b8de2ff
           examples: 09e9e8df2d1f99f3
           file: pets/Create a pet.yml
+          operationId: createPets
 
 === pets/Create a pet.yml
 info:

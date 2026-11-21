@@ -626,15 +626,19 @@ fn print_update_text(updated: &Updated) {
             fields.join(", ")
         );
     }
-    // An edited request names the fields found edited when the planner knows them.
+    // An edited request names the fields found edited when the planner knows them, and says
+    // the spec's change stays out until it is taken.
     for path in &s.edited {
-        match s.edited_fields.iter().find(|e| e.path == *path) {
+        let fields = match s.edited_fields.iter().find(|e| e.path == *path) {
             Some(e) => {
-                let fields: Vec<_> = e.fields.iter().map(|f| f.id()).collect();
-                outln!("edited {} ({})", path.as_str(), fields.join(", "));
+                let ids: Vec<_> = e.fields.iter().map(|f| f.id()).collect();
+                format!(" ({})", ids.join(", "))
             }
-            None => outln!("edited {}", path.as_str()),
-        }
+            None => String::new(),
+        };
+        let p = path.as_str();
+        let arg = shell_word(p);
+        outln!("edited {p}{fields}: spec change not applied; take it with --take-spec {arg}");
     }
     // With no recorded generated value nobody knows who changed these, so they stay as they are.
     for d in &s.differs {
@@ -658,6 +662,19 @@ fn print_update_text(updated: &Updated) {
         outln!("{prune} {}{moved}", path.as_str());
     }
     print_notes(&s.notes);
+}
+
+// `word` as one shell word: single-quoted when it holds a space or a character the shell
+// would read, so the printed flag can be pasted back as is.
+fn shell_word(word: &str) -> String {
+    let plain = word
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || "/._-+,:@%".contains(c));
+    if plain {
+        word.to_owned()
+    } else {
+        format!("'{}'", word.replace('\'', "'\\''"))
+    }
 }
 
 fn print_update_json(updated: &Updated) -> anyhow::Result<()> {
