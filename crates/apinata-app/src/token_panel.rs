@@ -189,10 +189,9 @@ impl TokenPanel {
         status_line(self.status.as_ref(), SystemTime::now())
     }
 
-    /// "Scopes granted: <scope>" when the provider said which.
+    /// `scope_line` of the last read status.
     pub fn scope_text(&self) -> Option<String> {
-        let scope = self.status.as_ref()?.scope.as_deref()?;
-        Some(format!("Scopes granted: {scope}"))
+        scope_line(self.status.as_ref())
     }
 
     /// The last action's error, else its neutral note, else the cache's MemoryOnly reason.
@@ -416,9 +415,15 @@ fn missing_message(labels: &[&str]) -> String {
     }
 }
 
+/// "Scopes granted: <scope>" when the provider named at least one scope.
+pub fn scope_line(status: Option<&TokenStatus>) -> Option<String> {
+    let scope = status?.scope.as_deref()?.trim();
+    (!scope.is_empty()).then(|| format!("Scopes granted: {scope}"))
+}
+
 /// "No token", "Valid, expires in 54 min", "Valid, expires in 2 h 5 min",
 /// "Valid, expires in less than a minute", "Valid, no expiry" or "Expired";
-/// ", refresh token" appended when one is held.
+/// ", has a refresh token" appended when one is held.
 pub fn status_line(status: Option<&TokenStatus>, now: SystemTime) -> String {
     let Some(status) = status else {
         return "No token".to_owned();
@@ -441,7 +446,7 @@ pub fn status_line(status: Option<&TokenStatus>, now: SystemTime) -> String {
         }
     };
     if status.has_refresh_token {
-        line.push_str(", refresh token");
+        line.push_str(", has a refresh token");
     }
     line
 }
