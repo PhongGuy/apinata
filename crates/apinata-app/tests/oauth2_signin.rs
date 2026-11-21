@@ -404,3 +404,38 @@ fn cancelling_a_sign_in_over_an_approval_leaves_the_approval(cx: &mut TestAppCon
     assert!(!present(cx, s.win, "oauth2-signin"));
     assert!(present(cx, s.win, "approval-host"));
 }
+
+#[gpui_kit::test]
+fn closing_a_sign_in_that_send_opened_focuses_the_send_slot(cx: &mut TestAppContext) {
+    use apinata_app::request_editor::Section;
+    http_ready(cx);
+    let server = provider(cx);
+    let col = collection(&server.uri(), "");
+    let s = started(cx, &col);
+    let _opened = opener(cx, false);
+    open_tab(cx, &s.ws, &s.root, "a.yml");
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| {
+        w.activate_window();
+        w.click(("section", Section::Auth as usize), cx);
+        w.render_frame(cx);
+        w.click("oauth2-client-id", cx)
+    })
+    .unwrap();
+    frame(cx, s.win);
+    // A mouse press on Send leaves focus in Client ID, the field typed last.
+    cx.update_window(s.win, |_, w, cx| w.click("send-button", cx))
+        .unwrap();
+    wait_real(cx, |cx| showing(cx).is_some());
+    frame(cx, s.win);
+    click(cx, &s, "oauth2-signin-cancel");
+    wait_real(cx, |cx| showing(cx).is_none());
+    let slot = cx.update_window(s.win, |_, w, cx| {
+        w.render_frame(cx);
+        (
+            w.find("send-slot").focused(),
+            w.find("oauth2-client-id").focused(),
+        )
+    });
+    assert_eq!(slot.unwrap(), (Some(true), Some(false)));
+}

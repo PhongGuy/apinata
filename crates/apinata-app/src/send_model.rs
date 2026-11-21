@@ -10,7 +10,7 @@ use apinata_core::{
     CancelHandle, DraftSnapshot, ExecutionMode, ItemPath, RequestFile, RequestResult, RunEvent,
     RunOptions, StreamLimits, VarContext, known_secrets,
 };
-use gpui_kit::{App, AsyncApp, Context, Entity, Global, Task, WeakEntity};
+use gpui_kit::{App, AsyncApp, Context, Entity, Global, Task, WeakEntity, WeakFocusHandle};
 
 use crate::body_section;
 use crate::command::{Command, PlanError, Planned};
@@ -99,6 +99,8 @@ pub struct SendModel {
     // The seq the store kept a live result as, once it answers, and the wait for that answer.
     kept: Option<(std::sync::Weak<RequestResult>, last_response::KeptAs)>,
     kept_task: Option<Task<()>>,
+    // The control the next send's sign-in dialog hands focus back to; each send takes it.
+    sign_in_opener: Option<WeakFocusHandle>,
 }
 
 impl SendModel {
@@ -131,7 +133,13 @@ impl SendModel {
             body_ended: false,
             kept: None,
             kept_task: None,
+            sign_in_opener: None,
         }
+    }
+
+    /// Makes the next send's sign-in dialog, if it opens one, hand focus to `opener` on closing.
+    pub fn sign_in_returns_to(&mut self, opener: Option<WeakFocusHandle>) {
+        self.sign_in_opener = opener;
     }
 
     /// The workspace this model sends through.
@@ -240,6 +248,7 @@ impl SendModel {
         key: Option<(PathBuf, ItemPath)>,
         cx: &mut Context<Self>,
     ) -> bool {
+        let opener = self.sign_in_opener.take();
         if self.is_sending() {
             return false;
         }
@@ -347,7 +356,7 @@ impl SendModel {
             });
             let run = cx.update(|cx| {
                 let opts = RunOptions::new()
-                    .authorize(crate::oauth2_signin::authorize_options(cx))
+                    .authorize(crate::oauth2_signin::authorize_options_from(opener, cx))
                     .execution_mode(ExecutionMode::Standalone)
                     .scripts(scripts)
                     .stream(StreamLimits::new());
