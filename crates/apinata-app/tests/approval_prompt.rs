@@ -419,3 +419,52 @@ fn a_long_unbroken_proxy_keeps_the_buttons_and_fits(cx: &mut TestAppContext) {
     frame(cx, s.win);
     assert_lines_inside_buttons(cx, &s, &["approval-request", "approval-proxy"]);
 }
+
+// A collection deep in folders, in a narrow window: the path line gives way in its middle so
+// the collection's own folder stays in view, and the whole path is in its label and tooltip.
+#[gpui_kit::test]
+fn a_long_collection_path_keeps_its_folder_name_and_shows_whole_on_hover(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    gpui_kit::VisualTestContext::from_window(s.win, cx)
+        .simulate_resize(gpui_kit::size(gpui_kit::px(640.), gpui_kit::px(600.)));
+    let rel: Vec<String> = (0..5)
+        .map(|i| format!("a-rather-long-folder-name-{i}"))
+        .chain(["the-collection-folder".to_owned()])
+        .collect();
+    let rel = rel.join("/");
+    let deep = write_tree(&[(&format!("{rel}/opencollection.yml"), ROOT)]);
+    let root = canonical(&deep.path().join(&rel));
+    file(cx, &s, &root, "api.example.com", "a.yml");
+    frame(cx, s.win);
+    frame(cx, s.win);
+    let (shown, label, fits) = cx
+        .update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            let e = w.find("approval-collection-path");
+            let shown = e.value().map(str::to_owned).unwrap_or_default();
+            let size = apinata_app::style::resolve(apinata_app::style::TEXT_SMALL, w);
+            let fits = apinata_app::path_display::measurer(w, size)(&shown)
+                <= f32::from(e.bounds().size.width);
+            (shown, e.label().map(str::to_owned), fits)
+        })
+        .unwrap();
+    assert!(shown.ends_with("/the-collection-folder"), "{shown}");
+    assert!(shown.contains('…'), "{shown}");
+    assert!(fits, "{shown}");
+    let full = root.display().to_string();
+    assert_eq!(label.as_deref(), Some(full.as_str()));
+    cx.update_window(s.win, |_, w, cx| w.hover("approval-collection-path", cx))
+        .unwrap();
+    cx.executor()
+        .advance_clock(std::time::Duration::from_millis(800));
+    frame(cx, s.win);
+    let tip = cx
+        .update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            w.try_find("approval-collection-path-tooltip")
+                .and_then(|t| t.label().map(str::to_owned))
+        })
+        .unwrap();
+    assert_eq!(tip, Some(full));
+}

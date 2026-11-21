@@ -63,7 +63,7 @@ pub fn open(
     cx: &mut App,
 ) {
     let collection: SharedString = untrusted_text(&name).into();
-    let path: SharedString = untrusted_text(&prompt.collection.display().to_string()).into();
+    let path = prompt.collection.clone();
     let request: SharedString = match prompt.request.as_str() {
         "" => "the whole collection".into(),
         request => untrusted_text(request).into(),
@@ -160,16 +160,12 @@ pub fn open(
                             .test_support()
                             .child(format!("Collection: {collection}")),
                     )
-                    .child(
-                        div()
-                            .id("script-approval-collection-path")
-                            .test_support()
-                            .whitespace_nowrap()
-                            .truncate()
-                            .text_size(crate::style::TEXT_SMALL)
-                            .text_color(cx.theme().muted_foreground)
-                            .child(path.clone()),
-                    )
+                    .child(crate::approval_prompt::collection_path_line(
+                        "script-approval-collection-path",
+                        &path,
+                        window,
+                        cx,
+                    ))
                     .child(
                         div()
                             .id("script-approval-request")

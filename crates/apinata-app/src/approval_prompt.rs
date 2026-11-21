@@ -6,9 +6,10 @@ use gpui_kit::component::notification::Notification;
 use gpui_kit::component::{ActiveTheme, WindowExt, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    App, Entity, FocusHandle, InteractiveElement, ParentElement, SharedString, Styled,
-    TestSupportExt, WeakEntity, Window, div,
+    App, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, Pixels, SharedString,
+    StatefulInteractiveElement, Styled, TestSupportExt, WeakEntity, Window, canvas, div,
 };
+use std::path::Path;
 
 use apinata_core::{display_host, is_hidden_char, is_variation_selector};
 
@@ -26,18 +27,73 @@ const MAX_CHARS: usize = 200;
 /// chars the text is cut to 200 and "..." appended. Applied to the shown host, collection
 /// path and request.
 pub fn untrusted_text(text: &str) -> String {
-    // A hidden character gets a visible mark, not removal, so the human can see something
-    // was there. Cut by char so no code point splits.
-    let mut shown: String = text
-        .chars()
-        .take(MAX_CHARS)
-        .filter(|&c| !is_variation_selector(c))
-        .map(|c| if is_hidden_char(c) { '\u{fffd}' } else { c })
-        .collect();
+    // Cut by char so no code point splits.
+    let mut shown = defanged(&text.chars().take(MAX_CHARS).collect::<String>());
     if text.chars().nth(MAX_CHARS).is_some() {
         shown.push_str("...");
     }
     shown
+}
+
+// A hidden character gets a visible mark, not removal, so the human can see something was
+// there; nothing is cut.
+fn defanged(text: &str) -> String {
+    text.chars()
+        .filter(|&c| !is_variation_selector(c))
+        .map(|c| if is_hidden_char(c) { '\u{fffd}' } else { c })
+        .collect()
+}
+
+/// The collection's `path` on one line with id `id`: shortened in its middle to the room
+/// layout gives it, so its last folder stays in view, with the whole path in its tooltip
+/// (`{id}-tooltip`) and accessible label. All shown text passes [`untrusted_text`].
+pub fn collection_path_line(
+    id: &'static str,
+    path: &Path,
+    window: &mut Window,
+    cx: &mut App,
+) -> impl IntoElement + use<> {
+    // The room is measured after layout and kept across frames; a change redraws the window
+    // so the path refits. Hidden characters are marked before fitting, so the fit measures
+    // what shows.
+    let room = window.use_keyed_state(SharedString::from(format!("{id}-room")), cx, |_, _| {
+        None::<Pixels>
+    });
+    let clean = Path::new(&defanged(&path.display().to_string())).to_path_buf();
+    let home = dirs::home_dir();
+    let shown = match *room.read(cx) {
+        Some(room) => crate::path_display::fitted(&clean, home.as_deref(), room, window),
+        None => crate::path_display::tilde(&clean, home.as_deref()),
+    };
+    let shown = untrusted_text(&shown);
+    let full = untrusted_text(&path.display().to_string());
+    let measure = canvas(
+        move |bounds, window, cx| {
+            let now = Some(bounds.size.width);
+            if room.update(cx, |r, _| std::mem::replace(r, now)) != now {
+                window.defer(cx, |window, _| window.refresh());
+            }
+        },
+        |_, _, _, _| {},
+    )
+    .absolute()
+    .size_full();
+    div()
+        .id(id)
+        .test_support()
+        .aria_label(full.clone())
+        .aria_value(shown.clone())
+        .relative()
+        .w_full()
+        .min_w_0()
+        .overflow_hidden()
+        .whitespace_nowrap()
+        .truncate()
+        .text_size(crate::style::TEXT_SMALL)
+        .text_color(cx.theme().muted_foreground)
+        .tooltip(crate::ui::text_tooltip(format!("{id}-tooltip"), full))
+        .child(measure)
+        .child(shown)
 }
 
 /// A warning when any label of `host` is punycode (`xn--`), else None.
@@ -75,7 +131,7 @@ pub fn open(
     let host: SharedString = untrusted_text(&display_host(&prompt.host)).into();
     let note = host_note(&prompt.host);
     let collection: SharedString = untrusted_text(&name).into();
-    let path: SharedString = untrusted_text(&prompt.collection.display().to_string()).into();
+    let path = prompt.collection.clone();
     let request: SharedString = untrusted_text(&prompt.request).into();
     let mapped: Option<SharedString> = prompt
         .mapped_from
@@ -154,16 +210,12 @@ pub fn open(
                             .test_support()
                             .child(format!("Collection: {collection}")),
                     )
-                    .child(
-                        div()
-                            .id("approval-collection-path")
-                            .test_support()
-                            .whitespace_nowrap()
-                            .truncate()
-                            .text_size(crate::style::TEXT_SMALL)
-                            .text_color(cx.theme().muted_foreground)
-                            .child(path.clone()),
-                    )
+                    .child(collection_path_line(
+                        "approval-collection-path",
+                        &path,
+                        window,
+                        cx,
+                    ))
                     .child(
                         v_flex()
                             .p_2()

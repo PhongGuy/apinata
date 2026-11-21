@@ -270,3 +270,69 @@ fn approve_is_the_rightmost_button_after_the_hint(cx: &mut TestAppContext) {
     })
     .unwrap();
 }
+
+// A collection deep in folders, in a narrow window: the path line keeps the collection's own
+// folder in view and carries the whole path in its label and tooltip.
+#[gpui_kit::test]
+fn a_long_collection_path_keeps_its_folder_name_and_shows_whole_on_hover(cx: &mut TestAppContext) {
+    let rel: Vec<String> = (0..5)
+        .map(|i| format!("a-rather-long-folder-name-{i}"))
+        .chain(["the-collection-folder".to_owned()])
+        .collect();
+    let rel = rel.join("/");
+    let a = format!(
+        "{}runtime:\n  scripts:\n    - type: before-request\n      code: \"{CODE}\"\n",
+        request("a", "http://127.0.0.1:9/ok")
+    );
+    let deep = write_tree(&[
+        (&format!("{rel}/opencollection.yml"), ROOT),
+        (&format!("{rel}/a.yml"), &a),
+    ]);
+    let root = std::fs::canonicalize(deep.path().join(&rel)).unwrap();
+    let s = started_with_session(cx, &[&root]);
+    gpui_kit::VisualTestContext::from_window(s.win, cx)
+        .simulate_resize(gpui_kit::size(gpui_kit::px(640.), gpui_kit::px(600.)));
+    let trust = ScriptTrust::empty(s.files.path().join("script-trust.json"));
+    ApprovalInbox::new(s.files.path().join("approvals"))
+        .request_scripts(&trust, &root, "a.yml", &[script_hash(CODE)])
+        .unwrap();
+    cx.update(|cx| {
+        let approvals = cx.global::<apinata_app::app::AppState>().approvals.clone();
+        approvals.update(cx, |a, cx| a.refresh(cx));
+    });
+    cx.run_until_parked();
+    frame(cx, s.win);
+    frame(cx, s.win);
+    assert!(present(cx, s.win, "script-approval-text"));
+    let (shown, label, fits) = cx
+        .update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            let e = w.find("script-approval-collection-path");
+            let shown = e.value().map(str::to_owned).unwrap_or_default();
+            let size = apinata_app::style::resolve(apinata_app::style::TEXT_SMALL, w);
+            let fits = apinata_app::path_display::measurer(w, size)(&shown)
+                <= f32::from(e.bounds().size.width);
+            (shown, e.label().map(str::to_owned), fits)
+        })
+        .unwrap();
+    assert!(shown.ends_with("/the-collection-folder"), "{shown}");
+    assert!(shown.contains('…'), "{shown}");
+    assert!(fits, "{shown}");
+    let full = root.display().to_string();
+    assert_eq!(label.as_deref(), Some(full.as_str()));
+    cx.update_window(s.win, |_, w, cx| {
+        w.hover("script-approval-collection-path", cx)
+    })
+    .unwrap();
+    cx.executor()
+        .advance_clock(std::time::Duration::from_millis(800));
+    frame(cx, s.win);
+    let tip = cx
+        .update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            w.try_find("script-approval-collection-path-tooltip")
+                .and_then(|t| t.label().map(str::to_owned))
+        })
+        .unwrap();
+    assert_eq!(tip, Some(full));
+}
