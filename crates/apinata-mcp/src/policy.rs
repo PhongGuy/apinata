@@ -12,8 +12,14 @@ use serde::Serialize;
 use crate::redact::Redactor;
 use crate::send;
 
-/// How a refused send ends.
-const SENT: &str = "nothing was sent";
+/// How a send refused at redirect `hop` ends: the hops before it did reach their hosts.
+fn sent_before(hop: usize) -> String {
+    match hop {
+        0 => "nothing was sent".to_owned(),
+        1 => "only hop 0 was sent".to_owned(),
+        _ => format!("only hops 0 to {} were sent", hop - 1),
+    }
+}
 
 /// What `list_trusted_hosts` reports for the served collection.
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
@@ -185,7 +191,7 @@ impl HostTrust {
         label: &str,
         inbox: Option<&ApprovalInbox>,
     ) -> String {
-        self.refuse_reach(host, Some(hop), false, label, inbox, SENT)
+        self.refuse_reach(host, Some(hop), false, label, inbox, &sent_before(hop))
     }
 
     /// Whether git may reach `host` for a pull or push, reading the trust file afresh first.
@@ -255,18 +261,35 @@ impl HostTrust {
                 ..
             } => {
                 let route = mapped_from.as_deref().map_or(Route::Direct, Route::Mapped);
-                self.untrusted(Some(*hop), host, route, request, inbox, redactor, SENT)
+                self.untrusted(
+                    Some(*hop),
+                    host,
+                    route,
+                    request,
+                    inbox,
+                    redactor,
+                    &sent_before(*hop),
+                )
             }
             ExecError::ProxyNotAllowed {
                 hop, host, proxy, ..
             } => {
                 let route = Route::Proxy(proxy);
-                self.untrusted(Some(*hop), host, route, request, inbox, redactor, SENT)
+                self.untrusted(
+                    Some(*hop),
+                    host,
+                    route,
+                    request,
+                    inbox,
+                    redactor,
+                    &sent_before(*hop),
+                )
             }
             ExecError::HostOverrideViaProxy { hop, host, .. } => format!(
                 "host `{host}` (hop {hop}) has a host override but goes through a proxy, which \
-                 ignores it; nothing was sent. Turn the proxy off for this collection or remove \
-                 the override."
+                 ignores it; {}. Turn the proxy off for this collection or remove \
+                 the override.",
+                sent_before(*hop)
             ),
             ExecError::SecretInHost { host, .. } => format!(
                 "a secret cannot be used in a host: `{host}`; nothing was sent. Move the host to \
@@ -467,6 +490,7 @@ mod tests {
         let trust = HostTrust::new(root.path(), Some(&state.path().join("trusted-hosts.json")));
         let message = trust.refuse_fetch("specs.example.com", 2, "import_collection", Some(&inbox));
         assert!(message.contains("`specs.example.com` (hop 2)"), "{message}");
+        assert!(message.contains("only hops 0 to 1 were sent"), "{message}");
         assert!(message.contains("Approval requested"), "{message}");
         assert!(message.contains("send_request"), "{message}");
         let pending = inbox.pending().unwrap();

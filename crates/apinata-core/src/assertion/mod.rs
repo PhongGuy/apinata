@@ -70,6 +70,12 @@ const BINARY: &[&str] = &[
     "between",
 ];
 
+/// Every operator an assertion may name: those that take a value, then those that take none.
+/// Any other operator is saved as an `eq` whose value is the whole text.
+pub fn assertion_operators() -> impl Iterator<Item = &'static str> {
+    BINARY.iter().chain(UNARY).copied()
+}
+
 /// Compares what a reader sees; where the entry was read from does not matter.
 impl PartialEq for Assertion {
     fn eq(&self, other: &Self) -> bool {

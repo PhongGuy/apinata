@@ -353,6 +353,13 @@ impl TestServer {
             .clone()
     }
 
+    /// The implementation the server named at the handshake, and its instructions.
+    pub fn server_info(&self) -> (rmcp::model::Implementation, Option<String>) {
+        let info = self.client.peer_info().expect("handshake done");
+        let named = info.server_info.clone().expect("server info");
+        (named, info.instructions.clone())
+    }
+
     /// Subscribe to `uri`; `Err` is the JSON-RPC error's text.
     #[allow(deprecated)]
     pub async fn subscribe(&self, uri: &str) -> Result<(), String> {

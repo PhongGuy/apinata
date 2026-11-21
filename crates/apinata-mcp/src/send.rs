@@ -107,11 +107,17 @@ pub(crate) struct BodyDoc {
     pub filter_error: Option<String>,
 }
 
-/// One assertion's verdict: `pass`, `fail` or `skipped`, with why for the last two.
+/// One assertion's verdict: `pass`, `fail` or `skipped`, with why for the last two. It names
+/// the check as written and, on a fail, the left side's actual value.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub(crate) struct AssertionDoc {
     pub expression: String,
+    pub operator: String,
+    /// The expected value as the file writes it; absent for an operator that takes none.
+    pub value: Option<String>,
     pub verdict: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actual: Option<String>,
     pub message: Option<String>,
 }
 
@@ -536,6 +542,10 @@ pub(crate) fn assertion_doc(
     file: &RequestFile,
     ctx: &VarContext,
 ) -> AssertionDoc {
+    let actual = match o.verdict() {
+        Verdict::Fail { actual, .. } => Some(actual.clone()),
+        _ => None,
+    };
     let (verdict, message) = match o.verdict() {
         Verdict::Pass => ("pass", None),
         Verdict::Fail { actual, detail, .. } => {
@@ -563,9 +573,13 @@ pub(crate) fn assertion_doc(
         Verdict::Skipped { reason, .. } => ("skipped", Some(reason.clone())),
         _ => ("skipped", Some("unsupported in MCP".to_owned())),
     };
+    let assertion = o.assertion();
     AssertionDoc {
-        expression: o.assertion().expression().to_owned(),
+        expression: assertion.expression().to_owned(),
+        operator: assertion.operator().to_owned(),
+        value: assertion.value().map(str::to_owned),
         verdict: verdict.to_owned(),
+        actual,
         message,
     }
 }

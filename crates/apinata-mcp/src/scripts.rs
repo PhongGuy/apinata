@@ -4,7 +4,8 @@
 use std::path::{Path, PathBuf};
 
 use apinata_core::{
-    ApprovalInbox, Filing, RequestResult, ScriptDecision, ScriptOptions, ScriptTrust, Verdict,
+    ApprovalInbox, Filing, RequestResult, ScriptDecision, ScriptOptions, ScriptTextKind,
+    ScriptTrust, Verdict,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -38,6 +39,15 @@ fn not_filed(why: &str) -> String {
     format!(
         "scripts need approval but the request could not be filed ({why}); the user can run \
          `apinata trust scripts`. Nothing was sent."
+    )
+}
+
+/// Whether a text of `kind` needs approval before a send. A JavaScript side of an assertion
+/// does not: unless already approved it is reported skipped, as the CLI reports it.
+pub(crate) fn asks_approval(kind: &ScriptTextKind) -> bool {
+    !matches!(
+        kind,
+        ScriptTextKind::AssertionLeft | ScriptTextKind::AssertionRight
     )
 }
 
