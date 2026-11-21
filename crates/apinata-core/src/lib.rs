@@ -252,7 +252,9 @@ pub use jwt::{DecodedJwt, Expiry, JwtError, decode_jwt};
 pub use keychain::KeychainStore;
 pub use kind_convert::{ConversionPreview, ConvertError, KindConversion};
 #[cfg(feature = "keychain")]
-pub use lazy_keychain::{KEYCHAIN_TIMEOUT, LazyKeychain, TimeoutStore};
+pub use lazy_keychain::{
+    KEYCHAIN_TIMEOUT, KeychainUnavailable, LazyKeychain, TimeoutStore, open_keychain,
+};
 pub use list_items::{ItemList, ItemPage, ListItemsError, ListOptions, ListedItem, ListedKind};
 pub use method::{InvalidMethod, normalize_method};
 pub use multipart::{Part, PartValue, file_content_type};
