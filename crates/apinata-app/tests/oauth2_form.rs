@@ -516,3 +516,41 @@ fn an_empty_header_prefix_hints_bearer_and_says_the_token_goes_bare(cx: &mut Tes
     frame(cx, win);
     assert!(!present(cx, win, "oauth2-header-prefix-hint"));
 }
+
+#[gpui_kit::test]
+fn an_unset_token_placement_shows_an_empty_prefix_since_the_token_goes_bare(
+    cx: &mut TestAppContext,
+) {
+    use apinata_app::oauth2_editor::OAuth2Field;
+    http_ready(cx);
+    // No placement in the file: the token is sent bare, so the field must not read "Bearer".
+    let file = format!("{}  auth:\n{BLANK}", request("a", "http://x.test/r"));
+    let col = write_tree(&[("opencollection.yml", ROOT), ("a.yml", &file)]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, view) = editor_for(cx, &ws, &root, "a.yml", false);
+    cx.simulate_window_resize(
+        win,
+        gpui_kit::size(gpui_kit::px(1200.), gpui_kit::px(2400.)),
+    );
+    cx.update_window(win, |_, w, cx| {
+        w.click(("section", Section::Auth as usize), cx);
+        w.render_frame(cx)
+    })
+    .unwrap();
+    frame(cx, win);
+    let prefix = view.read_with(cx, |v, cx| {
+        v.auth()
+            .read(cx)
+            .oauth2()
+            .read(cx)
+            .input(OAuth2Field::HeaderPrefix)
+            .clone()
+    });
+    assert_eq!(prefix.read_with(cx, |i, _| i.value().to_string()), "");
+    assert!(present(cx, win, "oauth2-header-prefix-hint"));
+    // Showing the file wrote nothing back, so the file still has no placement.
+    assert_eq!(
+        std::fs::read_to_string(col.path().join("a.yml")).unwrap(),
+        file
+    );
+}
