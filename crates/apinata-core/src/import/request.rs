@@ -118,6 +118,14 @@ pub fn store_request_secrets(
                 );
             }
             (Ok(_), None) => {}
+            // A note written before claiming renamed the secret is rewritten to name it.
+            (Err(why), Some(at)) if !notes[at].detail.contains(&format!("`{}`", secret.name)) => {
+                notes[at].detail = format!(
+                    "the value is not written to the file; it needs the secret variable `{}` \
+                     ({why})",
+                    secret.name
+                );
+            }
             (Err(why), Some(at)) => notes[at].detail.push_str(&format!(" ({why})")),
             (Err(why), None) => notes.push(ImportNote::new(
                 secret.source.clone(),

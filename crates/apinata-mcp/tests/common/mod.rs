@@ -223,6 +223,11 @@ impl TestServer {
         self.dir.path()
     }
 
+    /// The secret store the server was given.
+    pub fn store(&self) -> &MemoryStore {
+        &self.store
+    }
+
     /// The directory the server keeps its record of trashed items in.
     pub fn trash_log_dir(&self) -> PathBuf {
         self.state.path().join("trash-log")

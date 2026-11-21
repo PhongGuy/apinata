@@ -10,7 +10,7 @@ use reference::update_baseline;
 pub use reference::{RecordedSpec, SpecLocation, can_update, recorded_spec};
 pub(crate) use reference::{record_source, unrecorded_note};
 
-use super::protect::{keep_taken, protect_bundle};
+use super::protect::{held_names, keep_taken, protect_bundle};
 use super::{
     ImportBundle, ImportError, ImportNote, ImportedItem, ImportedRequest, NoteKind, add_request,
 };
@@ -256,7 +256,7 @@ pub fn apply_update(
     o: &UpdateOptions,
     bin: Option<&dyn Trash>,
 ) -> Result<UpdateSummary, ImportError> {
-    let (protected, taken) = protect_bundle(bundle);
+    let (protected, taken) = protect_bundle(bundle, held(c, o));
     let bundle = &protected;
     let Plan {
         mut summary,
@@ -767,6 +767,14 @@ fn predicted_path(
     path.join(&format!("{}.yml", sanitize_name(name)))
 }
 
+/// The secret names `c` already holds, when `o` can read its secrets.
+fn held(c: &Collection, o: &UpdateOptions) -> super::protect::Held {
+    o.secrets
+        .as_deref()
+        .map(|store| held_names(c, store))
+        .unwrap_or_default()
+}
+
 /// The one planner behind `plan_update` and `apply_update`.
 pub(crate) fn plan(
     c: &Collection,
@@ -774,8 +782,9 @@ pub(crate) fn plan(
     o: &UpdateOptions,
 ) -> Result<Plan, ImportError> {
     // Credentials become references named as the import named them, so a protected file
-    // hashes the same as the spec on every update.
-    let (protected, _) = protect_bundle(bundle);
+    // hashes the same as the spec on every update; a name the collection holds for another
+    // value is passed over, the same way each time.
+    let (protected, _) = protect_bundle(bundle, held(c, o));
     let bundle = &protected;
     let mut summary = UpdateSummary::default();
     let mut actions = Vec::new();

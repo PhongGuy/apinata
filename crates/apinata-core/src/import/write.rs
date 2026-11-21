@@ -3,7 +3,7 @@
 //! once the collection exists at its final root.
 
 use super::environment::{store_secrets, write_environment_file};
-use super::protect::{add_to_environments, protect_collection};
+use super::protect::{Held, add_to_environments, protect_collection};
 use super::update::{
     SpecBaseline, file_field_hashes, operation_key, record_source, unrecorded_note,
 };
@@ -54,7 +54,12 @@ pub(crate) fn write_collection_with(
     let declared = envs
         .iter()
         .flat_map(|e| e.variables.iter().map(|v| v.name.clone()));
-    let taken = protect_collection(&mut imported, declared.collect::<Vec<_>>(), true);
+    let taken = protect_collection(
+        &mut imported,
+        declared.collect::<Vec<_>>(),
+        Held::new(),
+        true,
+    );
     add_to_environments(&mut envs, &taken);
     let default_env = !taken.is_empty();
     write_staged(

@@ -26,18 +26,36 @@ pub(crate) struct Found {
 }
 
 /// Picks predictable names `<base>`, `<base>_2`, ... that no taken variable already uses; the
-/// same value under the same base reuses its name.
+/// same value under the same base reuses its name. A held name fits only the value it holds.
 pub(crate) struct SecretNames {
     taken: HashSet<String>,
+    held: Held,
     named: HashMap<(String, String), String>,
 }
 
+/// Names a collection already uses: `Some(value)` for a secret holding `value`, `None` for a
+/// name no new value may take.
+pub(crate) type Held = HashMap<String, Option<String>>;
+
 impl SecretNames {
     pub(crate) fn new(taken: impl IntoIterator<Item = String>) -> SecretNames {
+        SecretNames::holding(taken, Held::new())
+    }
+
+    pub(crate) fn holding(taken: impl IntoIterator<Item = String>, held: Held) -> SecretNames {
         SecretNames {
             taken: taken.into_iter().collect(),
+            held,
             named: HashMap::new(),
         }
+    }
+
+    fn fits(&self, name: &str, value: &str) -> bool {
+        !self.taken.contains(name)
+            && self
+                .held
+                .get(name)
+                .is_none_or(|h| h.as_deref() == Some(value))
     }
 
     fn name_for(&mut self, base: &str, value: &str) -> String {
@@ -50,7 +68,7 @@ impl SecretNames {
                 1 => base.to_owned(),
                 n => format!("{base}_{n}"),
             })
-            .find(|name| !self.taken.contains(name))
+            .find(|name| self.fits(name, value))
             .unwrap_or_else(|| base.to_owned());
         self.taken.insert(name.clone());
         self.named.insert(key, name.clone());
@@ -373,9 +391,11 @@ pub(crate) struct Taken {
 pub(crate) fn protect_collection(
     collection: &mut ImportedCollection,
     taken: impl IntoIterator<Item = String>,
+    held: Held,
     with_root: bool,
 ) -> Vec<Taken> {
-    let mut names = SecretNames::new(taken.into_iter().chain(tree_names(collection)));
+    let taken = taken.into_iter().chain(tree_names(collection));
+    let mut names = SecretNames::holding(taken, held);
     let mut out = Vec::new();
     if with_root {
         let mut found = Vec::new();
@@ -443,15 +463,43 @@ fn record(trail: &str, found: &mut Vec<Found>, notes: &mut Vec<ImportNote>, out:
 /// a first import, from the bundle alone.
 ///
 /// [`write_collection`]: super::write_collection
-pub(crate) fn protect_bundle(bundle: &ImportBundle) -> (ImportBundle, Vec<Taken>) {
+pub(crate) fn protect_bundle(bundle: &ImportBundle, held: Held) -> (ImportBundle, Vec<Taken>) {
     let mut out = bundle.clone();
     let declared: Vec<String> = bundle
         .environments
         .iter()
         .flat_map(|e| e.variables.iter().map(|v| v.name.clone()))
         .collect();
-    let taken = protect_collection(&mut out.collection, declared, true);
+    let taken = protect_collection(&mut out.collection, declared, held, true);
     (out, taken)
+}
+
+/// The names `collection` already uses, read through `store`: a plain or root variable is
+/// never taken, a secret only for the value it holds, and one holding nothing (or that the
+/// store cannot read) is free, so later imports keep reusing it.
+pub(crate) fn held_names(collection: &Collection, store: &dyn SecretStore) -> Held {
+    let mut held = Held::new();
+    for v in collection.file().vars() {
+        held.insert(v.name, None);
+    }
+    for env in collection.environments() {
+        for v in env.variables() {
+            let value = match &v.value {
+                _ if !v.secret => None,
+                VarValue::Text(text) if !text.is_empty() => Some(text.clone()),
+                _ => match store.get(&collection.secret_key(env.name(), &v.name)) {
+                    Ok(Some(stored)) => Some(stored),
+                    _ => continue,
+                },
+            };
+            // Two environments holding different values leave no value that fits both.
+            let entry = held.entry(v.name).or_insert_with(|| value.clone());
+            if *entry != value {
+                *entry = None;
+            }
+        }
+    }
+    held
 }
 
 /// Declare each of `taken` as a secret variable with its value in every one of `envs`, adding
@@ -584,7 +632,12 @@ pub(crate) fn keep_taken(
             };
             let key = collection.secret_key(env, &t.name);
             match store.get(&key) {
-                Ok(Some(_)) => {}
+                Ok(Some(held)) if held == t.value => {}
+                Ok(Some(_)) => needs(
+                    env,
+                    t,
+                    format!("`{}` already holds a different value", t.name),
+                ),
                 Ok(None) => {
                     if let Err(e) = store.set(&key, &t.value) {
                         needs(env, t, e.to_string());

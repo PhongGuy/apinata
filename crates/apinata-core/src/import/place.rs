@@ -9,7 +9,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use super::protect::{keep_taken, protect_collection};
+use super::protect::{Held, keep_taken, protect_collection};
 use super::{ImportBundle, ImportError, ImportReport, record_spec_baseline, write::write_staged};
 use crate::collection::Collection;
 use crate::item_path::ItemPath;
@@ -96,7 +96,7 @@ pub fn place_items(
         .iter()
         .flat_map(|e| e.variables().into_iter().map(|v| v.name))
         .collect::<Vec<_>>();
-    let taken = protect_collection(&mut imported, declared, false);
+    let taken = protect_collection(&mut imported, declared, Held::new(), false);
     let (staged, mut report) =
         write_staged(scratch.path(), &imported, &[], secrets, false, &mut |_| {
             Ok(())

@@ -323,3 +323,120 @@ fn a_curl_url_with_a_password_is_kept_out_of_the_file() {
         Some("curl-q-64")
     );
 }
+
+/// A collection imported from `SPEC_V1`, its values in `store`.
+fn keys_v1(store: &MemoryStore) -> (TempDir, Collection) {
+    let parent = TempDir::new().expect("tempdir");
+    let v1 = openapi(SPEC_V1);
+    let (c, _) =
+        write_collection(parent.path(), &v1.collection, &v1.environments, store).expect("writes");
+    (parent, c)
+}
+
+/// The one variable besides `baseUrl` the request file at `rel` references.
+fn referenced(c: &Collection, rel: &str) -> String {
+    let text = std::fs::read_to_string(c.root().join(rel)).expect("reads");
+    let names: Vec<&str> = text
+        .split("{{")
+        .skip(1)
+        .filter_map(|rest| rest.split_once("}}").map(|(name, _)| name))
+        .filter(|name| *name != "baseUrl")
+        .collect();
+    assert_eq!(names.len(), 1, "{text}");
+    names[0].to_owned()
+}
+
+#[test]
+fn an_update_never_points_a_request_at_a_name_holding_another_value() {
+    // A first, clean update shows which name the new operation's key takes.
+    let clean = MemoryStore::new();
+    let (_p, mut c) = keys_v1(&clean);
+    let mut options = UpdateOptions::default();
+    options.secrets = Some(Arc::new(clean) as Arc<dyn SecretStore>);
+    let added = apply_update(&mut c, &openapi(SPEC_V2), &options, None).expect("applies");
+    let rel = format!("{}", added.added[0]);
+    let name = referenced(&c, &rel);
+
+    // Here the collection already keeps another credential under that name.
+    let store = Arc::new(MemoryStore::new());
+    let (_q, mut c) = keys_v1(store.as_ref());
+    let env = c.environments()[0].name().to_owned();
+    let e = c.environment_mut(&env).expect("env");
+    let mut vars = e.variables();
+    vars.push(apinata_core::EnvVariable::secret(name.clone()));
+    e.set_variables(vars);
+    e.save().expect("saves");
+    store
+        .set(&c.secret_key(&env, &name), "other-60")
+        .expect("sets");
+    options.secrets = Some(Arc::clone(&store) as Arc<dyn SecretStore>);
+    apply_update(&mut c, &openapi(SPEC_V2), &options, None).expect("applies");
+    let c = Collection::open(c.root()).expect("reopens");
+    assert_eq!(stored(&c, &store, &name).as_deref(), Some("other-60"));
+    let used = referenced(&c, &rel);
+    assert_ne!(used, name, "the request must not take over `{name}`");
+    assert_eq!(stored(&c, &store, &used).as_deref(), Some("spec-key-31"));
+    let again = plan_update(&c, &openapi(SPEC_V2), &options).expect("plans");
+    assert!(
+        again.changed.is_empty() && again.added.is_empty(),
+        "{again:?}"
+    );
+}
+
+#[test]
+fn an_update_keeps_a_default_environment_already_chosen() {
+    let store = Arc::new(MemoryStore::new());
+    let (_p, mut c) = keys_v1(store.as_ref());
+    c.create_environment("other", store.as_ref()).expect("env");
+    c.file_mut().set_default_environment("other");
+    c.file_mut().save().expect("saves");
+    let mut options = UpdateOptions::default();
+    options.secrets = Some(Arc::clone(&store) as Arc<dyn SecretStore>);
+    apply_update(&mut c, &openapi(SPEC_V2), &options, None).expect("applies");
+    let c = Collection::open(c.root()).expect("reopens");
+    assert_eq!(
+        c.choose_environment(None),
+        EnvironmentChoice::Preset("other".to_owned())
+    );
+}
+
+/// A store that reads from `MemoryStore` and refuses every write.
+struct ReadOnly<'a>(&'a MemoryStore);
+
+impl SecretStore for ReadOnly<'_> {
+    fn get(
+        &self,
+        key: &apinata_core::SecretKey,
+    ) -> Result<Option<String>, apinata_core::SecretError> {
+        self.0.get(key)
+    }
+    fn set(&self, _: &apinata_core::SecretKey, _: &str) -> Result<(), apinata_core::SecretError> {
+        Err(apinata_core::SecretError::Unavailable {
+            message: "read only".to_owned(),
+        })
+    }
+    fn delete(&self, _: &apinata_core::SecretKey) -> Result<(), apinata_core::SecretError> {
+        Ok(())
+    }
+}
+
+#[test]
+fn a_secret_that_could_not_be_stored_after_a_rename_is_noted_by_its_new_name() {
+    let store = MemoryStore::new();
+    let (_d, mut c) = with_dev(&store);
+    import_curl(&mut c, &store, "A", "curl -u a:first-pw http://h.test/x");
+    let refusing = ReadOnly(&store);
+    let mut parsed = parse_request(None, "curl -u a:other-pw http://h.test/x").expect("parses");
+    claim_secret_names(&c, &mut parsed.request, None, &refusing);
+    let name = parsed.request.secrets[0].name.clone();
+    assert_ne!(name, "h_test_password");
+    add_request(&mut c, &ItemPath::root(), "B", &parsed.request).expect("adds");
+    store_request_secrets(&mut c, &parsed.request, None, &refusing, &mut parsed.notes);
+    let note = parsed
+        .notes
+        .iter()
+        .find(|n| n.detail.contains("read only"))
+        .expect("a note says why");
+    assert!(note.detail.contains(&format!("`{name}`")), "{note:?}");
+    assert!(!note.detail.contains("`h_test_password`"), "{note:?}");
+}
