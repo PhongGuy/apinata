@@ -7,6 +7,7 @@ use regress::Regex;
 
 use super::{CheckOptions, relative};
 use crate::collection::Folder;
+use crate::context::definable_name;
 use crate::document::Document;
 use crate::environment::{EnvValue, resolve_environment};
 use crate::error::{ContextError, HintShell, ResolveError};
@@ -96,9 +97,13 @@ struct Pass<'a> {
     has_secret_placeholder: bool,
 }
 
-/// The names the requests write that no environment declares and nothing defines with none
-/// selected, leaving out those the process environment or a run could still supply.
-pub(crate) fn unset_names(collection: &Collection) -> BTreeSet<String> {
+/// The names the requests `within` accepts (by path relative to the root) write that no
+/// environment declares and nothing defines with none selected, leaving out those the process
+/// environment or a run could still supply and those no variable could hold.
+pub(crate) fn unset_names(
+    collection: &Collection,
+    within: &dyn Fn(&str) -> bool,
+) -> BTreeSet<String> {
     let mut findings = Vec::new();
     let opts = CheckOptions::default().keychain_not_used();
     check_variables(collection, &opts, &[], &mut findings);
@@ -110,8 +115,9 @@ pub(crate) fn unset_names(collection: &Collection) -> BTreeSet<String> {
     findings
         .iter()
         .filter(|f| f.kind() == FindingKind::UndefinedVariable && f.severity() == Severity::Error)
+        .filter(|f| within(f.item()))
         .filter_map(Finding::variable)
-        .filter(|name| !declared.contains(*name))
+        .filter(|name| !declared.contains(*name) && definable_name(name))
         .map(str::to_owned)
         .collect()
 }

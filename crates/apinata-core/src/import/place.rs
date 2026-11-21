@@ -10,7 +10,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use super::protect::{Held, keep_taken, protect_collection};
-use super::{ImportBundle, ImportError, ImportReport, record_spec_baseline, write::write_staged};
+use super::write::{push_unset_note, write_staged};
+use super::{ImportBundle, ImportError, ImportReport, record_spec_baseline};
 use crate::collection::Collection;
 use crate::item_path::ItemPath;
 use crate::secrets::SecretStore;
@@ -149,6 +150,23 @@ pub fn place_items(
         &mut report.notes,
         &mut report.secrets_to_enter,
     );
+    // Judged against the target, whose variables and environments the placed requests now use;
+    // the target's own requests are not this import's concern.
+    let placed: Vec<String> = report
+        .items
+        .iter()
+        .map(|item| format!("{}/{}", folder.as_str(), item.as_str()))
+        .map(|p| p.trim_start_matches('/').to_owned())
+        .collect();
+    let written = |item: &str| {
+        placed.iter().any(|p| {
+            item == p
+                || item
+                    .strip_prefix(p.as_str())
+                    .is_some_and(|r| r.starts_with('/'))
+        })
+    };
+    push_unset_note(collection, &written, &mut report.notes);
     let requests = report
         .items
         .iter()

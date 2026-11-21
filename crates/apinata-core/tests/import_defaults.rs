@@ -2,9 +2,12 @@
 //! value, the environment runs use by default, and hints that paste into a shell.
 
 use crate::import_secrets::import;
-use apinata_core::import::NoteKind;
+use apinata_core::import::{
+    CollectionOptions, NoteKind, parse_collections, parse_postman_environment, write_collection,
+};
 use apinata_core::{
-    ContextOptions, EnvironmentChoice, ResolveError, UndefinedHint, VarContext, resolve,
+    ContextOptions, EnvironmentChoice, MemoryStore, ResolveError, UndefinedHint, VarContext,
+    resolve,
 };
 use serde_json::Value;
 
@@ -49,12 +52,77 @@ fn a_reference_an_environment_defines_needs_no_value() {
         .filter(|n| n.detail.starts_with("needs a value"))
         .map(|n| n.detail.as_str())
         .collect();
-    // `host` comes from the base environment; only the template tag's `now` has no value.
+    // `host` comes from the base environment, and the template tag's own note asks for `now`.
+    assert!(listed.is_empty(), "{listed:?}");
+    assert!(
+        report
+            .notes
+            .iter()
+            .any(|n| n.detail.contains("give `now` a value before sending")),
+        "{:#?}",
+        report.notes
+    );
+}
+
+/// A Postman collection whose one request writes `url`.
+fn postman(url: &str) -> String {
+    serde_json::json!({
+        "info": {
+            "name": "P",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+        },
+        "item": [{"name": "R", "request": {"method": "GET", "url": url}}]
+    })
+    .to_string()
+}
+
+#[test]
+fn an_unknown_dynamic_name_is_not_offered_as_a_collection_variable() {
+    let (_d, _c, report, _s) = import(&postman("{{base}}/{{$notADynamicVariable}}"));
+    let listed: Vec<_> = report
+        .notes
+        .iter()
+        .filter(|n| n.detail.starts_with("needs a value"))
+        .map(|n| n.detail.as_str())
+        .collect();
     assert_eq!(listed.len(), 1, "{listed:?}");
     assert!(
-        listed[0].starts_with("needs a value: `now`;"),
+        listed[0].starts_with("needs a value: `base`;"),
         "{}",
         listed[0]
+    );
+}
+
+#[test]
+fn a_postman_import_with_several_environments_defaults_to_the_first() {
+    let parent = tempfile::TempDir::new().expect("tempdir");
+    let bundles = parse_collections(
+        None,
+        postman("{{base_url}}/x").as_bytes(),
+        &CollectionOptions::default(),
+    )
+    .expect("parses");
+    let envs: Vec<_> = ["postman-env.json", "postman-env-2.json"]
+        .iter()
+        .map(|f| {
+            let path = format!(
+                "{}/tests/fixtures/postman/environments/{f}",
+                env!("CARGO_MANIFEST_DIR")
+            );
+            parse_postman_environment(&std::fs::read(path).expect("fixture")).expect("parses")
+        })
+        .collect();
+    let (c, report) = write_collection(
+        parent.path(),
+        &bundles[0].collection,
+        &envs,
+        &MemoryStore::new(),
+    )
+    .expect("writes");
+    assert_eq!(report.environments, ["Postman Env", "Postman Env Two"]);
+    assert_eq!(
+        c.choose_environment(None),
+        EnvironmentChoice::Preset("Postman Env".into())
     );
 }
 
@@ -116,6 +184,8 @@ fn the_run_error_for_an_unset_reference_points_at_a_collection_variable() {
     );
 }
 
+// The expected text is POSIX quoting; Windows quotes with double quotes instead.
+#[cfg(unix)]
 #[test]
 fn hints_quote_names_a_shell_would_split() {
     let hint = UndefinedHint::DefinedElsewhere {
@@ -141,6 +211,8 @@ fn hints_quote_names_a_shell_would_split() {
     );
 }
 
+// The expected text is POSIX quoting; Windows quotes with double quotes instead.
+#[cfg(unix)]
 #[test]
 fn shell_words_stay_bare_when_safe() {
     assert_eq!(apinata_core::shell_word("dev"), "dev");

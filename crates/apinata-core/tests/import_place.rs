@@ -1,8 +1,11 @@
 //! `ensure_folder` and `place_items`: an import placed into a folder of an existing collection.
 
 use crate::import_update_support::{bundle, ip, spec};
-use apinata_core::import::{ImportError, UpdateOptions, apply_update, ensure_folder, place_items};
-use apinata_core::{Collection, MemoryStore};
+use apinata_core::import::{
+    CollectionOptions, ImportError, NoteKind, UpdateOptions, apply_update, ensure_folder,
+    parse_collections, place_items,
+};
+use apinata_core::{Collection, EnvironmentChoice, MemoryStore};
 use tempfile::TempDir;
 
 fn names(parts: &[&str]) -> Vec<String> {
@@ -92,4 +95,78 @@ fn a_name_already_in_the_folder_is_refused_and_nothing_is_touched() {
     assert!(!people.join("getUser.yml").exists());
     assert!(!c.root().join("Shop/legacy").exists());
     assert!(c.file().spec_baseline_in(&folder).is_none());
+}
+
+/// A Postman bundle whose one request writes `url`.
+fn postman_bundle(url: &str) -> apinata_core::import::ImportBundle {
+    let input = serde_json::json!({
+        "info": {
+            "name": "P",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+        },
+        "item": [{"name": "R", "request": {"method": "GET", "url": url}}]
+    })
+    .to_string();
+    parse_collections(None, input.as_bytes(), &CollectionOptions::default())
+        .expect("parses")
+        .remove(0)
+}
+
+/// The target `c` with an environment `dev` defining `host`, made the default, and a request of
+/// its own outside the import that writes the undefined `theirs`.
+fn target_with_environment() -> (TempDir, Collection) {
+    let (dir, mut c) = fresh();
+    let store = MemoryStore::new();
+    c.create_environment("dev", &store).unwrap();
+    c.set_variable_text("dev", "host", "http://127.0.0.1:1")
+        .unwrap();
+    c.create_environment("prod", &store).unwrap();
+    c.file_mut().set_default_environment("prod");
+    c.file_mut().save().unwrap();
+    std::fs::write(
+        c.root().join("Mine.yml"),
+        "info:\n  name: Mine\n  type: http\nhttp:\n  method: GET\n  url: \"{{theirs}}/x\"\n",
+    )
+    .unwrap();
+    c.reload();
+    (dir, c)
+}
+
+#[test]
+fn a_placed_reference_nothing_in_the_target_defines_needs_a_value() {
+    let (_dir, mut c) = target_with_environment();
+    let folder = ensure_folder(&mut c, &names(&["Shop"])).unwrap();
+    let b = postman_bundle("{{host}}/{{base}}");
+    let placed = place_items(&mut c, &folder, &b, &MemoryStore::new()).unwrap();
+    let listed: Vec<_> = placed
+        .report
+        .notes
+        .iter()
+        .filter(|n| n.kind == NoteKind::NeedsInput && n.detail.starts_with("needs a value"))
+        .map(|n| n.detail.as_str())
+        .collect();
+    // `host` is declared by `dev`, and `theirs` belongs to a request the import did not write.
+    assert_eq!(listed.len(), 1, "{listed:?}");
+    assert!(
+        listed[0].starts_with("needs a value: `base`;"),
+        "{}",
+        listed[0]
+    );
+}
+
+#[test]
+fn a_placed_import_leaves_the_target_default_environment_alone() {
+    let (_dir, mut c) = target_with_environment();
+    let folder = ensure_folder(&mut c, &names(&["Shop"])).unwrap();
+    place_items(
+        &mut c,
+        &folder,
+        &postman_bundle("{{host}}/x"),
+        &MemoryStore::new(),
+    )
+    .unwrap();
+    assert_eq!(
+        c.choose_environment(None),
+        EnvironmentChoice::Preset("prod".into())
+    );
 }

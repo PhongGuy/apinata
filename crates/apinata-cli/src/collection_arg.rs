@@ -15,7 +15,7 @@ pub fn pick(positional: Option<&Path>, flag: Option<&Path>) -> anyhow::Result<Op
             } else {
                 bail!(
                     "the collection is named twice and the two differ: `{}` and `--collection {}`; give it once",
-                    a.display(),
+                    apinata_core::shell_word(&a.to_string_lossy()),
                     apinata_core::shell_word(&b.to_string_lossy())
                 )
             }
@@ -59,4 +59,22 @@ pub fn with_hint<T>(result: anyhow::Result<T>, hint: &str) -> anyhow::Result<T> 
 /// The hint for a command that takes `[COLLECTION]` or `--collection <DIR>`.
 pub fn optional_hint(usage: &str) -> String {
     format!("pass the collection as `{usage}` or `--collection <DIR>`")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pick;
+    use apinata_core::shell_word;
+    use std::path::Path;
+
+    #[test]
+    fn a_conflict_quotes_both_spellings_alike() {
+        let err = pick(Some(Path::new("no such dir")), Some(Path::new("other dir"))).unwrap_err();
+        let want = format!(
+            "`{}` and `--collection {}`",
+            shell_word("no such dir"),
+            shell_word("other dir")
+        );
+        assert!(err.to_string().contains(&want), "{err}");
+    }
 }
