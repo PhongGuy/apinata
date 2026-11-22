@@ -269,6 +269,8 @@ pub struct Sidebar {
     prior_example: Option<(PathBuf, ItemPath, usize)>,
     // The active request tab the selection last followed; see `rebuild`.
     followed: Option<TabId>,
+    // A root just revealed; the next rebuild keeps it at the list top while following its tab.
+    revealed: Option<PathBuf>,
     pending_focus: Option<PendingFocus>,
     // The folder or root row under the pointer. Layout cannot follow a CSS-like group hover, so a
     // floating run slot learns of it from here and makes room for itself; see `RunSlot`.
@@ -413,6 +415,7 @@ impl Sidebar {
             handed_off: None,
             prior_example: None,
             followed: None,
+            revealed: None,
             pending_focus: None,
             hovered: None,
             menu_target: None,
@@ -2443,13 +2446,22 @@ impl Sidebar {
         }
         // A row the filter hides, or a snapshot not loaded yet, leaves the follow for a later
         // rebuild. Selecting and scrolling never move focus.
+        let revealed = self.revealed.take();
         if let Some((tab, root, item)) = follow
             && let Some(id) = self.find(&root, &item).map(|n| n.id.clone())
         {
             self.select(&id, cx);
+            // Following a just revealed collection's tab keeps its root at the top, as revealed.
+            let (target, strategy) = match revealed.filter(|r| *r == root) {
+                Some(_) => (
+                    self.find(&root, &ItemPath::root()).map(|n| n.id.clone()),
+                    ScrollStrategy::Top,
+                ),
+                None => (Some(id), ScrollStrategy::Nearest),
+            };
             self.tree.update(cx, |t, _| {
-                if let Some(ix) = t.index_of(&id) {
-                    t.scroll_to_item(ix, ScrollStrategy::Nearest);
+                if let Some(ix) = target.and_then(|id| t.index_of(&id)) {
+                    t.scroll_to_item(ix, strategy);
                 }
             });
             self.lost_selection = None;
@@ -2637,6 +2649,7 @@ impl Sidebar {
             return;
         };
         self.select(&id, cx);
+        self.revealed = Some(root.to_path_buf());
         // The root goes to the top, not just into view, so the collection's requests show below it.
         self.tree.update(cx, |t, _| {
             if let Some(ix) = t.index_of(&id) {

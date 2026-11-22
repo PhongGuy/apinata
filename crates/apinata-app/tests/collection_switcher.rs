@@ -253,7 +253,8 @@ fn an_open_row_reveals_its_root_in_the_sidebar(cx: &mut TestAppContext) {
     let selected = s
         .shell
         .read_with(cx, |v, cx| v.sidebar().read(cx).selected(cx));
-    assert_eq!(selected, Some((root, ItemPath::root())));
+    // Its first request opens, so the sidebar selects that row inside the revealed root.
+    assert_eq!(selected, Some((root, ip("a.yml"))));
     assert!(
         !present(cx, s.win, ("switch-open", 0usize)),
         "the popover closed"

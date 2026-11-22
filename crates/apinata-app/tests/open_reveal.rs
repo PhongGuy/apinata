@@ -64,7 +64,7 @@ fn two_long(cx: &mut TestAppContext) -> (tempfile::TempDir, tempfile::TempDir, S
 }
 
 #[gpui_kit::test]
-fn a_dropped_collection_becomes_current_and_scrolls_to_the_top(cx: &mut TestAppContext) {
+fn a_dropped_collection_opens_its_first_request_and_scrolls_to_the_top(cx: &mut TestAppContext) {
     let (_a, _b, s) = two_long(cx);
     let c = long_collection(40);
     drop_folder(cx, s.win, c.path());
@@ -76,7 +76,8 @@ fn a_dropped_collection_becomes_current_and_scrolls_to_the_top(cx: &mut TestAppC
         Some(&root),
         "the new collection is current"
     );
-    assert_eq!(selected(cx, &s), Some((root.clone(), ItemPath::root())));
+    // The sidebar follows the opened request, just under the root row.
+    assert_eq!(selected(cx, &s), Some((root.clone(), ip("r00.yml"))));
     let row = root_row(cx, &s, &root);
     assert!(
         at_list_top(cx, s.win, row),
