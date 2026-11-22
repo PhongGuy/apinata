@@ -225,7 +225,7 @@ fn a_new_row_query_never_shows_the_old_count(cx: &mut TestAppContext) {
             })
         })
         .unwrap();
-    assert_eq!(pending, "No matches");
+    assert_eq!(pending, "Searching…");
     cx.run_until_parked();
     assert_eq!(label(cx, &view), "No matches");
 }
@@ -498,9 +498,9 @@ fn a_typed_row_query_counts_after_the_settle_delay(cx: &mut TestAppContext) {
     assert_eq!(view.read_with(cx, |v, _| v.shown()), Shown::Lines(30_000));
     open_find(cx, win, &view);
     type_text(cx, win, "needle");
-    assert_eq!(label(cx, &view), "No matches", "no count before the delay");
+    assert_eq!(label(cx, &view), "Searching…", "no count before the delay");
     wait(cx, SETTLE - Duration::from_millis(1));
-    assert_eq!(label(cx, &view), "No matches", "one millisecond early");
+    assert_eq!(label(cx, &view), "Searching…", "one millisecond early");
     wait(cx, Duration::from_millis(1));
     assert_eq!(label(cx, &view), "1 of 2");
 }
@@ -518,9 +518,33 @@ fn a_typed_row_query_never_shows_the_old_count(cx: &mut TestAppContext) {
     wait(cx, SETTLE);
     assert_eq!(label(cx, &view), "1 of 11111");
     type_text(cx, win, "9");
-    assert_eq!(label(cx, &view), "No matches", "the old count goes at once");
+    assert_eq!(label(cx, &view), "Searching…", "the old count goes at once");
     wait(cx, SETTLE);
     assert_eq!(label(cx, &view), "1 of 1111");
+}
+
+// A row scan runs off the UI thread; until it lands the bar says it is searching, and
+// "No matches" appears only once a finished scan found nothing.
+#[gpui_kit::test]
+fn a_row_scan_says_searching_until_it_lands(cx: &mut TestAppContext) {
+    let (win, view) = host_with(
+        cx,
+        ResponseTemplate::new(200).set_body_string(two_needles()),
+    );
+    open_find(cx, win, &view);
+    for (q, done) in [("needle", "1 of 2"), ("zzz", "No matches")] {
+        let pending = cx
+            .update_window(win, |_, w, cx| {
+                view.update(cx, |v, cx| {
+                    v.set_find_query(q, w, cx);
+                    v.find_label(cx)
+                })
+            })
+            .unwrap();
+        assert_eq!(pending, "Searching…", "{q} in flight");
+        cx.run_until_parked();
+        assert_eq!(label(cx, &view), done, "{q} landed");
+    }
 }
 
 #[gpui_kit::test]
@@ -549,7 +573,7 @@ fn enter_while_a_row_query_waits_steps_nothing(cx: &mut TestAppContext) {
     open_find(cx, win, &view);
     type_text(cx, win, "needle");
     cx.simulate_keystrokes(win, "enter");
-    assert_eq!(label(cx, &view), "No matches");
+    assert_eq!(label(cx, &view), "Searching…");
     wait(cx, SETTLE);
     assert_eq!(
         label(cx, &view),
@@ -575,7 +599,7 @@ fn typing_voids_a_row_scan_in_flight(cx: &mut TestAppContext) {
     .unwrap();
     cx.update_window(win, |_, w, cx| w.input("9", cx)).unwrap();
     while cx.executor().tick() {
-        assert_eq!(label(cx, &view), "No matches", "the old scan landed");
+        assert_eq!(label(cx, &view), "Searching…", "the old scan landed");
     }
     wait(cx, SETTLE);
     assert_eq!(label(cx, &view), "1 of 1111");

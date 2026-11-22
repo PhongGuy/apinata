@@ -346,6 +346,28 @@ fn focus_field(cx: &mut TestAppContext, win: AnyWindowHandle, view: &Entity<Body
         .unwrap();
 }
 
+// A pattern scan of the editor's text runs off the UI thread, so the bar says it is
+// searching until the scan lands, then gives the count or "No matches".
+#[gpui_kit::test]
+fn a_pattern_scan_says_searching_until_it_lands(cx: &mut TestAppContext) {
+    let (win, view) = body(cx, XS);
+    view.update(cx, |v, cx| v.set_find_regex(true, cx));
+    for (q, done) in [("x+", "1 of 3"), ("q+", "No matches")] {
+        let pending = cx
+            .update_window(win, |_, w, cx| {
+                view.update(cx, |v, cx| {
+                    v.open_find(w, cx);
+                    v.set_find_query(q, w, cx);
+                    v.find_label(cx)
+                })
+            })
+            .unwrap();
+        assert_eq!(pending, "Searching…", "{q} in flight");
+        cx.run_until_parked();
+        assert_eq!(label(cx, &view), done, "{q} landed");
+    }
+}
+
 // A pattern typed into the field scans nothing on the keystroke itself: the count waits for
 // the typing to pause, and the scan then lands off the UI thread.
 #[gpui_kit::test]
@@ -357,10 +379,10 @@ fn a_typed_pattern_waits_for_a_pause_before_it_scans(cx: &mut TestAppContext) {
     let scans = view.read_with(cx, |v, _| v.editor_find_scans());
     cx.update_window(win, |_, w, cx| w.input("x+", cx)).unwrap();
     cx.run_until_parked();
-    assert_eq!(label(cx, &view), "No matches", "no count before the pause");
+    assert_eq!(label(cx, &view), "Searching…", "no count before the pause");
     assert_eq!(view.read_with(cx, |v, _| v.editor_find_scans()), scans);
     wait(cx, SETTLE - Duration::from_millis(1));
-    assert_eq!(label(cx, &view), "No matches", "one millisecond early");
+    assert_eq!(label(cx, &view), "Searching…", "one millisecond early");
     wait(cx, Duration::from_millis(1));
     assert_eq!(label(cx, &view), "1 of 3");
     assert_eq!(marked(cx, &view), ["x", "X", "xx"]);
