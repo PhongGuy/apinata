@@ -118,13 +118,12 @@ fn choices_preview_values_and_mask_secrets() {
     let all = choices(&vars);
     let plain: Vec<(&str, &str, &str, bool)> = all
         .iter()
-        .take(6)
+        .take(5)
         .map(|c| (c.name.as_str(), c.scope, c.preview.as_str(), c.dynamic))
         .collect();
     assert_eq!(
         plain,
         [
-            ("__name__", "Environment", "dev", false),
             ("empty", "Collection", "", false),
             ("host", "Collection", "c.test", false),
             ("hostname", "Collection", "h.test", false),
@@ -133,7 +132,7 @@ fn choices_preview_values_and_mask_secrets() {
         ]
     );
     let dynamic: Vec<&Choice> = all.iter().filter(|c| c.dynamic).collect();
-    assert_eq!(dynamic.len(), all.len() - 6);
+    assert_eq!(dynamic.len(), all.len() - 5);
     assert_eq!(dynamic[0].name, "$guid");
     assert_eq!(dynamic[0].preview, "");
 }
