@@ -316,3 +316,55 @@ fn json_layout_keeps_duplicate_keys_and_exponent_numbers() {
         BodySpec::Json("{\n  \"a\": 1e3,\n  \"a\": 2\n}".into())
     );
 }
+
+// What a paste keeps: a Content-Type that only restates the body mode goes, anything else stays.
+fn pasted_headers(command: &str) -> Vec<(String, String)> {
+    let mut request = parse(command).request;
+    request.drop_restated_content_type();
+    request
+        .headers
+        .into_iter()
+        .map(|h| (h.name, h.value))
+        .collect()
+}
+
+#[test]
+fn a_paste_drops_a_content_type_that_restates_the_body_mode() {
+    let json =
+        pasted_headers(r#"curl -H 'Content-Type: application/json' -d '{"a":1}' https://x.test"#);
+    assert_eq!(json, []);
+    let form = pasted_headers(
+        "curl -H 'content-type: application/x-www-form-urlencoded' -d 'a=1' -H 'X-A: 1' https://x.test",
+    );
+    assert_eq!(form, [("X-A".to_owned(), "1".to_owned())]);
+    let flag = pasted_headers(r#"curl --json '{"a":1}' https://x.test"#);
+    assert_eq!(flag, [("Accept".to_owned(), "application/json".to_owned())]);
+}
+
+#[test]
+fn a_paste_keeps_a_content_type_that_says_more_than_the_body_mode() {
+    let charset = "application/json; charset=UTF-8";
+    let kept = pasted_headers(&format!(
+        r#"curl -H 'Content-Type: {charset}' -d '{{"a":1}}' https://x.test"#
+    ));
+    assert_eq!(kept, [("Content-Type".to_owned(), charset.to_owned())]);
+    let vendor = pasted_headers(
+        r#"curl -H 'Content-Type: application/vnd.x+json' -d '{"a":1}' https://x.test"#,
+    );
+    assert_eq!(
+        vendor,
+        [(
+            "Content-Type".to_owned(),
+            "application/vnd.x+json".to_owned()
+        )]
+    );
+    // Raw text under a form type is sent as written, so the type is what the server sees.
+    let raw = pasted_headers("curl -d 'not pairs' https://x.test");
+    assert_eq!(
+        raw,
+        [(
+            "Content-Type".to_owned(),
+            "application/x-www-form-urlencoded".to_owned()
+        )]
+    );
+}

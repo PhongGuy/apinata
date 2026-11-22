@@ -3,7 +3,7 @@
 use super::protect::rename_reference;
 use super::{ImportError, ImportNote, ImportedRequest, ImportedScripts, NoteKind};
 use crate::collection::Collection;
-use crate::edit::{AuthSpec, BodySpec};
+use crate::edit::{AuthSpec, BodySpec, KeyValue};
 use crate::env_file::EnvVariable;
 use crate::error::{EditError, TreeError};
 use crate::item_path::ItemPath;
@@ -280,6 +280,18 @@ impl ImportedRequest {
             super::update::write_examples(file, self)?;
         }
         Ok(notes)
+    }
+
+    /// Removes the Content-Type headers when each one only names the type the body mode
+    /// sends anyway, so a later change of body mode is not overridden by a leftover header.
+    pub fn drop_restated_content_type(&mut self) {
+        let is_type = |h: &KeyValue| h.name.eq_ignore_ascii_case("content-type");
+        let restated = |h: &KeyValue| {
+            !is_type(h) || crate::content_type_conflict::restates_body_type(&h.value, &self.body)
+        };
+        if self.headers.iter().any(is_type) && self.headers.iter().all(restated) {
+            self.headers.retain(|h| !is_type(h));
+        }
     }
 
     /// This request as a GraphQL request when its body is a GraphQL query: a JSON `query` and

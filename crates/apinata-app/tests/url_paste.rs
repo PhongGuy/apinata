@@ -421,3 +421,17 @@ fn a_late_secret_reply_does_not_replace_a_newer_paste(cx: &mut TestAppContext) {
     paste_twice_at_once(cx, &e, Some("curl https://y.test/z"));
     assert!(pasted(cx, &e).is_none(), "{:?}", pasted(cx, &e));
 }
+
+#[gpui_kit::test]
+fn a_pasted_content_type_that_restates_the_body_mode_is_dropped(cx: &mut TestAppContext) {
+    let e = editor(cx);
+    paste(
+        cx,
+        &e,
+        r#"curl https://x.test/p -H 'Content-Type: application/json' -H 'X-A: 1' -d '{"a":1}'"#,
+    );
+    let view = view_of(cx, &e.ws, &e.root, "a.yml");
+    let names: Vec<&str> = view.headers.iter().map(|h| h.name.as_str()).collect();
+    assert_eq!(names, ["X-A"]);
+    assert!(matches!(view.body, apinata_core::BodySpec::Json(_)));
+}
