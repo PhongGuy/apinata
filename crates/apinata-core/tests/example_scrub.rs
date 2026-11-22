@@ -171,3 +171,77 @@ fn has_example_matches_a_name_trimmed_as_core_trims_it() {
     assert!(request.has_example("\u{feff}one "));
     assert!(!request.has_example("two"));
 }
+
+fn has_length(example: &ExampleResponse) -> bool {
+    (example.headers.iter()).any(|(n, _)| n.eq_ignore_ascii_case("content-length"))
+}
+
+#[test]
+fn a_reindented_body_drops_only_the_stale_content_length() {
+    let compact = "{\"a\":1}";
+    let example = ExampleResponse::from_response(
+        &Response::new(200)
+            .with_header("Content-Type", "application/json")
+            .with_header("Content-Length", compact.len().to_string())
+            .with_text_body(compact),
+    );
+    assert_eq!(example.body.as_ref().unwrap().data, "{\n  \"a\": 1\n}");
+    assert_eq!(
+        example.headers,
+        [("content-type".to_owned(), "application/json".to_owned())]
+    );
+}
+
+#[test]
+fn a_body_saved_as_received_keeps_its_content_length() {
+    let text = ExampleResponse::from_response(
+        &Response::new(200)
+            .with_header("content-type", "text/plain")
+            .with_header("content-length", "5")
+            .with_text_body("hello"),
+    );
+    assert!(has_length(&text));
+    let json = ExampleResponse::from_response(
+        &Response::new(200)
+            .with_header("content-type", "application/json")
+            .with_header("content-length", "12")
+            .with_text_body("{\n  \"a\": 1\n}"),
+    );
+    assert!(has_length(&json), "already laid out as saved");
+    let binary = ExampleResponse::from_response(
+        &Response::new(200)
+            .with_header("content-type", "image/png")
+            .with_header("content-length", "3")
+            .with_body(vec![0x89, 0x50, 0xff], ""),
+    );
+    assert!(has_length(&binary), "base64 decodes to the received bytes");
+}
+
+#[test]
+fn a_scrub_that_changes_the_body_drops_the_content_length() {
+    let body = format!("token={TOKEN}");
+    let response = |body: &str| {
+        Response::new(200)
+            .with_header("content-type", "text/plain")
+            .with_header("content-length", body.len().to_string())
+            .with_text_body(body.to_owned())
+    };
+    let mut replaced = ExampleResponse::from_response(&response(&body));
+    replaced.scrub(Some(&derived_secrets(&[TOKEN.to_owned()])));
+    assert!(!has_length(&replaced), "a placeholder changes the length");
+    let mut clean = ExampleResponse::from_response(&response("nothing here"));
+    clean.scrub(Some(&derived_secrets(&[TOKEN.to_owned()])));
+    assert!(has_length(&clean));
+    let mut withheld = ExampleResponse::from_response(
+        &Response::new(200)
+            .with_header("content-type", "application/octet-stream")
+            .with_header("content-length", TOKEN.len().to_string())
+            .with_body(TOKEN.as_bytes().to_vec(), ""),
+    );
+    assert!(
+        withheld
+            .scrub(Some(&derived_secrets(&[TOKEN.to_owned()])))
+            .withheld
+    );
+    assert!(!has_length(&withheld), "no body is left to measure");
+}

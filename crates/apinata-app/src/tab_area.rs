@@ -1336,7 +1336,7 @@ impl TabArea {
         let names: Vec<String> = view.examples.iter().map(|e| e.name.clone()).collect();
         let derived = response.derived_credentials().to_vec();
         let response = save_example::example_response(response);
-        let initial = save_example::initial_name(&names);
+        let initial = save_example::initial_name(&response, &names);
         save_example::save_as_example(
             &self.workspace,
             &entry,

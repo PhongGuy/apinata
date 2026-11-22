@@ -45,16 +45,22 @@ pub const MOCK_NOTE: &str = "The mock server answers with saved examples.";
 /// The `dismissed_tips` id of the commit note, stored once the user ticks "Don't show again".
 pub const NOTE_TIP: &str = "example-commit-note";
 
-/// `example`, else the first free `example (n)` from 1 up, against the request's example names.
+/// The response's status and reason, such as `200 OK`, else the first free `200 OK (n)` from
+/// 1 up, against the request's example names.
 // The candidate sequence never ends, so `find` returns only once a name is free.
 #[allow(clippy::expect_used)]
-pub fn initial_name(existing: &[String]) -> String {
+pub fn initial_name(response: &ExampleResponse, existing: &[String]) -> String {
+    let base = match (response.status, response.status_text.as_deref()) {
+        (Some(status), Some(text)) => format!("{status} {text}"),
+        (Some(status), None) => status.to_string(),
+        (None, _) => "example".to_owned(),
+    };
     let taken = |name: &str| existing.iter().any(|e| e == name);
-    if !taken("example") {
-        return "example".into();
+    if !taken(&base) {
+        return base;
     }
     (1..)
-        .map(|n| format!("example ({n})"))
+        .map(|n| format!("{base} ({n})"))
         .find(|name| !taken(name))
         .expect("an unbounded range finds a free name")
 }

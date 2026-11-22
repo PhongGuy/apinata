@@ -2,7 +2,8 @@ use crate::support;
 
 use apinata_app::send_model::SendState;
 use apinata_app::tabs::{TabKind, Tabs};
-use gpui_kit::TestAppContext;
+use gpui_kit::test::TestWindowExt as _;
+use gpui_kit::{AppContext as _, TestAppContext};
 use std::path::Path;
 use support::*;
 
@@ -115,6 +116,37 @@ fn an_example_opens_read_only_and_follows_a_delete(cx: &mut TestAppContext) {
     });
     frame(cx, s.win);
     assert!(s.ws.read_with(cx, |w, _| w.tabs().entries().is_empty()));
+}
+
+#[gpui_kit::test]
+fn each_request_table_has_a_heading_like_the_body(cx: &mut TestAppContext) {
+    let users = USERS.replace(
+        "      headers:\n",
+        "      params:\n        - name: id\n          value: \"7\"\n          type: path\n      headers:\n",
+    );
+    let col = write_tree(&[("opencollection.yml", ROOT), ("users.yml", &users)]);
+    let s = started(cx, &col);
+    s.ws.update(cx, |w, cx| {
+        w.open_example(&s.root, ip("users.yml"), 1, false, cx)
+    })
+    .expect("an example tab");
+    frame(cx, s.win);
+    // Each heading opens its part of the request: the first thing in its table's block, and
+    // directly above the body text.
+    cx.update_window(s.win, |_, w, cx| {
+        w.render_frame(cx);
+        for (block, heading) in [
+            ("example-params", "example-params-heading"),
+            ("example-headers", "example-headers-heading"),
+        ] {
+            let top = w.find(block).bounds().top();
+            let title = w.within(block).find(heading).bounds();
+            assert_eq!(title.top(), top, "{heading} leads {block}");
+        }
+        let title = w.find("example-body-heading").bounds();
+        assert!(title.bottom() <= w.find("example-body").bounds().top());
+    })
+    .unwrap();
 }
 
 #[gpui_kit::test]
