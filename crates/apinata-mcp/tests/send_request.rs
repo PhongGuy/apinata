@@ -239,6 +239,12 @@ async fn a_zstd_reply_comes_back_decoded() {
     let server = start(&get(&format!("{}/zst", mock.uri()), "")).await;
     let result = server.ok("send_request", json!({"path": "r.yml"})).await;
     assert_eq!(result["body"]["text"], "hello zstd");
+    // The headers are the ones the server sent, as the app and scripts see them.
+    assert_eq!(
+        header(&result["response_headers"], "content-encoding"),
+        "zstd"
+    );
+    assert_eq!(header(&result["response_headers"], "content-length"), "23");
 }
 
 #[tokio::test]

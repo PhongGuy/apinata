@@ -376,6 +376,7 @@ dependencies = [
  "apollo-compiler",
  "apollo-parser",
  "apple-native-keyring-store",
+ "async-compression",
  "aws-credential-types",
  "aws-lc-rs",
  "aws-sigv4",

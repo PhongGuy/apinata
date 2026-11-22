@@ -245,3 +245,28 @@ fn a_scrub_that_changes_the_body_drops_the_content_length() {
     );
     assert!(!has_length(&withheld), "no body is left to measure");
 }
+
+#[test]
+fn a_decoded_body_drops_the_wire_coding_and_length() {
+    let decoded = ExampleResponse::from_response(
+        &Response::new(200)
+            .with_header("content-type", "text/plain")
+            .with_header("content-encoding", "gzip")
+            .with_header("content-length", "25")
+            .with_text_body("hello")
+            .with_encoded_size(25),
+    );
+    assert_eq!(
+        decoded.headers,
+        [("content-type".to_owned(), "text/plain".to_owned())]
+    );
+    // Kept as sent, the coded bytes are what the example saves, so their headers stay true.
+    let raw = ExampleResponse::from_response(
+        &Response::new(200)
+            .with_header("content-type", "application/octet-stream")
+            .with_header("content-encoding", "gzip")
+            .with_header("content-length", "3")
+            .with_body(vec![0x1f, 0x8b, 0x08], ""),
+    );
+    assert_eq!(raw.headers.len(), 3, "{:?}", raw.headers);
+}

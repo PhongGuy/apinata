@@ -766,3 +766,23 @@ fn the_required_timings_are_not_negative_and_sum_to_the_time() {
         .sum();
     assert_eq!(sum, e["time"].as_f64().unwrap());
 }
+
+#[test]
+fn a_decoded_body_reports_its_wire_size_and_the_bytes_compression_saved() {
+    let res = Response::new(200)
+        .with_header("content-type", "text/plain")
+        .with_header("content-encoding", "gzip")
+        .with_text_body("x".repeat(1000))
+        .with_encoded_size(35);
+    let x = HarExchange::from_response(&res, SystemTime::now());
+    assert_eq!(x.encoded_size, Some(35));
+    let doc = parsed(&x);
+    assert_har_12(&doc);
+    let response = &doc["log"]["entries"][0]["response"];
+    assert_eq!(response["bodySize"], 35);
+    assert_eq!(response["content"]["size"], 1000);
+    assert_eq!(response["content"]["compression"], 965);
+    // A body sent as is saved nothing, so HAR's optional member is left out.
+    let plain = &parsed(&exchange())["log"]["entries"][0]["response"];
+    assert!(plain["content"].get("compression").is_none(), "{plain}");
+}

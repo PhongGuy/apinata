@@ -110,3 +110,47 @@ fn a_truncated_body_skips_body_assertions_but_not_status_or_headers() {
         ]
     );
 }
+
+#[test]
+fn a_decoded_response_hides_its_coding_from_assertions_but_keeps_the_length() {
+    let req = concat!(
+        "info:\n  name: r\n  type: http\nhttp:\n  method: GET\n  url: https://x.test\n",
+        "runtime:\n  assertions:\n",
+        "    - expression: res.headers['content-encoding']\n      operator: isUndefined\n",
+        "    - expression: res.headers['content-length']\n      operator: eq\n      value: \"'25'\"\n",
+    );
+    let dir = write_tree(&[
+        (
+            "opencollection.yml",
+            "opencollection: \"1.0.0\"\ninfo:\n  name: t\n",
+        ),
+        ("r.yml", req),
+    ]);
+    let c = Collection::open(dir.path()).expect("opens");
+    let ctx = VarContext::new(&c, ContextOptions::new()).expect("context");
+    let decoded = Response::new(200)
+        .with_header("content-encoding", "gzip")
+        .with_header("content-length", "25")
+        .with_text_body("hello")
+        .with_encoded_size(25);
+    let passed = |res: &Response| {
+        evaluate(request(&c, "r.yml"), res, &ctx)
+            .iter()
+            .map(|o| matches!(o.verdict(), Verdict::Pass))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(passed(&decoded), [true, true]);
+    // The response itself still carries the header, as the response pane shows it.
+    assert!(
+        decoded
+            .headers()
+            .iter()
+            .any(|(n, _)| n == "content-encoding")
+    );
+    // A body kept as sent is still coded, so its coding stays in view.
+    let raw = Response::new(200)
+        .with_header("content-encoding", "gzip")
+        .with_header("content-length", "25")
+        .with_body(vec![0x1f, 0x8b], "");
+    assert_eq!(passed(&raw), [false, true]);
+}

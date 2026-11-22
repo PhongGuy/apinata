@@ -223,6 +223,9 @@ struct Entry {
     headers: Vec<(String, String)>,
     time_ms: f64,
     size: u64,
+    // The compressed body's wire size; a plain body, or a file written before it, has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    encoded_size: Option<u64>,
     truncated: bool,
     body_dropped: bool,
     text: String,
@@ -1324,6 +1327,7 @@ impl Entry {
             headers,
             time_ms: response.response_time().as_secs_f64() * 1000.0,
             size: response.size(),
+            encoded_size: response.encoded_size(),
             truncated: response.truncated(),
             body_dropped,
             text,
@@ -1387,6 +1391,9 @@ impl Entry {
         } else {
             response.with_size(self.size)
         };
+        if let Some(encoded) = self.encoded_size {
+            response = response.with_encoded_size(encoded);
+        }
         // A hand-edited or odd time reads as zero rather than panicking in from_secs_f64.
         let secs = self.time_ms / 1000.0;
         let time = Duration::try_from_secs_f64(secs).unwrap_or_default();

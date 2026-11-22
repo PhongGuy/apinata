@@ -55,8 +55,7 @@ pub(crate) fn defaults_without(omitted: &[String]) -> HeaderMap {
     }
     let accept = if skip("Accept") { "*/*" } else { ACCEPT_VALUE };
     defaults.insert(ACCEPT, HeaderValue::from_static(accept));
-    // An omitted Accept-Encoding also needs the client's decompression off (see `ClientKey`),
-    // because that layer adds the header itself when the request has none.
+    // The client's own decoders are off, so an omitted Accept-Encoding goes out as no header.
     if !skip("Accept-Encoding") {
         defaults.insert(
             ACCEPT_ENCODING,

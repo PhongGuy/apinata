@@ -59,6 +59,9 @@ encoding_rs = "0.8"
 mime = "0.3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tokio-util = "=0.7.20"
+bytes = "=1.12.1"
+# Decodes response bodies in core, so the headers the server sent survive.
+async-compression = { version = "=0.4.50", default-features = false, features = ["tokio", "gzip", "zlib", "deflate", "brotli", "zstd"] }
 tokio-tungstenite = { version = "=0.30.0", default-features = false }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 rquickjs = { version = "=0.14.0", default-features = false, features = ["std", "futures", "parallel"] }

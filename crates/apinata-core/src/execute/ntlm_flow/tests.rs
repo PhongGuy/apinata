@@ -43,7 +43,6 @@ fn key() -> ClientKey {
     ClientKey {
         rule: ProxyRule::Direct,
         identity: None,
-        compress: true,
         overrides: Default::default(),
         http1_only: false,
     }

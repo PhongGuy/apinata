@@ -52,8 +52,10 @@ use crate::wsse;
 
 mod deadline;
 mod ntlm_flow;
+mod wire_body;
 
 use deadline::Deadline;
+use wire_body::{BodyError, WireBody};
 
 /// How the executor's HTTP client is built.
 #[derive(Clone, Default)]
@@ -704,10 +706,13 @@ impl Executor {
     fn base_builder(&self, key: &ClientKey) -> Result<reqwest::ClientBuilder, ExecError> {
         let mut builder = Client::builder()
             .redirect(Policy::none())
-            .tls_danger_accept_invalid_certs(self.insecure);
-        if !key.compress {
-            builder = builder.no_gzip().no_deflate().no_brotli().no_zstd();
-        }
+            .tls_danger_accept_invalid_certs(self.insecure)
+            // Bodies are decoded in `wire_body`, since the stack's decoder drops the headers
+            // that describe the wire; off, it also adds no Accept-Encoding of its own.
+            .no_gzip()
+            .no_deflate()
+            .no_brotli()
+            .no_zstd();
         let mut resolver: Arc<dyn Resolve> = match &self.host_policy {
             Some(policy) => Arc::new(Guard {
                 policy: Arc::clone(policy),
@@ -1195,10 +1200,11 @@ impl Executor {
         };
         // One client per concrete rule: outside PAC it re-routes every hop itself; under PAC a hop
         // the script sends elsewhere swaps in that rule's client, so pools never cross proxies.
+        // A request that omits Accept-Encoding asked for no coding, so its body is kept as sent.
+        let decode_coding = !omits(req.omitted_headers(), "Accept-Encoding");
         let mut key = ClientKey {
             rule: hop_rule,
             identity,
-            compress: !omits(req.omitted_headers(), "Accept-Encoding"),
             overrides: Arc::clone(&overrides),
             http1_only: subscription.is_some(),
         };
@@ -1258,6 +1264,13 @@ impl Executor {
             }
             let transport =
                 |e: reqwest::Error| classify(&url, proxy.as_ref(), followed as usize, e);
+            let body_fail = |e: BodyError| match e {
+                BodyError::Wire(e) => transport(e),
+                BodyError::Decode(e) => ExecError::transport(
+                    redact_url(url.as_str()),
+                    format!("could not decode the response body: {e}"),
+                ),
+            };
             // When the jar has cookies for this hop, the first hop merges them into the own Cookie
             // headers as one header in the first one's place, the jar winning; a redirect hop sends
             // the jar's alone. A hop the jar has nothing for keeps the own headers intact.
@@ -1541,22 +1554,23 @@ impl Executor {
                             redact_url(&String::from_utf8_lossy(location.as_bytes()))
                         ));
                     }
-                    let (bytes, size, truncated) = leg
-                        .run(read_body(res, self.max_body_bytes))
+                    let read = leg
+                        .run(read_body(
+                            WireBody::new(res, decode_coding),
+                            self.max_body_bytes,
+                        ))
                         .await
                         .ok_or_else(timed_out)?
-                        .map_err(transport)?;
+                        .map_err(body_fail)?;
                     BodyRead {
-                        bytes,
-                        size,
-                        truncated,
                         end: Some(refused(why)),
-                        file: None,
+                        ..read
                     }
                 }
                 (_, Some(_)) if let Some(Err(why)) = &reply => BodyRead {
                     bytes: Vec::new(),
                     size: 0,
+                    encoded_size: None,
                     truncated: false,
                     end: Some(refused(why.clone())),
                     file: None,
@@ -1619,6 +1633,7 @@ impl Executor {
                     BodyRead {
                         bytes: transcript.bytes,
                         size: transcript.size,
+                        encoded_size: None,
                         truncated: transcript.truncated,
                         end: Some(transcript.end),
                         file,
@@ -1634,7 +1649,7 @@ impl Executor {
                             .is_some_and(crate::sse::is_event_stream),
                     };
                     read_streaming(
-                        res,
+                        WireBody::new(res, decode_coding),
                         wire,
                         &leg,
                         timeout,
@@ -1645,7 +1660,7 @@ impl Executor {
                     .await
                     .map_err(|e| match e {
                         ReadFail::Timeout => timed_out(),
-                        ReadFail::Transport(e) => transport(e),
+                        ReadFail::Body(e) => body_fail(e),
                         ReadFail::Stopped => ExecError::Transport {
                             url: redact_url(url.as_str()),
                             message: "stopped before the whole body was saved".to_owned(),
@@ -1656,24 +1671,19 @@ impl Executor {
                         },
                     })?
                 }
-                _ => {
-                    let (bytes, size, truncated) = leg
-                        .run(read_body(res, self.max_body_bytes))
-                        .await
-                        .ok_or_else(timed_out)?
-                        .map_err(transport)?;
-                    BodyRead {
-                        bytes,
-                        size,
-                        truncated,
-                        end: None,
-                        file: None,
-                    }
-                }
+                _ => leg
+                    .run(read_body(
+                        WireBody::new(res, decode_coding),
+                        self.max_body_bytes,
+                    ))
+                    .await
+                    .ok_or_else(timed_out)?
+                    .map_err(body_fail)?,
             };
             let BodyRead {
                 bytes,
                 size,
+                encoded_size,
                 truncated,
                 end: stream_end,
                 file,
@@ -1762,6 +1772,9 @@ impl Executor {
                 if truncated {
                     response = response.with_truncated(size);
                 }
+                if let Some(encoded) = encoded_size {
+                    response = response.with_encoded_size(encoded);
+                }
                 if let Some(end) = stream_end {
                     response = response.with_stream_end(end);
                 }
@@ -1822,15 +1835,12 @@ impl Executor {
     }
 }
 
-/// Reads a hop's decoded body chunk by chunk, returning the bytes kept, the bytes read and
-/// whether `limit` cut it short. Past the limit reading stops and the dropped response closes
-/// the connection.
-async fn read_body(
-    mut res: reqwest::Response,
-    limit: Option<u64>,
-) -> Result<(Vec<u8>, u64, bool), reqwest::Error> {
+/// Reads a hop's decoded body chunk by chunk, keeping at most `limit` bytes. Past the limit
+/// reading stops and the dropped response closes the connection.
+async fn read_body(mut res: WireBody, limit: Option<u64>) -> Result<BodyRead, BodyError> {
     let mut body = Vec::new();
     let mut size = 0u64;
+    let mut truncated = false;
     while let Some(chunk) = res.chunk().await? {
         size += chunk.len() as u64;
         if let Some(limit) = limit {
@@ -1838,18 +1848,28 @@ async fn read_body(
                 usize::try_from(limit.saturating_sub(body.len() as u64)).unwrap_or(usize::MAX);
             if chunk.len() > room {
                 body.extend_from_slice(&chunk[..room]);
-                return Ok((body, size, true));
+                truncated = true;
+                break;
             }
         }
         body.extend_from_slice(&chunk);
     }
-    Ok((body, size, false))
+    Ok(BodyRead {
+        bytes: body,
+        size,
+        encoded_size: res.encoded_size(),
+        truncated,
+        end: None,
+        file: None,
+    })
 }
 
 /// What a hop's body read produced.
 struct BodyRead {
     bytes: Vec<u8>,
     size: u64,
+    /// The compressed bytes read, for a body decoded from its `Content-Encoding`.
+    encoded_size: Option<u64>,
     truncated: bool,
     end: Option<StreamEnd>,
     file: Option<TempBody>,
@@ -1955,7 +1975,7 @@ struct StreamHead {
 /// Why a streamed read failed rather than ended.
 enum ReadFail {
     Timeout,
-    Transport(reqwest::Error),
+    Body(BodyError),
     /// Stop ended a plain body that was being saved, so there is no whole body to commit.
     Stopped,
     /// Writing the body file at this path failed.
@@ -1984,7 +2004,7 @@ const DEFAULT_STREAM_CAP: u64 = 10 * 1024 * 1024;
 /// With a body file a plain body is written whole: the cap bounds memory only, the idle timer
 /// replaces the deadline, and Stop is an error that discards the file.
 async fn read_streaming(
-    mut res: reqwest::Response,
+    mut res: WireBody,
     head: StreamHead,
     deadline: &Deadline,
     idle: Option<Duration>,
@@ -2120,14 +2140,18 @@ async fn read_streaming(
                     }
                 }
                 Ok(None) => break event_stream.then_some(StreamEnd::Closed),
-                Err(e) if event_stream => break Some(StreamEnd::Error(chain(e))),
-                Err(e) => return Err(ReadFail::Transport(e)),
+                Err(BodyError::Wire(e)) if event_stream => break Some(StreamEnd::Error(chain(e))),
+                Err(BodyError::Decode(e)) if event_stream => {
+                    break Some(StreamEnd::Error(format!("could not decode the response body: {e}")));
+                }
+                Err(e) => return Err(ReadFail::Body(e)),
             },
         }
     };
     Ok(BodyRead {
         bytes: body,
         size,
+        encoded_size: res.encoded_size(),
         truncated,
         end,
         file: temp,
@@ -2499,7 +2523,7 @@ mod tests {
             event_stream: true,
         };
         read_streaming(
-            reqwest::Response::from(res),
+            WireBody::new(reqwest::Response::from(res), true),
             head,
             &Deadline::after(None),
             idle.map(Duration::from_millis),
@@ -2703,7 +2727,6 @@ mod tests {
         let key = |http1_only: bool| ClientKey {
             rule: ProxyRule::Direct,
             identity: None,
-            compress: true,
             overrides: Arc::default(),
             http1_only,
         };

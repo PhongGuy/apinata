@@ -217,15 +217,22 @@ async fn a_gzip_body_is_saved_decoded_and_reports_no_total() {
     let mut enc = GzEncoder::new(Vec::new(), Compression::default());
     enc.write_all(&plain).unwrap();
     let gz = enc.finish().unwrap();
+    let wire = gz.len() as u64;
     let reply = Reply::with_headers(gz, "content-encoding: gzip\r\n");
     let s = body_server(vec![("/", reply)]).await;
     let dir = tempfile::tempdir().unwrap();
     let out = target(&dir);
     let (opts, seen) = recording(&out);
-    save(&exec(Some(1024)), &request("GET", &s.url("/"), None), opts)
+    let res = save(&exec(Some(1024)), &request("GET", &s.url("/"), None), opts)
         .await
         .unwrap();
     assert_eq!(std::fs::read(&out).unwrap(), plain);
+    assert_eq!(res.encoded_size(), Some(wire));
+    assert!(
+        res.headers()
+            .iter()
+            .any(|(n, v)| n == "content-encoding" && v == "gzip")
+    );
     let seen = progress(&seen);
     assert!(seen.iter().all(|(_, total)| total.is_none()));
     assert_eq!(seen.last().unwrap().0, plain.len() as u64);
