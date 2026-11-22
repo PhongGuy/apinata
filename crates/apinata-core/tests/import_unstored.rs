@@ -33,7 +33,7 @@ impl Failing {
     fn fails(&self, key: &SecretKey) -> Option<SecretError> {
         let hit = self.refused.is_empty() || self.refused.contains(&key.variable.as_str());
         let message = RAW.to_owned();
-        hit.then(|| match self.unavailable {
+        hit.then_some(match self.unavailable {
             true => SecretError::Unavailable { message },
             false => SecretError::Failed { message },
         })
