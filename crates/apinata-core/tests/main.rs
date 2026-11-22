@@ -237,6 +237,7 @@ mod graphql_variable_hover;
 mod host_overrides;
 mod ignore_open;
 mod ignore_reload;
+mod ignore_trash;
 mod import_apply;
 mod import_bundles;
 mod import_cryptojs;
