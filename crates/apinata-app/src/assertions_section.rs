@@ -3,15 +3,16 @@
 use apinata_core::{Assertion, lacks_expression};
 use gpui_kit::InteractiveElement as _;
 use gpui_kit::assets::IconName;
+use gpui_kit::component::IndexPath;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::input::{InputEvent, InputState};
-use gpui_kit::component::select::{SearchableVec, Select, SelectEvent, SelectItem, SelectState};
+use gpui_kit::component::select::{Select, SelectDelegate, SelectEvent, SelectItem, SelectState};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     App, AppContext, Context, DragMoveEvent, Entity, EventEmitter, FocusHandle, Focusable as _,
     IntoElement, ParentElement, Render, SharedString, StatefulInteractiveElement as _, Styled,
-    Subscription, TestSupportExt as _, Window, div,
+    Subscription, Task, TestSupportExt as _, Window, div,
 };
 use std::cell::Cell;
 
@@ -136,10 +137,7 @@ impl SelectItem for OperatorItem {
     }
 
     fn matches(&self, query: &str) -> bool {
-        let query = query.to_lowercase();
-        [&self.label, &self.op]
-            .iter()
-            .any(|text| text.to_lowercase().contains(&query))
+        self.rank(query).is_some()
     }
 
     fn render(&self, _: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -162,7 +160,95 @@ impl SelectItem for OperatorItem {
     }
 }
 
-type OperatorSelect = SelectState<SearchableVec<OperatorItem>>;
+impl OperatorItem {
+    // How well `query` fits, best first: the whole text, its start, a word's start, anywhere.
+    // The better of the plain words and the raw operator counts; `None` is no match.
+    fn rank(&self, query: &str) -> Option<u8> {
+        let query = query.to_lowercase();
+        [&self.label, &self.op]
+            .iter()
+            .filter_map(|text| text_rank(text, &query))
+            .min()
+    }
+}
+
+// Where `query` (lowercase) sits in `text`: a word starts after a space or at a capital,
+// so "defined" starts a word in both "is defined" and "isDefined" but not in "isUndefined".
+fn text_rank(text: &str, query: &str) -> Option<u8> {
+    let lower = text.to_lowercase();
+    if lower == query {
+        return Some(0);
+    }
+    if lower.starts_with(query) {
+        return Some(1);
+    }
+    let word_start = |(ix, _): &(usize, &str)| {
+        let prev = text[..*ix].chars().next_back();
+        let here = text[*ix..].chars().next();
+        prev.is_some_and(|p| !p.is_alphanumeric())
+            || (here.is_some_and(char::is_uppercase) && prev.is_some_and(char::is_lowercase))
+    };
+    let mut hits = lower.match_indices(query).peekable();
+    hits.peek()?;
+    Some(if hits.any(|hit| word_start(&hit)) {
+        2
+    } else {
+        3
+    })
+}
+
+/// The operator list behind the picker. Search keeps only matching operators, best fit
+/// first and the picker order within a tier, so the highlighted row is the likeliest pick.
+pub struct OperatorList {
+    items: Vec<OperatorItem>,
+    shown: Vec<usize>,
+}
+
+impl OperatorList {
+    fn new(items: Vec<OperatorItem>) -> Self {
+        OperatorList {
+            shown: (0..items.len()).collect(),
+            items,
+        }
+    }
+}
+
+impl SelectDelegate for OperatorList {
+    type Item = OperatorItem;
+
+    fn items_count(&self, _: usize) -> usize {
+        self.shown.len()
+    }
+
+    fn item(&self, ix: IndexPath) -> Option<&OperatorItem> {
+        self.shown.get(ix.row).and_then(|&i| self.items.get(i))
+    }
+
+    fn position<V>(&self, value: &V) -> Option<IndexPath>
+    where
+        OperatorItem: SelectItem<Value = V>,
+        V: PartialEq,
+    {
+        self.shown
+            .iter()
+            .position(|&i| self.items[i].value() == value)
+            .map(|row| IndexPath::default().row(row))
+    }
+
+    fn perform_search(&mut self, query: &str, _: &mut Window, _: &mut App) -> Task<()> {
+        let mut ranked: Vec<(u8, usize)> = self
+            .items
+            .iter()
+            .enumerate()
+            .filter_map(|(ix, item)| item.rank(query).map(|rank| (rank, ix)))
+            .collect();
+        ranked.sort_unstable();
+        self.shown = ranked.into_iter().map(|(_, ix)| ix).collect();
+        Task::ready(())
+    }
+}
+
+type OperatorSelect = SelectState<OperatorList>;
 
 /// Whether `operator` takes no value: the last twelve of `OPERATORS`, as Bruno's
 /// `isUnaryOperator` lists them.
@@ -490,7 +576,7 @@ impl AssertionsSection {
         let expression = input(&row.expression, "Expression, e.g. res.status", cx);
         let value = input(&row.value, "Value", cx);
         let operator = cx.new(|cx| {
-            SelectState::new(SearchableVec::new(Vec::new()), None, window, cx).searchable(true)
+            SelectState::new(OperatorList::new(Vec::new()), None, window, cx).searchable(true)
         });
         show_operator(&operator, &row.operator, window, cx);
         let [expression_sub, value_sub] = [&expression, &value].map(|input| {
@@ -514,7 +600,7 @@ impl AssertionsSection {
             cx.subscribe_in(
                 &operator,
                 window,
-                |this, select, event: &SelectEvent<SearchableVec<OperatorItem>>, window, cx| {
+                |this, select, event: &SelectEvent<OperatorList>, window, cx| {
                     if let SelectEvent::Confirm(Some(op)) = event {
                         let ix = this
                             .rows
@@ -733,7 +819,7 @@ fn show_operator(
     }
     let selected: SharedString = operator.to_owned().into();
     select.update(cx, |s, cx| {
-        s.set_items(SearchableVec::new(items), window, cx);
+        s.set_items(OperatorList::new(items), window, cx);
         s.set_selected_value(&selected, window, cx);
     });
 }
