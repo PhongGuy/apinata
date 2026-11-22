@@ -219,10 +219,10 @@ fn a_wide_pane_keeps_every_action_on_the_header_row(cx: &mut TestAppContext) {
         ],
     );
     let saved = bounds(cx, win, "response-saved");
-    assert!(
-        saved.size.width > px(160.),
-        "{saved:?} shortened while wide"
-    );
+    sized(cx, win, 1920.);
+    let roomy = bounds(cx, win, "response-saved");
+    assert_eq!(saved.size.width, roomy.size.width, "shortened while wide");
+    sized(cx, win, 1280.);
     one_row(
         cx,
         win,

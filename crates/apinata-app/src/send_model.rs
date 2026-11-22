@@ -472,14 +472,44 @@ impl SendModel {
     }
 
     /// Shows kept send `seq` read-only, keeping the latest to go back to; ignored while sending.
-    pub fn view_kept(&mut self, seq: u64, stored: Stored, cx: &mut Context<Self>) {
+    /// The `newest` kept send is the latest itself when the latest is that live send, a kept
+    /// result or nothing, so it is shown with nothing to go back to.
+    pub fn view_kept(&mut self, seq: u64, stored: Stored, newest: bool, cx: &mut Context<Self>) {
         if self.is_sending() {
             return;
+        }
+        if newest {
+            let (latest, restored) = match &self.stash {
+                Some((state, restored)) => (state, restored.is_some()),
+                None => (&self.state, self.restored.is_some()),
+            };
+            let live = match latest {
+                SendState::Done(shown) => self.kept.as_ref().is_some_and(|(sent, kept)| {
+                    !restored && kept.seq == seq && std::ptr::eq(sent.as_ptr(), Arc::as_ptr(shown))
+                }),
+                _ => false,
+            };
+            if live {
+                self.back_to_latest(cx);
+                return;
+            }
+            if restored || matches!(latest, SendState::Idle) {
+                self.leave_history();
+                self.latest_finished_at = None;
+                self.show_stored(stored, cx);
+                return;
+            }
         }
         if self.stash.is_none() {
             self.stash = Some((self.state.clone(), self.restored.clone()));
             self.latest_finished_at = self.finished_at;
         }
+        self.viewing = Some(seq);
+        self.show_stored(stored, cx);
+    }
+
+    // Puts a kept send on screen with its kept-result facts.
+    fn show_stored(&mut self, stored: Stored, cx: &mut Context<Self>) {
         self.restored = Some(Restored {
             saved_at: stored.saved_at,
             body_dropped: stored.body_dropped,
@@ -487,7 +517,6 @@ impl SendModel {
             masked_headers: stored.masked_headers,
             header_digests: stored.header_digests,
         });
-        self.viewing = Some(seq);
         self.shown_secrets.clear();
         self.track_restored(cx);
         self.finish(SendState::Done(Arc::new(stored.result)), cx);

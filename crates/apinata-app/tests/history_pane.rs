@@ -6,7 +6,9 @@ use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use apinata_app::body_text::{format_size, format_time};
-use apinata_app::last_response::{KeptSend, ResponseStore, clear_all, install, local_labels};
+use apinata_app::last_response::{
+    KeptSend, ResponseStore, StoreOp, clear_all, enqueue, install, local_labels,
+};
 use apinata_app::response_pane::{HistoryLine, history_row};
 use apinata_app::send_model::{SendModel, SendState};
 use apinata_core::{Outcome, RequestResult, Response};
@@ -500,4 +502,76 @@ fn a_scrolling_menu_keeps_the_checks_clear_of_its_scrollbar(cx: &mut TestAppCont
             "the check after {row:?} reaches into the scrollbar's gutter at {gutter:?}"
         );
     }
+}
+
+// Picking the newest kept send shows it as the latest: nothing older is on screen, so there
+// is no Back to latest.
+#[gpui_kit::test]
+fn picking_the_newest_send_offers_no_back_to_latest(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let (state, ws, root) = open_dir(cx, &col);
+    let store = ResponseStore::new(state.path().join("responses"));
+    for (i, status) in [201u16, 202].into_iter().enumerate() {
+        store
+            .save(&root, &ip("a.yml"), &kept(status), at(1_000 + i as u64))
+            .unwrap();
+    }
+    cx.update(|cx| install(store.clone(), cx));
+    let (win, editor) = editor_for(cx, &ws, &root, "a.yml", false);
+    let model = editor.read_with(cx, |e, _| e.send_model().clone());
+    let pane = editor.read_with(cx, |e, _| e.response().clone());
+    wait_real(cx, |cx| {
+        pane.read_with(cx, |p, _| p.history().len() == 2) && shown(cx, &model) == Some(202)
+    });
+    pane.update(cx, |p, cx| p.show_history(0, cx));
+    wait_real(cx, |cx| model.read_with(cx, |m, _| m.viewing()) == Some(0));
+    pane.update(cx, |p, cx| p.show_history(1, cx));
+    wait_real(cx, |cx| shown(cx, &model) == Some(202));
+    assert_eq!(model.read_with(cx, |m, _| m.viewing()), None);
+    frame(cx, win);
+    assert!(!present(cx, win, "response-latest"));
+    assert_eq!(row_checks(cx, win, 2), [true, false]);
+}
+
+// The only send, picked right after it ran, stays the live result with its timeline.
+#[gpui_kit::test]
+fn picking_the_live_send_keeps_it_live(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let server = mock_server(cx, ResponseTemplate::new(500).set_body_string("live"));
+    let col = collection_for(&server.uri(), "");
+    let (state, ws, root) = open_dir(cx, &col);
+    cx.update(|cx| install(ResponseStore::new(state.path().join("responses")), cx));
+    let (win, editor) = editor_for(cx, &ws, &root, "a.yml", false);
+    let model = editor.read_with(cx, |e, _| e.send_model().clone());
+    let pane = editor.read_with(cx, |e, _| e.response().clone());
+    let r = root.clone();
+    assert!(model.update(cx, |m, cx| m.send(&r, ip("a.yml"), cx)));
+    finished(cx, &model);
+    wait_real(cx, |cx| {
+        pane.read_with(cx, |p, _| p.history().len() == 1)
+            && model.read_with(cx, |m, _| m.kept_as().is_some())
+    });
+    pane.update(cx, |p, cx| p.show_history(0, cx));
+    // The store queue answers in order, so a read queued after the pick marks its end.
+    let (tx, rx) = async_channel::bounded(1);
+    let (r, item) = (root.clone(), ip("a.yml"));
+    cx.update(|cx| {
+        enqueue(
+            StoreOp::History {
+                root: r,
+                item,
+                reply: tx,
+            },
+            cx,
+        )
+    });
+    wait_real(cx, |_| !rx.is_empty());
+    cx.run_until_parked();
+    assert_eq!(model.read_with(cx, |m, _| m.viewing()), None);
+    assert!(
+        model.read_with(cx, |m, _| m.kept_as().is_some()),
+        "still the live result"
+    );
+    frame(cx, win);
+    assert!(!present(cx, win, "response-latest"));
 }

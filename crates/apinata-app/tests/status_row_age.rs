@@ -129,10 +129,6 @@ fn the_narrowest_pane_keeps_its_status_row_as_the_age_grows(cx: &mut TestAppCont
     let (_col, s, editor) = showing_kept(cx, 1.0, Orientation::Horizontal);
     narrowest(cx, &s, &editor);
     assert!(compact(cx, &s, 1.0), "the narrowest pane is compact");
-    assert!(
-        !present(cx, s.win, "response-saved-date"),
-        "no date when compact"
-    );
     assert_steady(cx, &s, "narrowest");
 }
 
@@ -155,7 +151,7 @@ fn a_zoomed_pane_keeps_its_status_row_as_the_age_grows(cx: &mut TestAppContext) 
     assert_steady(cx, &s, "2x");
 }
 
-// A stacked pane at the narrowest window that still fits "From <date> <age>" beside the
+// A stacked pane at the narrowest window that still fits the saved age beside the
 // tabs, so any growth of the age would push the facts onto a line of their own.
 #[gpui_kit::test]
 fn a_wide_pane_near_the_wrap_keeps_its_status_row_as_the_age_grows(cx: &mut TestAppContext) {
@@ -174,4 +170,16 @@ fn a_wide_pane_near_the_wrap_keeps_its_status_row_as_the_age_grows(cx: &mut Test
     }
     assert!(fits(cx, hi), "the facts fit beside the tabs at {hi}px");
     assert_steady(cx, &s, &format!("wide at {hi}px"));
+}
+
+// A kept response reads as one short age however wide the pane; its date lives in the tooltip.
+#[gpui_kit::test]
+fn a_wide_pane_shows_one_saved_label(cx: &mut TestAppContext) {
+    let (_col, s, _editor) = showing_kept(cx, 1.0, Orientation::Vertical);
+    assert!(!compact(cx, &s, 1.0), "the stacked pane is wide");
+    assert!(present(cx, s.win, "response-saved"));
+    assert!(
+        !present(cx, s.win, "response-saved-date"),
+        "no date beside the age"
+    );
 }
