@@ -562,7 +562,7 @@ fn an_edit_clears_the_failure_held_behind_a_kept_send(cx: &mut TestAppContext) {
         masked_headers: Vec::new(),
         header_digests: None,
     };
-    model.update(cx, |m, cx| m.view_kept(0, kept, cx));
+    model.update(cx, |m, cx| m.view_kept(0, kept, false, cx));
     ws.update(cx, |w, cx| {
         w.send(&root, edit_url("a.yml", "http://127.0.0.1:3/"), cx)
     });

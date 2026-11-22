@@ -952,6 +952,12 @@ impl ResponsePane {
         let remember = cx
             .try_global::<AppState>()
             .is_none_or(|app| app.settings.read(cx).get().remember_responses);
+        let (list_reply, list) = async_channel::bounded(1);
+        let history = StoreOp::History {
+            root: root.clone(),
+            item: item.clone(),
+            reply: list_reply,
+        };
         let op = if remember {
             StoreOp::LoadSend {
                 root,
@@ -968,12 +974,23 @@ impl ResponsePane {
             }
         };
         last_response::enqueue(op, cx);
+        // The queue answers in order, so the list read right after the load tells whether
+        // the send is the newest kept one, which shows as the latest rather than an older run.
+        last_response::enqueue(history, cx);
         // A send cleared or evicted since the list was read comes back as None; re-reading
         // the list then drops its stale row.
         self.load_task = Some(cx.spawn(async move |this, cx| {
             let stored = answer.recv().await.ok().flatten();
+            let newest = list
+                .recv()
+                .await
+                .ok()
+                .and_then(|l| l.first().map(|k| k.seq));
+            let newest = newest == Some(seq);
             let _ = this.update(cx, |p, cx| match stored {
-                Some(stored) => p.send.update(cx, |m, cx| m.view_kept(seq, stored, cx)),
+                Some(stored) => p
+                    .send
+                    .update(cx, |m, cx| m.view_kept(seq, stored, newest, cx)),
                 None => p.refresh_history(cx),
             });
         }));
@@ -2219,9 +2236,8 @@ impl ResponsePane {
         let (size_text, cut_text) = size_labels(r.size(), r.body().len() as u64, r.truncated());
         let truncated =
             cut_text.map(|cut| muted("response-truncated", format!("truncated at {cut}")));
-        // A kept response shows its date (a narrow pane leaves it out) and a short age in a
-        // box as wide as the widest age, so a growing age never reflows the row. The long
-        // label is the aria label and joins the tooltip.
+        // A kept response shows a short age in a box as wide as the widest age, so a growing
+        // age never reflows the row. The long label with the date is the aria label and tooltip.
         let compact = self.compact.get();
         let now = last_response::wall_now(cx);
         let saved = self.send.read(cx).restored().map(|kept| {
@@ -2229,14 +2245,6 @@ impl ResponsePane {
             let (label, tip) = self.saved_labels(cx).unwrap_or_default();
             let tip = format!("{label}\n{tip}");
             let age = last_response::short_age(kept.saved_at, now);
-            let date = (!compact).then(|| {
-                div()
-                    .id("response-saved-date")
-                    .test_support()
-                    .min_w_0()
-                    .truncate()
-                    .child(format!("From {}", last_response::local_date(kept.saved_at)))
-            });
             // Tabular digits make every count of one form as wide as its candidate here.
             let widest = [
                 "just now", "59m ago", "23h ago", "29d ago", "12mo ago", "99y ago",
@@ -2261,7 +2269,6 @@ impl ResponsePane {
                 .text_size(style::TEXT_SMALL)
                 .text_color(cx.theme().muted_foreground)
                 .aria_label(label)
-                .children(date)
                 .child(age_box)
                 .tooltip(ui::tooltip(move |window, cx| {
                     Tooltip::new(tip.clone()).build(window, cx)

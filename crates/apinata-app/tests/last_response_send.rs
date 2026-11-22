@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use apinata_app::app::AppState;
-use apinata_app::last_response::ResponseStore;
+use apinata_app::last_response::{ResponseStore, StoreOp, enqueue};
 use apinata_app::send_model::{Restored, SendState};
 use apinata_app::settings::RunScripts;
 use apinata_core::{Outcome, RequestResult, Response};
@@ -260,7 +260,23 @@ fn with_remembering_off_picking_a_kept_send_writes_nothing(cx: &mut TestAppConte
     let (model, pane) = editor.read_with(cx, |e, _| (e.send_model().clone(), e.response().clone()));
     wait_real(cx, |cx| model.read_with(cx, |m, _| m.restored().is_some()));
     pane.update(cx, |p, cx| p.show_history(0, cx));
-    wait_real(cx, |cx| model.read_with(cx, |m, _| m.viewing() == Some(0)));
+    // The store queue answers in order, so a read queued after the pick marks its end.
+    let (tx, rx) = async_channel::bounded(1);
+    let (root, item) = (s.root.clone(), ip("a.yml"));
+    cx.update(|cx| {
+        enqueue(
+            StoreOp::History {
+                root,
+                item,
+                reply: tx,
+            },
+            cx,
+        )
+    });
+    wait_real(cx, |_| !rx.is_empty());
+    cx.run_until_parked();
+    // The only kept send is the newest, so it shows as the latest.
+    assert_eq!(model.read_with(cx, |m, _| m.viewing()), None);
     model.read_with(cx, |m, _| match m.state() {
         SendState::Done(r) => assert_eq!(r.response.as_ref().unwrap().status(), 203),
         _ => panic!("the picked send is not shown"),

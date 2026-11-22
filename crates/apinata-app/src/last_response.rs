@@ -1598,11 +1598,6 @@ pub fn local_labels(saved: SystemTime, now: SystemTime) -> (String, String) {
     (saved_label(saved, now), saved_tooltip(saved))
 }
 
-/// [`saved_date`] for a `SystemTime`, in the local zone.
-pub fn local_date(saved: SystemTime) -> String {
-    saved_date(DateTime::<Local>::from(saved).fixed_offset())
-}
-
 /// How long before `now` the send was saved: "just now", "2 minutes ago" and so on.
 pub fn age_of(saved: SystemTime, now: SystemTime) -> String {
     let seconds = now.duration_since(saved).map_or(0, |d| d.as_secs());

@@ -61,11 +61,11 @@ fn an_older_send_shows_until_back_to_latest(cx: &mut TestAppContext) {
     let (_state, ws, _root) = open_dir(cx, &col);
     let model = sender(cx, &ws);
     model.update(cx, |m, cx| m.restore(Arc::new(kept(203)), restored(3), cx));
-    model.update(cx, |m, cx| m.view_kept(0, stored(201, 1), cx));
+    model.update(cx, |m, cx| m.view_kept(0, stored(201, 1), false, cx));
     assert_eq!(shown(cx, &model), Some(201));
     assert_eq!(model.read_with(cx, |m, _| m.viewing()), Some(0));
     assert_eq!(model.read_with(cx, |m, _| m.restored()), Some(restored(1)));
-    model.update(cx, |m, cx| m.view_kept(1, stored(202, 2), cx));
+    model.update(cx, |m, cx| m.view_kept(1, stored(202, 2), false, cx));
     assert_eq!(shown(cx, &model), Some(202));
     model.update(cx, |m, cx| m.back_to_latest(cx));
     assert_eq!(shown(cx, &model), Some(203));
@@ -80,7 +80,7 @@ fn a_restore_landing_after_a_history_pick_becomes_the_latest(cx: &mut TestAppCon
     let col = two_requests();
     let (_state, ws, _root) = open_dir(cx, &col);
     let model = sender(cx, &ws);
-    model.update(cx, |m, cx| m.view_kept(0, stored(201, 1), cx));
+    model.update(cx, |m, cx| m.view_kept(0, stored(201, 1), false, cx));
     model.update(cx, |m, cx| m.restore(Arc::new(kept(203)), restored(3), cx));
     assert_eq!(shown(cx, &model), Some(201), "the pick stays on screen");
     model.update(cx, |m, cx| m.back_to_latest(cx));
@@ -95,11 +95,11 @@ fn a_send_leaves_the_history_view_and_is_not_ignored(cx: &mut TestAppContext) {
     let col = collection_for(&server.uri(), "");
     let (_state, ws, root) = open_dir(cx, &col);
     let model = sender(cx, &ws);
-    model.update(cx, |m, cx| m.view_kept(0, stored(201, 1), cx));
+    model.update(cx, |m, cx| m.view_kept(0, stored(201, 1), false, cx));
     let r = root.clone();
     assert!(model.update(cx, |m, cx| m.send(&r, ip("a.yml"), cx)));
     assert_eq!(model.read_with(cx, |m, _| m.viewing()), None);
-    model.update(cx, |m, cx| m.view_kept(0, stored(201, 1), cx));
+    model.update(cx, |m, cx| m.view_kept(0, stored(201, 1), false, cx));
     assert!(
         model.read_with(cx, |m, _| m.is_sending()),
         "ignored while sending"
@@ -115,7 +115,7 @@ fn clearing_drops_a_history_view(cx: &mut TestAppContext) {
     let col = two_requests();
     let (_state, ws, _root) = open_dir(cx, &col);
     let model = sender(cx, &ws);
-    model.update(cx, |m, cx| m.view_kept(0, stored(201, 1), cx));
+    model.update(cx, |m, cx| m.view_kept(0, stored(201, 1), false, cx));
     cx.update(forget_all_restored);
     assert!(model.read_with(cx, |m, _| matches!(m.state(), SendState::Idle)));
     assert_eq!(model.read_with(cx, |m, _| m.viewing()), None);
@@ -136,7 +136,7 @@ fn a_live_result_of_a_followed_run_ends_a_history_view(cx: &mut TestAppContext) 
     };
     tx.try_send(finished(0, 200)).unwrap();
     cx.run_until_parked();
-    model.update(cx, |m, cx| m.view_kept(0, stored(201, 1), cx));
+    model.update(cx, |m, cx| m.view_kept(0, stored(201, 1), false, cx));
     assert_eq!(shown(cx, &model), Some(201), "a pick between results shows");
     tx.try_send(finished(1, 202)).unwrap();
     cx.run_until_parked();
@@ -145,4 +145,50 @@ fn a_live_result_of_a_followed_run_ends_a_history_view(cx: &mut TestAppContext) 
     assert_eq!(model.read_with(cx, |m, _| m.restored()), None);
     model.update(cx, |m, cx| m.back_to_latest(cx));
     assert_eq!(shown(cx, &model), Some(202), "no stale stash to go back to");
+}
+
+// A tab opened from History may show the newest send before its own restore lands; that send
+// is the latest, so there is nothing to go back to and the restore changes nothing.
+#[gpui_kit::test]
+fn the_newest_send_picked_before_the_restore_is_the_latest(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let (_state, ws, _root) = open_dir(cx, &col);
+    let model = sender(cx, &ws);
+    model.update(cx, |m, cx| m.view_kept(0, stored(201, 1), true, cx));
+    assert_eq!(shown(cx, &model), Some(201));
+    assert_eq!(model.read_with(cx, |m, _| m.viewing()), None);
+    assert_eq!(model.read_with(cx, |m, _| m.restored()), Some(restored(1)));
+    model.update(cx, |m, cx| m.restore(Arc::new(kept(201)), restored(1), cx));
+    assert_eq!(model.read_with(cx, |m, _| m.viewing()), None);
+    model.update(cx, |m, cx| m.back_to_latest(cx));
+    assert_eq!(shown(cx, &model), Some(201), "back is a no-op");
+}
+
+// From an older send, picking the newest kept one ends the history view.
+#[gpui_kit::test]
+fn picking_the_newest_after_an_older_one_ends_the_history_view(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let (_state, ws, _root) = open_dir(cx, &col);
+    let model = sender(cx, &ws);
+    model.update(cx, |m, cx| m.restore(Arc::new(kept(202)), restored(2), cx));
+    model.update(cx, |m, cx| m.view_kept(0, stored(201, 1), false, cx));
+    assert_eq!(model.read_with(cx, |m, _| m.viewing()), Some(0));
+    model.update(cx, |m, cx| m.view_kept(1, stored(202, 2), true, cx));
+    assert_eq!(shown(cx, &model), Some(202));
+    assert_eq!(model.read_with(cx, |m, _| m.viewing()), None);
+    assert_eq!(model.read_with(cx, |m, _| m.restored()), Some(restored(2)));
+}
+
+// A live result the store did not keep is newer than every kept send, so the newest kept one
+// is an older run with the live result to go back to.
+#[gpui_kit::test]
+fn an_unkept_live_result_stays_the_latest(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let (_state, ws, _root) = open_dir(cx, &col);
+    let model = sender(cx, &ws);
+    model.update(cx, |m, cx| m.show(Arc::new(kept(500)), cx));
+    model.update(cx, |m, cx| m.view_kept(0, stored(201, 1), true, cx));
+    assert_eq!(model.read_with(cx, |m, _| m.viewing()), Some(0));
+    model.update(cx, |m, cx| m.back_to_latest(cx));
+    assert_eq!(shown(cx, &model), Some(500));
 }
