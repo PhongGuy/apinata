@@ -2,10 +2,10 @@
 
 use crate::common;
 
-use apinata_core::{ExecError, ExecOptions, Executor};
+use apinata_core::{CancelHandle, ExecError, ExecOptions, Executor, StreamEnd, StreamOptions};
 use common::{executor, resolved_one};
 use flate2::Compression;
-use flate2::write::GzEncoder;
+use flate2::write::{DeflateEncoder, GzEncoder, ZlibEncoder};
 use std::io::Write;
 use wiremock::matchers::path;
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -253,4 +253,147 @@ async fn a_compressed_body_stops_decoding_at_the_limit() {
     assert!(res.truncated());
     assert_eq!(res.body().len(), 1000);
     assert!(res.size() < 1 << 20, "{}", res.size());
+}
+
+async fn send_to(server: &MockServer, method: &str, at: &str, top: &str) -> apinata_core::Response {
+    executor()
+        .send(&resolved_one(
+            method,
+            &format!("{}{at}", server.uri()),
+            "",
+            top,
+        ))
+        .await
+        .expect("sent")
+}
+
+#[tokio::test]
+async fn deflate_decodes_with_or_without_its_zlib_wrapper() {
+    let plain = "x".repeat(1000);
+    let mut zlib = ZlibEncoder::new(Vec::new(), Compression::default());
+    zlib.write_all(plain.as_bytes()).expect("zlib");
+    let zlib = zlib.finish().expect("zlib");
+    let mut raw = DeflateEncoder::new(Vec::new(), Compression::default());
+    raw.write_all(plain.as_bytes()).expect("deflate");
+    let raw = raw.finish().expect("deflate");
+    let server = MockServer::start().await;
+    for (at, bytes) in [("/zlib", &zlib), ("/raw", &raw)] {
+        mount(
+            &server,
+            at,
+            ResponseTemplate::new(200)
+                .insert_header("content-encoding", "deflate")
+                .set_body_raw(bytes.clone(), "text/plain"),
+        )
+        .await;
+    }
+    for (at, bytes) in [("/zlib", &zlib), ("/raw", &raw)] {
+        let res = get(&server, at).await;
+        assert_eq!(res.text(), plain, "{at}");
+        assert_eq!(res.encoded_size(), Some(bytes.len() as u64), "{at}");
+    }
+}
+
+#[tokio::test]
+async fn x_gzip_and_an_upper_case_name_decode_as_gzip() {
+    let wire = gzip(b"hello");
+    let server = MockServer::start().await;
+    for (at, coding) in [("/x", "x-gzip"), ("/upper", "GZIP")] {
+        mount(
+            &server,
+            at,
+            ResponseTemplate::new(200)
+                .insert_header("content-encoding", coding)
+                .set_body_raw(wire.clone(), "text/plain"),
+        )
+        .await;
+    }
+    for at in ["/x", "/upper"] {
+        let res = get(&server, at).await;
+        assert_eq!(res.text(), "hello", "{at}");
+        assert_eq!(res.encoded_size(), Some(wire.len() as u64), "{at}");
+    }
+}
+
+#[tokio::test]
+async fn an_unknown_or_stacked_coding_passes_through_raw() {
+    let wire = gzip(b"hello");
+    let server = MockServer::start().await;
+    for (at, coding) in [("/unknown", "snappy"), ("/stacked", "gzip, br")] {
+        mount(
+            &server,
+            at,
+            ResponseTemplate::new(200)
+                .insert_header("content-encoding", coding)
+                .set_body_raw(wire.clone(), "application/octet-stream"),
+        )
+        .await;
+    }
+    for (at, coding) in [("/unknown", "snappy"), ("/stacked", "gzip, br")] {
+        let res = get(&server, at).await;
+        assert_eq!(res.body(), wire.as_slice(), "{at}");
+        assert_eq!(res.encoded_size(), None, "{at}");
+        assert_eq!(header(&res, "content-encoding"), Some(coding), "{at}");
+    }
+}
+
+#[tokio::test]
+async fn an_omitted_accept_encoding_keeps_a_body_the_server_compressed_anyway() {
+    let wire = gzip(b"hello");
+    let server = MockServer::start().await;
+    mount(
+        &server,
+        "/gz",
+        ResponseTemplate::new(200)
+            .insert_header("content-encoding", "gzip")
+            .set_body_raw(wire.clone(), "application/octet-stream"),
+    )
+    .await;
+    let omit = "settings:\n  omitHeaders:\n    - Accept-Encoding\n";
+    let res = send_to(&server, "GET", "/gz", omit).await;
+    assert_eq!(res.body(), wire.as_slice());
+    assert_eq!(res.encoded_size(), None);
+    assert_eq!(header(&res, "content-encoding"), Some("gzip"));
+    let received = server.received_requests().await.expect("recorded");
+    assert!(received[0].headers.get("accept-encoding").is_none());
+}
+
+#[tokio::test]
+async fn a_head_reply_marked_gzip_reads_as_an_empty_decoded_body() {
+    let server = MockServer::start().await;
+    mount(
+        &server,
+        "/head",
+        ResponseTemplate::new(200)
+            .insert_header("content-encoding", "gzip")
+            .insert_header("content-length", "40"),
+    )
+    .await;
+    let res = send_to(&server, "HEAD", "/head", "").await;
+    assert_eq!((res.status(), res.size()), (200, 0));
+    assert_eq!(res.encoded_size(), Some(0));
+    assert_eq!(header(&res, "content-encoding"), Some("gzip"));
+}
+
+#[tokio::test]
+async fn a_gzip_event_stream_is_decoded_as_it_streams() {
+    let wire = gzip(b"data: one\n\ndata: two\n\n");
+    let server = MockServer::start().await;
+    mount(
+        &server,
+        "/sse",
+        ResponseTemplate::new(200)
+            .insert_header("content-encoding", "gzip")
+            .set_body_raw(wire.clone(), "text/event-stream"),
+    )
+    .await;
+    let req = resolved_one("GET", &format!("{}/sse", server.uri()), "", "");
+    let res = executor()
+        .send_streaming(&req, &CancelHandle::new(), StreamOptions::new())
+        .await
+        .expect("sent");
+    assert_eq!(res.text(), "data: one\n\ndata: two\n\n");
+    assert_eq!(res.stream_end(), Some(&StreamEnd::Closed));
+    assert_eq!(res.encoded_size(), Some(wire.len() as u64));
+    assert_eq!(header(&res, "content-encoding"), Some("gzip"));
 }

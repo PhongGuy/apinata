@@ -7,7 +7,9 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use async_compression::tokio::bufread::{BrotliDecoder, GzipDecoder, ZlibDecoder, ZstdDecoder};
+use async_compression::tokio::bufread::{
+    BrotliDecoder, DeflateDecoder, GzipDecoder, ZlibDecoder, ZstdDecoder,
+};
 use bytes::Bytes;
 use futures_util::{StreamExt, stream};
 use reqwest::header::{CONTENT_ENCODING, HeaderMap};
@@ -17,8 +19,8 @@ use tokio_util::io::StreamReader;
 /// Decoded bytes handed out per read, so a small compressed chunk never inflates past the cap.
 const DECODED_CHUNK: usize = 16 * 1024;
 
-/// The content codings decoded, matched exactly as the HTTP stack's decoder did; any other
-/// value, a list of codings included, leaves the body as it came.
+/// The content codings decoded, matched without case as the reference client does, `x-gzip`
+/// included; any other value, a list of codings too, leaves the body as it came.
 #[derive(Clone, Copy)]
 enum Coding {
     Gzip,
@@ -29,8 +31,14 @@ enum Coding {
 
 impl Coding {
     fn of(headers: &HeaderMap) -> Option<Coding> {
-        match headers.get(CONTENT_ENCODING)?.as_bytes() {
-            b"gzip" => Some(Coding::Gzip),
+        match headers
+            .get(CONTENT_ENCODING)?
+            .as_bytes()
+            .trim_ascii()
+            .to_ascii_lowercase()
+            .as_slice()
+        {
+            b"gzip" | b"x-gzip" => Some(Coding::Gzip),
             b"deflate" => Some(Coding::Deflate),
             b"br" => Some(Coding::Brotli),
             b"zstd" => Some(Coding::Zstd),
@@ -83,6 +91,8 @@ pub(super) struct WireBody {
     state: State,
     wire: Arc<AtomicU64>,
     encoded: bool,
+    /// Reused by every decoded read.
+    buf: Vec<u8>,
 }
 
 impl WireBody {
@@ -96,13 +106,13 @@ impl WireBody {
                 None => State::Plain(res),
             },
             wire: Arc::default(),
+            buf: Vec::new(),
         }
     }
 
-    /// The compressed bytes read so far; `None` for a body that was not decoded or was empty.
+    /// The compressed bytes read so far, 0 for an empty body; `None` when no coding applied.
     pub(super) fn encoded_size(&self) -> Option<u64> {
-        let wire = self.wire.load(Ordering::Relaxed);
-        (self.encoded && wire > 0).then_some(wire)
+        self.encoded.then(|| self.wire.load(Ordering::Relaxed))
     }
 
     /// The next decoded chunk, or `None` at the end. Cancel safe: a dropped call loses no bytes.
@@ -129,14 +139,16 @@ impl WireBody {
                     self.state = State::Decoding(decoder(res, first, coding, wire));
                 }
                 State::Decoding(decoder) => {
-                    let mut buf = vec![0; DECODED_CHUNK];
-                    let n = decoder.read(&mut buf).await.map_err(BodyError::from_io)?;
+                    self.buf.resize(DECODED_CHUNK, 0);
+                    let n = decoder
+                        .read(&mut self.buf)
+                        .await
+                        .map_err(BodyError::from_io)?;
                     if n == 0 {
                         self.state = State::Done;
                         return Ok(None);
                     }
-                    buf.truncate(n);
-                    return Ok(Some(Bytes::from(buf)));
+                    return Ok(Some(Bytes::copy_from_slice(&self.buf[..n])));
                 }
                 State::Done => return Ok(None),
             }
@@ -158,10 +170,14 @@ fn decoder(res: reqwest::Response, first: Bytes, coding: Coding, wire: Arc<Atomi
             wire.fetch_add(chunk.len() as u64, Ordering::Relaxed);
         }
     });
+    // Servers send `deflate` both zlib-wrapped, as the spec says, and raw; the header tells.
+    let zlib = matches!(first[..], [cmf, flg, ..]
+        if cmf & 0x0f == 8 && (u16::from(cmf) << 8 | u16::from(flg)) % 31 == 0);
     let reader = StreamReader::new(stream::once(async { Ok(first) }).chain(rest));
     match coding {
         Coding::Gzip => Box::pin(GzipDecoder::new(reader)),
-        Coding::Deflate => Box::pin(ZlibDecoder::new(reader)),
+        Coding::Deflate if zlib => Box::pin(ZlibDecoder::new(reader)),
+        Coding::Deflate => Box::pin(DeflateDecoder::new(reader)),
         Coding::Brotli => Box::pin(BrotliDecoder::new(reader)),
         Coding::Zstd => {
             let mut zstd = ZstdDecoder::new(reader);

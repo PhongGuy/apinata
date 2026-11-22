@@ -88,6 +88,9 @@ pub struct HarExchange {
     pub request_size: Option<u64>,
     /// The response body's full length when [`HarExchange::limited`] cut or left it out.
     pub response_size: Option<u64>,
+    /// The compressed length that crossed the wire, for a body decoded from its
+    /// `Content-Encoding`; `None` for a body sent as is.
+    pub encoded_size: Option<u64>,
     /// Notes written into the entry's `comment`, such as where a body was cut.
     pub notes: Vec<String>,
 }
@@ -113,6 +116,7 @@ impl HarExchange {
             attempt: None,
             request_size: None,
             response_size: None,
+            encoded_size: None,
             notes: Vec::new(),
         }
     }
@@ -139,6 +143,7 @@ impl HarExchange {
         x.response_headers = response.headers().to_vec();
         x.response_body = response.body().to_vec();
         x.response_truncated = response.truncated();
+        x.encoded_size = response.encoded_size();
         x.time = response.response_time();
         x
     }
@@ -412,6 +417,11 @@ fn content(x: &HarExchange) -> Value {
     let mime = header(&x.response_headers, "content-type").unwrap_or_default();
     let mut c = Map::new();
     c.insert("size".into(), json!(response_size(x)));
+    // The bytes the content coding saved, which HAR reckons as size less bodySize.
+    if let Some(wire) = x.encoded_size {
+        let saved = i128::from(response_size(x)) - i128::from(wire);
+        c.insert("compression".into(), json!(saved));
+    }
     c.insert("mimeType".into(), mime.into());
     if is_binary(&x.response_body) {
         c.insert("text".into(), STANDARD.encode(&x.response_body).into());
@@ -437,7 +447,7 @@ fn response(x: &HarExchange) -> Value {
         "content": content(x),
         "redirectURL": header(&x.response_headers, "location").unwrap_or_default(),
         "headersSize": -1,
-        "bodySize": response_size(x),
+        "bodySize": x.encoded_size.unwrap_or_else(|| response_size(x)),
     })
 }
 

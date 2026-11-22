@@ -47,7 +47,7 @@ encoding_rs.workspace = true
 mime.workspace = true
 tokio-util = { workspace = true, features = ["io"] }
 async-compression.workspace = true
-bytes = "1"
+bytes.workspace = true
 # Shuts the OAuth callback listener down so a spawned process's copy cannot keep its port.
 socket2.workspace = true
 tokio-tungstenite.workspace = true
@@ -119,7 +119,7 @@ update = [
 # Per-thread CPU time for the linear-cost translation tests.
 cpu-time = "1"
 tokio = { workspace = true, features = ["time", "test-util"] }
-bytes = "1"
+bytes.workspace = true
 http-body-util = { workspace = true, features = ["channel"] }
 wiremock.workspace = true
 flate2.workspace = true

@@ -2347,7 +2347,7 @@ impl ResponsePane {
         );
         // A compressed body names its wire size on hover beside the decoded size shown.
         let size = muted("response-size", size_text);
-        let size = match r.encoded_size() {
+        let size = match r.encoded_size().filter(|&wire| wire > 0) {
             Some(wire) => size.tooltip(ui::text_tooltip(
                 "response-size-tooltip",
                 encoded_size_label(wire, r.size()),

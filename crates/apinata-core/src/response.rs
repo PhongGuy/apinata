@@ -420,11 +420,16 @@ impl Response {
         serde_json::from_str(text).unwrap_or_else(|_| Value::String(text.to_owned()))
     }
 
-    /// The headers as Node's `IncomingMessage.headers` merges repeats.
+    /// The headers as Node's `IncomingMessage.headers` merges repeats, as scripts and
+    /// assertions read them. A decoded body's `content-encoding` is left out, as the reference
+    /// client's decoder removes it; `content-length` stays.
     pub(crate) fn headers_value(&self) -> Map<String, Value> {
         let mut merged = Map::new();
         for (name, value) in &self.headers {
             let name = name.as_str();
+            if self.encoded_size.is_some() && name == "content-encoding" {
+                continue;
+            }
             match merged.get_mut(name) {
                 None if name == "set-cookie" => {
                     merged.insert(
