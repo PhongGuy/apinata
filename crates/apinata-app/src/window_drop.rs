@@ -39,11 +39,11 @@ pub fn classify(path: &Path) -> Dropped {
     match std::fs::metadata(path) {
         Ok(m) if m.len() > MAX_SNIFF => return refuse("the file is too large"),
         Ok(_) => {}
-        Err(e) => return refuse(&e.to_string()),
+        Err(e) => return refuse(&apinata_core::import::read_reason(&e)),
     }
     let input = match std::fs::read(path) {
         Ok(input) => input,
-        Err(e) => return refuse(&e.to_string()),
+        Err(e) => return refuse(&apinata_core::import::read_reason(&e)),
     };
     // A curl command is plain text, so it is tried first and a collection file never matches it.
     if let Ok(text) = std::str::from_utf8(&input)

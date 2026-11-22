@@ -8,9 +8,8 @@ mod notes;
 mod script;
 pub(crate) use script::pm_chain_at;
 
-use super::load::json_error_offset;
 use super::{
-    ImportNote, ImportedCollection, ImportedFolder, ImportedItem, ImportedRequest,
+    DocumentError, ImportNote, ImportedCollection, ImportedFolder, ImportedItem, ImportedRequest,
     ImportedRequestItem, ImportedScripts, NoteKind, PostmanError,
 };
 use crate::edit::{AuthSpec, BodySpec, FileEntry, KeyValue, MultipartField, Param, ParamKind};
@@ -43,14 +42,31 @@ static XML_TYPE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^[\w\-]+\/([\w\-]+\+)?xml").expect("the XML content type pattern compiles")
 });
 
+/// The JSON syntax error `error` in `json`, placed by line and column in plain words.
+pub(super) fn json_parse_error(json: &[u8], error: &serde_json::Error) -> PostmanError {
+    match super::load::json_failure(json, 0, error) {
+        DocumentError::Parse {
+            offset,
+            line,
+            column,
+            message,
+        } => PostmanError::Parse {
+            offset,
+            line,
+            column,
+            message,
+        },
+        other => PostmanError::Invalid {
+            message: other.to_string(),
+        },
+    }
+}
+
 /// Read a Postman v2.0 or v2.1 collection, bare or in a `{collection: ...}` envelope. Items
 /// that cannot be imported are left out with a note in `unwritten`. Fails on invalid JSON, a
 /// schema other than v2.0 or v2.1 (checked first), or a collection of the wrong shape.
 pub fn parse_postman(json: &[u8]) -> Result<ImportedCollection, PostmanError> {
-    let root: Value = serde_json::from_slice(json).map_err(|e| PostmanError::Parse {
-        offset: json_error_offset(json, &e),
-        message: e.to_string(),
-    })?;
+    let root: Value = serde_json::from_slice(json).map_err(|e| json_parse_error(json, &e))?;
     let root = match root {
         Value::Object(mut map)
             if map

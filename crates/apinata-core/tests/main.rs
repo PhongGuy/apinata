@@ -280,6 +280,7 @@ mod import_openapi_structure;
 mod import_parity;
 mod import_place;
 mod import_place_root;
+mod import_plain_words;
 mod import_postman;
 mod import_postman_auth_e2e;
 mod import_postman_coverage;

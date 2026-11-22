@@ -1,8 +1,8 @@
 //! Format dispatch: stable ids, detection, and parsing by detected or named format.
 
 use apinata_core::import::{
-    CollectionFormat, EnvironmentFormat, FormatError, NoteKind, PostmanError, RequestFormat,
-    parse_collection, parse_environment, parse_request,
+    CollectionFormat, DocumentError, EnvironmentFormat, FormatError, NoteKind, PostmanError,
+    RequestFormat, parse_collection, parse_environment, parse_request,
 };
 
 const V21: &str = "https://schema.getpostman.com/json/collection/v2.1.0/collection.json";
@@ -130,7 +130,10 @@ fn a_named_format_reports_its_own_errors() {
     );
     assert!(matches!(
         parse_collection(None, b"{"),
-        Err(FormatError::Unrecognized { .. })
+        Err(FormatError::Unreadable(DocumentError::Parse {
+            line: 1,
+            ..
+        }))
     ));
     let e = parse_request(Some(RequestFormat::Curl), "curl 'https://x.test").unwrap_err();
     assert!(matches!(e, FormatError::Curl(_)), "{e:?}");

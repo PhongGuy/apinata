@@ -26,7 +26,7 @@ pub struct ParsedCurl {
 #[non_exhaustive]
 pub enum CurlError {
     /// The text is not one POSIX-shell curl command.
-    #[error("{form} at byte {offset}")]
+    #[error("{form}")]
     Syntax {
         /// Byte offset in the input where the problem starts.
         offset: usize,
@@ -34,7 +34,7 @@ pub enum CurlError {
         form: CurlSyntax,
     },
     /// An option that takes a value is the last word.
-    #[error("`{flag}` at byte {offset} needs a value")]
+    #[error("`{flag}` needs a value after it")]
     MissingValue {
         /// The option as written.
         flag: String,
@@ -63,10 +63,14 @@ pub enum CurlSyntax {
 impl std::fmt::Display for CurlSyntax {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
-            CurlSyntax::NotCurl => "not a curl command",
-            CurlSyntax::UnclosedQuote => "unclosed quote",
-            CurlSyntax::Cmd => "Windows cmd syntax",
-            CurlSyntax::PowerShell => "PowerShell syntax",
+            CurlSyntax::NotCurl => "not a curl command: it must start with curl",
+            CurlSyntax::UnclosedQuote => "unclosed quote: check that the whole command was copied",
+            CurlSyntax::Cmd => {
+                "this command is written for Windows cmd; copy it as a bash command instead"
+            }
+            CurlSyntax::PowerShell => {
+                "this command is written for PowerShell; copy it as a bash command instead"
+            }
         })
     }
 }

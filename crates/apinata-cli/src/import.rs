@@ -15,7 +15,7 @@ use apinata_core::import::{
     SpecLocation, TakeSpec, UpdateOptions, UpdateSummary, add_environment, add_request,
     apply_update, claim_secret_names, classify_source, default_import_name, ensure_folder,
     fetch_source, parse_collections, parse_environments, parse_request, place_items, plan_update,
-    recorded_spec, store_request_secrets, write_collection,
+    read_reason, recorded_spec, store_request_secrets, write_collection,
 };
 use apinata_core::{
     Collection, Folder, ItemPath, PacSource, SecretError, SecretKey, SecretStore, SystemTrash,
@@ -291,7 +291,12 @@ pub(crate) fn exit_code(_: &ImportError) -> u8 {
 // refused by `add_request` before it creates a file.
 fn import_request(args: &RequestArgs) -> anyhow::Result<Imported> {
     let input = read_input(args.file.as_deref())?;
-    let mut parsed = parse_request(args.from.0, &input)?;
+    let mut parsed = parse_request(args.from.0, &input).with_context(|| {
+        format!(
+            "cannot import {}",
+            shown_source(args.file.as_deref().unwrap_or(Path::new("-")))
+        )
+    })?;
     let root = collection_root(args.collection.as_deref())?;
     let parent = match &args.folder {
         Some(raw) => ItemPath::new(raw).ok_or_else(|| anyhow!("invalid item path: {raw}"))?,
@@ -337,8 +342,9 @@ fn import_collection(args: &CollectionArgs) -> anyhow::Result<Vec<Imported>> {
     let file = input_file(args)?;
     let (input, default_name) = read_source(file, &args.fetch)?;
     let mut options = collection_options(args, &input, default_name)?;
-    options.source = Some(spec_location(file)?);
-    let bundles = parse_collections(args.from.0, &input, &options)?;
+    options.source = spec_location(file)?;
+    let bundles = parse_collections(args.from.0, &input, &options)
+        .with_context(|| format!("cannot import {}", shown_source(file)))?;
     let mut extra = Vec::new();
     for path in &args.envs {
         let envs = parse_environments(None, &read_file(path)?)
@@ -408,9 +414,11 @@ fn import_into_folder(args: &CollectionArgs) -> anyhow::Result<Imported> {
     let target = ItemPath::new(raw)
         .filter(|p| !p.is_root())
         .ok_or_else(|| anyhow!("invalid folder path: {raw:?}"))?;
-    let (input, default_name) = read_source(input_file(args)?, &args.fetch)?;
+    let file = input_file(args)?;
+    let (input, default_name) = read_source(file, &args.fetch)?;
     let options = collection_options(args, &input, default_name)?;
-    let mut bundles = parse_collections(args.from.0, &input, &options)?;
+    let mut bundles = parse_collections(args.from.0, &input, &options)
+        .with_context(|| format!("cannot import {}", shown_source(file)))?;
     if bundles.len() != 1 {
         return Err(anyhow!(
             "--folder needs an input with one collection; this file holds {}",
@@ -542,11 +550,16 @@ fn update_bundle(args: &CollectionArgs, c: &Collection) -> anyhow::Result<Import
                 )
             })?;
             let (input, name) = read_recorded(&recorded.location, &args.fetch)?;
-            (input, name, Some(recorded.group_by), recorded.location)
+            (
+                input,
+                name,
+                Some(recorded.group_by),
+                Some(recorded.location),
+            )
         }
     };
     let mut options = collection_options(args, &input, default_name)?;
-    options.source = Some(source);
+    options.source = source;
     // An explicit --group-by wins over the grouping the record names.
     if let (None, Some(group)) = (args.group_by, recorded_group) {
         options.group_by = group;
@@ -729,8 +742,8 @@ pub(crate) fn print_notes(notes: &[ImportNote]) {
         eprintln!(
             "note: {} {}: {}{file}",
             note.kind.id(),
-            note.source,
-            note.detail
+            note.place(),
+            note.shown_detail()
         );
     }
 }
@@ -797,7 +810,7 @@ fn link(source: &Path) -> anyhow::Result<Option<&str>> {
 }
 
 /// Fetch `url` once under the network flags, with no approval. Failures read as
-/// [`fetch_message`] and never carry the URL.
+/// [`fetch_message`], naming the link by its origin only.
 fn fetch_link(url: &str, args: &FetchNetworkArgs) -> anyhow::Result<Vec<u8>> {
     let settings = network::settings_from(
         args.noproxy,
@@ -812,27 +825,51 @@ fn fetch_link(url: &str, args: &FetchNetworkArgs) -> anyhow::Result<Vec<u8>> {
         .build()?;
     runtime
         .block_on(fetch_source(url, &fetch))
-        .map_err(|e| anyhow!(fetch_message(&e)))
+        .map_err(|e| anyhow!(fetch_message(url, &e)))
 }
 
-/// One clear sentence per way a fetch can fail.
-pub(crate) fn fetch_message(error: &FetchError) -> String {
+/// One clear sentence per way a fetch of `url` can fail, naming the link by its origin.
+pub(crate) fn fetch_message(url: &str, error: &FetchError) -> String {
+    let from = format!("cannot import from {}", shown_link(url));
     match error {
+        // A refused link may hold a user name and password, so it is never echoed.
         FetchError::Scheme(why) => format!("cannot import the link: {why}"),
-        FetchError::Transport(why) => format!("cannot fetch the link: {why}"),
-        FetchError::Timeout => "cannot fetch the link: it timed out".to_owned(),
-        FetchError::Status(code) => {
-            format!("cannot fetch the link: the server answered HTTP {code}")
-        }
+        FetchError::Transport(why) => format!("{from}: {why}"),
+        FetchError::Timeout => format!("{from}: it timed out"),
+        FetchError::Status(code) => format!("{from}: the server answered HTTP {code}"),
         FetchError::TooLarge { max_bytes } => {
-            format!("cannot fetch the link: the body is larger than {max_bytes} bytes")
+            format!("{from}: the file is larger than {max_bytes} bytes")
         }
-        FetchError::TooManyRedirects => "cannot fetch the link: too many redirects".to_owned(),
+        FetchError::TooManyRedirects => format!("{from}: too many redirects"),
         FetchError::HostNotAllowed { host, .. } => {
-            format!("cannot fetch the link: host `{host}` is not allowed")
+            format!("{from}: host `{host}` is not allowed")
         }
-        other => format!("cannot fetch the link: {other}"),
+        other => format!("{from}: {other}"),
     }
+}
+
+// A signed link carries its secret in the path or query, and stderr lands in CI logs, so a
+// link is only ever shown by its origin.
+fn shown_link(url: &str) -> String {
+    url::Url::parse(url.trim()).map_or_else(
+        |_| "the link".to_owned(),
+        |u| u.origin().ascii_serialization(),
+    )
+}
+
+/// How an import source reads after "cannot import": `from` and the link's origin, `from
+/// stdin` for `-`, or the path as given.
+fn shown_source(source: &Path) -> String {
+    match source.to_str() {
+        Some("-") => "from stdin".to_owned(),
+        Some(text) if matches!(link(source), Ok(Some(_))) => format!("from {}", shown_link(text)),
+        _ => source.display().to_string(),
+    }
+}
+
+/// Whether `source` is `-`, the argument that names standard input.
+fn is_stdin(source: &Path) -> bool {
+    source == Path::new("-")
 }
 
 #[cfg(test)]
@@ -855,7 +892,10 @@ mod fetch_message_tests {
                 hop: 0,
             },
         ];
-        let messages: Vec<_> = all.iter().map(fetch_message).collect();
+        let messages: Vec<_> = all
+            .iter()
+            .map(|e| fetch_message("https://h.test/c.json?k=v", e))
+            .collect();
         let mut unique = messages.clone();
         unique.sort();
         unique.dedup();
@@ -864,6 +904,16 @@ mod fetch_message_tests {
         assert!(messages[4].contains("67108864"));
         assert!(messages[5].contains("redirects"));
         assert!(messages[2].contains("timed out"));
+        assert!(
+            messages.iter().all(|m| !m.contains("c.json")),
+            "{messages:?}"
+        );
+        assert!(
+            messages[1..]
+                .iter()
+                .all(|m| m.starts_with("cannot import from https://h.test: ")),
+            "{messages:?}"
+        );
     }
 }
 
@@ -913,19 +963,28 @@ fn input_file(args: &CollectionArgs) -> anyhow::Result<&Path> {
         .ok_or_else(|| anyhow!("FILE_OR_URL is required"))
 }
 
-/// Where `source` points, as the collection records it.
-fn spec_location(source: &Path) -> anyhow::Result<SpecLocation> {
+/// Where `source` points, as the collection records it; stdin is recorded as nothing.
+fn spec_location(source: &Path) -> anyhow::Result<Option<SpecLocation>> {
     Ok(match link(source)? {
-        Some(url) => SpecLocation::Link(url.to_owned()),
-        None => SpecLocation::File(source.to_path_buf()),
+        Some(url) => Some(SpecLocation::Link(url.to_owned())),
+        None if is_stdin(source) => None,
+        None => Some(SpecLocation::File(source.to_path_buf())),
     })
 }
 
-/// The bytes of a file or link, with the name a collection would default to.
+/// The bytes of a file, link or stdin (`-`), with the name a collection would default to;
+/// stdin has none, so the collection's own name is used.
 fn read_source(
     source: &Path,
     fetch: &FetchNetworkArgs,
 ) -> anyhow::Result<(Vec<u8>, Option<String>)> {
+    if is_stdin(source) {
+        let mut bytes = Vec::new();
+        std::io::stdin()
+            .read_to_end(&mut bytes)
+            .map_err(|e| anyhow!("cannot read stdin: {}", read_reason(&e)))?;
+        return Ok((bytes, None));
+    }
     Ok(match link(source)? {
         Some(url) => (fetch_link(url, fetch)?, default_import_name(url)),
         None => (read_file(source)?, file_stem(source)),
@@ -939,7 +998,7 @@ fn read_recorded(
 ) -> anyhow::Result<(Vec<u8>, Option<String>)> {
     let unknown = || anyhow!("the recorded spec has a kind of source this version cannot read");
     let shown = match location {
-        SpecLocation::Link(url) => url.clone(),
+        SpecLocation::Link(url) => shown_link(url),
         SpecLocation::File(path) => path.display().to_string(),
         _ => return Err(unknown()),
     };
@@ -957,7 +1016,7 @@ const FOLDER_NEEDS_INPUT: &str =
     "the recorded source updates the whole collection; give a spec file or link to update a folder";
 
 fn read_file(path: &Path) -> anyhow::Result<Vec<u8>> {
-    std::fs::read(path).with_context(|| format!("cannot read {}", path.display()))
+    std::fs::read(path).map_err(|e| anyhow!("cannot read {}: {}", path.display(), read_reason(&e)))
 }
 
 pub(crate) fn secret_store(no_keychain: bool) -> Arc<dyn SecretStore> {
@@ -1079,14 +1138,13 @@ impl SecretStore for NoKeychain {
 
 fn read_input(file: Option<&Path>) -> anyhow::Result<String> {
     match file {
-        Some(path) if path != Path::new("-") => {
-            std::fs::read_to_string(path).with_context(|| format!("cannot read {}", path.display()))
-        }
+        Some(path) if !is_stdin(path) => std::fs::read_to_string(path)
+            .map_err(|e| anyhow!("cannot read {}: {}", path.display(), read_reason(&e))),
         _ => {
             let mut text = String::new();
             std::io::stdin()
                 .read_to_string(&mut text)
-                .context("cannot read stdin")?;
+                .map_err(|e| anyhow!("cannot read stdin: {}", read_reason(&e)))?;
             Ok(text)
         }
     }

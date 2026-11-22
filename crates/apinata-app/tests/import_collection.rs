@@ -238,12 +238,20 @@ fn each_kind_of_note_is_one_line_with_its_places_and_files_under_it() {
         .collect();
     assert_eq!(hawk.len(), 2, "{:?}", report.notes);
     let place = |n: &apinata_core::import::ImportNote| {
-        format!("{}, in {}", n.source, n.file.as_deref().unwrap())
+        format!(
+            "{}, in {}",
+            n.place().replace('`', ""),
+            n.file.as_deref().unwrap()
+        )
     };
     let expected = format!(
         "hawk authentication is not supported; set to none\n{}\n{}",
         place(hawk[0]),
         place(hawk[1])
+    );
+    assert!(
+        expected.contains("\nrequest Get user 1, auth, in "),
+        "{expected}"
     );
     let lines = all_lines(&report);
     assert!(lines.contains(&expected), "{lines:?}");
@@ -480,12 +488,25 @@ fn an_open_failure_names_its_path_once() {
 fn an_unparsable_import_shows_plain_quotes() {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("c.json");
-    fs::write(&file, r#"{"id":"x","name":"c","order":[],"requests":[]}"#).unwrap();
+    let v9 = "https://schema.getpostman.com/json/collection/v9.0.0/collection.json";
+    fs::write(
+        &file,
+        format!(r#"{{"info":{{"name":"c","schema":"{v9}"}},"item":[]}}"#),
+    )
+    .unwrap();
     let Err(message) = apinata_app::shell::parse_bundles(&file, false) else {
         panic!("an unsupported schema parses");
     };
     assert!(
-        message.contains("schema \"") && !message.contains('`'),
+        message.contains(&format!("schema \"{v9}\"")) && !message.contains('`'),
+        "{message}"
+    );
+    fs::write(&file, r#"{"id":"x","name":"c","order":[],"requests":[]}"#).unwrap();
+    let Err(message) = apinata_app::shell::parse_bundles(&file, false) else {
+        panic!("a v1 file parses");
+    };
+    assert!(
+        message.contains("older Postman format") && !message.contains('`'),
         "{message}"
     );
 }

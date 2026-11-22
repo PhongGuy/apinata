@@ -2304,7 +2304,7 @@ fn classify(
 
 /// Why the connection in `error`'s chain failed: the first link showing a refusal, a TLS
 /// failure or hyper-util's `dns error` decides.
-fn connect_cause(error: &(dyn std::error::Error + 'static)) -> ConnectCause {
+pub(crate) fn connect_cause(error: &(dyn std::error::Error + 'static)) -> ConnectCause {
     let mut link = Some(error);
     while let Some(e) = link {
         if let Some(cause) = link_cause(e, 0) {

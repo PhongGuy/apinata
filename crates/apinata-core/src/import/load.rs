@@ -78,7 +78,7 @@ pub(crate) fn load_with(input: &[u8], limits: Limits) -> Result<Loaded, Document
         });
     }
     if syntax == Syntax::Yaml {
-        yaml_prepass_checked(body, shift, limits)?;
+        yaml_prepass_checked(input, body, shift, limits)?;
     }
 
     // The budget failure travels through each deserializer as its own error type, so the
@@ -94,11 +94,14 @@ pub(crate) fn load_with(input: &[u8], limits: Limits) -> Result<Loaded, Document
             let mut de = serde_json::Deserializer::from_slice(body);
             seed.deserialize(&mut de)
                 .and_then(|value| de.end().map(|()| value))
-                .map_err(|e| (json_error_offset(body, &e), e.to_string()))
+                .map_err(|e| json_failure(body, shift, &e))
         }
         Syntax::Yaml => seed
             .deserialize(yaml_serde::Deserializer::from_slice(body))
-            .map_err(|e| (e.location().map_or(0, |l| l.index()), e.to_string())),
+            .map_err(|e| {
+                let offset = e.location().map_or(0, |l| l.index());
+                yaml_failure(input, shift + offset, &e.to_string())
+            }),
     };
     match parsed {
         Ok(value) => Ok(Loaded { value, syntax }),
@@ -106,29 +109,98 @@ pub(crate) fn load_with(input: &[u8], limits: Limits) -> Result<Loaded, Document
             limit: limits.values,
             unit: "values",
         }),
-        Err((offset, message)) => Err(DocumentError::Parse {
-            offset: offset + shift,
-            message,
-        }),
+        Err(failure) => Err(failure),
     }
 }
 
+/// A JSON syntax error in `body` (the input after a `shift`-byte BOM), placed by line and
+/// column and reworded the way the body editor words it.
+pub(crate) fn json_failure(body: &[u8], shift: usize, error: &serde_json::Error) -> DocumentError {
+    let offset = shift + json_error_offset(body, error);
+    let found = std::str::from_utf8(body)
+        .ok()
+        .and_then(crate::json_syntax_error);
+    let (line, column, message) = match found {
+        Some(found) => (found.line, found.column, lower_first(&found.message)),
+        None => (
+            error.line().max(1),
+            error.column().max(1),
+            format!("not valid JSON: {}", without_location(&error.to_string())),
+        ),
+    };
+    DocumentError::Parse {
+        offset,
+        line,
+        column,
+        message,
+    }
+}
+
+/// A YAML syntax error at byte `offset` of `input`, with the parser's own location words cut,
+/// since the line and column are given separately.
+fn yaml_failure(input: &[u8], offset: usize, raw: &str) -> DocumentError {
+    let (line, column) = line_column(input, offset);
+    DocumentError::Parse {
+        offset,
+        line,
+        column,
+        message: format!("not valid YAML: {}", without_location(raw)),
+    }
+}
+
+/// The 1-based line and character column of byte `offset` in `input`.
+pub(crate) fn line_column(input: &[u8], offset: usize) -> (usize, usize) {
+    let before = &input[..offset.min(input.len())];
+    let line_start = before
+        .iter()
+        .rposition(|b| *b == b'\n')
+        .map_or(0, |i| i + 1);
+    let line = before.iter().filter(|b| **b == b'\n').count() + 1;
+    let column = String::from_utf8_lossy(&before[line_start..])
+        .chars()
+        .count()
+        + 1;
+    (line, column)
+}
+
+// Parsers end their reasons with " at line N column M" and sometimes more context after it.
+fn without_location(raw: &str) -> &str {
+    raw.find(" at line ").map_or(raw, |at| &raw[..at])
+}
+
+fn lower_first(text: &str) -> String {
+    let mut chars = text.chars();
+    chars
+        .next()
+        .map(|first| first.to_lowercase().chain(chars).collect())
+        .unwrap_or_default()
+}
+
 /// Refuse a YAML body that is not UTF-8, nests too deeply or streams too many events, before
-/// `yaml_serde` builds anything; `shift` is the BOM length, so offsets index the input as given.
-fn yaml_prepass_checked(body: &[u8], shift: usize, limits: Limits) -> Result<(), DocumentError> {
-    let text = std::str::from_utf8(body).map_err(|e| DocumentError::Parse {
-        offset: shift + e.valid_up_to(),
-        message: e.to_string(),
+/// `yaml_serde` builds anything; `body` is `input` after a `shift`-byte BOM, so offsets index
+/// the input as given.
+fn yaml_prepass_checked(
+    input: &[u8],
+    body: &[u8],
+    shift: usize,
+    limits: Limits,
+) -> Result<(), DocumentError> {
+    let text = std::str::from_utf8(body).map_err(|e| {
+        let offset = shift + e.valid_up_to();
+        let (line, column) = line_column(input, offset);
+        DocumentError::Parse {
+            offset,
+            line,
+            column,
+            message: "the file is not UTF-8 text".to_owned(),
+        }
     })?;
     yaml_prepass::prepass(text, limits.yaml_events).map_err(|refusal| match refusal {
         Refusal::TooManyEvents => DocumentError::TooLarge {
             limit: limits.yaml_events,
             unit: "events",
         },
-        Refusal::At { offset, message } => DocumentError::Parse {
-            offset: shift + offset,
-            message,
-        },
+        Refusal::At { offset, message } => yaml_failure(input, shift + offset, &message),
     })
 }
 
@@ -538,10 +610,12 @@ mod tests {
     #[test]
     fn the_pre_pass_refuses_deep_or_long_yaml_before_loading() {
         let parse = |input: &[u8]| match load(input) {
-            Err(DocumentError::Parse { offset, message }) => (offset, message),
+            Err(DocumentError::Parse {
+                offset, message, ..
+            }) => (offset, message),
             other => panic!("{other:?}"),
         };
-        let deep = "nesting deeper than 128".to_owned();
+        let deep = "not valid YAML: nesting deeper than 128".to_owned();
         // 1 MiB of unclosed `[`: saphyr's scanner looks ahead and hits its own 255-level flow
         // limit (a u8) before our per-event 128 check sees event 129; both refuse, at once.
         let mut open = b"a: ".to_vec();

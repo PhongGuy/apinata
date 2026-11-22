@@ -119,7 +119,7 @@ fn an_unreachable_recorded_link_is_a_clear_error() {
     );
     update(&root)
         .failure()
-        .stderr(contains("recorded spec").and(contains("cannot fetch")));
+        .stderr(contains("recorded spec").and(contains("cannot import from http://127.0.0.1:")));
 }
 
 #[test]

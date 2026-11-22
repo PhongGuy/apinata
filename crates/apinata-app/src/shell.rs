@@ -9,7 +9,7 @@ use std::sync::{Arc, LazyLock};
 
 use apinata_core::import::{
     CollectionOptions, EnvironmentFormat, FormatError, GroupBy, ImportBundle, ImportReport,
-    ImportedRequest, SpecLocation, parse_collections, write_collection,
+    ImportedRequest, SpecLocation, parse_collections, read_reason, write_collection,
 };
 use apinata_core::team::TeamState;
 use apinata_core::{DraftSnapshot, ItemPath};
@@ -3870,8 +3870,8 @@ pub fn parse_bundles_grouped(
     formats_shown: bool,
     group_by: GroupBy,
 ) -> Result<Vec<ImportBundle>, String> {
-    let input =
-        std::fs::read(file).map_err(|e| crate::import_report::failure_at(file, &e.to_string()))?;
+    let input = std::fs::read(file)
+        .map_err(|e| crate::import_report::failure_at(file, &read_reason(&e)))?;
     let source = SpecLocation::File(file.to_path_buf());
     parse_bundles_with(file, &input, formats_shown, group_by, source)
 }

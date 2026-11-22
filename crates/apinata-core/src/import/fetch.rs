@@ -12,7 +12,7 @@ use reqwest::header::{ACCEPT, LOCATION};
 use reqwest::redirect::Policy;
 use url::Url;
 
-use crate::execute::chain;
+use crate::execute::{ConnectCause, chain, connect_cause};
 use crate::host_guard::{Guard, HostPolicy, SystemLookup, judge, refused_host};
 use crate::network::{
     FetchOptions, GlobalProxy, NetworkSettings, PAC_CACHE, PacSend, ProxyRule, RequestProxy,
@@ -228,7 +228,7 @@ async fn follow(
             )
             .send()
             .await
-            .map_err(|e| transport(e, hop))?;
+            .map_err(|e| transport(e, hop, &url))?;
         let status = response.status();
         if matches!(status.as_u16(), 301 | 302 | 303 | 307 | 308) {
             if hop >= opts.max_redirects {
@@ -250,7 +250,7 @@ async fn follow(
         if !status.is_success() {
             return Err(FetchError::Status(status.as_u16()));
         }
-        return read_body(response, opts.max_bytes, hop).await;
+        return read_body(response, opts.max_bytes, hop, &url).await;
     }
 }
 
@@ -260,13 +260,14 @@ async fn read_body(
     mut response: reqwest::Response,
     max_bytes: u64,
     hop: usize,
+    url: &Url,
 ) -> Result<Vec<u8>, FetchError> {
     let too_large = FetchError::TooLarge { max_bytes };
     if response.content_length().is_some_and(|n| n > max_bytes) {
         return Err(too_large);
     }
     let mut body = Vec::new();
-    while let Some(chunk) = response.chunk().await.map_err(|e| transport(e, hop))? {
+    while let Some(chunk) = response.chunk().await.map_err(|e| transport(e, hop, url))? {
         if (body.len() + chunk.len()) as u64 > max_bytes {
             return Err(too_large);
         }
@@ -275,14 +276,36 @@ async fn read_body(
     Ok(body)
 }
 
-fn transport(error: reqwest::Error, hop: usize) -> FetchError {
+fn transport(error: reqwest::Error, hop: usize, url: &Url) -> FetchError {
     if error.is_timeout() {
         return FetchError::Timeout;
     }
     if let Some(host) = refused_host(&error) {
         return FetchError::HostNotAllowed { host, hop };
     }
-    FetchError::Transport(chain(error))
+    FetchError::Transport(transport_words(
+        &error,
+        url.host_str().unwrap_or("the server"),
+    ))
+}
+
+// What went wrong on the wire, said the way a user knows it; the client's error chain names
+// layers (hyper, rustls, the resolver) nobody importing a file should have to read.
+fn transport_words(error: &reqwest::Error, host: &str) -> String {
+    if !error.is_connect() {
+        return format!("the connection to {host} broke before the file arrived");
+    }
+    match connect_cause(error) {
+        ConnectCause::Dns => format!("the host {host} could not be found"),
+        ConnectCause::Refused => format!("{host} refused the connection"),
+        ConnectCause::TlsUnknownIssuer => format!("the certificate of {host} is not trusted"),
+        ConnectCause::TlsExpired => format!("the certificate of {host} has expired"),
+        ConnectCause::TlsWrongProtocol => {
+            format!("{host} did not answer over https; try the http:// link")
+        }
+        ConnectCause::Tls => format!("the secure connection to {host} failed"),
+        _ => format!("cannot connect to {host}"),
+    }
 }
 
 /// A one-off client for one hop: routed by `rule`, no cookie store, no automatic redirects, the

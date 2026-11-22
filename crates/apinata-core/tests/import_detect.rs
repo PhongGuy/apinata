@@ -136,10 +136,9 @@ fn a_named_format_wraps_loader_errors_in_its_own_variant() {
         ),
         "{e:?}"
     );
-    assert!(
-        e.to_string()
-            .starts_with("OpenAPI: cannot be read at byte 0"),
-        "{e}"
+    assert_eq!(
+        e.to_string(),
+        "OpenAPI: the JSON ends before the closing } (line 1, column 2)"
     );
     let e = parse_collection(Some(C::Insomnia), b"a: [1").unwrap_err();
     assert!(
