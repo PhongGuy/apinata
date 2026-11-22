@@ -138,6 +138,7 @@ struct Mapper {
     timeout: Option<Timeout>,
     max_redirects: Option<u32>,
     follow_redirects: bool,
+    referer: Option<Valued>,
     secrets: Vec<ImportedSecret>,
     collected: Collected,
     notes: Vec<(usize, ImportNote)>,
@@ -240,6 +241,7 @@ impl Mapper {
             Known::MaxTime => self.max_time(&flag, &text),
             Known::MaxRedirs => self.max_redirs(&flag, &text),
             Known::Location => self.follow_redirects = true,
+            Known::Referer => self.referer = Some(Valued::new(&flag, text)),
             Known::Insecure => self.flag_note(
                 &flag,
                 NoteKind::Dropped,
@@ -336,6 +338,41 @@ impl Mapper {
                 "curl would remove this header, read it from a file or not send it, so it was left out",
             ),
         }
+    }
+
+    /// The last `-e` becomes a `Referer` header unless `-H` sets one. curl cuts the value at
+    /// `;auto`, which re-sends each redirect's URL; a request can only keep the starting one.
+    fn referer_header(&mut self, referer: Valued) {
+        let (url, auto) = match referer.text.find(";auto") {
+            Some(at) => (&referer.text[..at], true),
+            None => (referer.text.as_str(), false),
+        };
+        let has_header = self
+            .headers
+            .iter()
+            .any(|h| h.name.eq_ignore_ascii_case("referer"));
+        let (kind, detail) = match (has_header, url.is_empty(), auto) {
+            (_, true, false) => return,
+            (true, _, _) => (
+                NoteKind::Dropped,
+                "a Referer header is set, so this was left out",
+            ),
+            (false, true, true) => (
+                NoteKind::Dropped,
+                "`;auto` sets the Referer on each redirect, which a request cannot do, so it was left out",
+            ),
+            (false, false, auto) => {
+                self.headers.push(KeyValue::new("Referer", url));
+                if !auto {
+                    return;
+                }
+                (
+                    NoteKind::Converted,
+                    "`;auto` sets the Referer on each redirect, which a request cannot do, so only the starting URL is sent",
+                )
+            }
+        };
+        self.note(referer.offset, referer.source(), kind, detail);
     }
 
     /// `-b name=value` adds to one joined `Cookie` header; a `-b` without `=` names a cookie file.
@@ -503,6 +540,9 @@ impl Mapper {
         if self.compressed && !has_encoding {
             self.headers
                 .push(KeyValue::new("Accept-Encoding", "deflate, gzip"));
+        }
+        if let Some(referer) = self.referer.take() {
+            self.referer_header(referer);
         }
         let has_body = (!self.collected.data.is_empty() && !self.collected.get)
             || !self.collected.form.is_empty();

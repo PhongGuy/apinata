@@ -39,7 +39,8 @@ fn add_request_writes_every_field() {
         r.headers(),
         [
             KeyValue::new("Authorization", "Bearer {{token}}"),
-            KeyValue::new("Content-Type", "application/json")
+            KeyValue::new("Content-Type", "application/json"),
+            KeyValue::new("Accept", "application/json")
         ]
     );
     assert_eq!(r.body(), BodySpec::Json("{\n  \"a\": 1\n}".into()));

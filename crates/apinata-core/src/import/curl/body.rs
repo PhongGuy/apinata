@@ -47,10 +47,22 @@ pub(super) fn apply(
     if collected.data.is_empty() {
         return;
     }
-    if collected.data.iter().any(|p| p.flag == Known::Json) && content_type(request).is_none() {
-        request
+    // `--json` also asks for JSON back; a header the command sets itself wins, as in curl.
+    if collected.data.iter().any(|p| p.flag == Known::Json) {
+        if content_type(request).is_none() {
+            request
+                .headers
+                .push(KeyValue::new("Content-Type", "application/json"));
+        }
+        if !request
             .headers
-            .push(KeyValue::new("Content-Type", "application/json"));
+            .iter()
+            .any(|h| h.name.eq_ignore_ascii_case("accept"))
+        {
+            request
+                .headers
+                .push(KeyValue::new("Accept", "application/json"));
+        }
     }
     let content_type = content_type(request).map(str::to_owned);
 
