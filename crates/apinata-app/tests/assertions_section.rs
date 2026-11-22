@@ -815,6 +815,53 @@ fn the_operator_search_matches_the_raw_operator(cx: &mut TestAppContext) {
     assert!(!present(cx, win, "as-op-option-eq"));
 }
 
+// Opens row 0's operator picker, types `query`, then presses `keys`; returns the edits made.
+fn pick_operator(cx: &mut TestAppContext, query: &str, keys: &[&str]) -> Vec<Edit> {
+    let (win, host, _s) = section(cx, vec![new("res.status", "eq", Some("200"), true)]);
+    click(cx, win, ("as-op", 0usize));
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| w.input(query, cx))
+        .unwrap();
+    frame(cx, win);
+    for key in keys {
+        cx.update_window(win, |_, w, cx| w.press(key, cx)).unwrap();
+        frame(cx, win);
+    }
+    host.read_with(cx, |h, _| h.edits.clone())
+}
+
+#[gpui_kit::test]
+fn searching_operators_commits_nothing(cx: &mut TestAppContext) {
+    assert!(pick_operator(cx, "defined", &[]).is_empty());
+}
+
+#[gpui_kit::test]
+fn a_word_start_match_ranks_above_a_substring_match(cx: &mut TestAppContext) {
+    let edits = pick_operator(cx, "defined", &["enter"]);
+    assert!(
+        matches!(edits.last(), Some(Edit::Assertions(a)) if a == &vec![new("res.status", "isDefined", None, true)]),
+        "{edits:?}"
+    );
+}
+
+#[gpui_kit::test]
+fn a_substring_match_still_lists_below(cx: &mut TestAppContext) {
+    let edits = pick_operator(cx, "defined", &["down", "enter"]);
+    assert!(
+        matches!(edits.last(), Some(Edit::Assertions(a)) if a == &vec![new("res.status", "isUndefined", None, true)]),
+        "{edits:?}"
+    );
+}
+
+#[gpui_kit::test]
+fn an_exact_match_ranks_first(cx: &mut TestAppContext) {
+    let edits = pick_operator(cx, "in", &["enter"]);
+    assert!(
+        matches!(edits.last(), Some(Edit::Assertions(a)) if a == &vec![new("res.status", "in", Some("200"), true)]),
+        "{edits:?}"
+    );
+}
+
 #[gpui_kit::test]
 fn the_expression_shows_an_example(cx: &mut TestAppContext) {
     let (_win, _host, s) = section(cx, vec![new("res.status", "eq", Some("200"), true)]);
