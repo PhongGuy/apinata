@@ -55,7 +55,7 @@ fn the_palette_opens_curl_and_a_switch_regenerates(cx: &mut TestAppContext) {
         shown(cx),
         Some((
             Target::Curl,
-            "curl --request 'GET' \\\n  --url 'http://x.test/ok'".to_owned()
+            "curl --request 'GET' \\\n  --url 'http://x.test/ok' \\\n  --location".to_owned()
         ))
     );
     let view = cx.update(|cx| current(cx)).unwrap();
@@ -152,7 +152,7 @@ fn copy_as_curl_still_copies_the_curl_text(cx: &mut TestAppContext) {
     choose_menu(cx, s.win, "a.yml", NodeKind::Request, MenuEntry::CopyAsCurl);
     assert_eq!(
         cx.read_from_clipboard().and_then(|c| c.text()).as_deref(),
-        Some("curl --request 'GET' \\\n  --url 'http://x.test/c'")
+        Some("curl --request 'GET' \\\n  --url 'http://x.test/c' \\\n  --location")
     );
 }
 

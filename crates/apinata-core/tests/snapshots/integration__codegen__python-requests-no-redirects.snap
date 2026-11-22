@@ -1,0 +1,11 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+import requests
+
+url = 'http://x.test/n'
+
+response = requests.request('GET', url, allow_redirects=False)
+print(response.status_code)
+print(response.text)

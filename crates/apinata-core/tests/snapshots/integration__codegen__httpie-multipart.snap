@@ -2,6 +2,6 @@
 source: crates/apinata-core/tests/codegen.rs
 expression: "generate(&req, target)"
 ---
-http --ignore-stdin --multipart 'POST' 'http://x.test/m' \
+http --ignore-stdin --follow --multipart 'POST' 'http://x.test/m' \
   'a=1' \
   'up@/data/up.bin;type=text/plain'

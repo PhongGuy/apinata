@@ -8,4 +8,5 @@ curl --request 'POST' \
   --header 'X-H: it'\''s "q" \ $HOME {x} ü' \
   --header 'content-type: text/plain' \
   --data-raw 'a'\''b"c\d $e {f}	g
-ü€ end'
+ü€ end' \
+  --location

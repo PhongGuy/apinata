@@ -4,5 +4,6 @@ expression: "generate(&req, target)"
 ---
 curl --request 'GET' \
   --url 'http://x.test/digest' \
+  --location \
   --digest \
   --user 'alice:p'\''w'

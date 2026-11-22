@@ -1,6 +1,5 @@
 ---
 source: crates/apinata-core/tests/codegen.rs
-assertion_line: 88
 expression: "generate(&req, target)"
 ---
 <?php
@@ -11,6 +10,7 @@ curl_setopt_array($curl, [
     CURLOPT_URL => "http://x.test/aws",
     CURLOPT_CUSTOMREQUEST => "GET",
     CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_FOLLOWLOCATION => true,
 ]);
 
 $response = curl_exec($curl);

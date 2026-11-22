@@ -211,6 +211,9 @@ pub(super) fn rest_method(req: &ResolvedRequest) -> String {
         }
         call.push_str(" -Body $body");
     }
+    if !req.follow_redirects() {
+        call.push_str(" -MaximumRedirection 0");
+    }
     out.push_str(&format!("{call} -SkipHeaderValidation\n"));
     out
 }

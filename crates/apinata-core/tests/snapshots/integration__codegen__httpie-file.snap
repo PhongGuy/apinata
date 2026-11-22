@@ -2,6 +2,6 @@
 source: crates/apinata-core/tests/codegen.rs
 expression: "generate(&req, target)"
 ---
-http --ignore-stdin 'PUT' 'http://x.test/b' \
+http --ignore-stdin --follow 'PUT' 'http://x.test/b' \
   'content-type:application/json' \
   @'/data/body.json'

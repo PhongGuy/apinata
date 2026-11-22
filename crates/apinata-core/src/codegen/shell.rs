@@ -8,13 +8,18 @@ use crate::resolve::{Body, ResolvedRequest};
 
 use super::{digest_credentials, omitted_auth, sent_headers};
 
-/// `to_curl` with curl's own digest flags, and a leading comment for SigV4.
+/// `to_curl` with `--location` when following redirects, which curl does not do by default,
+/// curl's own digest flags, and a leading comment for SigV4.
 pub(super) fn curl(req: &ResolvedRequest) -> String {
     let mut out = String::new();
     if let Some(note) = omitted_auth(req, true) {
         out.push_str(&format!("# {note}\n"));
     }
     out.push_str(&to_curl(req));
+    if req.follow_redirects() {
+        out.push_str(SEPARATOR);
+        out.push_str("--location");
+    }
     if let Some((user, password)) = digest_credentials(req) {
         out.push_str(SEPARATOR);
         out.push_str("--digest");
@@ -44,6 +49,9 @@ fn item_word(text: &str) -> String {
 /// parts carry one.
 pub(super) fn httpie(req: &ResolvedRequest) -> String {
     let mut first = String::from("http --ignore-stdin");
+    if req.follow_redirects() {
+        first.push_str(" --follow");
+    }
     if let Some((user, password)) = digest_credentials(req) {
         first.push_str(" --auth-type digest --auth ");
         first.push_str(&quote(&format!("{user}:{password}")));

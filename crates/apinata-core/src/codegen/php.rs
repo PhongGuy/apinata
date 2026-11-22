@@ -106,6 +106,9 @@ pub(super) fn curl(req: &ResolvedRequest) -> String {
         ));
     }
     out.push_str("    CURLOPT_RETURNTRANSFER => true,\n");
+    if req.follow_redirects() {
+        out.push_str("    CURLOPT_FOLLOWLOCATION => true,\n");
+    }
 
     let mut headers: Vec<String> = sent_headers(req)
         .map(|(name, value)| {

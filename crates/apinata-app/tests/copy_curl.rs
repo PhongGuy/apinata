@@ -51,7 +51,7 @@ fn the_palette_copies_the_active_request(cx: &mut TestAppContext) {
     palette(cx, &s, "copy as curl");
     assert_eq!(
         clipboard(cx).as_deref(),
-        Some("curl --request 'GET' \\\n  --url 'http://x.test/ok'")
+        Some("curl --request 'GET' \\\n  --url 'http://x.test/ok' \\\n  --location")
     );
 }
 
@@ -62,7 +62,7 @@ fn the_sidebar_menu_copies_that_request(cx: &mut TestAppContext) {
     choose_menu(cx, s.win, "a.yml", NodeKind::Request, MenuEntry::CopyAsCurl);
     assert_eq!(
         clipboard(cx).as_deref(),
-        Some("curl --request 'GET' \\\n  --url 'http://x.test/m'")
+        Some("curl --request 'GET' \\\n  --url 'http://x.test/m' \\\n  --location")
     );
 }
 
