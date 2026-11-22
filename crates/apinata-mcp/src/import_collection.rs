@@ -1,23 +1,21 @@
 //! `import_collection`: parse a collection or API description and add its requests to the
 //! served collection as an ordinary folder, so they appear in every list tool.
 //!
-//! Only the items are taken, with an OpenAPI description's environments (its server URL). The
-//! import is written by core into a scratch directory and copied under
-//! `<into>/<collection name>/`; the imported root's own settings and other environments are
-//! reported as skipped. Imported credentials become secret variables whose values go to the
-//! server's secret store.
+//! The import is written by core into a scratch directory and copied under
+//! `<into>/<collection name>/`, whose `folder.yml` takes the imported root's own settings; its
+//! environments are added to the collection. Imported credentials become secret variables
+//! whose values go to the server's secret store.
 
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use apinata_core::import::{
-    CollectionFormat, CollectionOptions, GroupBy, ImportBundle, ImportError, ImportNote,
-    ImportReport, ImportedEnvironment, SpecLocation, TakeSpec, UpdateOptions, UpdateSummary,
-    add_environment, apply_update, can_update, ensure_folder, parse_collections, place_items,
-    plan_update, recorded_spec,
+    CollectionFormat, CollectionOptions, GroupBy, ImportBundle, ImportError, SpecLocation,
+    TakeSpec, UpdateOptions, UpdateSummary, apply_update, can_update, ensure_folder,
+    parse_collections, place_items, plan_update, recorded_spec,
 };
-use apinata_core::{AuthSpec, Collection, ItemPath, SecretStore, Trash, TrashLog};
+use apinata_core::{Collection, ItemPath, SecretStore, Trash, TrashLog};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -86,9 +84,6 @@ pub(crate) struct ImportCollectionArgs {
 pub(crate) struct ImportedCollections {
     /// One entry per collection in the input, in order.
     pub collections: Vec<ImportedFolder>,
-    /// What the input held that was not imported: environments and the imported root's own
-    /// headers, variables, auth and scripts.
-    pub skipped: Vec<String>,
     /// One note per part of the input that was dropped, converted or needs input.
     pub notes: Vec<NoteEntry>,
     /// Present for `update` only: what the refresh did.
@@ -165,8 +160,8 @@ pub(crate) struct ImportedFolder {
     pub requests: usize,
     /// The folders written inside it, at any depth.
     pub folders: usize,
-    /// The environments added to the collection for it: an OpenAPI description's servers,
-    /// which its requests' `{{baseUrl}}` needs to be sent.
+    /// The environments added to the collection for it, such as an OpenAPI description's
+    /// servers, which its requests' `{{baseUrl}}` needs to be sent.
     pub environments: Vec<String>,
 }
 
@@ -427,7 +422,6 @@ fn report(
     };
     ImportedCollections {
         collections: Vec::new(),
-        skipped: Vec::new(),
         notes: s
             .notes
             .iter()
@@ -514,7 +508,6 @@ fn place_bundles(
     let into = ensure_folder(c, &plan.into).map_err(folder_error)?;
     let mut result = ImportedCollections {
         collections: Vec::new(),
-        skipped: Vec::new(),
         notes: Vec::new(),
         update: None,
     };
@@ -522,22 +515,10 @@ fn place_bundles(
         let folder = c
             .create_folder(&into, &bundle.collection.name)
             .map_err(|e| e.to_string())?;
-        // An OpenAPI description's environments hold its server URL, so they are added before
-        // the items, whose unset-variable note then sees them; a failure takes them back.
-        let (environments, env_notes) = match kept_environments(c, bundle, secrets) {
-            Ok(kept) => kept,
-            Err(e) => {
-                let _ = fs::remove_dir_all(c.root().join(folder.as_str()));
-                return Err(format!("cannot write the imported environments: {e}"));
-            }
-        };
         let placed = match place_items(c, &folder, bundle, secrets) {
             Ok(placed) => placed,
             Err(e) => {
                 let _ = fs::remove_dir_all(c.root().join(folder.as_str()));
-                for name in &environments {
-                    let _ = c.delete_environment(name, secrets);
-                }
                 return Err(format!("cannot write the imported items: {e}"));
             }
         };
@@ -545,12 +526,11 @@ fn place_bundles(
             path: folder.to_string(),
             requests: placed.requests,
             folders: placed.report.items.len() - placed.requests,
-            environments,
+            environments: placed.report.environments,
         });
-        result.skipped.extend(skipped(bundle));
         result
             .notes
-            .extend(env_notes.into_iter().chain(placed.report.notes).map(|n| {
+            .extend(placed.report.notes.into_iter().map(|n| {
                 NoteEntry::Import(NoteDoc {
                     source: n.source,
                     kind: n.kind.id().to_owned(),
@@ -561,64 +541,6 @@ fn place_bundles(
     Ok(result)
 }
 
-/// Add the environments of an OpenAPI `bundle` to `c`, returning their names and notes; other
-/// formats keep none. A failure removes every environment this call created, a half-written
-/// one included, with its stored secrets.
-fn kept_environments(
-    c: &mut Collection,
-    bundle: &ImportBundle,
-    secrets: &dyn SecretStore,
-) -> Result<(Vec<String>, Vec<ImportNote>), ImportError> {
-    keep_with(c, bundle, secrets, &mut |c, env, secrets| {
-        add_environment(c, env, secrets)
-    })
-}
-
-type AddEnvironment<'a> = dyn FnMut(
-        &mut Collection,
-        &ImportedEnvironment,
-        &dyn SecretStore,
-    ) -> Result<(String, ImportReport), ImportError>
-    + 'a;
-
-fn keep_with(
-    c: &mut Collection,
-    bundle: &ImportBundle,
-    secrets: &dyn SecretStore,
-    add: &mut AddEnvironment<'_>,
-) -> Result<(Vec<String>, Vec<ImportNote>), ImportError> {
-    let mut names = Vec::new();
-    let mut notes = Vec::new();
-    if !bundle.collection.spec_source {
-        return Ok((names, notes));
-    }
-    let before = environment_names(c);
-    for env in &bundle.environments {
-        match add(c, env, secrets) {
-            Ok((name, report)) => {
-                names.push(name);
-                notes.extend(report.notes);
-            }
-            Err(e) => {
-                // The failed write may have created its file before failing, so every name that
-                // was not there before goes, not only the ones that reported success.
-                for name in environment_names(c).difference(&before) {
-                    let _ = c.delete_environment(name, secrets);
-                }
-                return Err(e);
-            }
-        }
-    }
-    Ok((names, notes))
-}
-
-fn environment_names(c: &Collection) -> std::collections::BTreeSet<String> {
-    c.environments()
-        .iter()
-        .map(|e| e.name().to_owned())
-        .collect()
-}
-
 /// A core folder error as this tool words it, naming the `into` argument.
 fn folder_error(e: ImportError) -> String {
     match e {
@@ -627,39 +549,10 @@ fn folder_error(e: ImportError) -> String {
     }
 }
 
-/// What `bundle` held that the import leaves out.
-fn skipped(bundle: &ImportBundle) -> Vec<String> {
-    let root = &bundle.collection;
-    let name = &root.name;
-    // An OpenAPI description's environments are kept, so only other formats skip theirs.
-    let mut out: Vec<String> = bundle
-        .environments
-        .iter()
-        .filter(|_| !root.spec_source)
-        .map(|e| format!("{name}: environment `{}`", e.name))
-        .collect();
-    let scripts = !root.scripts.pre_request.trim().is_empty()
-        || !root.scripts.post_response.trim().is_empty();
-    for (present, what) in [
-        (!root.headers.is_empty(), "collection headers"),
-        (!root.vars.is_empty(), "collection variables"),
-        (
-            !matches!(root.auth, AuthSpec::None | AuthSpec::Inherit),
-            "collection auth",
-        ),
-        (scripts, "collection scripts"),
-    ] {
-        if present {
-            out.push(format!("{name}: {what}"));
-        }
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use apinata_core::{MemoryStore, SecretError, SecretKey};
+    use apinata_core::{SecretError, SecretKey};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[derive(Default)]
@@ -680,41 +573,11 @@ mod tests {
         }
     }
 
-    // A collection variable is root settings, which placing skips, so a request with no
-    // credential of its own leaves the store alone.
+    // A collection variable is a plain folder variable once placed, not a credential, so a
+    // request with no credential of its own leaves the store alone.
     const INPUT: &str = r#"{"info":{"name":"Col","schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
 "item":[{"name":"Get","request":{"method":"GET","url":"http://127.0.0.1:1/x"}}],
 "variable":[{"key":"token","value":"s3cret"}]}"#;
-
-    const SERVED: &str = r#"{"openapi":"3.0.0","info":{"title":"Served","version":"1"},
-"servers":[{"url":"http://127.0.0.1:1/v1"}],"paths":{"/pets":{"get":{"summary":"List"}}}}"#;
-
-    #[test]
-    fn a_failed_environment_write_takes_back_what_it_created() {
-        let dir = tempfile::tempdir().unwrap();
-        let mut c = Collection::create(dir.path(), "shop").unwrap();
-        c.create_environment("Mine", &MemoryStore::new()).unwrap();
-        let bundle = parse_collections(None, SERVED.as_bytes(), &CollectionOptions::default())
-            .unwrap()
-            .remove(0);
-        assert!(!bundle.environments.is_empty());
-        let store = MemoryStore::new();
-        // The write creates its file, then fails as a failed save would.
-        let err = keep_with(&mut c, &bundle, &store, &mut |c, env, store| {
-            c.create_environment(&env.name, store).unwrap();
-            Err(ImportError::Folder {
-                problem: "save failed".to_owned(),
-            })
-        });
-        assert!(err.is_err());
-        let names: Vec<String> = environment_names(&c).into_iter().collect();
-        assert_eq!(names, ["Mine"]);
-        let files: Vec<_> = fs::read_dir(c.root().join("environments"))
-            .unwrap()
-            .map(|e| e.unwrap().file_name())
-            .collect();
-        assert_eq!(files, ["Mine.yml"]);
-    }
 
     #[test]
     fn an_import_without_credentials_never_touches_the_secret_store() {

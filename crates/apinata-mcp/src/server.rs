@@ -1474,8 +1474,8 @@ impl ApinataServer {
                        give exactly one. Its requests and folders are added to this collection \
                        as a new folder named after the imported collection, inside `into` \
                        (default `imports`, relative to the root, no `..`, no symlinks). \
-                       Environments and the imported root's headers, variables, auth and \
-                       scripts are not imported and are listed as skipped. Fetching a URL on \
+                       The imported root's docs, headers, variables, auth and scripts go on \
+                       that folder, and its environments are added to this collection. Fetching a URL on \
                        a non-local host needs the user's approval in the Apinata app, the \
                        same as send_request; approving a host there also lets send_request \
                        reach it. Returns the folders written, their counts and a note for \

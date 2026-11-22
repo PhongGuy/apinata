@@ -970,7 +970,9 @@ apinata import collection openapi.yaml --into ./collections/Shop --update --take
 
 To keep several descriptions in one collection, import each into its own folder
 with `--folder`. The folder is created when missing and must not hold requests
-yet, no environments are written, and `--update --folder` refreshes just that
+yet. The imported collection's own auth, headers, variables, scripts and docs go
+on that folder, its environments are added to the collection (one whose name is
+taken gets a new name and a note), and `--update --folder` refreshes just that
 folder later:
 
 ```sh

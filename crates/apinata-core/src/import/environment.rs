@@ -84,7 +84,17 @@ pub(crate) fn write_environment_file(
     };
     environment.set_variables(variables);
     environment.save()?;
-    let notes = placed(&env.notes, file.clone()).collect();
+    let mut notes: Vec<ImportNote> = placed(&env.notes, file.clone()).collect();
+    // A name the collection already has gets a suffix, which the user would otherwise not see.
+    if let Ok(base) = crate::env_ops::check_environment_name(&env.name)
+        && base != name
+    {
+        let detail =
+            format!("an environment named `{base}` already exists, so this one is `{name}`");
+        let mut note = ImportNote::new("name", NoteKind::Renamed, detail);
+        note.file = Some(file.clone());
+        notes.insert(0, note);
+    }
     Ok(WrittenEnvironment {
         name,
         file,
