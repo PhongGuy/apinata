@@ -7,8 +7,9 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum IgnorePolicy {
-    /// `bruno-cli`'s walk: `.git` and `node_modules` directories are skipped, and a directory
-    /// whose path below the root contains `node_modules` keeps only its `folder.yml`.
+    /// `bruno-cli`'s walk: `.git`, `node_modules` and system trash directories are skipped,
+    /// and a directory whose path below the root contains `node_modules` keeps only its
+    /// `folder.yml`.
     #[default]
     BrunoCli,
     /// Bruno's app: also the root `mocks` directory and the paths listed under
@@ -83,7 +84,10 @@ impl Ignore {
 
     /// Whether the path itself is ignored, as a file or a directory.
     pub(crate) fn matches(&self, rel: &str) -> bool {
-        if rel.split('/').any(|s| s == "node_modules" || s == ".git") {
+        if rel
+            .split('/')
+            .any(|s| s == "node_modules" || s == ".git" || is_trash_dir(s))
+        {
             return true;
         }
         match self.policy {
@@ -121,4 +125,14 @@ impl Ignore {
         let grandparent = parent.rsplit_once('/').map_or("", |(g, _)| g);
         !(name == super::FOLDER_FILE && !self.skips_children_of(grandparent))
     }
+}
+
+/// A volume's own trash folder, which the system trash fills when a collection is a mount
+/// root: freedesktop `.Trash` and `.Trash-<uid>`, macOS `.Trashes`, Windows `$RECYCLE.BIN`.
+fn is_trash_dir(name: &str) -> bool {
+    matches!(name, ".Trash" | ".Trashes")
+        || name
+            .strip_prefix(".Trash-")
+            .is_some_and(|uid| !uid.is_empty() && uid.bytes().all(|b| b.is_ascii_digit()))
+        || name.eq_ignore_ascii_case("$RECYCLE.BIN")
 }
