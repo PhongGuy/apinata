@@ -113,6 +113,25 @@ impl NetworkQuestion {
     pub fn shown(&self) -> &ShownNetwork {
         &self.shown
     }
+
+    /// Whether the question is only about the collection's settings and they are exactly what
+    /// `shown` shows, under the same record; a send's own variables or an unreadable record
+    /// are never covered.
+    pub fn covered_by(&self, shown: &ShownNetwork) -> bool {
+        let collection_only = self.changes.iter().all(|c| {
+            !matches!(
+                c,
+                NetworkChange::SetByVariable(_)
+                    | NetworkChange::RequestDiffers
+                    | NetworkChange::RecordUnreadable
+                    | NetworkChange::Unverifiable
+            )
+        });
+        collection_only
+            && self.shown.collection.is_some()
+            && self.shown.salt == shown.salt
+            && self.shown.collection == shown.collection
+    }
 }
 
 /// The boxed answer future an ask returns.
@@ -573,6 +592,41 @@ mod tests {
         assert!(basis("{{bp}}", &[("{{bp}}", "a.test")]).verified);
         assert!(!basis("{{bp}}", &[("{{bp}}", "127.0.0.1")]).verified);
         assert!(!basis("{{nope}}", &[("{{nope}}", "127.0.0.1")]).verified);
+    }
+
+    fn question(changes: Vec<NetworkChange>, shown: ShownNetwork) -> NetworkQuestion {
+        NetworkQuestion {
+            root: PathBuf::from("/c"),
+            kind: QuestionKind::Changed,
+            changes,
+            shown,
+        }
+    }
+
+    fn shown(salt: &str, network: &CollectionNetwork) -> ShownNetwork {
+        ShownNetwork::collection(salt, NetworkSnapshot::from_network(network, salt))
+    }
+
+    // Only a question about exactly the shown collection settings, and nothing a send adds, is
+    // covered by them.
+    #[test]
+    fn a_question_is_covered_only_by_the_collection_settings_it_shows() {
+        let net = CollectionNetwork {
+            host_overrides: vec![super::super::HostOverride::new("a.test", "127.0.0.1")],
+            ..CollectionNetwork::default()
+        };
+        let added = NetworkChange::HostOverrideAdded {
+            host: "a.test".into(),
+            address: "127.0.0.1".into(),
+        };
+        let own = shown("s", &net);
+        assert!(question(vec![added.clone()], own.clone()).covered_by(&own));
+        let other = shown("s", &CollectionNetwork::default());
+        assert!(!question(vec![added.clone()], other).covered_by(&own));
+        assert!(!question(vec![added.clone()], shown("t", &net)).covered_by(&own));
+        let by_variable = NetworkChange::SetByVariable(Box::new(added));
+        assert!(!question(vec![by_variable], own.clone()).covered_by(&own));
+        assert!(!question(vec![NetworkChange::RecordUnreadable], own.clone()).covered_by(&own));
     }
 
     // A generated token matches whatever the send generated for it, and nothing more.

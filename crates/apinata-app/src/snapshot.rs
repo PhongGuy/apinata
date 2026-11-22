@@ -352,6 +352,9 @@ pub struct CollectionSnapshot {
     pub dotenv_held: Arc<HashMap<Target, std::collections::BTreeSet<String>>>,
     /// What the collection's Network section says about settings changed outside the app.
     pub network_notice: Option<crate::network_gate::Notice>,
+    /// The settings in memory when only the person's own unsaved edits set them apart from
+    /// what was seen; sends that use exactly these are not asked about.
+    pub network_own: Option<apinata_core::ShownNetwork>,
 }
 
 impl CollectionSnapshot {

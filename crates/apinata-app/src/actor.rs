@@ -221,6 +221,9 @@ struct Actor {
     network_ack: Option<PathBuf>,
     /// What the last Network notice showed, recorded as is by Acknowledge.
     network_shown: Option<apinata_core::ShownNetwork>,
+    /// The settings in memory when they differ from what was seen only by the person's own
+    /// unsaved edits; a send that uses exactly these is not asked about.
+    network_own: Option<apinata_core::ShownNetwork>,
     /// Team conflict copies opened as edits, by their request, until that request settles.
     copies: HashMap<Target, (ConflictCopies, String)>,
 }
@@ -278,6 +281,7 @@ impl Actor {
             prune_ticket: u64::MAX,
             network_ack: None,
             network_shown: None,
+            network_own: None,
             copies: HashMap::new(),
         }
     }
@@ -1640,6 +1644,7 @@ impl Actor {
             dotenv_stored: self.dotenv_stored(),
             dotenv_held: Arc::new(self.held_by_target()),
             network_notice: self.network_notice(),
+            network_own: self.network_own.clone(),
             stale: Arc::clone(&self.stale),
             notices: mem::take(&mut self.notices).into(),
         })
@@ -2007,10 +2012,11 @@ impl Actor {
         let ctx = self.draft_context(None).ok();
         let make = |salt: &str| network_snapshot(&network, ctx.as_ref(), salt);
         let mut notice = crate::network_gate::notice_for(&file, &root, &make);
+        self.network_own = None;
         // Disk is read only when memory differs and holds unsaved edits.
         if notice.is_some() && self.collection.file().is_dirty() && self.disk_network_acknowledged()
         {
-            notice = None;
+            self.network_own = notice.take().and_then(|n| n.shown);
         }
         self.network_shown = notice.as_ref().and_then(|n| n.shown.clone());
         notice
