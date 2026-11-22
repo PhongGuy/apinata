@@ -465,8 +465,9 @@ pub fn scope_tip(scope: &str, picked: Option<&SharedString>) -> SharedString {
 fn parse_all(files: &[PathBuf]) -> Result<Vec<ImportedEnvironment>, String> {
     let mut envs = Vec::new();
     for file in files {
-        let input = std::fs::read(file)
-            .map_err(|e| crate::import_report::failure_at(file, &e.to_string()))?;
+        let input = std::fs::read(file).map_err(|e| {
+            crate::import_report::failure_at(file, &apinata_core::import::read_reason(&e))
+        })?;
         envs.extend(
             parse_environments(None, &input)
                 .map_err(|e| crate::import_report::failure_at(file, &e.to_string()))?,

@@ -308,6 +308,9 @@ pub enum FormatError {
         /// The supported formats' labels, joined by `, `.
         supported: String,
     },
+    /// No format was named and the input is not valid JSON or YAML, so none could be told.
+    #[error("{0}")]
+    Unreadable(DocumentError),
     /// A Postman input is malformed or unsupported.
     #[error(transparent)]
     Postman(#[from] PostmanError),
@@ -404,6 +407,18 @@ fn load_bounded(
     }
 }
 
+/// The format `detect` finds in the loaded input, `None` when it finds none, or the syntax
+/// error when the input is neither JSON nor YAML, so that error is reported instead.
+fn detected<F>(
+    loaded: &Result<Loaded, DocumentError>,
+    detect: fn(&Value) -> Option<F>,
+) -> Option<Result<F, FormatError>> {
+    match loaded {
+        Ok(loaded) => detect(&loaded.value).map(Ok),
+        Err(error) => Some(Err(FormatError::Unreadable(error.clone()))),
+    }
+}
+
 /// Run a document parser on the loaded input, reporting a load or parse failure as `wrap`.
 fn run<T>(
     loaded: Result<Loaded, DocumentError>,
@@ -421,8 +436,15 @@ fn postman_with_bom<T>(
 ) -> Result<T, PostmanError> {
     let json = strip_bom(input);
     parse(json).map_err(|e| match e {
-        PostmanError::Parse { offset, message } => PostmanError::Parse {
+        PostmanError::Parse {
+            offset,
+            line,
+            column,
+            message,
+        } => PostmanError::Parse {
             offset: offset + (input.len() - json.len()),
+            line,
+            column,
             message,
         },
         e => e,
@@ -438,14 +460,12 @@ pub fn parse_collections(
 ) -> Result<Vec<ImportBundle>, FormatError> {
     let own_errors = format.is_some_and(|f| f != CollectionFormat::Postman);
     let loaded = load_bounded(input, own_errors)?;
-    let format = format
-        .or_else(|| {
-            let loaded = loaded.as_ref().ok()?;
-            CollectionFormat::detect_value(&loaded.value)
-        })
-        .ok_or_else(|| {
+    let format = match format {
+        Some(format) => format,
+        None => detected(&loaded, CollectionFormat::detect_value).ok_or_else(|| {
             unrecognized("collection", CollectionFormat::ALL, CollectionFormat::label)
-        })?;
+        })??,
+    };
     match format {
         CollectionFormat::Postman => Ok(vec![ImportBundle {
             collection: postman_with_bom(input, parse_postman)?,
@@ -471,18 +491,16 @@ pub fn parse_environments(
 ) -> Result<Vec<ImportedEnvironment>, FormatError> {
     let own_errors = format.is_some_and(|f| f != EnvironmentFormat::Postman);
     let loaded = load_bounded(input, own_errors)?;
-    let format = format
-        .or_else(|| {
-            let loaded = loaded.as_ref().ok()?;
-            EnvironmentFormat::detect_value(&loaded.value)
-        })
-        .ok_or_else(|| {
+    let format = match format {
+        Some(format) => format,
+        None => detected(&loaded, EnvironmentFormat::detect_value).ok_or_else(|| {
             unrecognized(
                 "environment",
                 EnvironmentFormat::ALL,
                 EnvironmentFormat::label,
             )
-        })?;
+        })??,
+    };
     match format {
         EnvironmentFormat::Postman => Ok(vec![postman_with_bom(input, parse_postman_environment)?]),
         EnvironmentFormat::Hoppscotch => run(

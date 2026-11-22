@@ -441,7 +441,7 @@ async fn an_unknown_ca_fails_and_a_given_ca_succeeds() {
     let Err(FetchError::Transport(message)) = fetch_source(&url, &opts()).await else {
         panic!("the untrusted certificate must fail the fetch");
     };
-    assert!(message.contains("UnknownIssuer"), "{message}");
+    assert_eq!(message, "the certificate of 127.0.0.1 is not trusted");
     let trusting = NetworkSettings::new()
         .proxy(GlobalProxy::Off)
         .ca_file(Some(pki("ca.pem")));

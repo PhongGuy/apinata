@@ -163,7 +163,7 @@ fn an_unreachable_port_is_a_fetch_failure() {
     let out = import(&format!("http://127.0.0.1:{port}/x.json"), into.path(), &[]);
     assert_eq!(out.status.code(), Some(3));
     let text = stderr(&out);
-    assert!(text.contains("cannot fetch"), "{text}");
+    assert!(text.contains("cannot import from"), "{text}");
     assert!(tree(into.path()).is_empty());
 }
 
@@ -247,7 +247,7 @@ fn a_url_with_credentials_is_refused_without_echoing_them() {
 }
 
 #[test]
-fn a_transport_failure_names_neither_the_url_nor_the_port() {
+fn a_transport_failure_names_the_host_but_not_the_path() {
     let port = std::net::TcpListener::bind("127.0.0.1:0")
         .unwrap()
         .local_addr()
@@ -255,15 +255,25 @@ fn a_transport_failure_names_neither_the_url_nor_the_port() {
         .port();
     let into = tempfile::tempdir().unwrap();
     let out = import(
-        &format!("http://127.0.0.1:{port}/secret-path.json"),
+        &format!("http://127.0.0.1:{port}/secret-path.json?key=secret-query#secret-fragment"),
         into.path(),
         &[],
     );
     assert_eq!(out.status.code(), Some(3));
     let text = stderr(&out);
-    assert!(!text.contains(&port.to_string()), "{text}");
+    assert!(
+        text.contains(&format!("cannot import from http://127.0.0.1:{port}: ")),
+        "{text}"
+    );
     assert!(!text.contains("secret-path"), "{text}");
-    assert!(!text.contains("127.0.0.1"), "{text}");
+    assert!(
+        !text.contains("secret-query") && !text.contains('?'),
+        "{text}"
+    );
+    assert!(
+        !text.contains("secret-fragment") && !text.contains('#'),
+        "{text}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -358,7 +368,7 @@ fn the_system_proxy_carries_the_link_and_noproxy_ignores_it() {
     let (out, _) = import_with(LINK, &["--noproxy"], &env);
     assert_ne!(out.status.code(), Some(0));
     assert!(
-        stderr(&out).contains("cannot fetch the link"),
+        stderr(&out).contains("cannot import from http://127.0.0.1:9: "),
         "{}",
         stderr(&out)
     );
@@ -406,7 +416,7 @@ fn the_network_flags_are_checked_together() {
     assert!(stderr(&out).contains("--noproxy"), "{}", stderr(&out));
     let (out, _) = import_with(LINK, &["--insecure", "--noproxy"], &[]);
     assert!(
-        stderr(&out).contains("cannot fetch the link"),
+        stderr(&out).contains("cannot import from http://127.0.0.1:9: "),
         "{}",
         stderr(&out)
     );

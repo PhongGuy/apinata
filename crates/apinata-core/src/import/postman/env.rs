@@ -5,7 +5,6 @@ use super::notes::members;
 use super::truthy;
 use crate::edit::VarValue;
 use crate::env_file::EnvVariable;
-use crate::import::load::json_error_offset;
 use crate::import::{ImportNote, ImportedEnvironment, NoteKind, PostmanError};
 use crate::js;
 use serde_json::Value;
@@ -24,10 +23,8 @@ struct Row {
 /// of secrets sharing a name only one is kept, preferring the first with a value. Fails on
 /// invalid JSON, a blank or missing name, or `values` (or an entry's key) of the wrong type.
 pub fn parse_postman_environment(json: &[u8]) -> Result<ImportedEnvironment, PostmanError> {
-    let root: Value = serde_json::from_slice(json).map_err(|e| PostmanError::Parse {
-        offset: json_error_offset(json, &e),
-        message: e.to_string(),
-    })?;
+    let root: Value =
+        serde_json::from_slice(json).map_err(|e| super::json_parse_error(json, &e))?;
     let name = coerce_env_name(root.get("name"))
         .ok_or_else(|| invalid("the environment has no valid name"))?;
     let entries = match root.get("values") {

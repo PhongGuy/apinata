@@ -110,7 +110,9 @@ fn bad_input_exits_3_and_writes_nothing() {
             .assert()
             .code(3)
     };
-    run(&[], "wget https://x.test").stderr(contains("error: not a recognized request format"));
+    run(&[], "wget https://x.test").stderr(contains(
+        "error: cannot import from stdin: not a recognized request format",
+    ));
     run(&["--from", "curl"], "curl 'https://x.test").stderr(contains("unclosed quote"));
     run(&["--from", "wget"], "curl https://x.test").stderr(contains("expected auto, curl"));
     run(&["--folder", "nope"], "curl https://x.test/a").stderr(contains("error: "));

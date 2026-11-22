@@ -11,10 +11,12 @@ mod har;
 mod hoppscotch;
 mod insomnia;
 mod load;
+mod note_place;
 mod openapi;
 mod place;
 mod postman;
 mod protect;
+mod read;
 pub(crate) use postman::pm_chain_at;
 mod request;
 mod source;
@@ -32,6 +34,7 @@ pub use format::{
 };
 pub use place::{Placed, ensure_folder, place_items};
 pub use postman::{parse_postman, parse_postman_environment};
+pub use read::read_reason;
 pub use request::{add_request, claim_secret_names, store_request_secrets};
 pub use source::{ImportSource, SourceError, classify_source};
 pub use update::{
@@ -302,11 +305,15 @@ pub struct ImportedEnvironment {
 #[non_exhaustive]
 pub enum DocumentError {
     /// The input is not valid JSON or YAML.
-    #[error("cannot be read at byte {offset}: {message}")]
+    #[error("{message} (line {line}, column {column})")]
     Parse {
         /// The byte offset of the error in the input as given, a byte order mark included.
         offset: usize,
-        /// What the parser reported.
+        /// The 1-based line of the error.
+        line: usize,
+        /// The 1-based column of the error, in characters.
+        column: usize,
+        /// What is wrong, in plain words.
         message: String,
     },
     /// The input is a version or variant of the format that cannot be imported.
@@ -336,15 +343,19 @@ pub enum DocumentError {
 #[non_exhaustive]
 pub enum PostmanError {
     /// The input is not valid JSON.
-    #[error("not valid JSON at byte {offset}: {message}")]
+    #[error("{message} (line {line}, column {column})")]
     Parse {
         /// The byte offset of the error.
         offset: usize,
-        /// What the JSON parser reported.
+        /// The 1-based line of the error.
+        line: usize,
+        /// The 1-based column of the error, in characters.
+        column: usize,
+        /// What is wrong, in plain words.
         message: String,
     },
-    /// The input names a Postman schema other than v2.0 or v2.1.
-    #[error("unsupported Postman schema `{schema}`; only v2.0 and v2.1 can be imported")]
+    /// The input names a Postman schema other than v2.0 or v2.1, or none at all.
+    #[error("{}", schema_words(schema))]
     UnsupportedSchema {
         /// The schema URL found.
         schema: String,
@@ -355,6 +366,16 @@ pub enum PostmanError {
         /// What is wrong.
         message: String,
     },
+}
+
+// A file with no schema is most often a v1 export, which carries none.
+fn schema_words(schema: &str) -> String {
+    const ONLY: &str = "only v2.0 and v2.1 collections can be imported; export it again as v2.1";
+    if schema.is_empty() {
+        format!("the file has no schema, so it is likely an older Postman format; {ONLY}")
+    } else {
+        format!("unsupported Postman schema `{schema}`; {ONLY}")
+    }
 }
 
 /// Why an import could not be written; nothing is left at the target.

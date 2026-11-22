@@ -338,7 +338,7 @@ fn parts(note: &ImportNote) -> KindNote<'_> {
     }
     KindNote {
         detail: &note.detail,
-        place: note.source.clone(),
+        place: note.place(),
         file,
     }
 }

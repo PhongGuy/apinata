@@ -56,7 +56,7 @@ fn a_collection_is_written_by_core_and_its_notes_listed() {
         format!("{}\n", root.display())
     );
     assert!(
-        stderr.contains("note: converted Get user / event[0]"),
+        stderr.contains("note: converted request `Get user`: post-response script:"),
         "{stderr}"
     );
     assert!(!stderr.to_lowercase().contains("bruno"), "{stderr}");
@@ -141,7 +141,7 @@ fn environments_import_into_an_existing_collection() {
         .assert()
         .code(0)
         .stdout("dev\nstage\n")
-        .stderr(contains("note: needs-input values[1]"));
+        .stderr(contains("note: needs-input variable 2: "));
     for name in ["dev", "stage"] {
         assert!(
             col.path()
@@ -172,7 +172,10 @@ fn bad_input_exits_3_and_writes_nothing() {
             .assert()
             .code(3)
     };
-    collection(&other, &[]).stderr(contains("error: not a recognized collection format"));
+    collection(&other, &[]).stderr(contains(format!(
+        "error: cannot import {}: not a recognized collection format",
+        other.display()
+    )));
     collection(&v1, &["--from", "postman"]).stderr(contains("error: "));
     collection(&input.path().join("missing.json"), &[]).stderr(contains("error: "));
     collection(

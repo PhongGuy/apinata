@@ -60,6 +60,7 @@ mod cli_import_bundles;
 mod cli_import_curl_digest;
 mod cli_import_flags;
 mod cli_import_folder;
+mod cli_import_plain_words;
 mod cli_import_request;
 mod cli_import_secrets;
 mod cli_import_template_tags;
