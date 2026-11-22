@@ -5,7 +5,7 @@ use crate::support;
 use apinata_app::theme::{DARK, HC_DARK, HC_LIGHT, LIGHT};
 use apinata_app::ui;
 use gpui_kit::Focusable as _;
-use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::input::{Input, InputState, TextareaState};
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{
     AnyWindowHandle, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render,
@@ -479,5 +479,89 @@ fn a_locked_textarea_draws_muted_text_until_focused_in_every_theme(cx: &mut Test
             .unwrap();
         assert!(focused, "{theme}: took focus");
         assert_eq!(carried(cx, true), Some(fg), "{theme}: focused");
+    }
+}
+
+/// How many of three more frames hid `id`'s caret.
+fn hides_after(cx: &mut TestAppContext, win: AnyWindowHandle, id: gpui_kit::EntityId) -> usize {
+    let before = ui::hidden_caret_frames(id);
+    for _ in 0..3 {
+        frame(cx, win);
+    }
+    ui::hidden_caret_frames(id) - before
+}
+
+/// The kit draws a caret in any focused field it does not disable, so a focused locked field
+/// hides it on every frame, and stops once the field is blurred or unlocked.
+#[gpui_kit::test]
+fn a_focused_locked_field_hides_its_caret_only_while_locked_and_focused(cx: &mut TestAppContext) {
+    for theme in [HC_DARK, DARK, LIGHT] {
+        let (win, view) = host(cx, theme, true);
+        let id = view.read_with(cx, |h, _| h.locked.entity_id());
+        assert_eq!(hides_after(cx, win, id), 0, "{theme}: before focus");
+        focus(cx, win, |h| h.locked.clone(), &view);
+        assert!(hides_after(cx, win, id) >= 3, "{theme}: while focused");
+        focus(cx, win, |h| h.after.clone(), &view);
+        assert_eq!(hides_after(cx, win, id), 0, "{theme}: after blur");
+        focus(cx, win, |h| h.locked.clone(), &view);
+        view.update(cx, |h, cx| {
+            h.lock = false;
+            cx.notify();
+        });
+        cx.run_until_parked();
+        frame(cx, win);
+        assert_eq!(hides_after(cx, win, id), 0, "{theme}: after unlock");
+    }
+}
+
+struct RingedAreaHost {
+    area: Entity<gpui_kit::component::input::TextareaState>,
+    lock: bool,
+}
+
+impl Render for RingedAreaHost {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        use gpui_kit::component::input::Textarea;
+        let area = ui::lock_textarea(Textarea::new(&self.area), &self.area, self.lock, window, cx);
+        div()
+            .size_full()
+            .child(ui::ringed_textarea(area, &self.area))
+    }
+}
+
+/// A locked textarea hides its caret while focused, like a locked input.
+#[gpui_kit::test]
+fn a_focused_locked_textarea_hides_its_caret_until_unlocked(cx: &mut TestAppContext) {
+    support::init(cx);
+    for theme in [HC_DARK, DARK] {
+        use_theme(cx, theme);
+        let (win, view) = cx
+            .update(|cx| {
+                open_window(WindowOptions::default(), cx, |w, cx| {
+                    let area = cx.new(|cx| TextareaState::new(w, cx));
+                    cx.new(|_| RingedAreaHost { area, lock: true })
+                })
+            })
+            .unwrap();
+        cx.run_until_parked();
+        frame(cx, win);
+        let area = view.read_with(cx, |h, _| h.area.clone());
+        let id = area.entity_id();
+        assert_eq!(hides_after(cx, win, id), 0, "{theme}: before focus");
+        cx.update_window(win, |_, w, cx| {
+            let handle = area.read(cx).focus_handle(cx);
+            w.focus(&handle, cx);
+        })
+        .unwrap();
+        cx.run_until_parked();
+        frame(cx, win);
+        assert!(hides_after(cx, win, id) >= 3, "{theme}: while focused");
+        view.update(cx, |h, cx| {
+            h.lock = false;
+            cx.notify();
+        });
+        cx.run_until_parked();
+        frame(cx, win);
+        assert_eq!(hides_after(cx, win, id), 0, "{theme}: after unlock");
     }
 }

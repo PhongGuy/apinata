@@ -12,11 +12,12 @@ use gpui_kit::AsKeystroke as _;
 use gpui_kit::EntityInputHandler as _;
 use gpui_kit::Focusable as _;
 use gpui_kit::assets::IconName;
+use gpui_kit::base::input::{DiagnosticColors, InputEditorStyle};
 use gpui_kit::base::{
     Checkbox as BaseCheckbox, CheckboxIndicator, Placement, Radio as BaseRadio, TooltipPositioner,
 };
 use gpui_kit::component::Colorize as _;
-use gpui_kit::component::button::{Button, ButtonVariant, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariant, ButtonVariants as _};
 use gpui_kit::component::dialog::{AlertDialog, Dialog};
 use gpui_kit::component::input::{Editor, EditorState, Input, InputState, Textarea, TextareaState};
 use gpui_kit::component::kbd::Kbd;
@@ -382,6 +383,73 @@ fn with_lock_hint(
     input.when(focused, |input| input.suffix(lock_hint(state, cx)))
 }
 
+thread_local! {
+    /// How many times each field's caret has been hidden, by the field state's entity id.
+    static HIDDEN_CARETS: RefCell<HashMap<gpui_kit::EntityId, usize>> = RefCell::default();
+}
+
+/// How many frames have hidden the caret of the field whose state is `id`, on this thread.
+/// Tests use it because the harness cannot see paint.
+pub fn hidden_caret_frames(id: gpui_kit::EntityId) -> usize {
+    HIDDEN_CARETS.with(|h| h.borrow().get(&id).copied().unwrap_or(0))
+}
+
+// The kit draws a caret in every focused field it does not disable, readonly or not, and
+// re-projects its style from the theme each render. Laying the same style with a clear caret
+// in prepaint, after that projection and before paint, hides it for this frame only.
+fn hidden_caret_style(id: gpui_kit::EntityId, cx: &App) -> InputEditorStyle {
+    HIDDEN_CARETS.with(|h| *h.borrow_mut().entry(id).or_default() += 1);
+    InputEditorStyle {
+        caret: transparent_black(),
+        ..kit_editor_style(cx)
+    }
+}
+
+// A copy of the style gpui-component's `Input` projects onto its state (src/input/input.rs,
+// its render), with the app's fold icon; re-diff it against that file on each gpui-kit bump.
+pub(crate) fn kit_editor_style(cx: &App) -> InputEditorStyle {
+    let theme = cx.theme();
+    // The fold icon is drawn by the kit without an `App`, so its folded look is read here.
+    let fold = selected_look(theme, SelectedStyle::Ghost);
+    let style = &theme.highlight_theme.style;
+    InputEditorStyle {
+        foreground: theme.foreground,
+        muted_foreground: theme.muted_foreground,
+        background: style
+            .editor_background
+            .unwrap_or_else(|| theme.input_background()),
+        border: theme.border,
+        selection: theme.selection,
+        caret: theme.caret,
+        diagnostics: DiagnosticColors {
+            error: style.status.error(cx),
+            warning: style.status.warning(cx),
+            info: style.status.info(cx),
+            hint: style.status.hint(cx),
+        },
+        highlight_styles: Arc::<gpui_kit::component::highlighter::HighlightTheme>::clone(
+            &theme.highlight_theme,
+        ),
+        editor_invisible: style.editor_invisible,
+        editor_active_line: style.editor_active_line,
+        editor_gutter_background: style.editor_gutter_background,
+        fold_icon_renderer: Some(Rc::new(move |ix, is_folded| {
+            Button::new(("fold-icon", ix))
+                .ghost()
+                .icon(if is_folded {
+                    IconName::ChevronRight
+                } else {
+                    IconName::ChevronDown
+                })
+                .xsmall()
+                .rounded(ButtonRounded::Small)
+                .size(crate::style::FOLD_ICON)
+                .chosen(is_folded, fold)
+                .into_any_element()
+        })),
+    }
+}
+
 /// The lock icon's colour: full foreground, so it clears 3:1 on the locked fill in every theme.
 pub fn lock_hint_color(cx: &App) -> Hsla {
     cx.theme().foreground
@@ -394,7 +462,9 @@ pub fn locked_text_color(locked: bool, cx: &App) -> Option<Hsla> {
 }
 
 /// The lock icon a focused locked input shows; tests find it by `("lock-hint", state id)`.
+/// It also hides the input's caret, as it is drawn exactly while the field is focused and locked.
 fn lock_hint(state: &Entity<InputState>, cx: &App) -> impl IntoElement + use<> {
+    let state = state.clone();
     div()
         .id(("lock-hint", state.entity_id()))
         .test_support()
@@ -404,6 +474,17 @@ fn lock_hint(state: &Entity<InputState>, cx: &App) -> impl IntoElement + use<> {
                 .path(IconName::Lock.path())
                 .size_3()
                 .text_color(lock_hint_color(cx)),
+        )
+        .child(
+            canvas(
+                move |_, _, cx| {
+                    let style = hidden_caret_style(state.entity_id(), cx);
+                    state.update(cx, |s, _| s.set_editor_style(style));
+                },
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .size_0(),
         )
 }
 
@@ -843,6 +924,15 @@ impl gpui_kit::Element for RingedField {
         window: &mut Window,
         cx: &mut App,
     ) {
+        // A focused readonly textarea hides its caret, as a locked input's lock hint does.
+        if let RingSource::Textarea(state) = &self.source {
+            let s = state.read(cx);
+            let locked = s.presentation().is_readonly() && s.focus_handle(cx).is_focused(window);
+            if locked {
+                let style = hidden_caret_style(state.entity_id(), cx);
+                state.update(cx, |s, _| s.set_editor_style(style));
+            }
+        }
         self.child.prepaint(window, cx);
     }
 
