@@ -14,9 +14,17 @@ pub use apinata_core::{
     passphrase_dotenv_base as passphrase_base,
 };
 /// The refusal when git tracks `.env`.
-pub const TRACKED: &str = ".env is tracked by git, so nothing was saved; untrack .env first";
+pub const TRACKED: &str =
+    ".env is tracked by git, so nothing was saved; untrack it with git rm --cached .env first";
 /// The warning when `.env` was added to `.gitignore`.
 pub const IGNORED: &str = "Added .env to .gitignore";
+
+/// The notice when a collection opens with a `.env` no git rule ignored.
+pub const IGNORED_OPEN: &str = "Added .env to .gitignore, since it holds secret values";
+
+/// The notice when a collection opens with a `.env` git tracks.
+pub const TRACKED_OPEN: &str = ".env is tracked by git, so its secret values are committed; \
+     untrack it with git rm --cached .env and commit";
 
 /// The refusal when a secret cannot be quoted for `.env`; it names no value.
 pub const UNQUOTABLE: &str =

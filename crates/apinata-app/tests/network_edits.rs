@@ -214,7 +214,7 @@ fn a_tracked_dotenv_refuses_and_writes_nothing(cx: &mut TestAppContext) {
         notices(cx, &model),
         [NoticeKind::Failed {
             target: Some(Target::Collection),
-            message: ".env is tracked by git, so nothing was saved; untrack .env first".into(),
+            message: ".env is tracked by git, so nothing was saved; untrack it with git rm --cached .env first".into(),
             row: None
         }]
     );

@@ -28,6 +28,7 @@ mod reload;
 pub(crate) mod snapshot;
 mod tree;
 pub use dotenv_write::{DotenvBackup, dotenv_quotable};
+pub(crate) use dotenv_write::{append_dotenv_rule, refuse_special as refuse_special_file};
 pub(crate) use ignore::Ignore;
 pub use ignore::{IgnorePolicy, OpenOptions};
 pub use paste::PasteSource;

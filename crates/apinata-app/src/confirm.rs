@@ -229,6 +229,16 @@ pub fn drop_staged_ask(count: usize, action: &'static str) -> Ask {
     careful_ask(title, detail, "confirm-drop", action)
 }
 
+/// Staging `path`, a `.env` holding secret values: `[Cancel, Stage]`, Cancel the default.
+pub fn stage_secrets_ask(path: &str) -> Ask {
+    careful_ask(
+        format!("Stage {path}?"),
+        "It holds secret values, and a commit would put them in the repository's history.",
+        "confirm-stage-secrets",
+        "Stage",
+    )
+}
+
 /// [`drop_staged_ask`] for a list cut short: `listed` gone copies were seen, and more past the
 /// end may be gone too, so the count is a floor and none listed still asks.
 pub fn drop_staged_past_cap_ask(listed: usize, action: &'static str) -> Ask {

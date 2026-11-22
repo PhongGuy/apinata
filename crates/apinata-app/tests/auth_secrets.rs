@@ -11,7 +11,8 @@ use std::process::Command as Process;
 use support::*;
 use tempfile::TempDir;
 
-const TRACKED: &str = ".env is tracked by git, so nothing was saved; untrack .env first";
+const TRACKED: &str =
+    ".env is tracked by git, so nothing was saved; untrack it with git rm --cached .env first";
 
 // A request with a client credentials auth; `credentials` lines go under `credentials:`.
 fn oauth_request(flow: &str, credentials: &str, extra: &str) -> String {

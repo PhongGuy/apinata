@@ -12,10 +12,10 @@ use apinata_core::team::{
     TeamNotice, TeamState, TeamStatus, TeamSync, follow_events,
 };
 use apinata_core::{
-    CommitError, DraftSnapshot, EnvOverlay, EnvVariable, GIT_TIMEOUT, GitError, GitOptions,
-    GitState, GlobalEnvironments, ItemPath, OpenError, PullRange, RequestKind, RuntimeVars,
-    ScriptPhase, SecretName, SecretRenames, SecretStore, StageState, WorkspaceFile,
-    collection_status_with, commit, is_workspace_dir, stage, unstage,
+    CommitError, DotenvGit, DraftSnapshot, EnvOverlay, EnvVariable, GIT_TIMEOUT, GitError,
+    GitOptions, GitState, GlobalEnvironments, ItemPath, OpenError, PullRange, RequestKind,
+    RuntimeVars, ScriptPhase, SecretName, SecretRenames, SecretStore, StageState, WorkspaceFile,
+    collection_status_with, commit, ignore_dotenv, is_workspace_dir, stage, unstage,
 };
 use gpui_kit::{App, AppContext, Context, Entity, EventEmitter, SharedString, Subscription, Task};
 
@@ -118,6 +118,14 @@ pub enum WorkspaceEvent {
     },
     /// Opening a folder as a reference workspace failed or skipped something; the text says what.
     FolderNotice(String),
+    /// Opening the collection at `root` added `.env` to its `.gitignore`, or found `.env`
+    /// tracked by git; the text says which, in one line.
+    DotenvNotice {
+        /// The collection's root.
+        root: PathBuf,
+        /// What happened, for a notice.
+        message: String,
+    },
     /// The mock server of the collection at `root` did not start, so its toggle is off.
     MockFailed {
         /// The collection's root.
@@ -373,6 +381,9 @@ pub struct CollectionEntry {
     git_gate: RefreshGate,
     git_runs: u64,
     git_write: Option<u64>,
+    // Whether this open has made sure git ignores `.env`; checked once, so a rule taken out by
+    // hand stays out.
+    dotenv_checked: bool,
     // Unique per open in the session, so it tells this entry from a reopened one.
     generation: u64,
     team: Option<Team>,
@@ -542,6 +553,8 @@ pub enum GitWrite {
     Stage(Vec<PathBuf>),
     /// Unstage these paths, relative to the collection.
     Unstage(Vec<PathBuf>),
+    /// Stage the whole collection, then unstage these paths again.
+    StageAllBut(Vec<PathBuf>),
     /// Commit what is staged with this message.
     Commit(String),
 }
@@ -1060,6 +1073,7 @@ impl Workspace {
             git_gate: RefreshGate::default(),
             git_runs: 0,
             git_write: None,
+            dotenv_checked: false,
             generation,
             team: None,
             held: None,
@@ -2508,6 +2522,10 @@ impl Workspace {
                 GitWrite::Unstage(paths) => unstage(&dir, &paths, &options)
                     .map(|()| GitWriteDone::Done)
                     .unwrap_or_else(|e| GitWriteDone::Failed(e.to_string())),
+                GitWrite::StageAllBut(kept) => stage(&dir, &[Path::new(".")], &options)
+                    .and_then(|()| unstage(&dir, &kept, &options))
+                    .map(|()| GitWriteDone::Done)
+                    .unwrap_or_else(|e| GitWriteDone::Failed(e.to_string())),
                 GitWrite::Commit(message) => {
                     let before = staged_paths(&dir, &options);
                     match commit(&dir, &message, &options) {
@@ -2731,12 +2749,28 @@ impl Workspace {
             return;
         };
         let dir = root.clone();
+        // The first run of an open keeps a `.env` there out of git, before the status lists it.
+        let guard = (self.entry_mut(&root))
+            .is_some_and(|e| !std::mem::replace(&mut e.dotenv_checked, true));
         // The Changes dialog names where a gone row's copy went, which only this call supplies.
         let options = options.check_kept(true);
-        let status = cx.background_spawn(async move { collection_status_with(&dir, &options) });
+        let status = cx.background_spawn(async move {
+            let dotenv = (guard && dir.join(".env").is_file())
+                .then(|| ignore_dotenv(&dir, &options).ok())
+                .flatten();
+            (dotenv, collection_status_with(&dir, &options))
+        });
         cx.spawn(async move |this, cx| {
-            let result = status.await;
-            this.update(cx, |w, cx| w.finish_git(root, epoch, result, cx))
+            let (dotenv, result) = status.await;
+            this.update(cx, |w, cx| {
+                if let Some(message) = dotenv.and_then(dotenv_notice) {
+                    cx.emit(WorkspaceEvent::DotenvNotice {
+                        root: root.clone(),
+                        message,
+                    });
+                }
+                w.finish_git(root, epoch, result, cx)
+            })
         })
         .detach();
     }
@@ -5145,4 +5179,14 @@ fn same_problem(last: &Block, next: &Block) -> bool {
 // The team states in which git rewrites the working tree and may leave it half merged.
 fn rewriting(state: &TeamState) -> bool {
     matches!(state, TeamState::Pulling | TeamState::Squashing)
+}
+
+/// The one-line notice for what keeping `.env` out of git found at open; `None` when there is
+/// nothing to say.
+pub fn dotenv_notice(found: DotenvGit) -> Option<String> {
+    match found {
+        DotenvGit::Added => Some(crate::network_secrets::IGNORED_OPEN.to_owned()),
+        DotenvGit::Tracked => Some(crate::network_secrets::TRACKED_OPEN.to_owned()),
+        _ => None,
+    }
 }

@@ -45,7 +45,9 @@ pub(crate) fn write(c: &mut Collection, moves: &DotenvMoves) -> anyhow::Result<V
         "the secret cannot be stored in .env: it has a line break or all three quote kinds"
     );
     if dotenv_tracked_by_git(c.root()) {
-        bail!(".env is tracked by git, so nothing was saved; untrack .env first");
+        bail!(
+            ".env is tracked by git, so nothing was saved; untrack it with git rm --cached .env first"
+        );
     }
     if c.ensure_dotenv_ignored()
         .map_err(|e| anyhow::anyhow!("could not update .gitignore: {e}"))?

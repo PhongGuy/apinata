@@ -10,8 +10,10 @@ pub use autosync::{
 mod branch;
 mod clone;
 mod diff;
+mod dotenv;
 pub(crate) use diff::hunks_within;
 pub use diff::text_hunks;
+pub use dotenv::{DotenvGit, ignore_dotenv};
 mod porcelain;
 mod renames;
 mod repo_lock;
