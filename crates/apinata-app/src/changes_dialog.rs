@@ -54,6 +54,15 @@ const GONE_NOTE: &str = "staged, gone from its path";
 // What the box of such a row warns of: its copy in the index is all that was at that path.
 const GONE_UNSTAGE: &str = "Unstaging drops the staged copy, and nothing is left at this path";
 
+// The badge of a `.env` row, and what its box warns of.
+const SECRETS_BADGE: &str = "secrets";
+const SECRETS_NOTE: &str = "Holds secret values; Stage all leaves it out";
+
+// Whether the file at `path` is a `.env`, which holds secret values.
+fn holds_secrets(path: &Path) -> bool {
+    path.file_name().is_some_and(|name| name == ".env")
+}
+
 // What is on disk for a gone row, as far as core knows.
 enum Left {
     Nothing,
@@ -142,6 +151,7 @@ pub fn open_changes(
             message,
             _message_changes: message_changes,
             notice: None,
+            secrets_confirmed: false,
             clear_message: false,
             branch: None,
             truncated_note: None,
@@ -210,6 +220,8 @@ pub struct ChangesView {
     message: Entity<TextareaState>,
     // The outcome of the last commit, shown above the buttons until the next one starts.
     notice: Option<Notice>,
+    // Staging a `.env` by hand was confirmed once in this dialog, so it asks no more.
+    secrets_confirmed: bool,
     // Set by a landed commit; the next render empties the field, which needs a window.
     clear_message: bool,
     // The branch the Commit button names.
@@ -330,16 +342,46 @@ impl ChangesView {
             }
             n => Some(confirm::drop_staged_ask(n, action)),
         };
-        self.confirmed(op, ask, window, cx);
+        // Staging a `.env` asks once whether its secrets should go into a commit.
+        let secrets = ask.is_none()
+            && !self.secrets_confirmed
+            && matches!(op, GitWrite::Stage(_))
+            && self.files.get(ix).is_some_and(|(p, _)| holds_secrets(p));
+        let ask = match secrets {
+            true => Some(confirm::stage_secrets_ask(
+                &self.files[ix].0.to_string_lossy(),
+            )),
+            false => ask,
+        };
+        self.confirmed(op, ask, secrets, window, cx);
+    }
+
+    // The `.env` rows nothing of is staged, which Stage all leaves out.
+    fn held_out(&self) -> Vec<PathBuf> {
+        (self.files.iter().zip(&self.stages))
+            .filter(|((path, _), stage)| holds_secrets(path) && **stage == GitStage::Unstaged)
+            .map(|((path, _), _)| path.clone())
+            .collect()
+    }
+
+    // Whether every row Stage all takes is wholly staged, so the bulk button unstages.
+    fn all_staged(&self) -> bool {
+        let held = self.held_out();
+        let mut taken = (self.files.iter().zip(&self.stages))
+            .filter(|((path, _), _)| !held.contains(path))
+            .peekable();
+        taken.peek().is_some() && taken.all(|(_, stage)| stage.is_full())
     }
 
     // Unstages everything when every box is ticked, else stages everything; either drops the
     // staged copy of each gone row.
     fn toggle_all(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let all = vec![PathBuf::from(".")];
-        let (op, action) = match self.stages.iter().all(|s| s.is_full()) {
+        let held = self.held_out();
+        let (op, action) = match self.all_staged() {
             true => (GitWrite::Unstage(all), "Unstage all"),
-            false => (GitWrite::Stage(all), "Stage all"),
+            false if held.is_empty() => (GitWrite::Stage(all), "Stage all"),
+            false => (GitWrite::StageAllBut(held), "Stage all"),
         };
         let gone = self
             .stages
@@ -352,14 +394,16 @@ impl ChangesView {
             (false, 0) => None,
             (false, n) => Some(confirm::drop_staged_ask(n, action)),
         };
-        self.confirmed(op, ask, window, cx);
+        self.confirmed(op, ask, false, window, cx);
     }
 
     // Runs `op`, after `ask` when there is one; Cancel runs nothing, so every row stays as it was.
+    // A yes to the `secrets` question is remembered for the rest of the dialog.
     fn confirmed(
         &mut self,
         op: GitWrite,
         ask: Option<confirm::Ask>,
+        secrets: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -375,6 +419,7 @@ impl ChangesView {
         cx.spawn(async move |this, cx| {
             if answer.recv().await == Ok(1) {
                 this.update(cx, |v, cx| {
+                    v.secrets_confirmed |= secrets;
                     if !v.busy {
                         v.notice = None;
                         v.start(op, cx);
@@ -682,6 +727,7 @@ impl ChangesView {
                 None => (String::new(), path.clone()),
             };
             let gone = self.stages.get(ix) == Some(&GitStage::StagedGone);
+            let secrets = holds_secrets(Path::new(&path));
             let note = match self.stages.get(ix) {
                 Some(GitStage::Both) => Some(("changes-partly", "partly staged".to_owned())),
                 Some(GitStage::StagedGone) => {
@@ -787,6 +833,20 @@ impl ChangesView {
                                             SharedString::from(path.clone()),
                                         ))
                                         .child(name)
+                                })
+                                .when(secrets, |line| {
+                                    line.child(
+                                        div()
+                                            .id(("changes-secrets", ix))
+                                            .test_support()
+                                            .flex_none()
+                                            .aria_label(SECRETS_NOTE)
+                                            .tooltip(ui::text_tooltip(
+                                                "changes-secrets-tooltip",
+                                                SECRETS_NOTE,
+                                            ))
+                                            .child(Tag::warning().small().child(SECRETS_BADGE)),
+                                    )
                                 }),
                         )
                         .when_some(origin, |col, origin| {
@@ -950,7 +1010,7 @@ impl ChangesView {
         // The count matches the ticked boxes.
         let staged = self.stages.iter().filter(|s| s.is_full()).count();
         let total = self.files.len();
-        let all = staged == total;
+        let all = self.all_staged();
         let this = cx.entity();
         Some(
             h_flex()

@@ -1580,6 +1580,10 @@ impl Shell {
                 self.sidebar
                     .update(cx, |s, cx| s.reveal_folder(root, folder, window, cx));
             }
+            WorkspaceEvent::DotenvNotice { root, message } => {
+                let text = format!("{}: {message}", display_name(root));
+                window.push_notification(ui::kind_toast(ui::ToastKind::Warning, text), cx);
+            }
             WorkspaceEvent::FolderNotice(text) => {
                 window.push_notification(Notification::warning(text.clone()), cx);
             }

@@ -189,6 +189,7 @@ mod git_clone;
 mod git_clone_env;
 mod git_commit;
 mod git_diff;
+mod git_dotenv;
 mod git_edges;
 mod git_lock;
 mod git_repo_lock;

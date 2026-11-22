@@ -3,6 +3,7 @@
 use super::Collection;
 use crate::document::{hash_bytes, is_special_file, read_regular, temp_path};
 use crate::dotenv::parse_dotenv;
+use crate::git::{DotenvGit, GitOptions, ignore_dotenv};
 use crate::post_response::variable_name_problem;
 use std::collections::BTreeSet;
 use std::fs;
@@ -111,24 +112,45 @@ impl Collection {
         Ok(())
     }
 
-    /// Make `<root>/.gitignore` ignore `.env`; true when a line was appended. A pipe, socket or
-    /// device there is `InvalidInput`.
+    /// [`ensure_dotenv_ignored_with`](Self::ensure_dotenv_ignored_with) with
+    /// [`GitOptions::new`].
     pub fn ensure_dotenv_ignored(&self) -> std::io::Result<bool> {
+        self.ensure_dotenv_ignored_with(&GitOptions::new())
+    }
+
+    /// Make git ignore `<root>/.env` before a secret is written there; true when a line was
+    /// appended to `<root>/.gitignore`. Inside a repository git's rules decide, as in
+    /// [`ignore_dotenv`]; outside one, or when git fails, the root's `.gitignore` names `.env`
+    /// so a later `git init` already ignores it. A tracked `.env` gains nothing. A pipe, socket
+    /// or device at `.gitignore` is `InvalidInput`.
+    pub fn ensure_dotenv_ignored_with(&self, options: &GitOptions) -> std::io::Result<bool> {
         let path = self.root().join(".gitignore");
         refuse_special(&path)?;
-        let mut text = read_optional(&path)?;
+        match ignore_dotenv(self.root(), options) {
+            Ok(DotenvGit::Added) => return Ok(true),
+            Ok(DotenvGit::Ignored | DotenvGit::Tracked) => return Ok(false),
+            Ok(DotenvGit::Outside) | Err(_) => {}
+        }
+        let text = read_optional(&path)?;
         if text.lines().any(|l| matches!(l.trim(), ".env" | "/.env")) {
             return Ok(false);
         }
-        let ending = if text.contains("\r\n") { "\r\n" } else { "\n" };
-        if !text.is_empty() && !text.ends_with('\n') {
-            text.push_str(ending);
-        }
-        text.push_str(".env");
-        text.push_str(ending);
-        fs::write(&path, text)?;
+        append_dotenv_rule(&path)?;
         Ok(true)
     }
+}
+
+/// Append a `.env` line to the ignore file at `path`, in the file's own line-ending style.
+pub(crate) fn append_dotenv_rule(path: &Path) -> std::io::Result<()> {
+    refuse_special(path)?;
+    let mut text = read_optional(path)?;
+    let ending = if text.contains("\r\n") { "\r\n" } else { "\n" };
+    if !text.is_empty() && !text.ends_with('\n') {
+        text.push_str(ending);
+    }
+    text.push_str(".env");
+    text.push_str(ending);
+    fs::write(path, text)
 }
 
 /// The file's bytes, or None when it does not exist.
@@ -163,7 +185,7 @@ fn read_optional(path: &Path) -> std::io::Result<String> {
 
 // A writer never takes a special file as absent: a write waits on it, and a rename would swap
 // it for a file that keeps its mode.
-fn refuse_special(path: &Path) -> std::io::Result<()> {
+pub(crate) fn refuse_special(path: &Path) -> std::io::Result<()> {
     if is_special_file(path) {
         return Err(invalid(&format!(
             "{} is a pipe, socket or device, not a file",
