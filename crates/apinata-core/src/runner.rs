@@ -754,6 +754,60 @@ impl RunReport {
         }
         items
     }
+
+    /// Folds a re-run of some of this run's requests into it: each settled re-run result (see
+    /// [`RequestResult::is_settled`]) replaces its counterpart as [`rerun_slots`] matches them,
+    /// or is appended when it has none, and the summary is recounted. Returns the indices into
+    /// `results` that now hold a re-run result.
+    pub fn merge_rerun(&mut self, rerun: RunReport) -> Vec<usize> {
+        let earlier: Vec<_> = self
+            .results
+            .iter()
+            .map(|r| (&r.path, r.iteration))
+            .collect();
+        let again: Vec<_> = rerun
+            .results
+            .iter()
+            .map(|r| (&r.path, r.iteration))
+            .collect();
+        let slots = rerun_slots(&earlier, &again);
+        let mut merged = Vec::new();
+        for (result, slot) in rerun.results.into_iter().zip(slots) {
+            if !result.is_settled() {
+                continue;
+            }
+            match slot {
+                Some(ix) => {
+                    self.results[ix] = result;
+                    merged.push(ix);
+                }
+                None => {
+                    self.results.push(result);
+                    merged.push(self.results.len() - 1);
+                }
+            }
+        }
+        self.summary = summarize(&self.results);
+        merged
+    }
+}
+
+/// For each re-run entry, as (item path, data row), the index of the earlier entry it takes the
+/// place of: the next unclaimed earlier entry with the same path and data row, so a request run
+/// several times is matched in order. `None` when no earlier entry is left to match.
+pub fn rerun_slots(
+    earlier: &[(&ItemPath, Option<usize>)],
+    rerun: &[(&ItemPath, Option<usize>)],
+) -> Vec<Option<usize>> {
+    let mut claimed = vec![false; earlier.len()];
+    rerun
+        .iter()
+        .map(|key| {
+            let ix = (0..earlier.len()).find(|&ix| !claimed[ix] && earlier[ix] == *key)?;
+            claimed[ix] = true;
+            Some(ix)
+        })
+        .collect()
 }
 
 /// Progress of a run, reported as it happens.
@@ -1719,36 +1773,46 @@ fn cancelled(result: &mut RequestResult) {
 
 /// Counts each outcome and every skipped assertion across `results`.
 fn summarize(results: &[Arc<RequestResult>]) -> Summary {
-    let mut summary = Summary {
-        requests: results.len(),
-        ..Summary::default()
-    };
-    for result in results {
+    Summary::of(results.iter().map(Arc::as_ref))
+}
+
+impl Summary {
+    /// Counts each outcome, every skipped assertion and every script test across `results`, as
+    /// a run counts its own; a front end that merges runs recounts with it.
+    pub fn of<'a>(results: impl IntoIterator<Item = &'a RequestResult>) -> Summary {
+        let mut summary = Summary::default();
+        for result in results {
+            summary.requests += 1;
+            summary.count(result);
+        }
+        summary
+    }
+
+    fn count(&mut self, result: &RequestResult) {
         match result.outcome {
             Outcome::Passed => {
-                summary.passed += 1;
-                summary.unverified += usize::from(result.is_unverified());
-                summary.no_tests += usize::from(result.has_no_checks());
+                self.passed += 1;
+                self.unverified += usize::from(result.is_unverified());
+                self.no_tests += usize::from(result.has_no_checks());
             }
-            Outcome::Failed => summary.failed += 1,
-            Outcome::Errored => summary.errored += 1,
-            Outcome::Skipped => summary.skipped += 1,
-            Outcome::Cancelled => summary.cancelled += 1,
+            Outcome::Failed => self.failed += 1,
+            Outcome::Errored => self.errored += 1,
+            Outcome::Skipped => self.skipped += 1,
+            Outcome::Cancelled => self.cancelled += 1,
         }
-        summary.skipped_assertions += result
+        self.skipped_assertions += result
             .assertions
             .iter()
             .filter(|a| matches!(a.verdict(), Verdict::Skipped { .. }))
             .count();
         for test in result.tests.iter().filter(|t| !t.script_error) {
             match test.verdict {
-                Verdict::Pass => summary.passed_tests += 1,
-                Verdict::Fail { .. } => summary.failed_tests += 1,
-                Verdict::Skipped { .. } => summary.skipped_tests += 1,
+                Verdict::Pass => self.passed_tests += 1,
+                Verdict::Fail { .. } => self.failed_tests += 1,
+                Verdict::Skipped { .. } => self.skipped_tests += 1,
             }
         }
     }
-    summary
 }
 
 impl RequestResult {
@@ -1759,6 +1823,12 @@ impl RequestResult {
         Some(format!(
             "status {code} is in the fail-on-status range ({rule})"
         ))
+    }
+
+    /// Whether the request reached a verdict: it passed, failed or errored. One never sent or
+    /// cancelled did not, so a re-run leaves the earlier result in its place.
+    pub fn is_settled(&self) -> bool {
+        !matches!(self.outcome, Outcome::Skipped | Outcome::Cancelled)
     }
 
     /// How many times the request was sent: one unless retries were on and the send was retried.

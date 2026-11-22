@@ -291,7 +291,7 @@ pub use response::{CookieOrigin, HOP_BODY_LIMIT, Hop, Response};
 pub use results_report::ResultsReport;
 pub use runner::{
     Outcome, RequestResult, RunError, RunEvent, RunOptions, RunPlan, RunReport, SelectError,
-    StatusRule, Summary, run, send_one,
+    StatusRule, Summary, rerun_slots, run, send_one,
 };
 pub use runtime_vars::{RuntimeVar, RuntimeVars};
 pub use schema_test::schema_test_script;

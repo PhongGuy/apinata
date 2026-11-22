@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use apinata_core::{
     CancelHandle, ItemPath, IterationData, RequestFile, RequestResult, ResultsReport, RunEvent,
-    RunOptions, StatusRule, StreamLimits, Summary, TagFilter, VarContext,
+    RunOptions, StatusRule, StreamLimits, Summary, TagFilter, VarContext, rerun_slots,
 };
 use gpui_kit::{App, AsyncApp, Context, Entity, Task, WeakEntity};
 
@@ -48,6 +48,8 @@ pub struct RunRow {
     pub state: RowState,
     /// The zero-based data row it runs under; `None` in a run without a data file.
     pub iteration: Option<usize>,
+    /// Its result came from "Re-run failed", folded into the run in place of the earlier one.
+    pub rerun: bool,
 }
 
 /// One request an idle runner will send, as the plan lists it.
@@ -107,7 +109,14 @@ pub struct RunnerModel {
     data_file: Option<PathBuf>,
     state: RunState,
     rows: Vec<RunRow>,
-    plan_len: usize,
+    // The plan's rows as the first data row runs them; each later data row repeats them.
+    template: Vec<RunRow>,
+    // Where each of this run's sends lands in `rows`, indexed as the run's own events count them.
+    slots: Vec<usize>,
+    // A re-run folds into the earlier rows: the run state it started from, and each row it
+    // took over with what that row held, put back when the re-run never settles it.
+    rerun_of: Option<RunState>,
+    replaced: Vec<(usize, RunRow)>,
     iteration: usize,
     load_errors: Vec<String>,
     // Requests of a type the app cannot send yet, one note each, apart from real load errors.
@@ -191,7 +200,10 @@ impl RunnerModel {
             data_file: None,
             state: RunState::Idle,
             rows: Vec::new(),
-            plan_len: 0,
+            template: Vec::new(),
+            slots: Vec::new(),
+            rerun_of: None,
+            replaced: Vec::new(),
             iteration: 0,
             load_errors: Vec::new(),
             skipped: Vec::new(),
@@ -664,8 +676,9 @@ impl RunnerModel {
     }
 
     /// Runs again only the requests that failed in the finished run, with the same options
-    /// and every data row for those requests. Returns `false`, doing nothing, while a run is
-    /// under way or when nothing failed.
+    /// and every data row for those requests, and folds each result into the run in place of
+    /// the earlier one, marked as re-run. Returns `false`, doing nothing, while a run is under
+    /// way or when nothing failed.
     pub fn rerun_failed(&mut self, cx: &mut Context<Self>) -> bool {
         let failed = self.failed_items();
         if self.is_running() || failed.is_empty() {
@@ -680,12 +693,17 @@ impl RunnerModel {
         if self.is_running() {
             return false;
         }
-        self.rows.clear();
+        // A re-run keeps the earlier run's rows and load errors, which it folds into.
+        self.rerun_of = only.is_some().then(|| self.state.clone());
+        if only.is_none() {
+            self.rows.clear();
+            self.load_errors.clear();
+            self.skipped.clear();
+            self.load_error_rows.clear();
+        }
         self.ran_with = self.choice();
-        self.load_errors.clear();
-        self.skipped.clear();
-        self.load_error_rows.clear();
-        (self.plan_len, self.iteration) = (0, 0);
+        (self.template, self.slots, self.replaced) = (Vec::new(), Vec::new(), Vec::new());
+        self.iteration = 0;
         self.unsaved = self.unsaved_names(cx);
         let data = match self.data_file.as_deref().map(read_data).transpose() {
             Ok(data) => data,
@@ -785,7 +803,7 @@ impl RunnerModel {
             };
             let _ = this.update(cx, |m, cx| {
                 m.waiting = false;
-                m.rows = planned
+                m.template = planned
                     .plan
                     .items()
                     .zip(planned.plan.requests())
@@ -795,9 +813,10 @@ impl RunnerModel {
                         method: request.method().to_owned(),
                         state: RowState::Queued,
                         iteration: (data.is_some() || count.is_some()).then_some(0),
+                        rerun: false,
                     })
                     .collect();
-                m.plan_len = m.rows.len();
+                m.place(m.template.clone());
                 m.run_files = (planned.plan.items().cloned())
                     .zip(planned.plan.requests().cloned())
                     .collect();
@@ -808,6 +827,10 @@ impl RunnerModel {
                 m.run_context = Some(planned.context.clone());
                 // A file the sidebar lists as a type the app cannot send is a skip, named as the
                 // sidebar names it; anything else is a load error with its path.
+                if m.rerun_of.is_some() {
+                    m.state = RunState::Running;
+                    return cx.notify();
+                }
                 let rows = m.workspace.read(cx).snapshot(&m.root, cx);
                 let rows = rows.as_ref().map_or(&[][..], |s| &s.content.rows[..]);
                 let (mut errors, mut skipped) = (Vec::new(), Vec::new());
@@ -907,8 +930,49 @@ impl RunnerModel {
         dirty.into_iter().map(|(_, r)| r.name.clone()).collect()
     }
 
+    // Lays one data row's sends into `rows`. A normal run starts from no rows, so each is
+    // appended; a re-run takes over the earlier row with the same request and data row.
+    fn place(&mut self, fresh: Vec<RunRow>) {
+        let rerun = self.rerun_of.is_some();
+        let earlier: Vec<_> = self.rows.iter().map(|r| (&r.path, r.iteration)).collect();
+        let again: Vec<_> = fresh.iter().map(|r| (&r.path, r.iteration)).collect();
+        let found = rerun_slots(&earlier, &again);
+        for (row, slot) in fresh.into_iter().zip(found) {
+            let row = RunRow { rerun, ..row };
+            match slot.filter(|_| rerun) {
+                Some(ix) => {
+                    let earlier = std::mem::replace(&mut self.rows[ix], row);
+                    self.replaced.push((ix, earlier));
+                    self.slots.push(ix);
+                }
+                None => {
+                    self.slots.push(self.rows.len());
+                    self.rows.push(row);
+                }
+            }
+        }
+    }
+
     // Never drops `self.task`: the task itself calls this.
     fn finish(&mut self, state: RunState, cx: &mut Context<Self>) {
+        // A row the re-run never sent or cancelled keeps the earlier run's result, and the
+        // merged rows are recounted; a re-run cancelled before it started leaves the run as it was.
+        for (ix, earlier) in std::mem::take(&mut self.replaced) {
+            if !matches!(&self.rows[ix].state, RowState::Done(r) if r.is_settled()) {
+                self.rows[ix] = earlier;
+            }
+        }
+        let state = match (self.rerun_of.take(), state) {
+            (Some(_), RunState::Finished(_)) => {
+                let done = self.rows.iter().filter_map(|row| match &row.state {
+                    RowState::Done(result) => Some(result.as_ref()),
+                    _ => None,
+                });
+                RunState::Finished(Summary::of(done))
+            }
+            (Some(before), RunState::Cancelled) => before,
+            (_, state) => state,
+        };
         self.state = state;
         self.retrying = None;
         self.cancel = None;
@@ -942,29 +1006,31 @@ impl RunnerModel {
     pub fn apply(&mut self, event: RunEvent, cx: &mut Context<Self>) {
         // Each later iteration gets its own queued copy of the plan's rows, so its events
         // never overwrite the rows of an earlier one.
-        let at = |index: usize, m: &Self| index + m.iteration * m.plan_len;
+        let at = |index: usize, m: &Self| {
+            let sent = index + m.iteration * m.template.len();
+            m.slots.get(sent).copied()
+        };
         match event {
             RunEvent::Retrying {
                 index, attempt, of, ..
-            } => self.retrying = Some((at(index, self), attempt, of)),
+            } => self.retrying = at(index, self).map(|ix| (ix, attempt, of)),
             RunEvent::IterationStarted { index, .. } => {
                 self.retrying = None;
                 self.iteration = index;
                 if index > 0 {
-                    let fresh: Vec<RunRow> = (self.rows[..self.plan_len].iter())
+                    let fresh: Vec<RunRow> = (self.template.iter())
                         .map(|row| RunRow {
                             state: RowState::Queued,
                             iteration: Some(index),
                             ..row.clone()
                         })
                         .collect();
-                    self.rows.extend(fresh);
+                    self.place(fresh);
                 }
             }
             RunEvent::RequestStarted { index, .. } => {
                 self.retrying = None;
-                let ix = at(index, self);
-                if let Some(row) = self.rows.get_mut(ix) {
+                if let Some(row) = at(index, self).and_then(|ix| self.rows.get_mut(ix)) {
                     row.state = RowState::Running;
                 }
             }
@@ -974,7 +1040,7 @@ impl RunnerModel {
                 if result.response.is_some() {
                     self.record(Arc::clone(&result), cx);
                 }
-                if let Some(row) = self.rows.get_mut(ix) {
+                if let Some(row) = ix.and_then(|ix| self.rows.get_mut(ix)) {
                     row.state = RowState::Done(result);
                 }
             }
