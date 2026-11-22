@@ -497,6 +497,7 @@ fn snapshot_of(root: &Path) -> Arc<CollectionSnapshot> {
         dotenv_stored: Default::default(),
         dotenv_held: Default::default(),
         network_notice: None,
+        network_own: None,
     })
 }
 

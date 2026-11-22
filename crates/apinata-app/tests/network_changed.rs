@@ -767,18 +767,37 @@ fn own_unsaved_edits_mixed_with_a_shadowing_folder_variable_still_ask(cx: &mut T
     wait_real(cx, |cx| model.read_with(cx, |m, _| !m.is_sending()));
 }
 
+// Sends use the draft, so the person's own unsaved edit over what they last saw is no
+// change from outside: nothing asks, and nothing is recorded until the save.
 #[gpui_kit::test]
-fn a_send_with_an_own_unsaved_host_override_asks(cx: &mut TestAppContext) {
+fn a_send_with_an_own_unsaved_host_override_asks_nothing(cx: &mut TestAppContext) {
     http_ready(cx);
     let col = collection(&A);
     let s = started_with(cx, &col, acknowledged(&col, &A));
+    open_network(cx, &s);
     let c = [("api.example.com", "192.0.2.1")];
     edit_unsaved(cx, &s, Edit::HostOverrides(net(&c).host_overrides));
+    assert!(!notice(cx, &s));
     let model = start_send(cx, &s);
-    assert!(asked_or_done(cx, &s, &model), "own unsaved edits ask too");
+    assert!(
+        !asked_or_done(cx, &s, &model),
+        "own unsaved edits never ask"
+    );
+    assert_eq!(acked_state(&s, &A), AckState::Unchanged);
+}
+
+#[gpui_kit::test]
+fn an_unsaved_edit_after_an_outside_change_still_asks(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let col = collection(&A);
+    let s = started_with(cx, &col, acknowledged(&col, &A));
+    outside_edit(cx, &s, &B);
+    let c = [B[0], ("other.example.com", "192.0.2.1")];
+    edit_unsaved(cx, &s, Edit::HostOverrides(net(&c).host_overrides));
+    let model = start_send(cx, &s);
+    assert!(asked_or_done(cx, &s, &model), "the outside change asks");
     click(cx, &s, "network-change-cancel");
     wait_real(cx, |cx| model.read_with(cx, |m, _| !m.is_sending()));
-    assert_eq!(acked_state(&s, &A), AckState::Unchanged);
 }
 
 // A collection whose proxy on 127.0.0.1:9 has host `host` and bypass list `bypass`, with `p`

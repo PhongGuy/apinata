@@ -2,8 +2,8 @@
 //! outside edit (a pull, an editor, an agent) or a folder, request or run variable that sends
 //! a request elsewhere. The Network section shows the collection's change, and core asks
 //! through [`check`] before each send, judged from the settings in memory that the send uses.
-//! Edits made in the app are acknowledged as they are saved. No credential or secret value is
-//! ever stored or shown.
+//! Edits made in the app are acknowledged as they are saved, and a send that differs only by
+//! them, unsaved, is not asked about. No credential or secret value is ever stored or shown.
 
 use std::path::{Path, PathBuf};
 
@@ -183,9 +183,21 @@ pub fn check(cx: &mut App) -> Option<NetworkCheck> {
     }))
 }
 
+// What `root`'s latest snapshot holds as the person's own unsaved network settings.
+fn own_draft(root: &Path, cx: &App) -> Option<ShownNetwork> {
+    let workspace = cx.try_global::<NoticeWorkspace>()?.0.upgrade()?;
+    workspace.read(cx).snapshot(root, cx)?.network_own.clone()
+}
+
 // Shows `question` and waits for the person.
 async fn answer(question: &NetworkQuestion, cx: &mut AsyncApp) -> NetworkAnswer {
     if question.kind() == QuestionKind::FirstSeen {
+        return NetworkAnswer::SendOnce;
+    }
+    // Sends use the unsaved draft, so a difference made only by the person's own edits there
+    // goes ahead unasked and unrecorded; saving it records it.
+    let own = cx.update(|cx| own_draft(question.root(), cx));
+    if own.is_some_and(|own| question.covered_by(&own)) {
         return NetworkAnswer::SendOnce;
     }
     // A change nobody can be asked about is refused, never sent unseen.
