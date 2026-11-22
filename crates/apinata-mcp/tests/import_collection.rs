@@ -102,14 +102,17 @@ async fn into_names_another_relative_folder() {
 }
 
 #[tokio::test]
-async fn root_headers_vars_and_auth_are_reported_as_skipped() {
+async fn root_vars_and_auth_go_on_the_new_folder() {
     let server = shop().await;
     let out = server
         .ok("import_collection", json!({"text": POSTMAN}))
         .await;
-    let skipped = out["skipped"].to_string();
-    assert!(skipped.contains("variables"), "{skipped}");
-    assert!(skipped.contains("auth"), "{skipped}");
+    assert!(out.get("skipped").is_none(), "{out}");
+    let text = fs::read_to_string(server.root().join("imports/Col/folder.yml")).unwrap();
+    assert!(text.contains("name: a"), "{text}");
+    assert!(text.contains("bearer"), "{text}");
+    // The literal token is a secret variable, not text in the folder file.
+    assert!(!text.contains("token: t\n"), "{text}");
     assert!(server.root().join("imports/Col/Get.yml").is_file());
 }
 
@@ -393,7 +396,7 @@ async fn update_refreshes_adds_and_orphans_and_keeps_local_tests() {
     ] {
         assert!(keys.contains(&k), "{k} in {keys:?}");
     }
-    keys.retain(|k| !["collections", "skipped"].contains(k));
+    keys.retain(|k| *k != "collections");
     assert_eq!(keys.len(), 11, "{keys:?}");
     assert_eq!(out["collection"], server.root().display().to_string());
     assert_eq!(out["dry_run"], false);
@@ -1096,7 +1099,6 @@ async fn an_openapi_import_keeps_the_environment_holding_the_server_url() {
     assert!(text.contains("http://127.0.0.1:1/v1"), "{text}");
     let notes = out["notes"].to_string();
     assert!(!notes.contains("nothing imported defines"), "{notes}");
-    assert!(!out["skipped"].to_string().contains("environment"), "{out}");
 }
 
 #[tokio::test]

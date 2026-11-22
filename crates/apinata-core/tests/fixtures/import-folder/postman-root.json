@@ -1,0 +1,6 @@
+{"info":{"name":"pm","description":"Root docs","schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+ "auth":{"type":"bearer","bearer":[{"key":"token","value":"{{tok}}"}]},
+ "variable":[{"key":"base","value":"http://127.0.0.1:1"},{"key":"tok","value":"x"}],
+ "event":[{"listen":"prerequest","script":{"exec":["console.log(1)"]}},
+          {"listen":"test","script":{"exec":["test('ok', () => {});"]}}],
+ "item":[{"name":"one","request":{"method":"GET","url":"{{base}}/a"}}]}

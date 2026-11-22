@@ -1,18 +1,23 @@
 //! Placing an imported collection's items into a folder of an existing collection.
 //!
 //! The bundle is written like [`write_collection`](super::write_collection) into a scratch
-//! directory and only its items are copied across, so the target's own root file,
-//! environments and folder settings are never touched. This is the one routine the CLI and
-//! the MCP server share.
+//! directory and its items are copied across; the imported root's settings go onto the
+//! folder and its environments are added beside the target's own, so the target's root file
+//! is never touched. This is the one routine the CLI and the MCP server share.
 
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use super::environment::add_environment;
 use super::protect::{Held, keep_taken, protect_collection};
-use super::write::{push_unset_note, write_staged};
-use super::{ImportBundle, ImportError, ImportReport};
-use crate::collection::Collection;
+use super::write::{placed, push_unset_note, write_staged};
+use super::{
+    ImportBundle, ImportError, ImportNote, ImportReport, ImportedCollection, ImportedScripts,
+};
+use crate::collection::{Collection, FOLDER_FILE, ROOT_FILE};
+use crate::edit::{AuthSpec, KeyValue, Variable};
+use crate::error::TreeError;
 use crate::item_path::ItemPath;
 use crate::secrets::SecretStore;
 
@@ -73,12 +78,15 @@ pub fn ensure_folder(
     Ok(folder)
 }
 
-/// Write `bundle`'s items directly into the existing `folder` of `collection`, then reload.
-/// A credential taken out of an item is kept as a secret variable of every environment (of a
-/// new `Environment` when there is none), its value in `secrets`, or noted as not stored. A
-/// name already in the folder is refused with [`ImportError::Exists`] and nothing is written.
-/// An OpenAPI bundle also records the folder's baseline, which lets a later update find its
-/// requests. A failure removes what this call copied and nothing else.
+/// Write `bundle` into the existing `folder` of `collection`, then reload. The items go into
+/// the folder, the imported root's docs, auth, headers, variables and scripts onto its
+/// `folder.yml` (each one present replaces the folder's own), and the environments into the
+/// collection as [`add_environment`](super::add_environment) adds them. A credential taken out
+/// of the root or an item is kept as a secret variable of every environment (of a new
+/// `Environment` when there is none), its value in `secrets`, or noted as not stored. A name
+/// already in the folder is refused with [`ImportError::Exists`] and nothing is written. An
+/// OpenAPI bundle also records the folder's baseline, which lets a later update find its
+/// requests. A failure removes what this call wrote and nothing else.
 pub fn place_items(
     collection: &mut Collection,
     folder: &ItemPath,
@@ -89,15 +97,23 @@ pub fn place_items(
         path: std::env::temp_dir(),
         source,
     })?;
-    // The root is not placed, so only the items' credentials move into secret variables; they
-    // are kept in the target's environment once the files are in place.
+    // New secret names avoid every variable the target or the imported environments declare.
     let mut imported = bundle.collection.clone();
     let declared = collection
         .environments()
         .iter()
         .flat_map(|e| e.variables().into_iter().map(|v| v.name))
+        .chain(
+            bundle
+                .environments
+                .iter()
+                .flat_map(|e| e.variables.iter().map(|v| v.name.clone())),
+        )
         .collect::<Vec<_>>();
-    let taken = protect_collection(&mut imported, declared, Held::new(), false);
+    let taken = protect_collection(&mut imported, declared, Held::new(), true);
+    // The root's settings go onto the folder, so the staged root stays bare and no note of it
+    // names the staged root file.
+    let root = take_root(&mut imported);
     let (staged, mut report) =
         write_staged(scratch.path(), &imported, &[], secrets, false, &mut |_| {
             Ok(())
@@ -107,19 +123,16 @@ pub fn place_items(
         report.notes.retain(|n| n.detail != skip.detail);
     }
     let dest = collection.root().join(folder.as_str());
-    let mut copied = Vec::new();
-    let undo = |copied: &[PathBuf]| {
-        for path in copied {
-            let _ = if path.is_dir() {
-                fs::remove_dir_all(path)
-            } else {
-                fs::remove_file(path)
-            };
-        }
+    let settings_file = settings_path(collection, folder);
+    let mut undo = Undo {
+        copied: Vec::new(),
+        settings: fs::read(&settings_file)
+            .ok()
+            .map(|bytes| (settings_file, bytes)),
+        environments: Vec::new(),
     };
-    if let Err(source) = copy_items(staged.root(), &dest, &mut copied) {
-        undo(&copied);
-        collection.reload();
+    if let Err(source) = copy_items(staged.root(), &dest, &mut undo.copied) {
+        undo.run(collection, secrets);
         return Err(match source.kind() {
             io::ErrorKind::AlreadyExists => ImportError::Exists { path: dest },
             _ => ImportError::Io { path: dest, source },
@@ -127,6 +140,36 @@ pub fn place_items(
     }
     // The copied files are not in the tree yet.
     collection.reload();
+    match write_root(collection, folder, &root) {
+        Ok(file) => {
+            let notes = placed(&root.notes, file);
+            report.notes.splice(0..0, notes);
+        }
+        Err(e) => {
+            undo.run(collection, secrets);
+            return Err(e);
+        }
+    }
+    for env in &bundle.environments {
+        let before: Vec<String> = environment_names(collection);
+        match add_environment(collection, env, secrets) {
+            Ok((name, one)) => {
+                undo.environments.push(name);
+                report.notes.extend(one.notes);
+                report.environments.extend(one.environments);
+                report.secrets_to_enter.extend(one.secrets_to_enter);
+            }
+            Err(e) => {
+                // A failed write may have created its file first, so every new name goes.
+                let made = environment_names(collection)
+                    .into_iter()
+                    .filter(|n| !before.contains(n));
+                undo.environments.extend(made);
+                undo.run(collection, secrets);
+                return Err(e);
+            }
+        }
+    }
     if bundle.collection.spec_source {
         let placed: Vec<ItemPath> = report
             .items
@@ -139,8 +182,7 @@ pub fn place_items(
             .collect();
         let ids = super::update::spec_operation_ids(&imported.items);
         if let Err(e) = super::write::record_baseline(collection, folder, &placed, &ids) {
-            undo(&copied);
-            collection.reload();
+            undo.run(collection, secrets);
             return Err(e);
         }
     }
@@ -178,6 +220,114 @@ pub fn place_items(
         report,
         requests,
     })
+}
+
+/// What a failed placement takes back: the copied top-level paths, the settings file's bytes
+/// before it was written, and the environments it added with their stored secrets.
+struct Undo {
+    copied: Vec<PathBuf>,
+    settings: Option<(PathBuf, Vec<u8>)>,
+    environments: Vec<String>,
+}
+
+impl Undo {
+    fn run(&self, collection: &mut Collection, secrets: &dyn SecretStore) {
+        for path in &self.copied {
+            let _ = if path.is_dir() {
+                fs::remove_dir_all(path)
+            } else {
+                fs::remove_file(path)
+            };
+        }
+        if let Some((path, bytes)) = &self.settings {
+            let _ = fs::write(path, bytes);
+        }
+        for name in &self.environments {
+            let _ = collection.delete_environment(name, secrets);
+        }
+        collection.reload();
+    }
+}
+
+fn environment_names(collection: &Collection) -> Vec<String> {
+    collection
+        .environments()
+        .iter()
+        .map(|e| e.name().to_owned())
+        .collect()
+}
+
+/// The imported root's own settings and notes, which a placement writes onto the folder.
+struct RootSettings {
+    docs: String,
+    auth: AuthSpec,
+    headers: Vec<KeyValue>,
+    vars: Vec<Variable>,
+    scripts: ImportedScripts,
+    notes: Vec<ImportNote>,
+}
+
+/// Move the root's settings and notes out of `imported`, leaving it bare.
+fn take_root(imported: &mut ImportedCollection) -> RootSettings {
+    RootSettings {
+        docs: std::mem::take(&mut imported.docs),
+        auth: std::mem::replace(&mut imported.auth, AuthSpec::Inherit),
+        headers: std::mem::take(&mut imported.headers),
+        vars: std::mem::take(&mut imported.vars),
+        scripts: std::mem::take(&mut imported.scripts),
+        notes: std::mem::take(&mut imported.notes),
+    }
+}
+
+/// The file that holds `folder`'s settings: its `folder.yml`, or the root file for the root.
+fn settings_path(collection: &Collection, folder: &ItemPath) -> PathBuf {
+    let dir = collection.root().join(folder.as_str());
+    dir.join(if folder.is_root() {
+        ROOT_FILE
+    } else {
+        FOLDER_FILE
+    })
+}
+
+/// Write `root` onto `folder`'s settings file, each setting present replacing the file's own,
+/// and return that file relative to the collection root.
+fn write_root(
+    collection: &mut Collection,
+    folder: &ItemPath,
+    root: &RootSettings,
+) -> Result<String, ImportError> {
+    // Folder and root files share their setters but no trait, so one body serves both.
+    macro_rules! apply {
+        ($file:expr) => {{
+            let file = $file;
+            if !root.docs.is_empty() {
+                file.set_docs(root.docs.as_str());
+            }
+            if !matches!(root.auth, AuthSpec::Inherit | AuthSpec::None) {
+                file.set_auth(root.auth.clone());
+            }
+            if !root.headers.is_empty() {
+                file.set_headers(root.headers.clone())?;
+            }
+            if !root.vars.is_empty() {
+                file.set_vars(root.vars.clone());
+            }
+            root.scripts
+                .write_with(|phase, code| file.set_script(phase, code));
+            file.save()?;
+        }};
+    }
+    if folder.is_root() {
+        apply!(collection.file_mut());
+        return Ok(ROOT_FILE.to_owned());
+    }
+    let file = collection
+        .folder_file_mut(folder)
+        .ok_or_else(|| TreeError::NotFound {
+            item: folder.clone(),
+        })?;
+    apply!(file);
+    Ok(format!("{}/{FOLDER_FILE}", folder.as_str()))
 }
 
 /// Copy a staged collection's items into `dest`: not its root file, its environments, its
