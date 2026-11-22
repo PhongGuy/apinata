@@ -59,6 +59,27 @@ fn active(cx: &mut TestAppContext, s: &Started) -> Option<(PathBuf, Option<ItemP
     })
 }
 
+// The active tab's collection and kind.
+fn active_kind(cx: &mut TestAppContext, s: &Started) -> Option<(PathBuf, TabKind)> {
+    s.ws.read_with(cx, |w, _| {
+        (w.tabs().active()).map(|t| (t.root.clone(), t.kind.clone()))
+    })
+}
+
+// Opens an empty collection named "Second"; returns it with its index and root as kept.
+fn empty_second(cx: &mut TestAppContext, s: &Started) -> (tempfile::TempDir, usize, PathBuf) {
+    let b = write_tree(&[("opencollection.yml", SECOND)]);
+    s.ws.update(cx, |w, cx| w.open(b.path().to_path_buf(), cx));
+    cx.run_until_parked();
+    let (ix, root) = s.ws.read_with(cx, |w, _| {
+        let ix = (w.collections().iter())
+            .position(|c| c.root() == b.path())
+            .expect("opened");
+        (ix, w.collections()[ix].root().to_path_buf())
+    });
+    (b, ix, root)
+}
+
 fn name(cx: &mut TestAppContext, s: &Started) -> Option<String> {
     s.shell
         .read_with(cx, |v, cx| v.current_name(cx).map(|n| n.to_string()))
@@ -99,14 +120,19 @@ fn an_import_opens_its_first_request_and_the_title_bar_follows(cx: &mut TestAppC
 }
 
 #[gpui_kit::test]
-fn an_import_with_no_requests_leaves_the_title_bar_on_the_active_tab(cx: &mut TestAppContext) {
+fn an_import_with_no_requests_opens_its_settings_and_the_title_bar_follows(
+    cx: &mut TestAppContext,
+) {
     let col = two_requests();
     let s = started(cx, &col);
     open_tab(cx, &s.ws, &s.root, "a.yml");
     let (_into, root) = import(cx, &s, "");
-    assert_eq!(active(cx, &s), Some((s.root.clone(), Some(ip("a.yml")))));
-    assert_eq!(current(cx, &s), Some(s.root.clone()));
-    assert_eq!(name(cx, &s).as_deref(), Some("c"));
+    assert_eq!(
+        active_kind(cx, &s),
+        Some((root.clone(), TabKind::Collection))
+    );
+    assert_eq!(current(cx, &s), Some(root.clone()));
+    assert_eq!(name(cx, &s).as_deref(), Some("Shop"));
     let selected = s
         .shell
         .read_with(cx, |v, cx| v.sidebar().read(cx).selected(cx));
@@ -190,7 +216,7 @@ fn switcher_rows_span_the_list_like_the_actions(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn opening_a_collection_without_requests_reveals_it_and_keeps_the_tab(cx: &mut TestAppContext) {
+fn opening_a_collection_without_requests_opens_its_settings(cx: &mut TestAppContext) {
     let col = two_requests();
     let s = started(cx, &col);
     open_tab(cx, &s.ws, &s.root, "a.yml");
@@ -205,7 +231,11 @@ fn opening_a_collection_without_requests_reveals_it_and_keeps_the_tab(cx: &mut T
             .find(|r| r.ends_with(b.path().file_name().unwrap()))
             .expect("opened")
     });
-    assert_eq!(current(cx, &s), Some(s.root.clone()));
+    assert_eq!(
+        active_kind(cx, &s),
+        Some((root.clone(), TabKind::Collection))
+    );
+    assert_eq!(current(cx, &s), Some(root.clone()));
     let selected = s
         .shell
         .read_with(cx, |v, cx| v.sidebar().read(cx).selected(cx));
@@ -256,22 +286,74 @@ fn closing_the_chosen_collection_falls_back_to_the_active_tab(cx: &mut TestAppCo
 }
 
 #[gpui_kit::test]
-fn with_no_tab_open_a_switcher_choice_of_an_empty_collection_holds(cx: &mut TestAppContext) {
+fn choosing_an_empty_collection_opens_its_settings_over_another_tab(cx: &mut TestAppContext) {
     let col = two_requests();
     let s = started(cx, &col);
-    let b = write_tree(&[("opencollection.yml", SECOND)]);
-    s.ws.update(cx, |w, cx| w.open(b.path().to_path_buf(), cx));
-    cx.run_until_parked();
-    let (ix, root) = s.ws.read_with(cx, |w, _| {
-        let ix = (w.collections().iter())
-            .position(|c| c.root() == b.path())
-            .expect("opened");
-        (ix, w.collections()[ix].root().to_path_buf())
-    });
+    let (_b, ix, root) = empty_second(cx, &s);
+    open_tab(cx, &s.ws, &s.root, "a.yml");
+    choose(cx, &s, ix);
+    assert_eq!(
+        active_kind(cx, &s),
+        Some((root.clone(), TabKind::Collection))
+    );
+    assert_eq!(current(cx, &s), Some(root));
+    assert_eq!(name(cx, &s).as_deref(), Some("Second"));
+}
+
+#[gpui_kit::test]
+fn with_no_tab_open_choosing_an_empty_collection_opens_its_settings(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    let (_b, ix, root) = empty_second(cx, &s);
     assert_eq!(current(cx, &s), Some(s.root.clone()));
     choose(cx, &s, ix);
-    assert_eq!(active(cx, &s), None);
+    assert_eq!(
+        active_kind(cx, &s),
+        Some((root.clone(), TabKind::Collection))
+    );
     assert_eq!(current(cx, &s), Some(root));
+}
+
+// Clicks the root row of collection `ix`, then runs a keyed sidebar action through the shell.
+fn on_root_row(cx: &mut TestAppContext, s: &Started, ix: usize, action: Box<dyn gpui_kit::Action>) {
+    cx.update_window(s.win, |_, w, cx| {
+        w.click(node_id(ix, &ItemPath::root()), cx)
+    })
+    .unwrap();
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| w.dispatch_action(action, cx))
+        .unwrap();
+    cx.run_until_parked();
+    frame(cx, s.win);
+}
+
+#[gpui_kit::test]
+fn a_keyed_new_request_goes_to_the_selected_rows_collection(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    let (_b, ix, root) = second(cx, &s);
+    open_tab(cx, &s.ws, &s.root, "a.yml");
+    frame(cx, s.win);
+    on_root_row(cx, &s, ix, Box::new(apinata_app::keymap::NewRequest));
+    let tab = active_kind(cx, &s).expect("a draft opened");
+    assert_eq!(tab.0, root, "the draft is in the clicked collection");
+    assert_eq!(current(cx, &s), Some(root));
+}
+
+#[gpui_kit::test]
+fn a_keyed_new_folder_goes_to_the_selected_rows_collection(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    let (_b, ix, root) = second(cx, &s);
+    open_tab(cx, &s.ws, &s.root, "a.yml");
+    frame(cx, s.win);
+    on_root_row(cx, &s, ix, Box::new(apinata_app::sidebar::NewFolder));
+    let folder = apinata_app::sidebar::menu::NEW_FOLDER_NAME;
+    assert!(
+        root.join(folder).is_dir(),
+        "the folder is in the clicked collection"
+    );
+    assert!(!s.root.join(folder).exists());
 }
 
 #[gpui_kit::test]

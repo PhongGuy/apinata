@@ -1091,9 +1091,15 @@ impl Sidebar {
         self.rebuild(window, cx);
     }
 
+    // The collection a keyed tree action acts on: the selected row's, as its menu entry does,
+    // since a click on a row no longer makes its collection current; else the current one.
+    fn action_root(&self, cx: &App) -> Option<PathBuf> {
+        (self.selected(cx).map(|(root, _)| root)).or_else(|| self.workspace.read(cx).current_root())
+    }
+
     /// Creates a folder where `new_request` would put a draft, then renames it inline.
     pub fn new_folder(&mut self, _: &NewFolder, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(root) = self.workspace.read(cx).current_root() else {
+        let Some(root) = self.action_root(cx) else {
             return;
         };
         let parent = self.selection_parent(&root, cx);
@@ -1104,10 +1110,10 @@ impl Sidebar {
         self.send_tracked(&root, op, true, None, window, cx);
     }
 
-    /// Opens a draft in the workspace's current collection, under the selected folder or the
-    /// selected request's folder when the selection is in that collection, else at its root.
+    /// Opens a draft in the selected row's collection, else the current one, under the selected
+    /// folder or the selected request's folder, else at its root.
     pub fn new_request(&mut self, _: &NewRequest, _: &mut Window, cx: &mut Context<Self>) {
-        let Some(root) = self.workspace.read(cx).current_root() else {
+        let Some(root) = self.action_root(cx) else {
             self.workspace.update(cx, |w, cx| w.new_scratch_request(cx));
             return;
         };
@@ -1123,7 +1129,7 @@ impl Sidebar {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(root) = self.workspace.read(cx).current_root() else {
+        let Some(root) = self.action_root(cx) else {
             self.workspace.update(cx, |w, cx| {
                 let root = w.open_scratch(cx)?;
                 w.new_draft_of_kind(&root, ItemPath::root(), RequestKind::Graphql, cx)
@@ -1138,7 +1144,7 @@ impl Sidebar {
 
     /// Sorts the items of the folder `selection_parent` names, as the menu entry does.
     pub fn sort_by_name(&mut self, _: &SortByName, _: &mut Window, cx: &mut Context<Self>) {
-        let Some(root) = self.workspace.read(cx).current_root() else {
+        let Some(root) = self.action_root(cx) else {
             return;
         };
         let folder = self.selection_parent(&root, cx);

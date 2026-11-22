@@ -1878,8 +1878,8 @@ impl Workspace {
     }
 
     /// Makes the open collection at `root` current through a tab: its last open tab comes
-    /// forward, else its first request opens. A collection with no request is only remembered,
-    /// current while no tab is open.
+    /// forward, else its first request opens, else its settings tab. A collection with no tab
+    /// target at all (the scratch) is only remembered, current while no tab is open.
     pub fn show_collection(&mut self, root: &Path, cx: &mut Context<Self>) {
         let root = absolute(root);
         if self.entry(&root).is_none() || self.tabs.active().is_some_and(|t| t.root == root) {
@@ -1899,6 +1899,9 @@ impl Workspace {
         });
         if let Some(item) = first {
             self.open_item(&root, item, false, cx);
+            return;
+        }
+        if self.open_settings(&root, TabKind::Collection, cx).is_some() {
             return;
         }
         self.tabs.choose_root(Some(root));
