@@ -167,14 +167,14 @@ impl VariableSet {
     /// Every definition of every plain name, per name highest layer first: the effective row
     /// is exactly what [`Self::get`] (and so a send) resolves, and each lower layer that
     /// defines the name too follows as a shadowed row. Secrets carry no value in any row.
-    /// The selected environment's internal `__name__` is left out.
+    /// Lists the same plain names as [`Self::names`], so internal ones stay out.
     pub fn overview(&self) -> Vec<ScopedVariable> {
         let captured = self.ctx.runtime_vars().snapshot();
         let mut out = Vec::new();
         for name in self
             .names()
             .into_iter()
-            .filter(|n| !n.contains('.') && !n.starts_with('$') && n != "__name__")
+            .filter(|n| !n.contains('.') && !n.starts_with('$'))
         {
             let Some(effective) = self.get(&name) else {
                 continue;
@@ -225,12 +225,13 @@ impl VariableSet {
     }
 
     /// Names for autocomplete: plain names sorted, then the `.env` keys as `process.env.KEY`,
-    /// then every dynamic name in table order.
+    /// then every dynamic name in table order. The selected environment's internal
+    /// `__name__` still resolves but is not offered.
     pub fn names(&self) -> Vec<String> {
         let (vars, _) = self.ctx.lookup_for(&self.req);
         let mut names: Vec<String> = vars
             .keys()
-            .filter(|n| *n != "process" && !is_dynamic(n))
+            .filter(|n| *n != "process" && *n != "__name__" && !is_dynamic(n))
             .cloned()
             .collect();
         names.sort();

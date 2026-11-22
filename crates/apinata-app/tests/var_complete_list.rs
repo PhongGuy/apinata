@@ -133,17 +133,16 @@ fn typing_an_open_pair_lists_every_name_under_two_headings(cx: &mut TestAppConte
     typing(cx, win, "{{");
     let shown = rows(cx, win).expect("the list opens");
     assert_eq!(
-        shown[..6],
+        shown[..5],
         [
-            ("__name__, Environment · dev".to_owned(), true),
-            ("empty, Collection".to_owned(), false),
+            ("empty, Collection".to_owned(), true),
             ("host, Collection · c.test".to_owned(), false),
             ("hostname, Collection · h.test".to_owned(), false),
             ("region, Environment · eu".to_owned(), false),
             (format!("token, Environment · {SECRET_DOTS}"), false),
         ]
     );
-    assert_eq!(shown[6], ("$guid".to_owned(), false));
+    assert_eq!(shown[5], ("$guid".to_owned(), false));
     cx.update_window(win, |_, w, _| {
         assert_eq!(
             w.find(("var-complete-heading", 0usize)).label(),

@@ -161,7 +161,7 @@ fn names_are_sorted_and_each_is_defined() {
     let mut sorted = plain.clone();
     sorted.sort();
     assert_eq!(plain, sorted);
-    for expected in ["host", "shared", "own", "token", "api", "__name__", "n"] {
+    for expected in ["host", "shared", "own", "token", "api", "n"] {
         assert!(names.contains(&expected.to_owned()), "{expected} missing");
     }
     assert!(!names.contains(&"unset".to_owned()));
@@ -254,13 +254,14 @@ fn overview_masks_secrets_in_every_row() {
     }
 }
 
-// The selected environment's name is an internal variable: still listed for completion and
-// still sent, but the overview leaves it out.
+// The selected environment's name is an internal variable: it still resolves, but neither
+// completion nor the overview offers it.
 #[test]
-fn overview_hides_the_environment_name_variable() {
+fn internal_environment_name_resolves_but_is_never_listed() {
     let (_dir, c, ctx, _) = fixture();
     let r = set_for(&c, &ctx, "a/r.yml");
-    assert!(r.names().contains(&"__name__".to_owned()));
+    assert!(r.get("__name__").is_some());
+    assert!(!r.names().contains(&"__name__".to_owned()));
     assert_eq!(rows(&r, "__name__"), vec![]);
 }
 
