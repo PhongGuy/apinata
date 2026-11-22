@@ -46,6 +46,7 @@ const fn snippet(
     }
 }
 
+// A snippet that declares a name wraps itself in a block, so inserting it twice never redeclares.
 static TABLE: [Snippet; 9] = [
     snippet(
         "status-200",
@@ -72,21 +73,21 @@ static TABLE: [Snippet; 9] = [
         "body-contains",
         "Body contains text",
         &[Tests],
-        "const text = \"apinata\";\ntest(\"Body contains \" + text, function () {\n  expect(JSON.stringify(res.getBody())).to.include(text);\n});",
+        "{\n  const text = \"apinata\";\n  test(\"Body contains \" + text, function () {\n    expect(JSON.stringify(res.getBody())).to.include(text);\n  });\n}",
         "\"apinata\"",
     ),
     snippet(
         "json-field",
         "JSON field equals",
         &[Tests],
-        "const field = \"name\";\ntest(\"JSON field \" + field + \" has the expected value\", function () {\n  expect(res.getBody()[field]).to.equal(\"apinata\");\n});",
+        "{\n  const field = \"name\";\n  test(\"JSON field \" + field + \" has the expected value\", function () {\n    expect(res.getBody()[field]).to.equal(\"apinata\");\n  });\n}",
         "\"name\"",
     ),
     snippet(
         "header-exists",
         "Header exists",
         &[Tests],
-        "const header = \"x-trace\";\ntest(\"Header \" + header + \" exists\", function () {\n  expect(res.getHeader(header)).to.exist;\n});",
+        "{\n  const header = \"x-trace\";\n  test(\"Header \" + header + \" exists\", function () {\n    expect(res.getHeader(header)).to.exist;\n  });\n}",
         "\"x-trace\"",
     ),
     snippet(

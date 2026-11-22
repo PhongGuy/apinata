@@ -54,6 +54,17 @@ fn kind(phase: SnippetPhase) -> &'static str {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn each_snippet_runs_and_passes() {
+    run_every_snippet(1).await;
+}
+
+// A snippet inserted again must not redeclare anything the first copy declared.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn each_snippet_inserted_twice_runs_and_passes() {
+    run_every_snippet(2).await;
+}
+
+/// Runs `copies` back-to-back copies of every snippet in each of its slots; all must pass.
+async fn run_every_snippet(copies: usize) {
     let s = MockServer::start().await;
     Mock::given(path("/j"))
         .and(header("x-trace", "1"))
@@ -76,7 +87,8 @@ async fn each_snippet_runs_and_passes() {
                 }
                 _ => "",
             };
-            let code = format!("{}\n{probe}", snippet.code);
+            let inserted = vec![snippet.code; copies].join("\n");
+            let code = format!("{inserted}\n{probe}");
             let request = if snippet.id == "set-header" {
                 scripted("R", &url, &script(kind(phase), &code), "")
             } else {
@@ -89,7 +101,7 @@ async fn each_snippet_runs_and_passes() {
             };
             let dir = write_tree(&[("opencollection.yml", ROOT), ("r.yml", &request)]);
             let result = send(dir.path(), "r.yml", on()).await;
-            let label = format!("{} in {phase:?}", snippet.id);
+            let label = format!("{} x{copies} in {phase:?}", snippet.id);
             assert!(result.error.is_none(), "{label}: {:?}", result.error);
             assert!(
                 tests(&result).iter().all(|t| t.ends_with(": pass")),
@@ -97,7 +109,11 @@ async fn each_snippet_runs_and_passes() {
                 tests(&result)
             );
             if phase == SnippetPhase::Tests && snippet.code.contains("test(") {
-                assert!(!result.tests.is_empty(), "{label}: no test");
+                assert!(
+                    result.tests.len() >= copies,
+                    "{label}: {:?}",
+                    tests(&result)
+                );
             }
             let expected = match snippet.id {
                 "var-from-body" => Some("log:probe=7"),
