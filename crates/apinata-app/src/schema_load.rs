@@ -9,7 +9,7 @@ use apinata_core::{
 };
 use gpui_kit::{App, AppContext as _, Entity, Window};
 
-use crate::copy_curl::plan_and_resolve_with;
+use crate::copy_curl::{Resolved, plan_and_resolve_with};
 use crate::graphql_schema_store::{SchemaFailure, SchemaStore};
 use crate::response_pane::transport_text;
 use crate::workspace::Workspace;
@@ -40,7 +40,7 @@ pub fn load_from_server(
     );
     cx.spawn(async move |cx| {
         let result = match planned.recv().await {
-            Ok(Ok(request)) => {
+            Ok(Ok(Resolved { request, .. })) => {
                 let fetch = cx.update(|cx| {
                     let exec = executor::schema(cx)?;
                     let load = async move {

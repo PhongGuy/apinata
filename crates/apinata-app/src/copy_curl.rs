@@ -1,12 +1,12 @@
 //! Copy as curl: plan a request on its collection actor as Send does, resolve it, and put the
-//! curl command on the clipboard, asking first when it would carry secret values. The plan,
-//! resolve and confirm steps are shared with the Generate Code dialog.
+//! curl command on the clipboard, asking first when it would carry secret values. The plan and
+//! resolve steps are shared with the Generate Code dialog.
 
 use std::path::Path;
 
 use apinata_core::{
-    AuthorizeOptions, CancelHandle, ItemPath, RequestFile, ResolveError, ResolvedRequest, Target,
-    VarContext,
+    AuthorizeOptions, CancelHandle, ItemPath, NamedSecret, RequestFile, ResolveError,
+    ResolvedRequest, Target, VarContext, derived_secrets, known_secrets,
 };
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::notification::Notification;
@@ -31,7 +31,7 @@ pub fn copy_as_curl(
     window
         .spawn(cx, async move |cx| {
             let curl = match planned.recv().await {
-                Ok(Ok(r)) => Ok((
+                Ok(Ok(Resolved { request: r, .. })) => Ok((
                     apinata_core::generate(&r, Target::Curl),
                     !r.sensitive_values().is_empty(),
                 )),
@@ -52,15 +52,21 @@ pub fn copy_as_curl(
         .detach();
 }
 
+/// A resolved request and every secret value it or its context holds, for masking.
+pub(crate) struct Resolved {
+    pub(crate) request: ResolvedRequest,
+    pub(crate) secrets: Vec<NamedSecret>,
+}
+
 /// Plans `item` on its collection actor and resolves its first request on `window`; the
-/// receiver yields the resolved request or a message saying why there is none.
+/// receiver yields the resolved request with its secrets, or a message saying why there is none.
 pub(crate) fn plan_and_resolve(
     workspace: &Entity<Workspace>,
     root: &Path,
     item: ItemPath,
     window: &mut Window,
     cx: &mut App,
-) -> async_channel::Receiver<Result<ResolvedRequest, String>> {
+) -> async_channel::Receiver<Result<Resolved, String>> {
     let no_token = |e: &ResolveError| matches!(e, ResolveError::OAuth2NoToken { .. });
     plan_and_resolve_with(
         workspace,
@@ -83,7 +89,7 @@ pub(crate) fn plan_and_resolve_with<E: std::fmt::Display + 'static>(
     no_token: fn(&E) -> bool,
     window: &mut Window,
     cx: &mut App,
-) -> async_channel::Receiver<Result<ResolvedRequest, String>> {
+) -> async_channel::Receiver<Result<Resolved, String>> {
     let (done, out) = async_channel::bounded(1);
     let (reply, answer) = async_channel::bounded(1);
     let sent = workspace.update(cx, |w, cx| w.send(root, Command::Plan { item, reply }, cx));
@@ -95,7 +101,12 @@ pub(crate) fn plan_and_resolve_with<E: std::fmt::Display + 'static>(
         .spawn(cx, async move |cx| {
             let resolved = match answer.recv().await {
                 Ok(Ok(planned)) => match planned.plan.requests().next() {
-                    Some(file) => resolve(file, &planned.context, build, no_token, cx).await,
+                    Some(file) => resolve(file, &planned.context, build, no_token, cx)
+                        .await
+                        .map(|request| {
+                            let secrets = masking_secrets(file, &planned.context, &request);
+                            Resolved { request, secrets }
+                        }),
                     None => Err("there is no request in this item".into()),
                 },
                 Ok(Err(e)) => Err(plan_message(&e)),
@@ -141,9 +152,25 @@ async fn resolve<E: std::fmt::Display>(
     }
 }
 
+// Every secret `file`'s context knows, named where it can be, plus any value the request
+// substituted that the names missed, so masked text holds none of them.
+fn masking_secrets(
+    file: &RequestFile,
+    ctx: &VarContext,
+    request: &ResolvedRequest,
+) -> Vec<NamedSecret> {
+    let mut found = known_secrets(file, ctx).unwrap_or_default();
+    let missed: Vec<String> = (request.sensitive_values().iter())
+        .filter(|v| !found.iter().any(|s| s.value() == v.as_str()))
+        .cloned()
+        .collect();
+    found.extend(derived_secrets(&missed));
+    found
+}
+
 /// Asks before secret values leave the app in plain text; Cancel ("confirm-cancel") is the
 /// default. True only when the `go_id` button was chosen.
-pub(crate) async fn confirm_secrets(
+async fn confirm_secrets(
     title: &str,
     go_id: &'static str,
     go_label: &str,
@@ -151,7 +178,11 @@ pub(crate) async fn confirm_secrets(
 ) -> bool {
     let ask = Ask {
         title: title.to_owned().into(),
-        detail: Some("This request contains secret values in plain text.".into()),
+        detail: Some(
+            "The command will hold the values of secret variables, .env entries or a saved \
+             token in plain text."
+                .into(),
+        ),
         choices: vec![
             Choice {
                 id: go_id,
