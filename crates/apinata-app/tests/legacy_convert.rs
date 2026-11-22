@@ -115,7 +115,7 @@ fn new_folder_asks_for_a_parent_then_opens_the_copy(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn a_converted_collection_becomes_current_with_its_root_selected(cx: &mut TestAppContext) {
+fn a_converted_collection_becomes_current_with_its_first_request(cx: &mut TestAppContext) {
     let (_files, win, view) = shell(cx);
     let other = collection();
     open_root(cx, &view, other.path().to_path_buf());
@@ -128,7 +128,7 @@ fn a_converted_collection_becomes_current_with_its_root_selected(cx: &mut TestAp
     let current = view.read_with(cx, |v, cx| v.workspace().read(cx).current_root());
     assert_eq!(current.as_ref(), Some(&root));
     let selected = view.read_with(cx, |v, cx| v.sidebar().read(cx).selected(cx));
-    assert_eq!(selected, Some((root, apinata_core::ItemPath::root())));
+    assert_eq!(selected, Some((root, crate::support::ip("a.yml"))));
 }
 
 #[gpui_kit::test]

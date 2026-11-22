@@ -241,8 +241,6 @@ struct PendingRow {
 /// The tree of open collections, rebuilt from the workspace on every change.
 pub struct Sidebar {
     renders: usize,
-    // The selected row last seen, so only a move of the selection changes the current collection.
-    seen_selection: Option<SharedString>,
     workspace: Entity<Workspace>,
     tree: Entity<TreeState>,
     // The tree keeps its own handle private; this one wraps it to tell when it holds focus.
@@ -273,6 +271,8 @@ pub struct Sidebar {
     prior_example: Option<(PathBuf, ItemPath, usize)>,
     // The active request tab the selection last followed; see `rebuild`.
     followed: Option<TabId>,
+    // A root just revealed; the next rebuild keeps it at the list top while following its tab.
+    revealed: Option<PathBuf>,
     pending_focus: Option<PendingFocus>,
     // The folder or root row under the pointer. Layout cannot follow a CSS-like group hover, so a
     // floating run slot learns of it from here and makes room for itself; see `RunSlot`.
@@ -378,7 +378,6 @@ impl Sidebar {
                     }
                     t.focus(window, cx)
                 });
-                this.settle_selection(cx);
             }),
             cx.subscribe_in(&filter, window, Self::filter_event),
             cx.observe_in(&workspace, window, |this, _, window, cx| {
@@ -388,14 +387,12 @@ impl Sidebar {
             cx.subscribe(&tree, Self::tree_event),
             cx.observe(&tree, |this, _, cx| {
                 this.sync_multi_focus(cx);
-                this.follow_selection(cx);
             }),
             cx.subscribe_in(&workspace, window, Self::workspace_event),
         ];
         subscriptions.extend(ui::redraw_on_settings(cx));
         let mut sidebar = Sidebar {
             renders: 0,
-            seen_selection: None,
             filter_cramped: Rc::default(),
             workspace,
             tree,
@@ -420,6 +417,7 @@ impl Sidebar {
             handed_off: None,
             prior_example: None,
             followed: None,
+            revealed: None,
             pending_focus: None,
             hovered: None,
             menu_target: None,
@@ -594,29 +592,6 @@ impl Sidebar {
         if !self.key_of(&id).is_some_and(|k| self.multi.contains(&k)) {
             self.clear_multi(cx);
         }
-    }
-
-    // Takes a selection the sidebar made itself as seen, so only a user's move of the
-    // selection changes the current collection.
-    fn settle_selection(&mut self, cx: &App) {
-        self.seen_selection = self.tree.read(cx).selected_item().map(|i| i.id.clone());
-    }
-
-    // Selecting a row in another collection makes that collection current.
-    fn follow_selection(&mut self, cx: &mut Context<Self>) {
-        let id = self.tree.read(cx).selected_item().map(|i| i.id.clone());
-        if id == self.seen_selection {
-            return;
-        }
-        self.seen_selection = id;
-        if let Some((root, _)) = self.selected(cx) {
-            self.make_current(&root, cx);
-        }
-    }
-
-    fn make_current(&self, root: &Path, cx: &mut Context<Self>) {
-        self.workspace
-            .update(cx, |w, cx| w.set_current_root(root, cx));
     }
 
     // Escape empties the set; with none, it passes on so a rename or dialog still ends.
@@ -1118,9 +1093,15 @@ impl Sidebar {
         self.rebuild(window, cx);
     }
 
+    // The collection a keyed tree action acts on: the selected row's, as its menu entry does,
+    // since a click on a row no longer makes its collection current; else the current one.
+    fn action_root(&self, cx: &App) -> Option<PathBuf> {
+        (self.selected(cx).map(|(root, _)| root)).or_else(|| self.workspace.read(cx).current_root())
+    }
+
     /// Creates a folder where `new_request` would put a draft, then renames it inline.
     pub fn new_folder(&mut self, _: &NewFolder, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(root) = self.workspace.read(cx).current_root() else {
+        let Some(root) = self.action_root(cx) else {
             return;
         };
         let parent = self.selection_parent(&root, cx);
@@ -1131,10 +1112,10 @@ impl Sidebar {
         self.send_tracked(&root, op, true, None, window, cx);
     }
 
-    /// Opens a draft in the workspace's current collection, under the selected folder or the
-    /// selected request's folder when the selection is in that collection, else at its root.
+    /// Opens a draft in the selected row's collection, else the current one, under the selected
+    /// folder or the selected request's folder, else at its root.
     pub fn new_request(&mut self, _: &NewRequest, _: &mut Window, cx: &mut Context<Self>) {
-        let Some(root) = self.workspace.read(cx).current_root() else {
+        let Some(root) = self.action_root(cx) else {
             self.workspace.update(cx, |w, cx| w.new_scratch_request(cx));
             return;
         };
@@ -1150,7 +1131,7 @@ impl Sidebar {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(root) = self.workspace.read(cx).current_root() else {
+        let Some(root) = self.action_root(cx) else {
             self.workspace.update(cx, |w, cx| {
                 let root = w.open_scratch(cx)?;
                 w.new_draft_of_kind(&root, ItemPath::root(), RequestKind::Graphql, cx)
@@ -1165,7 +1146,7 @@ impl Sidebar {
 
     /// Sorts the items of the folder `selection_parent` names, as the menu entry does.
     pub fn sort_by_name(&mut self, _: &SortByName, _: &mut Window, cx: &mut Context<Self>) {
-        let Some(root) = self.workspace.read(cx).current_root() else {
+        let Some(root) = self.action_root(cx) else {
             return;
         };
         let folder = self.selection_parent(&root, cx);
@@ -2486,20 +2467,28 @@ impl Sidebar {
         }
         // A row the filter hides, or a snapshot not loaded yet, leaves the follow for a later
         // rebuild. Selecting and scrolling never move focus.
+        let revealed = self.revealed.take();
         if let Some((tab, root, item)) = follow
             && let Some(id) = self.find(&root, &item).map(|n| n.id.clone())
         {
             self.select(&id, cx);
+            // Following a just revealed collection's tab keeps its root at the top, as revealed.
+            let (target, strategy) = match revealed.filter(|r| *r == root) {
+                Some(_) => (
+                    self.find(&root, &ItemPath::root()).map(|n| n.id.clone()),
+                    ScrollStrategy::Top,
+                ),
+                None => (Some(id), ScrollStrategy::Nearest),
+            };
             self.tree.update(cx, |t, _| {
-                if let Some(ix) = t.index_of(&id) {
-                    t.scroll_to_item(ix, ScrollStrategy::Nearest);
+                if let Some(ix) = target.and_then(|id| t.index_of(&id)) {
+                    t.scroll_to_item(ix, strategy);
                 }
             });
             self.lost_selection = None;
             self.followed = Some(tab);
         }
         self.apply_pending_focus(window, cx);
-        self.settle_selection(cx);
     }
 
     // The row that takes a removed row's place: its old index clamped to the rows left, or
@@ -2681,6 +2670,7 @@ impl Sidebar {
             return;
         };
         self.select(&id, cx);
+        self.revealed = Some(root.to_path_buf());
         // The root goes to the top, not just into view, so the collection's requests show below it.
         self.tree.update(cx, |t, _| {
             if let Some(ix) = t.index_of(&id) {
@@ -2815,8 +2805,6 @@ impl Sidebar {
         };
         node.expanded = open;
         let (root, path) = (node.root.clone(), node.path.clone());
-        // A toggled root or folder is a pick of its collection, even when already selected.
-        self.make_current(&root, cx);
         cx.notify();
         if !self.filter_text.trim().is_empty() {
             return;
