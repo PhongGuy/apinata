@@ -29,7 +29,7 @@ use crate::kv_table::{
 use crate::network_section::NetworkSection;
 use crate::presets_section::PresetsSection;
 use crate::request_editor::{AUTH_TYPING, RedoEdit, UndoEdit, load_auth, refresh_token_panel};
-use crate::script_section::ScriptSection;
+use crate::script_section::{ScriptSection, SnippetChosen};
 use crate::script_settings::ScriptSettingsView;
 use crate::scroll_follow::FocusFollow;
 use crate::section::SectionEdit;
@@ -345,6 +345,17 @@ impl ConfigEditor {
                 on_edit(this, e, cx)
             }),
         ]);
+        // A snippet button only names its snippet; the section it sits in inserts it, and the
+        // insert's change event sends the edit like typing would.
+        for section in [&script, &tests_script] {
+            subs.push(cx.subscribe_in(
+                section,
+                window,
+                |_, section, e: &SnippetChosen, window, cx| {
+                    section.update(cx, |s, cx| s.insert_snippet(e.0, e.1, window, cx));
+                },
+            ));
+        }
         if let Some(tags) = &tags {
             subs.push(cx.subscribe(tags, |this, field, e: &TagsChanged, cx| {
                 this.lagging = field.read(cx).lags(&e.0);
