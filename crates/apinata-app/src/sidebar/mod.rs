@@ -239,8 +239,6 @@ struct PendingRow {
 /// The tree of open collections, rebuilt from the workspace on every change.
 pub struct Sidebar {
     renders: usize,
-    // The selected row last seen, so only a move of the selection changes the current collection.
-    seen_selection: Option<SharedString>,
     workspace: Entity<Workspace>,
     tree: Entity<TreeState>,
     // The tree keeps its own handle private; this one wraps it to tell when it holds focus.
@@ -376,7 +374,6 @@ impl Sidebar {
                     }
                     t.focus(window, cx)
                 });
-                this.settle_selection(cx);
             }),
             cx.subscribe_in(&filter, window, Self::filter_event),
             cx.observe_in(&workspace, window, |this, _, window, cx| {
@@ -386,14 +383,12 @@ impl Sidebar {
             cx.subscribe(&tree, Self::tree_event),
             cx.observe(&tree, |this, _, cx| {
                 this.sync_multi_focus(cx);
-                this.follow_selection(cx);
             }),
             cx.subscribe_in(&workspace, window, Self::workspace_event),
         ];
         subscriptions.extend(ui::redraw_on_settings(cx));
         let mut sidebar = Sidebar {
             renders: 0,
-            seen_selection: None,
             filter_cramped: Rc::default(),
             workspace,
             tree,
@@ -592,29 +587,6 @@ impl Sidebar {
         if !self.key_of(&id).is_some_and(|k| self.multi.contains(&k)) {
             self.clear_multi(cx);
         }
-    }
-
-    // Takes a selection the sidebar made itself as seen, so only a user's move of the
-    // selection changes the current collection.
-    fn settle_selection(&mut self, cx: &App) {
-        self.seen_selection = self.tree.read(cx).selected_item().map(|i| i.id.clone());
-    }
-
-    // Selecting a row in another collection makes that collection current.
-    fn follow_selection(&mut self, cx: &mut Context<Self>) {
-        let id = self.tree.read(cx).selected_item().map(|i| i.id.clone());
-        if id == self.seen_selection {
-            return;
-        }
-        self.seen_selection = id;
-        if let Some((root, _)) = self.selected(cx) {
-            self.make_current(&root, cx);
-        }
-    }
-
-    fn make_current(&self, root: &Path, cx: &mut Context<Self>) {
-        self.workspace
-            .update(cx, |w, cx| w.set_current_root(root, cx));
     }
 
     // Escape empties the set; with none, it passes on so a rename or dialog still ends.
@@ -2484,7 +2456,6 @@ impl Sidebar {
             self.followed = Some(tab);
         }
         self.apply_pending_focus(window, cx);
-        self.settle_selection(cx);
     }
 
     // The row that takes a removed row's place: its old index clamped to the rows left, or
@@ -2800,8 +2771,6 @@ impl Sidebar {
         };
         node.expanded = open;
         let (root, path) = (node.root.clone(), node.path.clone());
-        // A toggled root or folder is a pick of its collection, even when already selected.
-        self.make_current(&root, cx);
         cx.notify();
         if !self.filter_text.trim().is_empty() {
             return;

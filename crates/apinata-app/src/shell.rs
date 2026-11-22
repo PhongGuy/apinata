@@ -833,11 +833,12 @@ impl Shell {
             .focus(window, cx);
     }
 
-    /// Makes the collection current and shows the sidebar, even one the narrow window hid,
-    /// with the collection's root row selected and scrolled into view.
+    /// Shows the collection through a tab (see [`Workspace::show_collection`]) and shows the
+    /// sidebar, even one the narrow window hid, with the collection's root row selected and
+    /// scrolled into view.
     pub fn reveal_collection(&mut self, root: &Path, window: &mut Window, cx: &mut Context<Self>) {
         self.workspace
-            .update(cx, |w, cx| w.set_current_root(root, cx));
+            .update(cx, |w, cx| w.show_collection(root, cx));
         self.sidebar_auto_hidden = false;
         if !self.sidebar_visible {
             self.set_sidebar(true, window, cx);

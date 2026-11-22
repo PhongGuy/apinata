@@ -36,7 +36,7 @@ use crate::prompt_vars::PromptMemory;
 use crate::session::{
     SavedExample, SavedExampleTab, SavedPanel, SavedPanelKind, SavedTab, Session,
 };
-use crate::snapshot::{CollectionSnapshot, ConfigView, Content, DiskState, RequestView};
+use crate::snapshot::{CollectionSnapshot, ConfigView, Content, DiskState, RequestView, RowKind};
 use crate::tabs::{TabEntry, TabId, TabKind, Tabs};
 use crate::team_renames::RenameRows;
 use crate::watch::rules::{WatchMsg, translate};
@@ -1864,20 +1864,41 @@ impl Workspace {
         }
     }
 
-    /// The collection the environment controls act on: the one last chosen by hand while no
-    /// tab has been activated since, else the active tab's, else the first open.
+    /// The collection the title bar and environment controls act on: the active tab's, so they
+    /// never act on a collection out of sight; with no tab, the one last shown by hand, else
+    /// the first open.
     pub fn current_root(&self) -> Option<PathBuf> {
-        (self.tabs.chosen_root())
-            .filter(|root| self.entry(root).is_some())
-            .map(Path::to_path_buf)
-            .or_else(|| self.tabs.active().map(|t| t.root.clone()))
+        (self.tabs.active().map(|t| t.root.clone()))
+            .or_else(|| {
+                (self.tabs.chosen_root())
+                    .filter(|root| self.entry(root).is_some())
+                    .map(Path::to_path_buf)
+            })
             .or_else(|| self.user_collections().first().map(|c| c.root.clone()))
     }
 
-    /// Makes the open collection at `root` current until a tab is next activated.
-    pub fn set_current_root(&mut self, root: &Path, cx: &mut Context<Self>) {
+    /// Makes the open collection at `root` current through a tab: its last open tab comes
+    /// forward, else its first request opens. A collection with no request is only remembered,
+    /// current while no tab is open.
+    pub fn show_collection(&mut self, root: &Path, cx: &mut Context<Self>) {
         let root = absolute(root);
-        if self.entry(&root).is_none() || self.current_root().as_ref() == Some(&root) {
+        if self.entry(&root).is_none() || self.tabs.active().is_some_and(|t| t.root == root) {
+            return;
+        }
+        let open = (self.tabs.entries().iter().rev())
+            .find(|t| t.root == root)
+            .map(|t| t.id);
+        if let Some(id) = open {
+            self.update_tabs(cx, |t| t.activate(id));
+            return;
+        }
+        let first = self.snapshot(&root, cx).and_then(|s| {
+            (s.content.rows.iter())
+                .find(|r| r.kind == RowKind::Request)
+                .map(|r| r.path.clone())
+        });
+        if let Some(item) = first {
+            self.open_item(&root, item, false, cx);
             return;
         }
         self.tabs.choose_root(Some(root));

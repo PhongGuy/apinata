@@ -126,8 +126,8 @@ pub struct Tabs {
     next: u64,
     // Where each sent draft tab's history is kept; dropped with the tab.
     history_keys: HashMap<TabId, ItemPath>,
-    // A collection made current by hand; the next explicit activation hands the current
-    // collection back to the active tab, while a close never does.
+    // A collection with no request shown by hand; it is current only while no tab is active,
+    // and the next explicit activation forgets it.
     chosen_root: Option<PathBuf>,
 }
 
@@ -152,12 +152,12 @@ impl Tabs {
         self.active.and_then(|id| self.get(id))
     }
 
-    /// The collection made current by hand since the last explicit activation, if any.
+    /// The collection shown by hand since the last explicit activation, if any.
     pub fn chosen_root(&self) -> Option<&Path> {
         self.chosen_root.as_deref()
     }
 
-    /// Makes `root` current by hand, or with `None` drops the choice.
+    /// Remembers `root` as shown by hand, or with `None` drops the choice.
     pub fn choose_root(&mut self, root: Option<PathBuf>) {
         self.chosen_root = root;
     }
