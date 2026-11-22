@@ -26,6 +26,7 @@ fn entry(name: &str, method: &str, url: &str, status: u16) -> HistoryEntry {
         method: method.to_owned(),
         url: url.to_owned(),
         status,
+        reason: None,
     }
 }
 

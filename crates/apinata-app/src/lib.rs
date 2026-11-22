@@ -149,6 +149,7 @@ pub mod scrub;
 pub mod search_dialog;
 pub mod secret_lock;
 pub mod section;
+mod send_failures;
 pub mod send_model;
 pub mod session;
 pub mod set_variable;
