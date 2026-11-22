@@ -110,3 +110,72 @@ fn collection_scripts_load_into_the_editor(cx: &mut TestAppContext) {
         "bru.setVar('c', 1)"
     );
 }
+
+// Clicks every snippet button of every phase in the settings of `target` and checks that the
+// snippet lands in that phase's editor with its placeholder selected.
+fn each_snippet_button_inserts(cx: &mut TestAppContext, target: ConfigTarget) {
+    use apinata_core::{SnippetPhase, script_snippets};
+    let phases = [
+        (
+            ConfigSection::Script,
+            ScriptPhase::PreRequest,
+            SnippetPhase::PreRequest,
+        ),
+        (
+            ConfigSection::Script,
+            ScriptPhase::PostResponse,
+            SnippetPhase::PostResponse,
+        ),
+        (
+            ConfigSection::Tests,
+            ScriptPhase::Tests,
+            SnippetPhase::Tests,
+        ),
+    ];
+    for (section, phase, offered) in phases {
+        for s in script_snippets()
+            .iter()
+            .filter(|s| s.phases.contains(&offered))
+        {
+            let col = tree();
+            let (_state, ws, root) = open_dir(cx, &col);
+            let (win, ed) = editor(cx, &ws, &root, target.clone());
+            click_section(cx, win, &ed, section);
+            let view = ed.read_with(cx, |e, _| match section {
+                ConfigSection::Tests => e.tests_script().clone(),
+                _ => e.script().clone(),
+            });
+            view.update(cx, |v, cx| v.show(phase, cx));
+            frame(cx, win);
+            let id = format!("snippet-{}", s.id);
+            cx.update_window(win, |_, w, cx| w.click(id, cx)).unwrap();
+            cx.run_until_parked();
+            let code = view.read_with(cx, |v, _| v.code(phase).cloned()).unwrap();
+            let (text, selected) = code.read_with(cx, |c, _| {
+                let r = c.selected_range();
+                (c.value().to_string(), c.value()[r].to_string())
+            });
+            assert_eq!(text, s.code, "{target:?} {phase:?} {}", s.id);
+            assert_eq!(selected, s.select, "{target:?} {phase:?} {}", s.id);
+            // The insert is an edit like typing: a save writes it to the settings file.
+            ed.update(cx, |e, cx| e.save(cx));
+            cx.run_until_parked();
+            let file = match &target {
+                ConfigTarget::Collection => "opencollection.yml",
+                _ => "users/folder.yml",
+            };
+            let saved = std::fs::read_to_string(col.path().join(file)).unwrap();
+            assert!(saved.contains(s.select), "{target:?} {phase:?} {}", s.id);
+        }
+    }
+}
+
+#[gpui_kit::test]
+fn collection_snippet_buttons_insert_into_their_editor(cx: &mut TestAppContext) {
+    each_snippet_button_inserts(cx, ConfigTarget::Collection);
+}
+
+#[gpui_kit::test]
+fn folder_snippet_buttons_insert_into_their_editor(cx: &mut TestAppContext) {
+    each_snippet_button_inserts(cx, ConfigTarget::Folder(ip("users")));
+}
