@@ -435,8 +435,9 @@ fn a_secret_that_could_not_be_stored_after_a_rename_is_noted_by_its_new_name() {
     let note = parsed
         .notes
         .iter()
-        .find(|n| n.detail.contains("read only"))
+        .find(|n| n.detail.contains("keychain"))
         .expect("a note says why");
+    assert!(!note.detail.contains("read only"), "{note:?}");
     assert!(note.detail.contains(&format!("`{name}`")), "{note:?}");
     assert!(!note.detail.contains("`h_test_password`"), "{note:?}");
 }

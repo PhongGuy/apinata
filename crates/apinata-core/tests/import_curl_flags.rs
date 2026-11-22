@@ -826,7 +826,9 @@ mod secrets {
         );
         let detail = &parsed.notes[0].detail;
         assert!(
-            detail.contains("locked") && !detail.contains("TOPSECRET"),
+            detail.contains("keychain")
+                && !detail.contains("locked")
+                && !detail.contains("TOPSECRET"),
             "{detail}"
         );
     }

@@ -12,7 +12,7 @@ use crate::edit::{
     AuthSpec, BodySpec, KeyValue, MultipartValue, OAuth1KeyKind, ParamKind, VarValue,
 };
 use crate::env_file::EnvVariable;
-use crate::secrets::{MemoryStore, SecretStore};
+use crate::secrets::{MemoryStore, SecretError, SecretStore};
 use std::collections::{HashMap, HashSet};
 
 /// A literal taken out of a file: the variable that now holds it and the value.
@@ -516,18 +516,15 @@ pub(crate) fn add_to_environments(envs: &mut Vec<ImportedEnvironment>, taken: &[
             sources: Vec::new(),
         });
     }
-    let names: Vec<String> = taken.iter().map(|t| format!("`{}`", t.name)).collect();
-    let detail = format!(
-        "the imported credentials are the secret variables {}; their values are kept in the \
-         secret store, not in the file",
-        names.join(", ")
-    );
+    let names: Vec<String> = taken.iter().map(|t| t.name.clone()).collect();
     for env in envs {
-        env.notes.push(ImportNote::new(
+        let mut note = ImportNote::new(
             "imported credentials",
             NoteKind::Converted,
-            detail.clone(),
-        ));
+            stored_claim(&names),
+        );
+        note.claims_stored = names.clone();
+        env.notes.push(note);
         // Sources pair with variables by index, so a short list is padded first.
         let fallback = (env.sources.len()..env.variables.len()).map(|j| format!("variables[{j}]"));
         let padded: Vec<String> = fallback.collect();
@@ -541,6 +538,16 @@ pub(crate) fn add_to_environments(envs: &mut Vec<ImportedEnvironment>, taken: &[
     }
 }
 
+/// The note saying the secret variables `names` hold the imported credentials in the store.
+pub(crate) fn stored_claim(names: &[String]) -> String {
+    let names: Vec<String> = names.iter().map(|n| format!("`{n}`")).collect();
+    format!(
+        "the imported credentials are the secret variables {}; their values are kept in the \
+         secret store, not in the file",
+        names.join(", ")
+    )
+}
+
 /// Make `env` the collection's default environment when it has none, so a run without a
 /// named environment finds the imported secrets. Best effort: a failed save leaves no default.
 pub(crate) fn default_to(collection: &mut Collection, env: &str) {
@@ -551,6 +558,12 @@ pub(crate) fn default_to(collection: &mut Collection, env: &str) {
             let _ = collection.revert(&collection.root().join(crate::collection::ROOT_FILE));
         }
     }
+}
+
+/// Why an imported secret went unstored: plain words, or the store's own failure.
+enum NotStored {
+    Because(String),
+    Store(SecretError),
 }
 
 /// Keep `taken` in an existing collection: declared as secret variables of every environment
@@ -567,15 +580,18 @@ pub(crate) fn keep_taken(
     if taken.is_empty() {
         return;
     }
-    let mut needs = |env: &str, t: &Taken, why: String| {
-        let mut note = ImportNote::new(
-            t.source.clone(),
-            NoteKind::NeedsInput,
-            format!(
-                "the secret `{}` was not stored ({why}); enter it before sending",
-                t.name
+    let mut needs = |env: &str, t: &Taken, why: NotStored| {
+        let mut note = match why {
+            NotStored::Because(why) => ImportNote::new(
+                t.source.clone(),
+                NoteKind::NeedsInput,
+                format!(
+                    "the secret `{}` was not stored ({why}); enter it before sending",
+                    t.name
+                ),
             ),
-        );
+            NotStored::Store(e) => super::unstored::note(t.source.clone(), &t.name, &e),
+        };
         note.file = Some(format!("environments/{env}.yml"));
         notes.push(note);
         to_enter.push((env.to_owned(), t.name.clone()));
@@ -584,7 +600,7 @@ pub(crate) fn keep_taken(
         // Creating an environment writes no secret, so a throwaway store keeps the real one out.
         if let Err(e) = collection.create_environment("Environment", &MemoryStore::new()) {
             for t in taken {
-                needs("Environment", t, e.to_string());
+                needs("Environment", t, NotStored::Because(e.to_string()));
             }
             return;
         }
@@ -607,7 +623,7 @@ pub(crate) fn keep_taken(
                 Some(_) => needs(
                     env,
                     t,
-                    format!("`{}` is a plain variable of `{env}`", t.name),
+                    NotStored::Because(format!("`{}` is a plain variable of `{env}`", t.name)),
                 ),
                 None => {
                     variables.push(EnvVariable::secret(t.name.clone()));
@@ -620,14 +636,18 @@ pub(crate) fn keep_taken(
             if let Err(e) = environment.save() {
                 environment.set_variables(before);
                 for t in kept {
-                    needs(env, t, e.to_string());
+                    needs(env, t, NotStored::Because(e.to_string()));
                 }
                 continue;
             }
         }
         for t in kept {
             let Some(store) = store else {
-                needs(env, t, "no secret store was given".to_owned());
+                needs(
+                    env,
+                    t,
+                    NotStored::Because("no secret store was given".to_owned()),
+                );
                 continue;
             };
             let key = collection.secret_key(env, &t.name);
@@ -636,14 +656,14 @@ pub(crate) fn keep_taken(
                 Ok(Some(_)) => needs(
                     env,
                     t,
-                    format!("`{}` already holds a different value", t.name),
+                    NotStored::Because(format!("`{}` already holds a different value", t.name)),
                 ),
                 Ok(None) => {
                     if let Err(e) = store.set(&key, &t.value) {
-                        needs(env, t, e.to_string());
+                        needs(env, t, NotStored::Store(e));
                     }
                 }
-                Err(e) => needs(env, t, e.to_string()),
+                Err(e) => needs(env, t, NotStored::Store(e)),
             }
         }
     }
