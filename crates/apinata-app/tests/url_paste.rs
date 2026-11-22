@@ -434,6 +434,19 @@ fn a_reverted_paste_keeps_no_secret(cx: &mut TestAppContext) {
     let revert = Command::Revert(Target::Request(ip("a.yml")));
     e.ws.update(cx, |w, cx| w.send(&e.root, revert, cx));
     cx.run_until_parked();
+    // The revert gave the name back, so the same paste claims it again.
+    paste(cx, &e, AWS);
+    cx.run_until_parked();
+    let aws = match &view_of(cx, &e.ws, &e.root, "a.yml").auth {
+        apinata_core::AuthSpec::AwsV4 {
+            secret_access_key, ..
+        } => secret_access_key.clone(),
+        other => panic!("not aws: {other:?}"),
+    };
+    assert_eq!(aws, "{{awsSecretAccessKey}}");
+    let revert = Command::Revert(Target::Request(ip("a.yml")));
+    e.ws.update(cx, |w, cx| w.send(&e.root, revert, cx));
+    cx.run_until_parked();
     save_a(cx, &e);
     assert_eq!(store.get(&aws_key(&e)).unwrap(), None);
     let env = std::fs::read_to_string(e.root.join("environments/dev.yml")).unwrap();

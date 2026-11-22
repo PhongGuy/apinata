@@ -266,8 +266,89 @@ fn a_reverted_move_keeps_nothing(cx: &mut TestAppContext) {
         .unwrap();
     cx.run_until_parked();
     run(cx, &o, Command::Revert(Target::Request(ip("a.yml"))));
-    run(cx, &o, Command::Save(Target::Request(ip("a.yml"))));
     assert_eq!(password(cx, &o), "hunter22");
+    // The revert gave the name back, so moving again claims the same one.
+    frame(cx, o.win);
+    cx.update_window(o.win, |_, w, cx| w.click("auth-password-move", cx))
+        .unwrap();
+    cx.run_until_parked();
+    assert_eq!(password(cx, &o), "{{a_password}}");
+    run(cx, &o, Command::Revert(Target::Request(ip("a.yml"))));
+    run(cx, &o, Command::Save(Target::Request(ip("a.yml"))));
     assert_eq!(stored(&o, "dev", "a_password"), None);
     assert!(!read(&o, "environments/dev.yml").contains("a_password"));
+}
+
+// A collection that holds an environment secret and a `.env` secret keeps both on save.
+#[gpui_kit::test]
+fn a_save_keeps_an_environment_secret_beside_a_dotenv_one(cx: &mut TestAppContext) {
+    use apinata_app::command::{Edit, MOVE_SLOT};
+    use apinata_core::{CollectionProxy, ProxyAuth, ProxyConfig};
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        (
+            "a.yml",
+            &format!("{}  auth: inherit\n", request("a", "http://127.0.0.1:9/x")),
+        ),
+        ("environments/dev.yml", "name: dev\n"),
+    ]);
+    let store = Arc::new(MemoryStore::new());
+    let model = open_with(cx, &col, store.clone());
+    send(cx, &model, Command::SelectEnvironment(Some("dev".into())));
+    let edit = |edit| Command::Edit {
+        target: Target::Collection,
+        edit,
+    };
+    let bearer = |token: &str| AuthSpec::Bearer {
+        token: token.into(),
+    };
+    send(cx, &model, edit(Edit::Auth(bearer("tok-value"))));
+    send(
+        cx,
+        &model,
+        edit(Edit::MoveToSecret(Box::new(bearer(MOVE_SLOT)))),
+    );
+    let mut proxy = ProxyConfig::new("http", "proxy.local", "3128");
+    proxy.auth = Some(ProxyAuth::new("u", "proxy-pw"));
+    send(
+        cx,
+        &model,
+        edit(Edit::Proxy(CollectionProxy::Custom(proxy))),
+    );
+    cx.run_until_parked();
+    let token = match snap(cx, &model).content.collection.auth.clone() {
+        AuthSpec::Bearer { token } => token,
+        other => panic!("not bearer: {other:?}"),
+    };
+    let name = token
+        .trim_start_matches("{{")
+        .trim_end_matches("}}")
+        .to_owned();
+    send(cx, &model, Command::Save(Target::Collection));
+    cx.run_until_parked();
+
+    let root = std::fs::canonicalize(col.path()).unwrap();
+    let kept = store.get(&SecretKey::new(root, "dev", &name)).unwrap();
+    assert_eq!(kept.as_deref(), Some("tok-value"), "{name}");
+    let dotenv = std::fs::read_to_string(col.path().join(".env")).unwrap_or_default();
+    assert!(dotenv.contains("proxy-pw"), "{dotenv}");
+    let (reply, answer) = async_channel::bounded(1);
+    send(
+        cx,
+        &model,
+        Command::Variables {
+            item: ip("a.yml"),
+            reply,
+        },
+    );
+    cx.run_until_parked();
+    let vars = answer
+        .try_recv()
+        .expect("the actor replied")
+        .expect("variables");
+    assert!(vars.get(&name).is_some(), "{name} is undefined");
+    assert!(
+        vars.get("process.env.APINATA_PROXY_PASSWORD").is_some(),
+        "the proxy password is undefined"
+    );
 }

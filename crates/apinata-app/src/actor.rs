@@ -1776,7 +1776,8 @@ impl Actor {
         self.dotenv_stored_stale = true;
         self.context.invalidate();
         let warnings = if saved {
-            self.release(|t| t == target);
+            // Only the `.env` holds are done: the target's environment secrets are kept after.
+            self.held_dotenv.retain(|(t, _), _| t != target);
             written.warnings
         } else {
             match (self.collection).undo_dotenv(&written.backup, &written.written) {
