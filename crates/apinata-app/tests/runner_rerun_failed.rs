@@ -1,4 +1,5 @@
-//! The runner's "Re-run failed" button: shown after a run with failures, it runs only those.
+//! The runner's "Re-run failed" button: shown after a run with failures, it runs only those
+//! and folds their results into the run in place.
 
 use crate::support;
 
@@ -49,6 +50,23 @@ fn press_and_finish(
 
 fn row_names(cx: &mut TestAppContext, model: &Entity<RunnerModel>) -> Vec<String> {
     model.read_with(cx, |m, _| m.rows().iter().map(|r| r.name.clone()).collect())
+}
+
+fn rerun_marks(cx: &mut TestAppContext, model: &Entity<RunnerModel>) -> Vec<bool> {
+    model.read_with(cx, |m, _| m.rows().iter().map(|r| r.rerun).collect())
+}
+
+fn label(
+    cx: &mut TestAppContext,
+    s: &Started,
+    id: impl Into<gpui_kit::ElementId>,
+) -> Option<String> {
+    let id = id.into();
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, _| {
+        w.try_find(id).and_then(|e| e.label().map(str::to_owned))
+    })
+    .unwrap()
 }
 
 /// A server whose `/flaky` answers 500 once and 200 afterwards, and whose `/ok` always answers 200.
@@ -114,7 +132,7 @@ fn the_button_reruns_only_the_failed_requests_until_they_pass(cx: &mut TestAppCo
     assert!(present(cx, s.win, BUTTON));
 
     press_and_finish(cx, &s, &model, BUTTON);
-    assert_eq!(row_names(cx, &model), ["b"]);
+    assert_eq!(row_names(cx, &model), ["a", "b", "c"]);
     assert_eq!(hits(cx, &server, "/ok"), 2);
     assert_eq!(hits(cx, &server, "/flaky"), 2);
     // The re-run passed, so nothing is left to re-run.
@@ -132,6 +150,58 @@ fn a_normal_run_after_a_rerun_is_a_full_run(cx: &mut TestAppContext) {
     press_and_finish(cx, &s, &model, BUTTON);
     press_and_finish(cx, &s, &model, "run-start");
     assert_eq!(row_names(cx, &model), ["a", "b", "c"]);
+    assert_eq!(rerun_marks(cx, &model), [false, false, false]);
+}
+
+#[gpui_kit::test]
+fn a_rerun_merges_into_the_full_run_so_the_summary_rows_and_export_cover_it(
+    cx: &mut TestAppContext,
+) {
+    http_ready(cx);
+    let server = server(cx);
+    let col = tree(&server.uri());
+    let s = started(cx, &col);
+    let model = open(cx, &s);
+    press_and_finish(cx, &s, &model, "run-start");
+    assert_eq!(
+        label(cx, &s, "run-summary").as_deref(),
+        Some("3 requests: 2 passed, 1 failed")
+    );
+
+    press_and_finish(cx, &s, &model, BUTTON);
+    assert_eq!(row_names(cx, &model), ["a", "b", "c"]);
+    assert_eq!(rerun_marks(cx, &model), [false, true, false]);
+    assert!(present(cx, s.win, ("run-rerun", 1usize)));
+    assert!(!present(cx, s.win, ("run-rerun", 0usize)));
+    assert_eq!(
+        label(cx, &s, ("run-outcome", 1usize)).as_deref(),
+        Some("Passed")
+    );
+    assert_eq!(
+        label(cx, &s, "run-summary").as_deref(),
+        Some("3 requests: 3 passed, 0 failed")
+    );
+    let summary = model.read_with(cx, |m, _| match m.state() {
+        RunState::Finished(summary) => Some(summary.clone()),
+        _ => None,
+    });
+    let summary = summary.expect("a finished run");
+    assert_eq!(
+        (summary.requests, summary.passed, summary.failed),
+        (3, 3, 0)
+    );
+
+    let report = model
+        .read_with(cx, |m, _| m.export_report())
+        .expect("a report");
+    let json: serde_json::Value = serde_json::from_str(&report.to_json()).expect("json");
+    assert_eq!(json["results"].as_array().map(Vec::len), Some(3));
+    assert_eq!(json["summary"]["passed"], 3);
+    assert_eq!(json["summary"]["failed"], 0);
+    let junit = report.to_junit("2026-01-01T00:00:00.000", "host", false);
+    // One testsuite per request: all three are there and none failed.
+    assert_eq!(junit.matches("<testsuite ").count(), 3, "{junit}");
+    assert_eq!(junit.matches("failures=\"0\"").count(), 3, "{junit}");
 }
 
 #[gpui_kit::test]

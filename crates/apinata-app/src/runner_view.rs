@@ -1360,6 +1360,19 @@ impl Render for RunnerView {
                                         .truncate()
                                         .child(row.name.clone()),
                                 )
+                                // A result folded in by "Re-run failed" says so beside its name.
+                                .when(row.rerun, |d| {
+                                    d.child(
+                                        div()
+                                            .id(("run-rerun", ix))
+                                            .test_support()
+                                            .aria_label("Re-run")
+                                            .flex_none()
+                                            .text_size(style::TEXT_SMALL)
+                                            .text_color(muted)
+                                            .child("re-run"),
+                                    )
+                                })
                                 .child(cell_or_gap(status, col))
                                 .child(cell_or_gap(time, col))
                                 .child(
@@ -1650,6 +1663,7 @@ mod tests {
             method: "GET".into(),
             state,
             iteration: None,
+            rerun: false,
         }
     }
 
