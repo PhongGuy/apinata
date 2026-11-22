@@ -215,6 +215,32 @@ fn a_truncated_response_keeps_its_mark_and_size() {
 }
 
 #[test]
+fn a_decoded_response_keeps_its_encoded_size() {
+    let data = tempfile::tempdir().unwrap();
+    let store = ResponseStore::new(data.path().join("r"));
+    let gz = Response::new(200)
+        .with_header("content-encoding", "gzip")
+        .with_text_body("abc")
+        .with_encoded_size(23);
+    store
+        .save(
+            Path::new("/c"),
+            &ip("a.yml"),
+            &result("a.yml", gz.clone()),
+            at(1),
+        )
+        .unwrap();
+    let r = store
+        .load(Path::new("/c"), &ip("a.yml"))
+        .unwrap()
+        .result
+        .response
+        .unwrap();
+    assert_eq!(r.encoded_size(), Some(23));
+    assert_eq!(r, gz);
+}
+
+#[test]
 fn a_result_without_a_response_writes_nothing() {
     let data = tempfile::tempdir().unwrap();
     let dir = data.path().join("r");

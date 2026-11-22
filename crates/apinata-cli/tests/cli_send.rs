@@ -561,6 +561,14 @@ async fn a_zstd_reply_prints_the_decoded_body() {
         .assert()
         .code(0)
         .stdout("hello zstd");
+    let out = send(&dir)
+        .arg("-i")
+        .arg(format!("{}/zst", s.uri()))
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_lowercase();
+    assert!(text.contains("content-encoding: zstd"), "{text}");
+    assert!(text.contains("content-length: 23"), "{text}");
 }
 
 #[test]

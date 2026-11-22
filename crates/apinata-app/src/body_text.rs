@@ -945,6 +945,11 @@ pub fn size_labels(size: u64, body_len: u64, truncated: bool) -> (String, Option
     }
 }
 
+/// The wire size of a compressed body with its decoded size: `46 B (2.0 KB decoded)`.
+pub fn encoded_size_label(wire: u64, decoded: u64) -> String {
+    format!("{} ({} decoded)", format_size(wire), format_size(decoded))
+}
+
 /// Formats a duration as whole milliseconds under a second, else seconds
 /// with two decimals: `250 ms`, `1.25 s`; a nonzero time under a millisecond is `<1 ms`.
 pub fn format_time(d: Duration) -> String {

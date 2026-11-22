@@ -12,9 +12,6 @@ use super::route::ProxyRule;
 pub(crate) struct ClientKey {
     pub(crate) rule: ProxyRule,
     pub(crate) identity: Option<Arc<[u8]>>,
-    /// False when the request omits Accept-Encoding: the client then neither asks for nor
-    /// decodes compressed bodies, so it adds no header of its own.
-    pub(crate) compress: bool,
     /// The host overrides the client resolves by, ordered by host, so a changed mapping builds a
     /// new client rather than reusing a pooled connection to the old address.
     pub(crate) overrides: Arc<Vec<ResolvedHostOverride>>,

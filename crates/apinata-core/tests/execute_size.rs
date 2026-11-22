@@ -2,7 +2,7 @@
 
 use crate::common;
 
-use apinata_core::{ExecOptions, Executor};
+use apinata_core::{ExecError, ExecOptions, Executor};
 use common::{executor, resolved_one};
 use flate2::Compression;
 use flate2::write::GzEncoder;
@@ -123,4 +123,134 @@ async fn a_zstd_size_is_the_decoded_body_length() {
         .expect("sent");
     assert_eq!(res.text(), "x".repeat(1000));
     assert_eq!(res.size(), 1000);
+}
+
+/// 1000 `x` bytes compressed by the `brotli` command line tool.
+const BROTLI_1000_X: [u8; 12] = [
+    0xa1, 0x38, 0x1f, 0xc0, 0x2f, 0x81, 0x17, 0x8d, 0x05, 0x02, 0xa1, 0x01,
+];
+
+fn gzip(plain: &[u8]) -> Vec<u8> {
+    let mut gz = GzEncoder::new(Vec::new(), Compression::default());
+    gz.write_all(plain).expect("gzip");
+    gz.finish().expect("gzip")
+}
+
+fn header<'a>(res: &'a apinata_core::Response, name: &str) -> Option<&'a str> {
+    res.headers()
+        .iter()
+        .find(|(n, _)| n == name)
+        .map(|(_, v)| v.as_str())
+}
+
+async fn get(server: &MockServer, at: &str) -> apinata_core::Response {
+    executor()
+        .send(&resolved_one(
+            "GET",
+            &format!("{}{at}", server.uri()),
+            "",
+            "",
+        ))
+        .await
+        .expect("sent")
+}
+
+#[tokio::test]
+async fn a_compressed_body_keeps_the_headers_the_server_sent_and_both_sizes() {
+    let wire = gzip("x".repeat(1000).as_bytes());
+    let cases: [(&str, &str, Vec<u8>); 3] = [
+        ("/gz", "gzip", wire.clone()),
+        ("/br", "br", BROTLI_1000_X.to_vec()),
+        ("/zst", "zstd", ZSTD_1000_X.to_vec()),
+    ];
+    let server = MockServer::start().await;
+    for (at, coding, bytes) in &cases {
+        mount(
+            &server,
+            at,
+            ResponseTemplate::new(200)
+                .insert_header("content-encoding", *coding)
+                .set_body_raw(bytes.clone(), "text/plain"),
+        )
+        .await;
+    }
+    for (at, coding, bytes) in &cases {
+        let res = get(&server, at).await;
+        assert_eq!(res.text(), "x".repeat(1000), "{coding}");
+        assert_eq!(res.size(), 1000, "{coding}");
+        assert_eq!(res.encoded_size(), Some(bytes.len() as u64), "{coding}");
+        assert_eq!(header(&res, "content-encoding"), Some(*coding));
+        let length = bytes.len().to_string();
+        assert_eq!(header(&res, "content-length"), Some(length.as_str()));
+        let hop = &res.timeline()[0].response_headers;
+        assert!(
+            hop.iter()
+                .any(|(n, v)| n == "content-encoding" && v == coding)
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_plain_body_has_no_encoded_size() {
+    let server = MockServer::start().await;
+    mount(
+        &server,
+        "/plain",
+        ResponseTemplate::new(200).set_body_string("hello"),
+    )
+    .await;
+    let res = get(&server, "/plain").await;
+    assert_eq!(res.encoded_size(), None);
+    assert_eq!(header(&res, "content-length"), Some("5"));
+}
+
+#[tokio::test]
+async fn an_empty_body_marked_gzip_reads_as_empty() {
+    let server = MockServer::start().await;
+    mount(
+        &server,
+        "/none",
+        ResponseTemplate::new(204).insert_header("content-encoding", "gzip"),
+    )
+    .await;
+    let res = get(&server, "/none").await;
+    assert_eq!((res.status(), res.size()), (204, 0));
+    assert_eq!(header(&res, "content-encoding"), Some("gzip"));
+}
+
+#[tokio::test]
+async fn a_corrupt_gzip_body_fails_the_send() {
+    let server = MockServer::start().await;
+    mount(
+        &server,
+        "/bad",
+        ResponseTemplate::new(200)
+            .insert_header("content-encoding", "gzip")
+            .set_body_raw(b"not gzip at all".to_vec(), "text/plain"),
+    )
+    .await;
+    let req = resolved_one("GET", &format!("{}/bad", server.uri()), "", "");
+    let err = executor().send(&req).await.expect_err("undecodable");
+    assert!(matches!(err, ExecError::Transport { .. }), "{err:?}");
+}
+
+#[tokio::test]
+async fn a_compressed_body_stops_decoding_at_the_limit() {
+    // Four megabytes of zeros shrink to a few kilobytes, so the cap must hold on decoded bytes.
+    let wire = gzip(&vec![0u8; 4 << 20]);
+    let server = MockServer::start().await;
+    mount(
+        &server,
+        "/bomb",
+        ResponseTemplate::new(200)
+            .insert_header("content-encoding", "gzip")
+            .set_body_raw(wire, "application/octet-stream"),
+    )
+    .await;
+    let exec = Executor::new(ExecOptions::new().max_body_bytes(Some(1000))).expect("client");
+    let req = resolved_one("GET", &format!("{}/bomb", server.uri()), "", "");
+    let res = exec.send(&req).await.expect("sent");
+    assert!(res.truncated());
+    assert_eq!(res.body().len(), 1000);
+    assert!(res.size() < 1 << 20, "{}", res.size());
 }

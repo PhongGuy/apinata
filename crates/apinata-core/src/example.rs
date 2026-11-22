@@ -306,7 +306,7 @@ impl ExampleResponse {
     /// Status, status text (none when empty), headers as received, and the body: binary as
     /// base64 when the type is binary or the bytes are not UTF-8, else the decoded text, with
     /// JSON that parses re-indented two spaces deep. A re-indented body drops Content-Length,
-    /// which no longer measures it.
+    /// which no longer measures it; a body decoded from its Content-Encoding drops both.
     pub fn from_response(response: &Response) -> ExampleResponse {
         let content_type = response
             .headers()
@@ -337,6 +337,11 @@ impl ExampleResponse {
         };
         if body.kind != ExampleBodyKind::Binary && body.data.as_bytes() != bytes {
             example.drop_content_length();
+        }
+        // The saved body is the decoded one, so the wire's coding and length no longer apply.
+        if response.encoded_size().is_some() {
+            example.drop_content_length();
+            (example.headers).retain(|(name, _)| !name.eq_ignore_ascii_case("content-encoding"));
         }
         example.body = Some(body);
         example

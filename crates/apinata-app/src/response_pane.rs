@@ -38,7 +38,7 @@ use gpui_kit::{
 };
 
 use crate::app::AppState;
-use crate::body_text::{format_size, format_time, size_labels};
+use crate::body_text::{encoded_size_label, format_size, format_time, size_labels};
 use crate::body_view::{BodyView, MASKED, SCRUBBED_TIP, SetVariable, Shown};
 use crate::compare_rows::{ComparePalette, RevealHeader, RowActions, Toggle, compare_row};
 use crate::compare_source::{self, CompareSide, CompareSource, HeaderValue, SourceChoice};
@@ -2345,7 +2345,16 @@ impl ResponsePane {
             self.timing_bar(r, cx)
                 .or_else(|| kept.then(|| untimed_slot(cx))),
         );
-        before.push(muted("response-size", size_text).into_any_element());
+        // A compressed body names its wire size on hover beside the decoded size shown.
+        let size = muted("response-size", size_text);
+        let size = match r.encoded_size() {
+            Some(wire) => size.tooltip(ui::text_tooltip(
+                "response-size-tooltip",
+                encoded_size_label(wire, r.size()),
+            )),
+            None => size,
+        };
+        before.push(size.into_any_element());
         let mut after: Vec<AnyElement> = r
             .stream_end()
             .map(|e| muted("response-stream-end", live_stream::end_label(e).to_owned()))

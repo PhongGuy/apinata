@@ -45,7 +45,9 @@ publicsuffix.workspace = true
 time.workspace = true
 encoding_rs.workspace = true
 mime.workspace = true
-tokio-util.workspace = true
+tokio-util = { workspace = true, features = ["io"] }
+async-compression.workspace = true
+bytes = "1"
 # Shuts the OAuth callback listener down so a spawned process's copy cannot keep its port.
 socket2.workspace = true
 tokio-tungstenite.workspace = true

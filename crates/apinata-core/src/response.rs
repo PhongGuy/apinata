@@ -27,6 +27,7 @@ pub struct Response {
     url: String,
     timeline: Vec<Hop>,
     size: u64,
+    encoded_size: Option<u64>,
     truncated: bool,
     stream_end: Option<StreamEnd>,
     body_file: Option<PathBuf>,
@@ -185,6 +186,7 @@ impl Response {
             url: String::new(),
             timeline: Vec::new(),
             size: 0,
+            encoded_size: None,
             truncated: false,
             stream_end: None,
             body_file: None,
@@ -257,6 +259,12 @@ impl Response {
     pub fn with_header(mut self, name: impl AsRef<str>, value: impl Into<String>) -> Response {
         self.headers
             .push((name.as_ref().to_ascii_lowercase(), value.into()));
+        self
+    }
+
+    /// Records the bytes the body took on the wire under its `Content-Encoding`, before decoding.
+    pub fn with_encoded_size(mut self, bytes: u64) -> Response {
+        self.encoded_size = Some(bytes);
         self
     }
 
@@ -383,6 +391,13 @@ impl Response {
         self.size
     }
 
+    /// The bytes the body took on the wire when it arrived compressed (gzip, deflate, br or
+    /// zstd) and was decoded; `None` when it arrived as is, so the wire size is [`Self::size`].
+    /// For a truncated body it counts the compressed bytes read before stopping.
+    pub fn encoded_size(&self) -> Option<u64> {
+        self.encoded_size
+    }
+
     /// Whether reading stopped at the size limit, so the body holds only its start.
     pub fn truncated(&self) -> bool {
         self.truncated
@@ -447,6 +462,7 @@ impl fmt::Debug for Response {
             .field("url", &redact_url(&self.url))
             .field("timeline", &self.timeline)
             .field("size", &self.size)
+            .field("encoded_size", &self.encoded_size)
             .field("truncated", &self.truncated)
             .field("stream_end", &self.stream_end)
             .field("body_file", &self.body_file)

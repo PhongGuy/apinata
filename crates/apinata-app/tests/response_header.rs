@@ -100,3 +100,52 @@ fn passing_assertions_are_not_failed(cx: &mut TestAppContext) {
     assert!(!view.read_with(cx, |p, cx| p.assertions_failed(cx)));
     assert!(!view.read_with(cx, |p, cx| p.count_is_danger(ResponseTab::Tests, cx)));
 }
+
+/// 1000 `x` bytes compressed by the `zstd` command line tool.
+const ZSTD_1000_X: [u8; 21] = [
+    0x28, 0xb5, 0x2f, 0xfd, 0x04, 0x68, 0x45, 0x00, 0x00, 0x08, 0x78, 0x01, 0x00, 0xe4, 0x2b, 0x20,
+    0x04, 0xe1, 0x00, 0xb7, 0x9c,
+];
+
+fn size_tooltip(cx: &mut TestAppContext, win: AnyWindowHandle) -> Option<String> {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.hover("response-size", cx)
+    })
+    .unwrap();
+    cx.executor()
+        .advance_clock(std::time::Duration::from_millis(800));
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.try_find("response-size-tooltip")
+            .and_then(|e| e.label().map(str::to_owned))
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn a_compressed_body_shows_its_wire_size_on_hover(cx: &mut TestAppContext) {
+    let s = send_once(
+        cx,
+        ResponseTemplate::new(200)
+            .insert_header("content-encoding", "zstd")
+            .set_body_raw(ZSTD_1000_X.to_vec(), "text/plain"),
+        "",
+    );
+    let (win, _view) = pane(cx, &s);
+    assert_eq!(
+        size_tooltip(cx, win).as_deref(),
+        Some("21 B (1000 B decoded)")
+    );
+}
+
+#[gpui_kit::test]
+fn a_plain_body_has_no_size_tooltip(cx: &mut TestAppContext) {
+    let s = send_once(
+        cx,
+        ResponseTemplate::new(200).set_body_raw("hello", "text/plain"),
+        "",
+    );
+    let (win, _view) = pane(cx, &s);
+    assert_eq!(size_tooltip(cx, win), None);
+}
