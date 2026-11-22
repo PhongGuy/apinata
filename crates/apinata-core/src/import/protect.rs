@@ -76,6 +76,16 @@ impl SecretNames {
     }
 }
 
+/// The secret variable name a credential of `owner` (a host or an item's name) starts from,
+/// such as `get_user_password` for the `password` of `Get user`.
+pub fn secret_name_base(owner: &str, kind: &str) -> String {
+    let owner = slug(owner);
+    match owner.trim_matches('_') {
+        "" => kind.to_owned(),
+        owner => format!("{owner}_{kind}"),
+    }
+}
+
 /// `text` with each run of characters that are not ASCII alphanumeric as one `_`.
 pub(crate) fn slug(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
@@ -308,6 +318,25 @@ pub(crate) fn rename_reference(request: &mut ImportedRequest, old: &str, new: &s
             }
         }
         _ => {}
+    }
+}
+
+/// The fields of `auth` that hold a credential, such as a password or a token, in a fixed
+/// order: each one's kind (`password`, `token`, ...) and text.
+pub fn auth_secret_fields(auth: &AuthSpec) -> Vec<(&'static str, String)> {
+    let mut auth = auth.clone();
+    auth_secrets(&mut auth)
+        .into_iter()
+        .map(|(kind, value)| (kind, value.clone()))
+        .collect()
+}
+
+/// Puts `to` in each credential field of `auth` whose text is exactly `from`.
+pub fn replace_auth_secret(auth: &mut AuthSpec, from: &str, to: &str) {
+    for (_, value) in auth_secrets(auth) {
+        if value == from {
+            *value = to.to_owned();
+        }
     }
 }
 

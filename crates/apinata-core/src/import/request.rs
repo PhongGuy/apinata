@@ -11,7 +11,7 @@ use crate::js;
 use crate::request::{RequestFile, RequestKind};
 use crate::secrets::{SecretError, SecretStore};
 use serde_json::Value;
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 /// Create `name` under `parent`, apply `request`, save. When applying or saving fails, the new
 /// file is deleted again and that error returned. Fails with `Tree` for an unknown parent or
@@ -50,6 +50,18 @@ pub fn claim_secret_names(
     prefer: Option<&str>,
     store: &dyn SecretStore,
 ) {
+    claim_secret_names_besides(collection, request, prefer, store, &BTreeSet::new());
+}
+
+/// [`claim_secret_names`], with the `held` names taken too: names promised to secrets that
+/// are not stored yet, such as those of an unsaved draft.
+pub fn claim_secret_names_besides(
+    collection: &Collection,
+    request: &mut ImportedRequest,
+    prefer: Option<&str>,
+    store: &dyn SecretStore,
+    held: &BTreeSet<String>,
+) {
     let Ok(env) = target_environment(collection, prefer) else {
         return;
     };
@@ -62,6 +74,7 @@ pub fn claim_secret_names(
         .iter()
         .flat_map(|e| e.variables().into_iter().map(|v| v.name))
         .chain(collection.file().vars().into_iter().map(|v| v.name))
+        .chain(held.iter().cloned())
         .collect();
     for i in 0..request.secrets.len() {
         let (base, value) = (&request.secrets[i].name, &request.secrets[i].value);
@@ -204,6 +217,12 @@ fn keep_secret(
     }
     super::protect::default_to(collection, &env);
     Ok(env)
+}
+
+/// The environment a secret is kept in: `prefer`, else the only one; Err says in plain words
+/// why there is none.
+pub fn secret_environment(collection: &Collection, prefer: Option<&str>) -> Result<String, String> {
+    target_environment(collection, prefer)
 }
 
 /// The environment an imported secret goes to: `prefer`, else the only one.

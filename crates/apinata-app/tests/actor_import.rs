@@ -272,13 +272,12 @@ fn an_imported_aws_secret_is_stored_in_the_only_environment(cx: &mut TestAppCont
     send(
         cx,
         &model,
-        Command::StoreImportSecrets {
+        Command::HoldImportSecrets {
             item: ip("a.yml"),
-            request: aws,
-            notes: Vec::new(),
             reply,
         },
     );
+    send(cx, &model, Command::Save(Target::Request(ip("a.yml"))));
     cx.run_until_parked();
     let root = fs::canonicalize(dir.path()).unwrap();
     let key = SecretKey::new(root, "dev", "awsSecretAccessKey");
@@ -319,19 +318,21 @@ fn a_second_pasted_password_never_overwrites_the_first(cx: &mut TestAppContext) 
                 request: request.clone(),
             },
         );
-        // The shell sends the secrets as parsed; the actor stores them under the claimed names.
+        // The actor holds the secrets under the names it claimed until each request is saved.
         send(
             cx,
             &model,
-            Command::StoreImportSecrets {
+            Command::HoldImportSecrets {
                 item: ip(item),
-                request,
-                notes: Vec::new(),
                 reply,
             },
         );
         cx.run_until_parked();
     }
+    for item in ["a.yml", "b.yml"] {
+        send(cx, &model, Command::Save(Target::Request(ip(item))));
+    }
+    cx.run_until_parked();
     let root = fs::canonicalize(dir.path()).unwrap();
     let value = |var: &str| {
         store
@@ -358,10 +359,8 @@ fn a_secret_is_not_stored_when_its_import_did_not_apply(cx: &mut TestAppContext)
             item: ip("gone.yml"),
             request: aws.clone(),
         },
-        Command::StoreImportSecrets {
+        Command::HoldImportSecrets {
             item: ip("gone.yml"),
-            request: aws,
-            notes: Vec::new(),
             reply,
         },
     ] {

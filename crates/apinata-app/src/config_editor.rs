@@ -678,7 +678,7 @@ impl ConfigEditor {
     ) {
         match (edit.field(), &edit) {
             // The secret move rewrites values the history cannot restore.
-            (_, Edit::MoveAuthSecrets) => {}
+            (_, Edit::MoveAuthSecrets | Edit::MoveToSecret(_)) => {}
             (
                 Field::Headers | Field::Vars | Field::PostResponseVars | Field::Tags | Field::Auth,
                 _,

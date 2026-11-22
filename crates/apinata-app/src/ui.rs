@@ -4208,15 +4208,16 @@ pub fn stored_secret(
     on_replace: impl Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> impl IntoElement {
+    use crate::secret_storage::SecretStorage;
     use crate::snapshot::SecretHome;
     let (text, tip) = match home {
         SecretHome::Held => (
-            "Saved to .env when you save",
+            SecretStorage::DotenvHeld.text(),
             "When you save, the value goes into this collection's .env file, which is kept \
              out of git.",
         ),
         SecretHome::Stored => (
-            "Stored in .env",
+            SecretStorage::Dotenv.text(),
             "The value lives in this collection's .env file, which is kept out of git.",
         ),
     };

@@ -524,6 +524,7 @@ mod scrollbar_thumb;
 mod scrollbars;
 mod scrub;
 mod search_dialog;
+mod secret_field;
 mod secret_forms;
 mod secret_host_redaction;
 mod secret_lock;

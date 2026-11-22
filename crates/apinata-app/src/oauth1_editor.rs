@@ -1,6 +1,7 @@
 //! The OAuth 1.0 editor inside the auth tab: credentials, signing choices and the optional
 //! protocol parameters, all visible at once.
 
+use std::rc::Rc;
 use std::sync::Arc;
 
 use apinata_core::{
@@ -14,12 +15,16 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Entity, EventEmitter, SharedString, Subscription, Window, div};
 
-use crate::auth_section::{field, secret_field};
+use crate::auth_section::{SecretPlace, field, secret_field};
+use crate::command::MOVE_SLOT;
 use crate::oauth2_editor::{Choice, on_choice, pick};
 use crate::{style, ui};
 
 /// The whole spec after any change in the editor, with the owner's load stamp at sending.
 pub struct OAuth1Edit(pub OAuth1Spec, pub u64);
+
+/// "Move to a secret" on a field: the spec with `MOVE_SLOT` in place of that field.
+pub struct OAuth1MoveSecret(pub OAuth1Spec);
 
 /// One of the editor's text inputs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -166,11 +171,13 @@ pub struct OAuth1Editor {
     new_key: OAuth1KeyKind,
     placement: Choice,
     vars: Option<Arc<VariableSet>>,
+    place: SecretPlace,
     stamp: u64,
     _subs: Vec<Subscription>,
 }
 
 impl EventEmitter<OAuth1Edit> for OAuth1Editor {}
+impl EventEmitter<OAuth1MoveSecret> for OAuth1Editor {}
 
 impl OAuth1Editor {
     /// An editor showing a fresh OAuth 1.0 auth.
@@ -249,6 +256,7 @@ impl OAuth1Editor {
             new_key: OAuth1KeyKind::Text,
             placement,
             vars: None,
+            place: SecretPlace::default(),
             stamp: 0,
             _subs: subs,
         };
@@ -272,6 +280,21 @@ impl OAuth1Editor {
     /// The spec the editor describes.
     pub fn spec(&self, _: &App) -> OAuth1Spec {
         self.base.clone()
+    }
+
+    /// Sets where the secret fields say their values live.
+    pub fn set_place(&mut self, place: SecretPlace, cx: &mut Context<Self>) {
+        if self.place != place {
+            self.place = place;
+            cx.notify();
+        }
+    }
+
+    /// Asks to move masked field `f`'s literal value to a secret.
+    pub fn move_to_secret(&mut self, f: OAuth1Field, cx: &mut Context<Self>) {
+        let mut spec = self.base.clone();
+        f.set(&mut spec, MOVE_SLOT.to_owned(), self.new_key);
+        cx.emit(OAuth1MoveSecret(spec));
     }
 
     /// Ends the typing run of every input's own undo, as at a save or a reload.
@@ -396,10 +419,25 @@ impl Render for OAuth1Editor {
         }
         let o = &self.base;
         let rsa = o.signature_method.is_rsa();
+        let this = cx.entity().downgrade();
         let input = |f: OAuth1Field, cx: &App| {
             let vars = self.vars.clone();
             if f.masked() {
-                secret_field(f.label(), f.id(), self.input(f), vars, cx).into_any_element()
+                let this = this.clone();
+                let mover: crate::auth_section::MoveToSecret = Rc::new(move |_, cx| {
+                    this.update(cx, |e, cx| e.move_to_secret(f, cx)).ok();
+                });
+                let place = &self.place;
+                secret_field(
+                    f.label(),
+                    f.id(),
+                    self.input(f),
+                    vars,
+                    place,
+                    Some(mover),
+                    cx,
+                )
+                .into_any_element()
             } else {
                 field(f.label(), f.id(), self.input(f), vars, cx).into_any_element()
             }

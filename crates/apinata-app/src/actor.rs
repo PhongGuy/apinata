@@ -10,7 +10,8 @@ use std::sync::Arc;
 use apinata_core::import::{
     ImportBundle, ImportReport, ImportedEnvironment, ImportedRequest, ImportedSecret,
     PrunedRequest, TakeSpec, UpdateOptions, UpdateSummary, add_environment, apply_update,
-    can_update, claim_secret_names, plan_update, recorded_spec, store_request_secrets,
+    auth_secret_fields, can_update, claim_secret_names_besides, plan_update, recorded_spec,
+    replace_auth_secret, secret_environment, secret_name_base, store_request_secrets,
 };
 use apinata_core::team::ConflictCopies;
 use apinata_core::{
@@ -23,8 +24,8 @@ use async_channel::{Receiver, Sender};
 
 use crate::auth_secrets;
 use crate::command::{
-    Command, Edit, EnvOp, Envelope, Field, NetworkOp, Notice, NoticeKind, PlanError, Planned,
-    Target, TreeOp,
+    Command, Edit, EnvOp, Envelope, Field, HeldSecret, MOVE_SLOT, NetworkOp, Notice, NoticeKind,
+    PlanError, Planned, Target, TreeOp,
 };
 use crate::context_cache::ContextCache;
 use crate::env_table;
@@ -201,6 +202,9 @@ struct Actor {
     /// Secrets moved out of unsaved drafts, by the target whose draft holds the reference and
     /// the `.env` name. Written to `.env` when that target is saved, dropped when discarded.
     held_dotenv: HashMap<(Target, String), String>,
+    /// Secrets kept out of unsaved drafts for an environment, by the target whose draft refers
+    /// to them and the variable name. Stored when that target is saved, dropped when discarded.
+    held_env: HashMap<(Target, String), HeldEnv>,
     /// The keys `.env` defines, read again after `.env` changes.
     dotenv_stored: Arc<BTreeSet<String>>,
     dotenv_stored_stale: bool,
@@ -268,6 +272,7 @@ impl Actor {
             dotenv_seq: 0,
             save_seq: 0,
             held_dotenv: HashMap::new(),
+            held_env: HashMap::new(),
             dotenv_stored: Arc::default(),
             dotenv_stored_stale: true,
             refuse_draft_from: None,
@@ -309,6 +314,12 @@ impl Actor {
                 target,
                 edit: edit @ (Edit::Auth(AuthSpec::OAuth2(_)) | Edit::MoveAuthSecrets),
             } if !matches!(target, Target::Environment(_)) => self.auth_edit(&target, edit),
+            Command::Edit {
+                target,
+                edit: Edit::MoveToSecret(slotted),
+            } if !matches!(target, Target::Environment(_)) => {
+                self.move_to_secret(&target, *slotted)
+            }
             Command::Edit { target, edit } => self.edit(&target, edit),
             // An import is never held: the user re-imports against what the reload loaded.
             Command::ApplyImport { item, .. }
@@ -324,44 +335,25 @@ impl Actor {
             Command::ApplyImport { item, mut request } => {
                 // Names are settled before the request lands, so no earlier secret is taken
                 // over; the secrets that follow are stored under the names settled here.
-                claim_secret_names(
+                claim_secret_names_besides(
                     &self.collection,
                     &mut request,
                     self.selected.as_deref(),
                     &*self.store,
+                    &self.held_env_names(),
                 );
                 let applied = self.apply_import(&item, &request);
                 self.applied_import = applied.is_ok().then(|| (item, request.secrets.clone()));
                 applied
             }
-            Command::StoreImportSecrets {
-                item,
-                request,
-                mut notes,
-                reply,
-            } => {
-                // Only the import that just applied to this item may store its secrets.
-                let claimed = match self.applied_import.take() {
-                    Some((at, secrets)) if at == item => Some(secrets),
-                    _ => None,
+            Command::HoldImportSecrets { item, reply } => {
+                // Only the import that just applied to this item may hold its secrets, under the
+                // names it settled.
+                let secrets = match self.applied_import.take() {
+                    Some((at, secrets)) if at == item => secrets,
+                    _ => Vec::new(),
                 };
-                let mut request = request;
-                if let Some(secrets) = &claimed {
-                    request.secrets = secrets.clone();
-                }
-                if claimed.is_some() && !request.secrets.is_empty() {
-                    self.cache.touch_all();
-                }
-                if claimed.is_some() {
-                    store_request_secrets(
-                        &mut self.collection,
-                        &request,
-                        self.selected.as_deref(),
-                        &*self.store,
-                        &mut notes,
-                    );
-                }
-                let _ = reply.try_send(notes);
+                let _ = reply.try_send(self.hold_import(&Target::Request(item), secrets));
                 Ok(())
             }
             Command::ImportEnvironment { env, reply } => match self.import_environment(&env) {
@@ -521,7 +513,9 @@ impl Actor {
                 Ok(())
             }
             Command::SecretValues { reply } => {
-                let held: Vec<String> = self.held_dotenv.values().cloned().collect();
+                let held: Vec<String> = (self.held_dotenv.values().cloned())
+                    .chain(self.held_env.values().map(|h| h.value.clone()))
+                    .collect();
                 let values = self
                     .context
                     .get(&self.collection, self.selected.as_deref(), &self.store)
@@ -1137,7 +1131,12 @@ impl Actor {
                 let written = self.write_held(&from)?;
                 let to = self.collection.save_draft(&draft, &parent, &name);
                 self.finish_held(id, &from, written, to.is_ok());
-                self.moved_to(from, to)
+                let saved = to.as_ref().ok().map(|path| Target::Request(path.clone()));
+                let moved = self.moved_to(from, to);
+                if let Some(saved) = saved {
+                    self.keep_held_env(id, &saved);
+                }
+                moved
             }
             TreeOp::DiscardDraft { draft } => {
                 c.remove_draft(&draft);
@@ -1283,6 +1282,10 @@ impl Actor {
         self.held_dotenv = mem::take(&mut self.held_dotenv)
             .into_iter()
             .map(|((t, name), value)| ((rekey(t), name), value))
+            .collect();
+        self.held_env = mem::take(&mut self.held_env)
+            .into_iter()
+            .map(|((t, name), held)| ((rekey(t), name), held))
             .collect();
         self.changed = mem::take(&mut self.changed)
             .into_iter()
@@ -1683,9 +1686,10 @@ impl Actor {
 
     /// Drop the held secrets of the targets `gone` matches.
     fn release(&mut self, gone: impl Fn(&Target) -> bool) {
-        let before = self.held_dotenv.len();
+        let before = self.held_dotenv.len() + self.held_env.len();
         self.held_dotenv.retain(|(t, _), _| !gone(t));
-        if self.held_dotenv.len() != before {
+        self.held_env.retain(|(t, _), _| !gone(t));
+        if self.held_dotenv.len() + self.held_env.len() != before {
             self.context.invalidate();
         }
     }
@@ -1697,7 +1701,18 @@ impl Actor {
         &mut self,
         item: Option<&ItemPath>,
     ) -> Result<VarContext, apinata_core::ContextError> {
-        let base = (self.context).get(&self.collection, self.selected.as_deref(), &self.store)?;
+        let mut base =
+            (self.context).get(&self.collection, self.selected.as_deref(), &self.store)?;
+        // Held environment secrets read as stored ones, for the environment they will go to.
+        let held_env: Vec<(String, String)> = (self.held_env.iter())
+            .filter(|((t, _), h)| {
+                held_rank(t, item).is_some() && Some(&h.environment) == self.selected.as_ref()
+            })
+            .map(|((_, name), h)| (name.clone(), h.value.clone()))
+            .collect();
+        if !held_env.is_empty() {
+            base = base.with_secret_overrides(held_env);
+        }
         let mut values: Vec<(usize, &String, &String)> = (self.held_dotenv.iter())
             .filter_map(|((t, name), value)| Some((held_rank(t, item)?, name, value)))
             .collect();
@@ -1816,6 +1831,159 @@ impl Actor {
         Ok(())
     }
 
+    /// The environment variable names promised to secrets of unsaved drafts.
+    fn held_env_names(&self) -> BTreeSet<String> {
+        self.held_env.keys().map(|(_, name)| name.clone()).collect()
+    }
+
+    /// Hold an import's `secrets` for `target` until it is saved; where each one will go.
+    fn hold_import(&mut self, target: &Target, secrets: Vec<ImportedSecret>) -> Vec<HeldSecret> {
+        let environment = secret_environment(&self.collection, self.selected.as_deref());
+        let mut replies = Vec::new();
+        for secret in secrets {
+            if let Ok(env) = &environment {
+                let held = HeldEnv {
+                    environment: env.clone(),
+                    value: secret.value.clone(),
+                    source: secret.source.clone(),
+                };
+                self.held_env
+                    .insert((target.clone(), secret.name.clone()), held);
+            }
+            replies.push(HeldSecret {
+                source: secret.source,
+                name: secret.name,
+                environment: environment.clone(),
+            });
+        }
+        self.context.invalidate();
+        replies
+    }
+
+    /// After `target` was saved, keep its held environment secrets that the saved file refers
+    /// to; any that could not be kept become one warning for command `id`.
+    fn keep_held_env(&mut self, id: u64, target: &Target) {
+        let mine: Vec<(String, HeldEnv)> = (self.held_env.iter())
+            .filter(|((t, _), _)| t == target)
+            .map(|((_, name), held)| (name.clone(), held.clone()))
+            .collect();
+        if mine.is_empty() {
+            return;
+        }
+        self.held_env.retain(|(t, _), _| t != target);
+        self.context.invalidate();
+        let text = (self.file_path(target).ok())
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .unwrap_or_default();
+        let mut warnings = Vec::new();
+        for (name, held) in mine {
+            if !text.contains(&format!("{{{{{name}}}}}")) {
+                continue;
+            }
+            let mut request = ImportedRequest::new("GET", "");
+            request.secrets = vec![ImportedSecret::new(&name, held.value, &held.source)];
+            let mut notes = Vec::new();
+            store_request_secrets(
+                &mut self.collection,
+                &request,
+                Some(&held.environment),
+                &*self.store,
+                &mut notes,
+            );
+            if !notes.is_empty() {
+                warnings.push(format!(
+                    "The secret {name} was not kept in the {} environment; enter its value there",
+                    held.environment
+                ));
+            }
+        }
+        self.cache.touch_all();
+        if !warnings.is_empty() {
+            let kind = NoticeKind::Warnings(warnings);
+            self.notices.push(Notice { command: id, kind });
+        }
+    }
+
+    /// Move the credential `slotted` marks with `MOVE_SLOT` out of `target`'s draft: to a
+    /// secret variable of the environment that keeps secrets, else to `.env`. The draft takes
+    /// the reference at once; the value is written when `target` is saved.
+    fn move_to_secret(&mut self, target: &Target, slotted: AuthSpec) -> Result<(), NoticeKind> {
+        let refused = |message: String| NoticeKind::Failed {
+            target: Some(target.clone()),
+            message,
+            row: None,
+        };
+        let current = auth_secrets::current(&self.collection, target)
+            .ok_or_else(|| NoticeKind::NotFound(target.clone()))?;
+        // The draft must still hold this kind of auth with a literal in the marked field.
+        let slots = auth_secret_fields(&slotted);
+        let Some(at) = slots.iter().position(|(_, text)| text == MOVE_SLOT) else {
+            return Ok(());
+        };
+        let fields = auth_secret_fields(&current);
+        let same_mode = mem::discriminant(&current) == mem::discriminant(&slotted);
+        let Some((kind, value)) = fields.get(at).filter(|(kind, value)| {
+            same_mode
+                && *kind == slots[at].0
+                && !value.is_empty()
+                && !network_secrets::is_template(value)
+        }) else {
+            return Ok(());
+        };
+        let (kind, value) = (*kind, value.clone());
+        let base = secret_name_base(&self.target_name(target), kind);
+        let mut auth = slotted;
+        match secret_environment(&self.collection, self.selected.as_deref()) {
+            Ok(env) => {
+                let mut probe = ImportedRequest::new("GET", "");
+                probe.secrets = vec![ImportedSecret::new(base, value.clone(), "")];
+                let held = self.held_env_names();
+                claim_secret_names_besides(
+                    &self.collection,
+                    &mut probe,
+                    Some(&env),
+                    &*self.store,
+                    &held,
+                );
+                let name = probe.secrets.remove(0).name;
+                replace_auth_secret(&mut auth, MOVE_SLOT, &format!("{{{{{name}}}}}"));
+                self.edit(target, Edit::Auth(auth))?;
+                let held = HeldEnv {
+                    environment: env,
+                    value,
+                    source: String::new(),
+                };
+                self.held_env.insert((target.clone(), name), held);
+                self.context.invalidate();
+            }
+            Err(_) => {
+                let mut taken = (self.collection.dotenv_keys())
+                    .map_err(|e| refused(format!("Could not read .env: {e}")))?;
+                taken.extend(self.held_names());
+                let base = format!("APINATA_{}", base.to_ascii_uppercase());
+                let name = network_secrets::dotenv_name(&base, &taken);
+                let planned = vec![(name.clone(), value)];
+                network_secrets::check(&self.collection, &planned).map_err(refused)?;
+                let reference = format!("{{{{process.env.{name}}}}}");
+                replace_auth_secret(&mut auth, MOVE_SLOT, &reference);
+                self.edit(target, Edit::Auth(auth))?;
+                self.hold(target, planned);
+            }
+        }
+        Ok(())
+    }
+
+    /// The name of `target`'s item, or of the collection, which a moved secret is named after.
+    fn target_name(&self, target: &Target) -> String {
+        let c = &self.collection;
+        match target {
+            Target::Request(path) => c.request(path).map(|r| r.name().to_owned()),
+            Target::Folder(path) => c.folder(path).map(|f| f.name().to_owned()),
+            _ => c.file().name().map(str::to_owned),
+        }
+        .unwrap_or_default()
+    }
+
     fn edit(&mut self, target: &Target, edit: Edit) -> Result<(), NoticeKind> {
         let unsupported = NoticeKind::Unsupported {
             target: target.clone(),
@@ -1861,7 +2029,8 @@ impl Actor {
                     | Edit::ClientCertificates(_)
                     | Edit::HostOverrides(_)
                     | Edit::MoveNetworkSecrets
-                    | Edit::MoveAuthSecrets => {
+                    | Edit::MoveAuthSecrets
+                    | Edit::MoveToSecret(_) => {
                         return Err(unsupported);
                     }
                 }
@@ -1946,6 +2115,7 @@ impl Actor {
         if result.is_ok() {
             self.drop_orphaned_secrets(id, target, &before);
             self.acknowledge_network_save(own_network);
+            self.keep_held_env(id, target);
         }
         match result {
             Err(SaveError::Conflict { .. }) => {
@@ -2054,6 +2224,7 @@ impl Actor {
         self.finish_held(id, target, written, result.is_ok());
         if result.is_ok() {
             self.drop_orphaned_secrets(id, target, &before);
+            self.keep_held_env(id, target);
         }
         result.map_err(|e| failed(target, e))
     }
@@ -2268,6 +2439,14 @@ impl Actor {
         };
         path.ok_or_else(|| NoticeKind::NotFound(target.clone()))
     }
+}
+
+/// A secret held for an environment until its draft is saved.
+#[derive(Clone)]
+struct HeldEnv {
+    environment: String,
+    value: String,
+    source: String,
 }
 
 /// A `.env` write done ahead of a save: the files before it, and its warnings.

@@ -160,15 +160,16 @@ fn proxy_password(proxy: &CollectionProxy) -> &str {
     }
 }
 
-/// The `.env` names the secrets of `target`'s draft refer to: its OAuth 2.0 client secret
-/// and password, and for the collection also the proxy password and certificate passphrases.
+/// The `.env` names the secrets of `target`'s draft refer to: its auth credentials, and for
+/// the collection also the proxy password and certificate passphrases.
 pub(crate) fn referenced_names(
     c: &Collection,
     target: &crate::command::Target,
 ) -> BTreeSet<String> {
     let mut values = Vec::new();
-    if let Some(apinata_core::AuthSpec::OAuth2(o)) = crate::auth_secrets::current(c, target) {
-        values.extend([o.client_secret, o.password]);
+    if let Some(auth) = crate::auth_secrets::current(c, target) {
+        let fields = apinata_core::import::auth_secret_fields(&auth);
+        values.extend(fields.into_iter().map(|(_, text)| text));
     }
     if matches!(target, crate::command::Target::Collection) {
         let network = c.file().network();

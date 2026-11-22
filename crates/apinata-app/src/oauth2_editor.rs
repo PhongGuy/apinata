@@ -19,7 +19,7 @@ use gpui_kit::{
     App, Entity, EventEmitter, SharedString, Subscription, TestSupportExt, Window, div,
 };
 
-use crate::auth_section::{checked_field, secret_field};
+use crate::auth_section::{SecretPlace, checked_field, secret_field};
 use crate::kv_table::set_text;
 use crate::network_secrets::{env_name, is_template};
 use crate::scroll_follow::{FocusFollow, Followed};
@@ -263,6 +263,8 @@ struct ParamRow {
 /// no control shows (other grants' fields, unknown strings, parameters) survive an edit.
 pub struct OAuth2Editor {
     base: OAuth2Spec,
+    // Where the secret fields say their values live.
+    place: SecretPlace,
     inputs: Vec<Entity<InputState>>,
     masks: ui::SecretMasks,
     flow: Choice,
@@ -401,6 +403,7 @@ impl OAuth2Editor {
             placement,
             source,
             params: Vec::new(),
+            place: SecretPlace::default(),
             vars: None,
             notice: None,
             token_panel: None,
@@ -798,6 +801,14 @@ impl OAuth2Editor {
         }
     }
 
+    /// Sets where the secret fields say their values live.
+    pub fn set_place(&mut self, place: SecretPlace, cx: &mut Context<Self>) {
+        if self.place != place {
+            self.place = place;
+            cx.notify();
+        }
+    }
+
     /// Sets the `.env` names stored or held for the target, which decide the badge.
     pub fn set_dotenv(&mut self, names: DotenvNames, cx: &mut Context<Self>) {
         if self.dotenv != names {
@@ -1069,7 +1080,17 @@ impl Render for OAuth2Editor {
                 )
                 .into_any_element()
             } else if f.masked() {
-                secret_field(f.label(), f.id(), self.input(f), vars, cx).into_any_element()
+                // A literal here has the editor's own Move to .env, so the field offers none.
+                secret_field(
+                    f.label(),
+                    f.id(),
+                    self.input(f),
+                    vars,
+                    &self.place,
+                    None,
+                    cx,
+                )
+                .into_any_element()
             } else {
                 let invalid = self.missing.contains(&f);
                 let row =
