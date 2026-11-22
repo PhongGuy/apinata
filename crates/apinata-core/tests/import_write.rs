@@ -169,3 +169,92 @@ fn a_collection_name_that_cannot_be_a_directory_fails_with_invalid_name() {
         assert!(entries(parent.path()).is_empty(), "{name:?} left files");
     }
 }
+
+#[test]
+fn each_taken_name_is_renamed_with_a_note_that_says_why() {
+    let req =
+        |name: &str| format!(r#"{{"name": "{name}", "request": {{"method": "GET", "url": "u"}}}}"#);
+    let json = format!(
+        r#"{{"info": {{"name": "c", "schema": "{V21}"}}, "item": [{}, {}, {}, {}, {}, {}]}}"#,
+        req("dup"),
+        req("dup"),
+        req("Dup"),
+        req("a/b"),
+        req("a-b"),
+        req("CON")
+    );
+    let imported = parse_postman(json.as_bytes()).expect("parses");
+    let parent = TempDir::new().expect("tempdir");
+    let (collection, report) =
+        write_collection(parent.path(), &imported, &[], &MemoryStore::new()).expect("writes");
+    assert_eq!(
+        entries(collection.root()),
+        [
+            "CON 1.yml",
+            "Dup 1.yml",
+            "a-b 1.yml",
+            "a-b.yml",
+            "dup.yml",
+            "dup_1.yml",
+            "environments",
+            "opencollection.yml"
+        ]
+    );
+    let renamed: Vec<(&str, &str)> = report
+        .notes
+        .iter()
+        .filter(|n| n.kind == NoteKind::Renamed)
+        .map(|n| (n.file.as_deref().unwrap_or(""), n.detail.as_str()))
+        .collect();
+    assert_eq!(
+        renamed,
+        [
+            (
+                "dup_1.yml",
+                "renamed to `dup_1` because another request here has the same name"
+            ),
+            (
+                "Dup 1.yml",
+                "the name `Dup` differs from `dup` only in case, which some file systems treat \
+                 as the same file name, so it was written to `Dup 1.yml`; the display name is kept"
+            ),
+            (
+                "a-b 1.yml",
+                "the name `a-b` makes the same file name as `a/b`, so it was written to \
+                 `a-b 1.yml`; the display name is kept"
+            ),
+            (
+                "CON 1.yml",
+                "the name `CON` cannot be used as a file name here, so it was written to \
+                 `CON 1.yml`; the display name is kept"
+            ),
+        ]
+    );
+}
+
+#[test]
+fn a_repeat_collection_import_notes_its_new_name() {
+    let json = format!(r#"{{"info": {{"name": "Empty", "schema": "{V21}"}}, "item": []}}"#);
+    let imported = parse_postman(json.as_bytes()).expect("parses");
+    let parent = TempDir::new().expect("tempdir");
+    let (_, first) =
+        write_collection(parent.path(), &imported, &[], &MemoryStore::new()).expect("writes");
+    assert!(
+        !first.notes.iter().any(|n| n.kind == NoteKind::Renamed),
+        "{:?}",
+        first.notes
+    );
+    let (again, report) =
+        write_collection(parent.path(), &imported, &[], &MemoryStore::new()).expect("writes");
+    assert_eq!(again.name(), "Empty - 1");
+    let renamed: Vec<&str> = report
+        .notes
+        .iter()
+        .filter(|n| n.kind == NoteKind::Renamed)
+        .map(|n| n.detail.as_str())
+        .collect();
+    assert_eq!(
+        renamed,
+        ["the folder `Empty` already exists here, so this collection is `Empty - 1`"]
+    );
+}

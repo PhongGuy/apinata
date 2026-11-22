@@ -16,7 +16,7 @@ use crate::error::{OpenError, TreeError};
 use crate::item_path::ItemPath;
 use crate::naming::sanitize_name;
 use crate::secrets::SecretStore;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::io::{self, ErrorKind};
 use std::path::Path;
@@ -142,6 +142,16 @@ pub(super) fn write_staged(
         .scripts
         .write_with(|phase, code| root_file.set_script(phase, code));
     root_file.save()?;
+    // The folder suffix also changes the collection's name, which the user would otherwise miss.
+    if name != imported.name {
+        let detail = format!(
+            "the folder `{}` already exists here, so this collection is `{name}`",
+            sanitize_name(&imported.name)
+        );
+        let mut note = ImportNote::new("collection", NoteKind::Renamed, detail);
+        note.file = Some(ROOT_FILE.to_owned());
+        report.notes.push(note);
+    }
     report
         .notes
         .extend(placed(&imported.notes, ROOT_FILE.to_owned()));
@@ -273,8 +283,8 @@ pub(super) fn placed(notes: &[ImportNote], file: String) -> impl Iterator<Item =
 }
 
 /// Write `items` into the folder `parent`, depth first and in order, whose breadcrumb is
-/// `crumb`. Each kind keeps its own set of lower-cased stems, so names that differ only by
-/// case never share a file on a case-insensitive file system.
+/// `crumb`. Each kind maps its lower-cased stems to the names written there, so names that
+/// differ only by case never share a file on a case-insensitive file system.
 fn write_items(
     collection: &mut Collection,
     parent: &ItemPath,
@@ -282,8 +292,8 @@ fn write_items(
     items: &[ImportedItem],
     report: &mut ImportReport,
 ) -> Result<(), ImportError> {
-    let mut folder_stems = HashSet::new();
-    let mut request_stems = HashSet::new();
+    let mut folder_stems = HashMap::new();
+    let mut request_stems = HashMap::new();
     for item in items {
         let (name, seq, kind) = match item {
             ImportedItem::Folder(f) => (f.name.as_str(), f.seq, None),
@@ -310,8 +320,10 @@ fn write_items(
             .filter(|_| !is_folder)
             .unwrap_or(path.file_name())
             .to_owned();
-        taken.insert(stem.to_lowercase());
-        let renamed = stem != sanitize_name(name);
+        let wanted = sanitize_name(name);
+        let renamed = stem != wanted;
+        let reason = rename_reason(name, &wanted, taken.get(&wanted.to_lowercase()));
+        taken.insert(stem.to_lowercase(), name.to_owned());
         report.items.push(path.clone());
 
         match item {
@@ -333,7 +345,7 @@ fn write_items(
                 }
                 folder_file.save()?;
                 if renamed {
-                    report.notes.push(renamed_note(&item_crumb, name, &file));
+                    report.notes.push(renamed_note(&item_crumb, &reason, &file));
                 }
                 report.notes.extend(placed(&folder.notes, file));
                 write_items(collection, &path, &item_crumb, &folder.items, report)?;
@@ -350,7 +362,7 @@ fn write_items(
                 }
                 request_file.save()?;
                 if renamed {
-                    report.notes.push(renamed_note(&item_crumb, name, &file));
+                    report.notes.push(renamed_note(&item_crumb, &reason, &file));
                 }
                 report.notes.extend(placed(&request.notes, file));
             }
@@ -366,7 +378,7 @@ fn write_items(
 fn place(
     name: &str,
     fallback: &str,
-    taken: &HashSet<String>,
+    taken: &HashMap<String, String>,
     mut create: impl FnMut(&str) -> Result<ItemPath, TreeError>,
 ) -> Result<ItemPath, ImportError> {
     for (base_index, base) in [name, fallback].into_iter().enumerate() {
@@ -376,7 +388,7 @@ fn place(
             } else {
                 format!("{base} {n}")
             };
-            if taken.contains(&sanitize_name(&candidate).to_lowercase()) {
+            if taken.contains_key(&sanitize_name(&candidate).to_lowercase()) {
                 continue;
             }
             match create(&candidate) {
@@ -390,14 +402,29 @@ fn place(
     unreachable!("the fallback either succeeds or returns its error")
 }
 
-fn renamed_note(crumb: &str, name: &str, file: &str) -> ImportNote {
+/// Why `name`, whose file stem would be `wanted`, cannot have it: the earlier sibling `holder`
+/// already written at that stem (in any case), or else the file system refusing the name.
+fn rename_reason(name: &str, wanted: &str, holder: Option<&String>) -> String {
+    match holder {
+        Some(earlier) if earlier == name => {
+            format!("the name `{name}` is already used by another item here")
+        }
+        Some(earlier) if sanitize_name(earlier) == wanted => {
+            format!("the name `{name}` makes the same file name as `{earlier}`")
+        }
+        Some(earlier) => format!(
+            "the name `{name}` differs from `{earlier}` only in case, which some file systems \
+             treat as the same file name"
+        ),
+        None => format!("the name `{name}` cannot be used as a file name here"),
+    }
+}
+
+fn renamed_note(crumb: &str, reason: &str, file: &str) -> ImportNote {
     let mut note = ImportNote::new(
         crumb,
         NoteKind::Renamed,
-        format!(
-            "the name `{name}` cannot be used as a file name here, so it was written to `{file}`; \
-             the display name is kept"
-        ),
+        format!("{reason}, so it was written to `{file}`; the display name is kept"),
     );
     note.file = Some(file.to_owned());
     note

@@ -147,10 +147,8 @@ fn items(
         let crumb = crumb(name_or(item.name.as_ref(), &format!("Item {seq}")));
 
         if !truthy(item.request.as_ref()) {
-            let name = unique(
-                &mut folder_names,
-                name_or(item.name.as_ref(), "Untitled Folder"),
-            );
+            let base_name = name_or(item.name.as_ref(), "Untitled Folder");
+            let name = unique(&mut folder_names, base_name.clone());
             let children = match &item.item {
                 Some(Value::Array(children)) => items(children, &crumb, unwritten)?,
                 Some(Value::String(s)) if !s.is_empty() => {
@@ -173,6 +171,7 @@ fn items(
                 &mut notes,
             );
             let scripts = notes::folder(&item, &crumb, &mut notes);
+            renamed(&base_name, &name, "folder", &crumb, &mut notes);
             out.push(ImportedItem::Folder(ImportedFolder {
                 scripts,
                 name,
@@ -233,8 +232,10 @@ fn items(
                     ));
                 }
                 out_request.scripts = notes::request(&item, &request, &body, &crumb, &mut notes);
+                let name = unique(&mut request_names, base_name.clone());
+                renamed(&base_name, &name, "request", &crumb, &mut notes);
                 out.push(ImportedItem::Request(ImportedRequestItem {
-                    name: unique(&mut request_names, base_name),
+                    name,
                     seq,
                     request: out_request,
                     notes,
@@ -245,6 +246,17 @@ fn items(
         }
     }
     Ok(out)
+}
+
+/// A `Renamed` note when `unique` gave the `kind` item `base` another name.
+fn renamed(base: &str, name: &str, kind: &str, crumb: &str, notes: &mut Vec<ImportNote>) {
+    if name != base {
+        notes.push(ImportNote::new(
+            crumb,
+            NoteKind::Renamed,
+            format!("renamed to `{name}` because another {kind} here has the same name"),
+        ));
+    }
 }
 
 /// `base`, or `base_1`, `base_2`, ... when taken; the result is recorded as taken.
