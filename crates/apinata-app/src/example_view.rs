@@ -148,12 +148,20 @@ fn body_text(body: &BodySpec) -> String {
 fn request_block(request: &ExampleRequest, cx: &App) -> Div {
     let mono = cx.theme().mono_font_family.clone();
     let muted = cx.theme().muted_foreground;
-    let table = |id: &'static str, ids, pairs: Vec<(String, String)>| {
+    // Each part of the request is titled the same muted way, so the tables read like Body.
+    let heading = |id: &'static str, text: &'static str| {
+        div().id(id).test_support().text_color(muted).child(text)
+    };
+    let table = |id: &'static str,
+                 title: (&'static str, &'static str),
+                 ids,
+                 pairs: Vec<(String, String)>| {
         (!pairs.is_empty()).then(|| {
             v_flex()
                 .id(id)
                 .test_support()
                 .gap(style::SPACE_1)
+                .child(heading(title.0, title.1))
                 .child(header_table(ids, &pairs))
         })
     };
@@ -194,11 +202,13 @@ fn request_block(request: &ExampleRequest, cx: &App) -> Div {
         .child(line)
         .children(table(
             "example-params",
+            ("example-params-heading", "Params"),
             ["example-param", "example-param-name", "example-param-value"],
             params,
         ))
         .children(table(
             "example-headers",
+            ("example-headers-heading", "Headers"),
             [
                 "example-header",
                 "example-header-name",
@@ -206,7 +216,7 @@ fn request_block(request: &ExampleRequest, cx: &App) -> Div {
             ],
             headers,
         ))
-        .child(div().text_color(muted).child("Body"))
+        .child(heading("example-body-heading", "Body"))
         .child(body)
 }
 

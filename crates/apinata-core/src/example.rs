@@ -305,7 +305,8 @@ impl ExampleResponse {
 
     /// Status, status text (none when empty), headers as received, and the body: binary as
     /// base64 when the type is binary or the bytes are not UTF-8, else the decoded text, with
-    /// JSON that parses re-indented two spaces deep.
+    /// JSON that parses re-indented two spaces deep. A re-indented body drops Content-Length,
+    /// which no longer measures it.
     pub fn from_response(response: &Response) -> ExampleResponse {
         let content_type = response
             .headers()
@@ -328,12 +329,23 @@ impl ExampleResponse {
             (kind, Ok(text)) => ExampleBody::new(kind, text),
         };
         let status_text = response.status_text();
-        ExampleResponse {
+        let mut example = ExampleResponse {
             status: Some(response.status()),
             status_text: (!status_text.is_empty()).then(|| status_text.to_owned()),
             headers: response.headers().to_vec(),
-            body: Some(body),
+            body: None,
+        };
+        if body.kind != ExampleBodyKind::Binary && body.data.as_bytes() != bytes {
+            example.drop_content_length();
         }
+        example.body = Some(body);
+        example
+    }
+
+    // A saved body that is not the received bytes would contradict the received length.
+    // Recomputing it is no better, since a chunked or compressed reply never sent one.
+    fn drop_content_length(&mut self) {
+        (self.headers).retain(|(name, _)| !name.eq_ignore_ascii_case("content-length"));
     }
 
     /// The line added to an example's description when its body was withheld.
@@ -349,7 +361,8 @@ impl ExampleResponse {
 
     /// Make this example safe to commit. Set-Cookie and credential headers are always masked;
     /// with `secrets`, each value in a header or text body becomes its placeholder, and a binary
-    /// body holding one is removed, since its bytes cannot be rewritten.
+    /// body holding one is removed, since its bytes cannot be rewritten. Either change drops
+    /// Content-Length.
     pub fn scrub(&mut self, secrets: Option<&[NamedSecret]>) -> Scrubbed {
         for (name, value) in &mut self.headers {
             *value = mask_response_header(name, value);
@@ -360,22 +373,29 @@ impl ExampleResponse {
         for (_, value) in &mut self.headers {
             *value = replace_secrets(value, secrets);
         }
-        let withheld = match self.body.as_mut() {
+        // A placeholder or a removed body leaves the received length measuring nothing saved.
+        let (withheld, changed) = match self.body.as_mut() {
             Some(body) if body.kind == ExampleBodyKind::Binary => {
                 // Text that is not base64 is checked as it stands.
                 let bytes = STANDARD
                     .decode(&body.data)
                     .unwrap_or_else(|_| body.data.clone().into_bytes());
-                bytes_hold_secret(&bytes, secrets)
+                let held = bytes_hold_secret(&bytes, secrets);
+                (held, held)
             }
             Some(body) => {
-                body.data = replace_secrets(&body.data, secrets);
-                false
+                let replaced = replace_secrets(&body.data, secrets);
+                let changed = replaced != body.data;
+                body.data = replaced;
+                (false, changed)
             }
-            None => false,
+            None => (false, false),
         };
         if withheld {
             self.body = None;
+        }
+        if changed {
+            self.drop_content_length();
         }
         Scrubbed { withheld }
     }

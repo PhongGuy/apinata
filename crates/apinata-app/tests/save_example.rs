@@ -15,22 +15,25 @@ use std::sync::Arc;
 use support::*;
 
 #[test]
-fn the_first_free_example_name_is_offered() {
+fn a_new_example_is_named_after_its_status() {
     let names = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-    assert_eq!(initial_name(&[]), "example");
-    assert_eq!(initial_name(&names(&["other"])), "example");
+    let ok = example_response(&Response::new(200).with_status_text("OK"));
+    assert_eq!(initial_name(&ok, &[]), "200 OK");
+    assert_eq!(initial_name(&ok, &names(&["example"])), "200 OK");
     assert_eq!(
-        initial_name(&names(&["example", "example (1)"])),
-        "example (2)"
+        initial_name(&ok, &names(&["200 OK", "200 OK (1)"])),
+        "200 OK (2)"
     );
     assert_eq!(
-        initial_name(&names(&["example (1)", "example"])),
-        "example (2)"
+        initial_name(&ok, &names(&["200 OK (1)", "200 OK"])),
+        "200 OK (2)"
     );
     assert_eq!(
-        initial_name(&names(&["example", "example (2)"])),
-        "example (1)"
+        initial_name(&ok, &names(&["200 OK", "200 OK (2)"])),
+        "200 OK (1)"
     );
+    let bare = example_response(&Response::new(599));
+    assert_eq!(initial_name(&bare, &[]), "599", "no reason, just the code");
 }
 
 #[test]
