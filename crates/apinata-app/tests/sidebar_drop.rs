@@ -1,12 +1,17 @@
 use crate::support;
 
 use apinata_app::command::{Command, TreeOp};
+use apinata_app::sidebar::CROSS_COLLECTION_DROP;
 use apinata_app::sidebar::drop::{DropZone, drop_target, drop_zone};
 use apinata_app::sidebar::model::NodeKind;
 use apinata_core::{DropTarget, ItemPath};
 use gpui_kit::AppContext;
+use gpui_kit::component::WindowExt as _;
 use gpui_kit::test::TestWindowExt;
-use gpui_kit::{Bounds, Focusable, TestAppContext, point, px, size};
+use gpui_kit::{
+    Bounds, Focusable, InputEvent as _, MouseButton, MouseDownEvent, MouseMoveEvent, SharedString,
+    TestAppContext, point, px, size,
+};
 use support::*;
 
 fn drag_onto(
@@ -182,6 +187,111 @@ fn a_drop_across_collections_does_nothing(cx: &mut TestAppContext) {
     drag_onto(cx, &h, foreign, "users", 0.5);
     assert!(other.path().join("a.yml").exists());
     assert!(!h.root.join("users/a.yml").exists());
+}
+
+// Presses on `from` and moves over the middle of `onto`, leaving the button down.
+fn hold_over(cx: &mut TestAppContext, h: &SidebarHarness, from: SharedString, onto: &str) {
+    cx.update_window(h.win, |_, w, cx| {
+        w.render_frame(cx);
+        let start = w.find(from).bounds().center();
+        let end = w.find(row(onto)).bounds().center();
+        let at = |position, pressed_button| {
+            MouseMoveEvent {
+                position,
+                pressed_button,
+                modifiers: Default::default(),
+            }
+            .to_platform_input()
+        };
+        w.dispatch_event(at(start, None), cx);
+        let down = MouseDownEvent {
+            button: MouseButton::Left,
+            position: start,
+            modifiers: Default::default(),
+            click_count: 1,
+            first_mouse: false,
+        };
+        w.dispatch_event(down.to_platform_input(), cx);
+        for step in 1..=8 {
+            let f = step as f32 / 8.;
+            let p = point(
+                start.x + (end.x - start.x) * f,
+                start.y + (end.y - start.y) * f,
+            );
+            w.dispatch_event(at(p, Some(MouseButton::Left)), cx);
+            w.render_frame(cx);
+        }
+    })
+    .unwrap();
+    cx.run_until_parked();
+}
+
+fn toasts(cx: &mut TestAppContext, h: &SidebarHarness) -> usize {
+    cx.update_window(h.win, |_, w, cx| w.notifications(cx).len())
+        .unwrap()
+}
+
+#[gpui_kit::test]
+fn a_row_from_another_collection_shows_no_drop_marker(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    let other = collection();
+    h.ws.update(cx, |w, cx| w.open(other.path().to_path_buf(), cx));
+    frame(cx, h.win);
+    let foreign = apinata_app::sidebar::model::node_id(1, &ip("a.yml"));
+    hold_over(cx, &h, foreign.clone(), "users");
+    assert_eq!(
+        h.view.read_with(cx, |s, _| s.hover()),
+        None,
+        "over a folder"
+    );
+    hold_over(cx, &h, foreign.clone(), "health.yml");
+    assert_eq!(
+        h.view.read_with(cx, |s, _| s.hover()),
+        None,
+        "over a request"
+    );
+    hold_over(cx, &h, foreign, "");
+    assert_eq!(
+        h.view.read_with(cx, |s, _| s.hover()),
+        None,
+        "over the root"
+    );
+}
+
+#[gpui_kit::test]
+fn a_row_of_the_same_collection_still_shows_its_drop_marker(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    let other = collection();
+    h.ws.update(cx, |w, cx| w.open(other.path().to_path_buf(), cx));
+    frame(cx, h.win);
+    hold_over(cx, &h, row("status.yml"), "users");
+    assert!(h.view.read_with(cx, |s, _| s.hover()).is_some());
+}
+
+#[gpui_kit::test]
+fn a_drop_across_collections_says_to_use_copy_and_paste(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    let other = collection();
+    h.ws.update(cx, |w, cx| w.open(other.path().to_path_buf(), cx));
+    frame(cx, h.win);
+    let before = toasts(cx, &h);
+    let foreign = apinata_app::sidebar::model::node_id(1, &ip("a.yml"));
+    drag_onto(cx, &h, foreign, "users", 0.5);
+    assert_eq!(
+        toasts(cx, &h),
+        before + 1,
+        "one notice explains the refusal"
+    );
+    assert_eq!(
+        CROSS_COLLECTION_DROP,
+        "Use Copy and Paste to copy between collections."
+    );
+    drag_onto(cx, &h, row("health.yml"), "users", 0.5);
+    assert_eq!(
+        toasts(cx, &h),
+        before + 1,
+        "a drop in one collection says nothing"
+    );
 }
 
 #[gpui_kit::test]

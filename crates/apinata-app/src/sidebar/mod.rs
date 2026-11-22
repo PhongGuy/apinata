@@ -93,6 +93,8 @@ const DRAFT_FOLDER_SHRINK: f32 = 10_000.;
 const ROW_GROUP: &str = "sidebar-row";
 /// The notice a Duplicate of a row with unsaved edits pushes.
 const DUPLICATE_UNSAVED: &str = "The copy includes unsaved edits.";
+/// The notice a row dropped on another collection pushes, since a drop moves only within one.
+pub const CROSS_COLLECTION_DROP: &str = "Use Copy and Paste to copy between collections.";
 
 actions!(
     sidebar,
@@ -1251,7 +1253,8 @@ impl Sidebar {
 
     // Records the zone under the pointer while it is inside the target's row, and forgets this
     // row's zone once the pointer leaves it, so a drag released elsewhere leaves no indicator.
-    // A set payload shows an indicator only where `multi_drop` would accept it.
+    // A row from another collection shows none, since a drop moves only within one, and a set
+    // payload shows one only where `multi_drop` would accept it.
     fn drag_over(&mut self, target: &Node, e: &DragMoveEvent<DraggedRow>, cx: &mut Context<Self>) {
         let id = &target.id;
         let over = e.bounds.contains(&e.event.position);
@@ -1260,9 +1263,9 @@ impl Sidebar {
             _ => drop_zone(e.event.position.y, e.bounds),
         };
         let dragged = e.drag(cx);
-        let allowed = dragged.also.is_empty()
-            || (dragged.root == target.root
-                && multi_drop(&dragged.items(), &target.path, target.kind, zone).is_some());
+        let allowed = dragged.root == target.root
+            && (dragged.also.is_empty()
+                || multi_drop(&dragged.items(), &target.path, target.kind, zone).is_some());
         let hover = if over && allowed {
             Some((id.clone(), zone))
         } else if self.hover.as_ref().is_some_and(|(h, _)| h == id) {
@@ -1277,14 +1280,26 @@ impl Sidebar {
     }
 
     // Moves the dragged item, or every dragged item of a set in sidebar order, to the zone last
-    // hovered on `target`; a drop from another collection, or one that the drop rule refuses,
-    // sends nothing. A set's moves are tracked as one batch with a single summary.
-    fn drop_on(&mut self, target: &Node, dragged: &DraggedRow, cx: &mut Context<Self>) {
-        let Some((id, zone)) = self.hover.take() else {
+    // hovered on `target`; a drop the drop rule refuses sends nothing. A drop from another
+    // collection sends nothing either and says to copy instead. A set's moves are tracked as one
+    // batch with a single summary.
+    fn drop_on(
+        &mut self,
+        target: &Node,
+        dragged: &DraggedRow,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let hover = self.hover.take();
+        cx.notify();
+        if dragged.root != target.root {
+            window.push_notification(ui::info_toast(CROSS_COLLECTION_DROP), cx);
+            return;
+        }
+        let Some((id, zone)) = hover else {
             return;
         };
-        cx.notify();
-        if id != target.id || dragged.root != target.root {
+        if id != target.id {
             return;
         }
         if !dragged.also.is_empty() {
@@ -3930,8 +3945,10 @@ fn drag_and_drop(
     })
     .on_drop({
         let node = n.clone();
-        move |d: &DraggedRow, _, cx| {
-            dropped.update(cx, |s, cx| s.drop_on(&node, d, cx)).ok();
+        move |d: &DraggedRow, window, cx| {
+            dropped
+                .update(cx, |s, cx| s.drop_on(&node, d, window, cx))
+                .ok();
         }
     })
 }
