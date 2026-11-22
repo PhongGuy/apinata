@@ -1,0 +1,16 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+<?php
+
+$curl = curl_init();
+curl_setopt_array($curl, [
+    CURLOPT_URL => "http://x.test/n",
+    CURLOPT_CUSTOMREQUEST => "GET",
+    CURLOPT_RETURNTRANSFER => true,
+]);
+
+$response = curl_exec($curl);
+echo curl_getinfo($curl, CURLINFO_RESPONSE_CODE), "\n";
+echo $response, "\n";

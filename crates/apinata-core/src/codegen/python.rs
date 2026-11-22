@@ -101,6 +101,9 @@ pub(super) fn requests(req: &ResolvedRequest) -> String {
             args.push("data=data".to_string());
         }
     }
+    if !req.follow_redirects() {
+        args.push("allow_redirects=False".to_string());
+    }
     if let Some((user, password)) = digest {
         args.push(format!(
             "auth=HTTPDigestAuth({}, {})",

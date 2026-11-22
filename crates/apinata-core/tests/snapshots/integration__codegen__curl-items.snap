@@ -6,4 +6,5 @@ curl --request 'POST' \
   --url 'http://x.test/i' \
   --header 'X-E: =v' \
   --form 'a="@x"' \
-  --form 'x=1;headers="Content-Disposition: form-data; name=\"k=v\""'
+  --form 'x=1;headers="Content-Disposition: form-data; name=\"k=v\""' \
+  --location

@@ -13,7 +13,9 @@ public class Main {
         HttpRequest request = HttpRequest.newBuilder(URI.create("http://x.test/digest"))
             .method("GET", HttpRequest.BodyPublishers.noBody())
             .build();
-        HttpResponse<String> response = HttpClient.newHttpClient()
+        HttpResponse<String> response = HttpClient.newBuilder()
+            .followRedirects(HttpClient.Redirect.ALWAYS)
+            .build()
             .send(request, HttpResponse.BodyHandlers.ofString());
         System.out.println(response.statusCode());
         System.out.println(response.body());

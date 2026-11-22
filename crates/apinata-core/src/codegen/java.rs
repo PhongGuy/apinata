@@ -97,8 +97,9 @@ fn publisher(req: &ResolvedRequest) -> (String, bool) {
     }
 }
 
-/// A `Main` class sending the request with `HttpClient.newHttpClient()`. Headers the client
-/// sets itself or cannot send unchanged are left out and named in a leading comment.
+/// A `Main` class sending the request with `HttpClient.newHttpClient()`, or a client following
+/// every redirect when the request does. Headers the client sets itself or cannot send unchanged
+/// are left out and named in a leading comment.
 pub(super) fn http_client(req: &ResolvedRequest) -> String {
     let mut notes = Vec::new();
     if let Some(note) = omitted_auth(req, false) {
@@ -158,9 +159,15 @@ pub(super) fn http_client(req: &ResolvedRequest) -> String {
     if reads_file {
         out.push_str("import java.nio.file.Path;\n");
     }
+    // `ALWAYS` also follows https to http, as the app's own send does; `NORMAL` would stop there.
+    let client = if req.follow_redirects() {
+        "HttpClient.newBuilder()\n            .followRedirects(HttpClient.Redirect.ALWAYS)\n            .build()"
+    } else {
+        "HttpClient.newHttpClient()"
+    };
     out.push_str(&format!(
         "\npublic class Main {{\n    public static void main(String[] args) throws Exception {{\n{build}\
-         \x20       HttpResponse<String> response = HttpClient.newHttpClient()\n\
+         \x20       HttpResponse<String> response = {client}\n\
          \x20           .send(request, HttpResponse.BodyHandlers.ofString());\n\
          \x20       System.out.println(response.statusCode());\n\
          \x20       System.out.println(response.body());\n    }}\n}}\n"

@@ -155,8 +155,14 @@ fn prelude(req: &ResolvedRequest, import: Option<&str>, body_name: &str) -> (Str
 pub(super) fn fetch(req: &ResolvedRequest) -> String {
     let (mut out, has_body) = prelude(req, None, "body");
     let body = if has_body { ", body" } else { "" };
+    // Node's `manual` hands back the 3xx response itself, unlike a browser's opaque one.
+    let redirect = if req.follow_redirects() {
+        ""
+    } else {
+        ", redirect: 'manual'"
+    };
     out.push_str(&format!(
-        "\nconst response = await fetch(url, {{ method: {}, headers{body} }});\n\
+        "\nconst response = await fetch(url, {{ method: {}, headers{body}{redirect} }});\n\
          console.log(response.status);\nconsole.log(await response.text());\n",
         literal(req.method())
     ));
@@ -174,6 +180,9 @@ pub(super) fn axios(req: &ResolvedRequest) -> String {
     ));
     if has_body {
         out.push_str("  data,\n");
+    }
+    if !req.follow_redirects() {
+        out.push_str("  maxRedirects: 0,\n");
     }
     out.push_str(
         "  transformRequest: (d) => d,\n  transformResponse: (r) => r,\n  validateStatus: () => true,\n});\n\

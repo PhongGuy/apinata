@@ -44,6 +44,8 @@ const TYPED: &str = "  body:\n    type: multipart-form\n    data:\n      - name:
 // A typed text part, a file part, and a name holding a double quote.
 const MIXED: &str = "  body:\n    type: multipart-form\n    data:\n      - name: j\n        type: text\n        value: '{\"a\": 1}'\n        contentType: application/json\n      - name: 'q\"x'\n        type: text\n        value: plain\n      - name: up\n        type: file\n        value: [/data/up.bin]\n        contentType: text/plain\n";
 
+const NO_REDIRECTS: &str = "settings:\n  followRedirects: false\n";
+
 fn typed() -> ResolvedRequest {
     resolved_one("POST", "http://x.test/t", TYPED, "")
 }
@@ -80,6 +82,10 @@ fn matrix() -> Vec<(&'static str, ResolvedRequest)> {
             resolved_one("POST", "http://x.test/p?x=a'b$c{d}&y=ü", HOSTILE, ""),
         ),
         ("items", resolved_one("POST", "http://x.test/i", ITEMS, "")),
+        (
+            "no-redirects",
+            resolved_one("GET", "http://x.test/n", "", NO_REDIRECTS),
+        ),
     ]
 }
 
@@ -111,10 +117,61 @@ fn an_unknown_id_lists_the_valid_ones_without_echoing_the_input() {
 }
 
 #[test]
-fn curl_without_send_auth_is_to_curl() {
+fn curl_without_send_auth_is_to_curl_plus_location_when_following() {
     for (case, req) in matrix() {
         if case != "digest" && case != "aws" {
-            assert_eq!(generate(&req, Target::Curl), to_curl(&req), "{case}");
+            let expected = if req.follow_redirects() {
+                format!("{} \\\n  --location", to_curl(&req))
+            } else {
+                to_curl(&req)
+            };
+            assert_eq!(generate(&req, Target::Curl), expected, "{case}");
+        }
+    }
+}
+
+/// Each target's redirect flag, and whether the target writes it when following (its library
+/// does not follow by default) or when not following (its library does).
+const REDIRECT_FLAGS: &[(Target, &str, bool)] = &[
+    (Target::Curl, "--location", true),
+    (Target::Httpie, "--follow", true),
+    (Target::PythonRequests, "allow_redirects=False", false),
+    (Target::JsFetch, "redirect: 'manual'", false),
+    (Target::NodeAxios, "maxRedirects: 0", false),
+    (Target::GoNative, "http.ErrUseLastResponse", false),
+    (Target::PowerShellRestMethod, "-MaximumRedirection 0", false),
+    (Target::PhpCurl, "CURLOPT_FOLLOWLOCATION => true", true),
+    (
+        Target::RustReqwest,
+        "reqwest::redirect::Policy::none()",
+        false,
+    ),
+    (
+        Target::JavaHttpClient,
+        ".followRedirects(HttpClient.Redirect.ALWAYS)",
+        true,
+    ),
+    (Target::CSharpHttpClient, "AllowAutoRedirect = false", false),
+];
+
+#[test]
+fn every_target_writes_its_redirect_flag_only_against_its_default() {
+    let following = resolved_one("GET", "http://x.test/r", "", "");
+    let not_following = resolved_one("GET", "http://x.test/r", "", NO_REDIRECTS);
+    assert!(following.follow_redirects() && !not_following.follow_redirects());
+    for t in Target::ALL {
+        let (_, flag, when_following) = REDIRECT_FLAGS
+            .iter()
+            .find(|(target, _, _)| target == t)
+            .unwrap_or_else(|| panic!("{} has no redirect flag listed", t.id()));
+        for (req, follows) in [(&following, true), (&not_following, false)] {
+            let out = generate(req, *t);
+            assert_eq!(
+                out.contains(flag),
+                follows == *when_following,
+                "{} following={follows}: {out}",
+                t.id()
+            );
         }
     }
 }

@@ -105,8 +105,9 @@ fn multipart_body(parts: &[Part]) -> (String, Needs) {
     (out, needs)
 }
 
-/// A program sending the request with `http.DefaultClient`. Headers go in with `Header.Add`,
-/// which canonicalises name casing.
+/// A program sending the request with `http.DefaultClient`, or a client that stops at the first
+/// response when not following redirects. Headers go in with `Header.Add`, which canonicalises
+/// name casing.
 pub(super) fn net_http(req: &ResolvedRequest) -> String {
     let mut imports = vec!["fmt", "io", "net/http"];
     let mut main = format!("\turl := {}\n", literal(req.url()));
@@ -162,8 +163,17 @@ pub(super) fn net_http(req: &ResolvedRequest) -> String {
     if multipart {
         main.push_str("\treq.Header.Set(\"Content-Type\", form.FormDataContentType())\n");
     }
+    let client = if req.follow_redirects() {
+        main.push('\n');
+        "http.DefaultClient"
+    } else {
+        main.push_str(
+            "\n\tclient := &http.Client{\n\t\tCheckRedirect: func(*http.Request, []*http.Request) error {\n\t\t\treturn http.ErrUseLastResponse\n\t\t},\n\t}\n",
+        );
+        "client"
+    };
     main.push_str(&format!(
-        "\n\tres, err := http.DefaultClient.Do(req)\n{CHECK}\tdefer res.Body.Close()\n\
+        "\tres, err := {client}.Do(req)\n{CHECK}\tdefer res.Body.Close()\n\
          \tout, err := io.ReadAll(res.Body)\n{CHECK}\tfmt.Println(res.Status)\n\tfmt.Println(string(out))\n"
     ));
 

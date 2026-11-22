@@ -19,7 +19,7 @@ fn curl_is_printed_with_variables_resolved() {
         .arg(dir.path().join("r.yml"))
         .assert()
         .code(0)
-        .stdout("curl --request 'GET' \\\n  --url 'http://x.test/a'\n");
+        .stdout("curl --request 'GET' \\\n  --url 'http://x.test/a' \\\n  --location\n");
 }
 
 #[test]

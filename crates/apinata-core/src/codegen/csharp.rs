@@ -178,17 +178,23 @@ pub(super) fn http_client(req: &ResolvedRequest) -> String {
             literal(password)
         )
     });
-    let mut code = match (credentials, utf8_headers) {
-        (None, false) => "var client = new HttpClient();\n".to_string(),
-        (Some(c), false) => {
-            format!("var client = new HttpClient(new HttpClientHandler {{ {c} }});\n")
-        }
-        (c, true) => {
-            let c = c.map_or(String::new(), |c| format!("{c}, "));
-            format!(
-                "var client = new HttpClient(new SocketsHttpHandler {{ {c}RequestHeaderEncodingSelector = (_, _) => Encoding.UTF8 }});\n"
-            )
-        }
+    let mut handler: Vec<String> = credentials.into_iter().collect();
+    if !req.follow_redirects() {
+        handler.push("AllowAutoRedirect = false".to_owned());
+    }
+    let mut code = if utf8_headers {
+        handler.push("RequestHeaderEncodingSelector = (_, _) => Encoding.UTF8".to_owned());
+        format!(
+            "var client = new HttpClient(new SocketsHttpHandler {{ {} }});\n",
+            handler.join(", ")
+        )
+    } else if handler.is_empty() {
+        "var client = new HttpClient();\n".to_string()
+    } else {
+        format!(
+            "var client = new HttpClient(new HttpClientHandler {{ {} }});\n",
+            handler.join(", ")
+        )
     };
     code.push_str(&format!(
         "var request = new HttpRequestMessage(new HttpMethod({}), {});\n",

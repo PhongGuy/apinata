@@ -1,6 +1,7 @@
 //! Writes a resolved request as a snippet for another tool or language. Generation is pure:
 //! no I/O, and every value is a literal in the target's syntax that evaluates to the resolved
-//! value. Transport settings are not written.
+//! value. Of the transport settings only Follow redirects is written, and only where it differs
+//! from what the target's library does by default.
 
 mod csharp;
 mod go;

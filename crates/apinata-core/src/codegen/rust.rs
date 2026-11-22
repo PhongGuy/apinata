@@ -117,7 +117,17 @@ pub(super) fn reqwest(req: &ResolvedRequest) -> String {
     }
 
     let indent = "        ";
-    out.push_str("    let response = reqwest::blocking::Client::new()\n");
+    if req.follow_redirects() {
+        out.push_str("    let response = reqwest::blocking::Client::new()\n");
+    } else {
+        out.push_str("    let response = reqwest::blocking::Client::builder()\n");
+        out.push_str(&call(
+            indent,
+            "redirect",
+            &["reqwest::redirect::Policy::none()".to_owned()],
+        ));
+        out.push_str(&format!("{indent}.build()?\n"));
+    }
     out.push_str(&call(
         indent,
         "request",

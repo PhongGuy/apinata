@@ -3,4 +3,4 @@ source: crates/apinata-core/tests/codegen.rs
 expression: "generate(&req, target)"
 ---
 # AWS Signature auth is not included in this snippet.
-http --ignore-stdin 'GET' 'http://x.test/aws'
+http --ignore-stdin --follow 'GET' 'http://x.test/aws'
