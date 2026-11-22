@@ -1378,6 +1378,8 @@ impl RequestEditor {
             }
             notes.extend(parsed.request.notes_on(view.kind));
         }
+        // A header that only restates the body mode would outlive a later change of mode.
+        parsed.request.drop_restated_content_type();
         let secrets = parsed.request.secrets.clone();
         let mut stored = ImportedRequest::new("GET", "");
         stored.secrets = secrets.clone();
@@ -1996,6 +1998,13 @@ const LOADED_ALONE: [Field; 13] = [
     Field::Docs,
     Field::ScriptTests,
 ];
+
+// The two ways the Content-Type notice settles a header the body mode cannot go out under.
+#[derive(Clone, Copy)]
+enum ContentTypeFix {
+    Use(&'static str),
+    Remove,
+}
 
 // Up to three names in order, the rest counted: "z", "z and a", "z, a, b and 2 more".
 fn name_list(names: &[String]) -> String {
@@ -3538,6 +3547,75 @@ impl RequestEditor {
         )
     }
 
+    // A hand-set Content-Type wins over the body's own type when sending, so one the body
+    // mode cannot go out under is named over Headers and Body, with a fix for either way.
+    fn content_type_notice(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let view = self.view(cx)?;
+        let conflict = apinata_core::content_type_conflict(&view.headers, &view.body)?;
+        let text = format!(
+            "The Content-Type header here ({}) is sent instead of the body's {}.",
+            conflict.value, conflict.body_type
+        );
+        let body_type = conflict.body_type;
+        let fix = |id: &'static str, label: String, fix: ContentTypeFix, cx: &mut Context<Self>| {
+            Button::new(id)
+                .solid_ring(cx)
+                .ghost()
+                .xsmall()
+                .label(label)
+                .on_click(cx.listener(move |this, _, _, cx| this.fix_content_type(fix, cx)))
+        };
+        let row = h_flex()
+            .id("content-type-conflict")
+            .aria_label(text.clone())
+            .test_support()
+            .gap_2()
+            .w_full()
+            .min_w_0()
+            .mb(style::SPACE_2)
+            .text_size(style::TEXT_SMALL)
+            .text_color(cx.theme().muted_foreground)
+            .child(div().flex_1().min_w_0().child(text))
+            .child(fix(
+                "content-type-use-body",
+                format!("Use {body_type}"),
+                ContentTypeFix::Use(body_type),
+                cx,
+            ))
+            .child(fix(
+                "content-type-remove",
+                "Remove header".to_owned(),
+                ContentTypeFix::Remove,
+                cx,
+            ));
+        Some(row.into_any_element())
+    }
+
+    // Rewrites or drops every enabled Content-Type row as one undoable headers edit; it waits
+    // while a headers edit is in flight, since the view it starts from would be stale.
+    fn fix_content_type(&mut self, fix: ContentTypeFix, cx: &mut Context<Self>) {
+        if self.busy(Field::Headers, cx) {
+            return;
+        }
+        let Some(view) = self.view(cx) else {
+            return;
+        };
+        let sent = |h: &KeyValue| h.enabled && h.name.eq_ignore_ascii_case("content-type");
+        let mut headers = view.headers.clone();
+        match fix {
+            ContentTypeFix::Use(body_type) => headers
+                .iter_mut()
+                .filter(|h| sent(h))
+                .for_each(|h| h.value = body_type.to_owned()),
+            ContentTypeFix::Remove => headers.retain(|h| !sent(h)),
+        }
+        self.default_headers
+            .update(cx, |d, cx| d.set_own(&headers, cx));
+        self.inherited_headers
+            .update(cx, |d, cx| d.set_own(&headers, cx));
+        self.send_edit(Edit::Headers(headers), Some(Section::Headers), cx);
+    }
+
     // A file whose URL query and params block disagree gets one muted line over the table,
     // with a button to settle it for either side; the URL is what a send uses meanwhile.
     fn params_notice(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -3822,6 +3900,7 @@ impl RequestEditor {
                     .test_support()
                     .w_full()
                     .children(self.headers_notice(cx))
+                    .children(self.content_type_notice(cx))
                     .child(self.headers.clone())
                     .child(self.inherited_headers.clone())
                     .child(div().mt(style::SPACE_3).child(self.default_headers.clone()))
@@ -3840,11 +3919,15 @@ impl RequestEditor {
             self.section,
             Section::Body | Section::Script | Section::Tests | Section::Docs
         );
+        let notice = (self.section == Section::Body)
+            .then(|| self.content_type_notice(cx))
+            .flatten();
         let body = div()
             .id(id)
             .test_support()
             .w_full()
             .when(fills, |d| d.flex().flex_col().flex_1())
+            .children(notice)
             .child(view);
         if self.section != Section::Vars {
             return body.into_any_element();
