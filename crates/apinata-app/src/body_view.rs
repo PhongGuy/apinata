@@ -16,8 +16,8 @@ use apinata_core::{
     Assertion, FilterError, JsonFilter, ParsedJson, ParsedXml, RequestResult, XmlFilter,
 };
 use gpui_kit::assets::IconName;
-use gpui_kit::base::input::{DiagnosticColors, InputEditorStyle};
-use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants as _};
+use gpui_kit::base::input::InputEditorStyle;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Editor, EditorState, Escape, Input, InputEvent, InputState};
 use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenu, PopupMenuItem};
 use gpui_kit::component::notification::Notification;
@@ -57,7 +57,6 @@ use crate::body_text::{
 use crate::download_model::{DownloadModel, DownloadPolicy, DownloadState, download_policy};
 use crate::keymap::{ResetZoom, ZoomIn, ZoomOut};
 use crate::menu_focus;
-use crate::theme::{SelectedStyle, selected_look};
 use crate::ui::{ChooseButton as _, LockButton as _};
 use crate::zoom::{self, ZoomStep, ZoomTarget::Response};
 use crate::{confirm, open_external, style, ui};
@@ -3922,48 +3921,11 @@ fn image_format(kind: ImageKind) -> ImageFormat {
     }
 }
 
-// A copy of the style gpui-component 0.9.0's `Input` projects onto an editor (input.rs, its
-// render), with the find selection in place of the theme's; re-check it when gpui-kit moves.
+// The kit's editor style with the find selection in place of the theme's.
 fn editor_style(cx: &App) -> InputEditorStyle {
-    let theme = cx.theme();
-    // The fold icon is drawn by the kit without an `App`, so its folded look is read here.
-    let fold = selected_look(theme, SelectedStyle::Ghost);
-    let style = &theme.highlight_theme.style;
     InputEditorStyle {
-        foreground: theme.foreground,
-        muted_foreground: theme.muted_foreground,
-        background: style
-            .editor_background
-            .unwrap_or_else(|| theme.input_background()),
-        border: theme.border,
         selection: find_selection(cx),
-        caret: theme.caret,
-        diagnostics: DiagnosticColors {
-            error: style.status.error(cx),
-            warning: style.status.warning(cx),
-            info: style.status.info(cx),
-            hint: style.status.hint(cx),
-        },
-        highlight_styles: Arc::<gpui_kit::component::highlighter::HighlightTheme>::clone(
-            &theme.highlight_theme,
-        ),
-        editor_invisible: style.editor_invisible,
-        editor_active_line: style.editor_active_line,
-        editor_gutter_background: style.editor_gutter_background,
-        fold_icon_renderer: Some(Rc::new(move |ix, is_folded| {
-            Button::new(("fold-icon", ix))
-                .ghost()
-                .icon(if is_folded {
-                    IconName::ChevronRight
-                } else {
-                    IconName::ChevronDown
-                })
-                .xsmall()
-                .rounded(ButtonRounded::Small)
-                .size(style::FOLD_ICON)
-                .chosen(is_folded, fold)
-                .into_any_element()
-        })),
+        ..ui::kit_editor_style(cx)
     }
 }
 
