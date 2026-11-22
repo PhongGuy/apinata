@@ -232,3 +232,83 @@ async fn a_run_without_env_uses_the_environment_the_import_chose() {
         .assert()
         .code(0);
 }
+
+/// Text-format stdout and stderr of `apinata <args>` in `work`, with the platform store and no
+/// session bus, so the keychain cannot answer.
+#[cfg(target_os = "linux")]
+fn with_unreachable_keychain(work: &Path, args: &[&str]) -> String {
+    let out = apinata()
+        .env_remove("APINATA_TEST_NO_KEYCHAIN")
+        .env("XDG_RUNTIME_DIR", work.join("xdg"))
+        .current_dir(work)
+        .args(args)
+        .output()
+        .unwrap();
+    let all = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(out.status.code(), Some(0), "{all}");
+    all
+}
+
+/// The keychain lines carry no platform text, no claim of a kept value, and there is one.
+#[cfg(target_os = "linux")]
+fn assert_one_plain_keychain_note(all: &str, names: &[&str]) {
+    for raw in [
+        "zbus",
+        "os error",
+        "secret store unavailable",
+        "kept in the secret store",
+    ] {
+        assert!(!all.contains(raw), "{raw}:\n{all}");
+    }
+    let lines: Vec<&str> = all.lines().filter(|l| l.contains("keychain")).collect();
+    assert_eq!(lines.len(), 1, "{all}");
+    assert!(lines[0].contains("did not answer"), "{all}");
+    for name in names {
+        assert!(lines[0].contains(&format!("`{name}`")), "{name}:\n{all}");
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn with_no_keychain_answering_each_import_says_so_once_in_plain_words() {
+    let work = tempfile::tempdir().unwrap();
+    let w = work.path();
+    fs::create_dir_all(w.join("xdg")).unwrap();
+    fs::write(w.join("shop.json"), POSTMAN).unwrap();
+    let all = with_unreachable_keychain(w, &["import", "collection", "shop.json", "--into", "new"]);
+    assert_one_plain_keychain_note(&all, &["create_user_password"]);
+    assert!(!all_text(&w.join("new")).contains("cli-pw-s3cret"));
+
+    let root = w.join("new/Shop");
+    fs::write(w.join("c.txt"), "curl -u a:req-pw-s3cret https://x.test/z").unwrap();
+    let all = with_unreachable_keychain(
+        w,
+        &[
+            "import",
+            "request",
+            "c.txt",
+            "--collection",
+            root.to_str().unwrap(),
+        ],
+    );
+    assert_one_plain_keychain_note(&all, &["x_test_password"]);
+
+    let env = r#"{"name":"E","values":[{"key":"k","value":"env-s3cret","type":"secret","enabled":true}]}"#;
+    fs::write(w.join("e.json"), env).unwrap();
+    let all = with_unreachable_keychain(
+        w,
+        &[
+            "import",
+            "environment",
+            "e.json",
+            "--collection",
+            root.to_str().unwrap(),
+        ],
+    );
+    assert_one_plain_keychain_note(&all, &["k"]);
+    assert!(!all_text(&root).contains("req-pw-s3cret") && !all_text(&root).contains("env-s3cret"));
+}

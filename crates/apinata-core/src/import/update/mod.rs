@@ -429,6 +429,7 @@ pub fn apply_update(
         &mut summary.notes,
         &mut Vec::new(),
     );
+    crate::import::unstored::fold(&mut summary.notes);
     Ok(summary)
 }
 

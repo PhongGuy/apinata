@@ -193,6 +193,7 @@ pub fn place_items(
         &mut report.notes,
         &mut report.secrets_to_enter,
     );
+    super::unstored::fold(&mut report.notes);
     // Judged against the target, whose variables and environments the placed requests now use;
     // the target's own requests are not this import's concern.
     let placed: Vec<String> = report

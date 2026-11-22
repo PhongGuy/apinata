@@ -932,12 +932,7 @@ fn import_environments(args: &EnvironmentArgs) -> anyhow::Result<Imported> {
     let mut report = ImportReport::default();
     for (i, env) in envs.iter().enumerate() {
         match add_environment(&mut collection, env, secrets.as_ref()) {
-            Ok((_, one)) => {
-                report.notes.extend(one.notes);
-                report.items.extend(one.items);
-                report.environments.extend(one.environments);
-                report.secrets_to_enter.extend(one.secrets_to_enter);
-            }
+            Ok((_, one)) => report.merge(one),
             Err(error) if report.environments.is_empty() => return Err(error.into()),
             Err(error) => {
                 return Err(Partial {

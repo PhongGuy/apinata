@@ -3931,10 +3931,7 @@ pub(crate) fn write_bundles(
         match write_collection(parent, &bundle.collection, &bundle.environments, store) {
             Ok((collection, report)) => {
                 roots.push(collection.root().to_path_buf());
-                merged.notes.extend(report.notes);
-                merged.items.extend(report.items);
-                merged.environments.extend(report.environments);
-                merged.secrets_to_enter.extend(report.secrets_to_enter);
+                merged.merge(report);
             }
             Err(e) => {
                 let rest: Vec<_> = bundles[i + 1..]

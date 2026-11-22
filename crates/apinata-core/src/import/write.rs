@@ -71,6 +71,7 @@ pub(crate) fn write_collection_with(
         before_rename,
     )?;
     push_unset_note(&collection, &|_| true, &mut report.notes);
+    super::unstored::fold(&mut report.notes);
     Ok((collection, report))
 }
 

@@ -37,6 +37,7 @@ pub fn add_environment(
         ..ImportReport::default()
     };
     store_secrets(collection, &written, secrets, &mut report);
+    super::unstored::fold(&mut report.notes);
     Ok((written.name, report))
 }
 
@@ -112,17 +113,15 @@ pub(crate) fn store_secrets(
     report: &mut ImportReport,
 ) {
     for (source, variable, value) in &written.secrets {
-        let detail = if value.is_empty() {
-            format!("the secret `{variable}` has no value; enter it before sending")
+        let mut note = if value.is_empty() {
+            let detail = format!("the secret `{variable}` has no value; enter it before sending");
+            ImportNote::new(source.clone(), NoteKind::NeedsInput, detail)
         } else {
             match secrets.set(&collection.secret_key(&written.name, variable), value) {
                 Ok(()) => continue,
-                Err(error) => format!(
-                    "the secret `{variable}` could not be stored ({error}); enter it before sending"
-                ),
+                Err(error) => super::unstored::note(source.clone(), variable, &error),
             }
         };
-        let mut note = ImportNote::new(source.clone(), NoteKind::NeedsInput, detail);
         note.file = Some(written.file.clone());
         report.notes.push(note);
         report

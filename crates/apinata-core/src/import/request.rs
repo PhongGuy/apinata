@@ -9,7 +9,7 @@ use crate::error::{EditError, TreeError};
 use crate::item_path::ItemPath;
 use crate::js;
 use crate::request::{RequestFile, RequestKind};
-use crate::secrets::SecretStore;
+use crate::secrets::{SecretError, SecretStore};
 use serde_json::Value;
 use std::collections::HashSet;
 
@@ -93,8 +93,9 @@ pub fn claim_secret_names(
 /// Keep each secret of `request` as a secret variable of one environment, with its value in
 /// `store`. The environment is `prefer`; a named one that does not exist stores nothing. With no
 /// `prefer` it is the only environment. With none to choose, when the variable name is taken by
-/// a plain variable, when a different value is already stored for it (never replaced), or when
-/// the store refuses, the secret's `NeedsInput` note stays in `notes` and says why. On success
+/// a plain variable, or when a different value is already stored for it (never replaced), the
+/// secret's `NeedsInput` note stays in `notes` and says why; secrets the store failed to keep
+/// share one `NeedsInput` note, without the store's error text. On success
 /// that note becomes a `Converted` one naming the environment, which becomes the collection's
 /// default environment when it has none.
 pub fn store_request_secrets(
@@ -118,21 +119,48 @@ pub fn store_request_secrets(
                 );
             }
             (Ok(_), None) => {}
+            (Err(NotKept::Store(e)), Some(at)) => {
+                super::unstored::mark(&mut notes[at], &secret.name, &e);
+            }
+            (Err(NotKept::Store(e)), None) => {
+                notes.push(super::unstored::note(
+                    secret.source.clone(),
+                    &secret.name,
+                    &e,
+                ));
+            }
             // A note written before claiming renamed the secret is rewritten to name it.
-            (Err(why), Some(at)) if !notes[at].detail.contains(&format!("`{}`", secret.name)) => {
+            (Err(NotKept::Because(why)), Some(at))
+                if !notes[at].detail.contains(&format!("`{}`", secret.name)) =>
+            {
                 notes[at].detail = format!(
                     "the value is not written to the file; it needs the secret variable `{}` \
                      ({why})",
                     secret.name
                 );
             }
-            (Err(why), Some(at)) => notes[at].detail.push_str(&format!(" ({why})")),
-            (Err(why), None) => notes.push(ImportNote::new(
+            (Err(NotKept::Because(why)), Some(at)) => {
+                notes[at].detail.push_str(&format!(" ({why})"))
+            }
+            (Err(NotKept::Because(why)), None) => notes.push(ImportNote::new(
                 secret.source.clone(),
                 NoteKind::NeedsInput,
                 format!("the secret `{}` was not stored ({why})", secret.name),
             )),
         }
+    }
+    super::unstored::fold(notes);
+}
+
+/// Why an imported secret went nowhere: plain words, or the store's own failure.
+enum NotKept {
+    Because(String),
+    Store(SecretError),
+}
+
+impl From<String> for NotKept {
+    fn from(why: String) -> NotKept {
+        NotKept::Because(why)
     }
 }
 
@@ -143,16 +171,16 @@ fn keep_secret(
     value: &str,
     prefer: Option<&str>,
     store: &dyn SecretStore,
-) -> Result<String, String> {
+) -> Result<String, NotKept> {
     let env = target_environment(collection, prefer)?;
     let environment = collection
         .environment_mut(&env)
-        .ok_or_else(|| "the environment is gone".to_owned())?;
+        .ok_or_else(|| NotKept::Because("the environment is gone".to_owned()))?;
     let before = environment.variables();
     let mut variables = before.clone();
     match variables.iter().find(|v| v.name == name) {
         Some(existing) if !existing.secret => {
-            return Err(format!("`{name}` is a plain variable of `{env}`"));
+            return Err(format!("`{name}` is a plain variable of `{env}`").into());
         }
         Some(_) => {}
         None => {
@@ -161,7 +189,7 @@ fn keep_secret(
             // A failed save leaves memory as it was, so it never disagrees with the disk.
             if let Err(e) = environment.save() {
                 environment.set_variables(before);
-                return Err(e.to_string());
+                return Err(e.to_string().into());
             }
         }
     }
@@ -169,10 +197,10 @@ fn keep_secret(
     // refusing store leaves the variable declared without a value; the note tells the user to
     // enter it.
     let key = collection.secret_key(&env, name);
-    match store.get(&key).map_err(|e| e.to_string())? {
+    match store.get(&key).map_err(NotKept::Store)? {
         Some(stored) if stored == value => {}
-        Some(_) => return Err(format!("`{name}` already holds a different value")),
-        None => store.set(&key, value).map_err(|e| e.to_string())?,
+        Some(_) => return Err(format!("`{name}` already holds a different value").into()),
+        None => store.set(&key, value).map_err(NotKept::Store)?,
     }
     super::protect::default_to(collection, &env);
     Ok(env)

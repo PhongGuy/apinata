@@ -277,7 +277,7 @@ impl EnvSelector {
                     return;
                 };
                 match replies.recv().await {
-                    Ok(Ok(report)) => merge(&mut merged, report),
+                    Ok(Ok(report)) => merged.merge(report),
                     Ok(Err(message)) => {
                         error = Some(message);
                         break;
@@ -474,13 +474,6 @@ fn parse_all(files: &[PathBuf]) -> Result<Vec<ImportedEnvironment>, String> {
         );
     }
     Ok(envs)
-}
-
-fn merge(into: &mut ImportReport, report: ImportReport) {
-    into.notes.extend(report.notes);
-    into.items.extend(report.items);
-    into.environments.extend(report.environments);
-    into.secrets_to_enter.extend(report.secrets_to_enter);
 }
 
 fn failed(message: String, window: &mut Window, cx: &mut App) {

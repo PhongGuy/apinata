@@ -20,6 +20,7 @@ mod read;
 pub(crate) use postman::pm_chain_at;
 mod request;
 mod source;
+mod unstored;
 mod update;
 mod write;
 pub(crate) mod yaml_prepass;
@@ -85,6 +86,10 @@ pub struct ImportNote {
     pub file: Option<String>,
     /// The variables this note already asks a value for, so no later note repeats them.
     pub(crate) asks_for: Vec<String>,
+    /// The secrets this note says a failing store left without a value; folded into one note.
+    pub(crate) unstored: Option<unstored::Unstored>,
+    /// The secrets this note says were stored, so a later store failure can take them back.
+    pub(crate) claims_stored: Vec<String>,
 }
 
 impl ImportNote {
@@ -100,6 +105,8 @@ impl ImportNote {
             detail: detail.into(),
             file: None,
             asks_for: Vec::new(),
+            unstored: None,
+            claims_stored: Vec::new(),
         }
     }
 }
@@ -117,6 +124,18 @@ pub struct ImportReport {
     pub environments: Vec<String>,
     /// Secret variables left without a value, as `(environment, variable)`.
     pub secrets_to_enter: Vec<(String, String)>,
+}
+
+impl ImportReport {
+    /// Append `other`'s notes, items, environments and secrets to enter to this report, keeping
+    /// one note for every secret a failing store left without a value.
+    pub fn merge(&mut self, other: ImportReport) {
+        self.notes.extend(other.notes);
+        unstored::fold(&mut self.notes);
+        self.items.extend(other.items);
+        self.environments.extend(other.environments);
+        self.secrets_to_enter.extend(other.secrets_to_enter);
+    }
 }
 
 /// Scripts carried by a request, folder or collection root; blank code means none.
