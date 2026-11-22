@@ -306,6 +306,8 @@ pub struct BodyView {
     row_current: Option<usize>,
     find_generation: u64,
     find_task: Option<Task<()>>,
+    // Whether `find_task` is still scanning, so the label says so instead of "No matches".
+    find_scanning: bool,
     // Raised when a newer scan replaces the running one, which then stops at its next line.
     find_cancel: Arc<AtomicBool>,
     // The query the last run searched for.
@@ -546,6 +548,7 @@ impl BodyView {
             row_current: None,
             find_generation: 0,
             find_task: None,
+            find_scanning: false,
             find_cancel: Arc::default(),
             find_ran: SharedString::default(),
             filter_input,
@@ -978,14 +981,17 @@ impl BodyView {
         self.run_find(cx);
     }
 
-    /// "" for an empty query, "Invalid pattern", "No matches", else "{current} of {total}"
-    /// counting from 1.
+    /// "" for an empty query, "Invalid pattern", "Searching…" while the query waits for the
+    /// typing to pause or its scan runs, "No matches", else "{current} of {total}" counting from 1.
     pub fn find_label(&self, cx: &App) -> String {
         if self.find_input.read(cx).value().is_empty() {
             return String::new();
         }
         if self.find_invalid {
             return "Invalid pattern".into();
+        }
+        if self.find_settle.is_some() || self.find_scanning {
+            return "Searching…".into();
         }
         let (current, total) = if self.in_rows() {
             (self.row_current, self.row_matches.len())
@@ -1315,6 +1321,7 @@ impl BodyView {
     fn void_find_scan(&mut self) {
         self.find_generation += 1;
         self.find_task = None;
+        self.find_scanning = false;
         self.find_cancel.store(true, Ordering::Relaxed);
         self.find_cancel = Arc::default();
     }
@@ -1368,12 +1375,14 @@ impl BodyView {
         let job = cx.background_spawn(async move {
             guard.finish(finder.find_in_text_until(&text, FIND_HIT_CAP, stop))
         });
+        self.find_scanning = true;
         self.find_task = Some(cx.spawn(async move |this, cx| {
             let Some((hits, more)) = job.await else {
                 return;
             };
             let _ = this.update(cx, |this, cx| {
                 if this.find_generation == generation {
+                    this.find_scanning = false;
                     this.land_editor_hits(hits, more, place, kept, cx);
                 }
             });
@@ -1543,12 +1552,14 @@ impl BodyView {
         let job = cx.background_spawn(async move {
             guard.finish(find_in_chunked_until(&chunked, &finder, stop))
         });
+        self.find_scanning = true;
         self.find_task = Some(cx.spawn(async move |this, cx| {
             let Some(found) = job.await else {
                 return;
             };
             let _ = this.update(cx, |this, cx| {
                 if this.find_generation == generation {
+                    this.find_scanning = false;
                     // After a re-cut the scan resumes at the match nearest the old one and
                     // leaves the view where it is.
                     let anchor = this.find_anchor.take();
