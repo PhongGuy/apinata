@@ -2152,6 +2152,8 @@ impl Workspace {
     ) -> Option<TabId> {
         let root = absolute(root);
         self.request(&root, &item, cx)?;
+        // With preview tabs turned off in Preferences, every open keeps its tab.
+        let preview = preview && crate::settings::preview_tabs(cx);
         Some(self.update_tabs(cx, |t| t.open(&root, TabKind::Request(item), preview)))
     }
 
@@ -2166,6 +2168,7 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> Option<TabId> {
         let root = absolute(root);
+        let preview = preview && crate::settings::preview_tabs(cx);
         let kind = TabKind::Example { item, index };
         if !self.has_tab_target(&root, &kind, cx) {
             return None;
@@ -2499,6 +2502,35 @@ impl Workspace {
             }
         }
         None
+    }
+
+    /// The closed tabs a switcher offers, newest first: each target once, and only while it
+    /// still exists and has no open tab.
+    pub fn closed_tabs(&self, cx: &App) -> Vec<(PathBuf, TabKind)> {
+        let mut shown: Vec<(PathBuf, TabKind)> = Vec::new();
+        for (root, kind) in self.tabs.closed().iter().rev() {
+            let open = (self.tabs.entries().iter()).any(|e| e.root == *root && e.kind == *kind);
+            let seen = (shown.iter()).any(|(r, k)| r == root && k == kind);
+            if !open && !seen && self.has_tab_target(root, kind, cx) {
+                shown.push((root.clone(), kind.clone()));
+            }
+        }
+        shown
+    }
+
+    /// Reopens the closed tab for `kind` of `root` as a permanent tab and drops it from the
+    /// closed stack; `None`, after dropping it, when its target is gone.
+    pub fn reopen_closed(
+        &mut self,
+        root: &Path,
+        kind: TabKind,
+        cx: &mut Context<Self>,
+    ) -> Option<TabId> {
+        let exists = self.has_tab_target(root, &kind, cx);
+        self.update_tabs(cx, |t| {
+            t.take_closed(root, &kind);
+            exists.then(|| t.open(root, kind, false))
+        })
     }
 
     /// Steps back, or with `forward` forward, through the visited tabs; a closed target

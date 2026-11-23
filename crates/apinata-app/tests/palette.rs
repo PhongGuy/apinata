@@ -454,3 +454,112 @@ fn a_pane_command_row_names_its_area(cx: &mut TestAppContext) {
     })
     .unwrap();
 }
+
+use apinata_app::palette::SwitchTab;
+
+fn open_switcher(cx: &mut TestAppContext, s: &Started) {
+    cx.update_window(s.win, |_, w, cx| w.dispatch_action(Box::new(SwitchTab), cx))
+        .unwrap();
+    frame(cx, s.win);
+}
+
+// The labels of one switcher group's shown rows, in display order.
+fn switcher_rows(cx: &mut TestAppContext, s: &Started, group: &'static str) -> Vec<String> {
+    cx.update_window(s.win, |_, w, _| {
+        let switcher = w.within("tab-switcher");
+        (0..16usize)
+            .filter_map(|i| switcher.try_find((group, i)))
+            .filter_map(|e| e.label().map(str::to_owned))
+            .collect()
+    })
+    .unwrap()
+}
+
+fn close_tab(cx: &mut TestAppContext, s: &Started, id: apinata_app::tabs::TabId) {
+    s.ws.update(cx, |w, cx| w.update_tabs(cx, |t| t.close(id)));
+    frame(cx, s.win);
+}
+
+fn five_requests() -> tempfile::TempDir {
+    let files: Vec<(String, String)> = ["a", "b", "c", "d", "e"]
+        .iter()
+        .map(|n| (format!("{n}.yml"), request(n, &format!("http://x/{n}"))))
+        .collect();
+    let mut tree: Vec<(&str, &str)> = vec![("opencollection.yml", ROOT)];
+    tree.extend(files.iter().map(|(f, b)| (f.as_str(), b.as_str())));
+    write_tree(&tree)
+}
+
+// Open tabs come newest visit first, whatever their strip order, then the closed tabs newest
+// first.
+#[gpui_kit::test]
+fn the_tab_switcher_lists_open_tabs_by_visit_then_closed_ones(cx: &mut TestAppContext) {
+    let col = five_requests();
+    let s = started(cx, &col);
+    let d = open_tab(cx, &s.ws, &s.root, "d.yml");
+    let e = open_tab(cx, &s.ws, &s.root, "e.yml");
+    close_tab(cx, &s, d);
+    close_tab(cx, &s, e);
+    let c = open_tab(cx, &s.ws, &s.root, "c.yml");
+    open_tab(cx, &s.ws, &s.root, "a.yml");
+    open_tab(cx, &s.ws, &s.root, "b.yml");
+    s.ws.update(cx, |w, cx| w.update_tabs(cx, |t| t.activate(c)));
+    frame(cx, s.win);
+    open_switcher(cx, &s);
+    assert!(dialog_open(cx, &s));
+    assert_eq!(switcher_rows(cx, &s, "tab-switch-open"), ["c", "b", "a"]);
+    assert_eq!(switcher_rows(cx, &s, "tab-switch-closed"), ["e", "d"]);
+}
+
+#[gpui_kit::test]
+fn the_tab_switcher_filters_by_name(cx: &mut TestAppContext) {
+    let col = five_requests();
+    let s = started(cx, &col);
+    let d = open_tab(cx, &s.ws, &s.root, "d.yml");
+    close_tab(cx, &s, d);
+    open_tab(cx, &s.ws, &s.root, "a.yml");
+    open_tab(cx, &s.ws, &s.root, "b.yml");
+    open_switcher(cx, &s);
+    type_query(cx, &s, "a");
+    assert_eq!(switcher_rows(cx, &s, "tab-switch-open"), ["a"]);
+    assert!(switcher_rows(cx, &s, "tab-switch-closed").is_empty());
+}
+
+#[gpui_kit::test]
+fn enter_in_the_tab_switcher_activates_an_open_tab(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    let a = open_tab(cx, &s.ws, &s.root, "a.yml");
+    open_tab(cx, &s.ws, &s.root, "b.yml");
+    open_switcher(cx, &s);
+    type_query(cx, &s, "a");
+    cx.simulate_keystrokes(s.win, "enter");
+    frame(cx, s.win);
+    assert!(!dialog_open(cx, &s));
+    let active = s.ws.read_with(cx, |w, _| w.tabs().active().map(|e| e.id));
+    assert_eq!(active, Some(a));
+}
+
+#[gpui_kit::test]
+fn the_tab_switcher_reopens_a_closed_tab_and_drops_it_from_the_stack(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_tab(cx, &s.ws, &s.root, "a.yml");
+    let b = open_tab(cx, &s.ws, &s.root, "b.yml");
+    close_tab(cx, &s, b);
+    open_switcher(cx, &s);
+    type_query(cx, &s, "b");
+    cx.simulate_keystrokes(s.win, "enter");
+    frame(cx, s.win);
+    assert!(!dialog_open(cx, &s));
+    let (active, closed) = s.ws.read_with(cx, |w, _| {
+        let active = (w.tabs().active())
+            .and_then(|e| e.item())
+            .map(|p| p.as_str().to_owned());
+        (active, w.tabs().closed().len())
+    });
+    assert_eq!(active.as_deref(), Some("b.yml"));
+    assert_eq!(closed, 0, "the reopened tab left the closed stack");
+    open_switcher(cx, &s);
+    assert!(switcher_rows(cx, &s, "tab-switch-closed").is_empty());
+}

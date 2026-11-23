@@ -438,7 +438,7 @@ fn long_notes_wrap_and_scroll_wholly_into_view(cx: &mut TestAppContext) {
 }
 
 // Every Preferences form row; rows the current settings hide are skipped.
-const FORM_ROWS: [&str; 28] = [
+const FORM_ROWS: [&str; 29] = [
     "pref-theme",
     "pref-orientation",
     "pref-title-bar",
@@ -465,6 +465,7 @@ const FORM_ROWS: [&str; 28] = [
     "pref-remember-responses",
     "pref-clear-responses",
     "pref-autosave",
+    "pref-preview-tabs",
     "pref-auto-check",
     "pref-check-now",
 ];
