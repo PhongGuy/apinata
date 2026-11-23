@@ -63,7 +63,7 @@ impl VariableInfo {
     }
 }
 
-/// One layer's definition of a variable, as listed by [`VariableSet::overview`].
+/// One layer's definition of a variable, as listed by [`VariableSet::layers`].
 #[derive(Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct ScopedVariable {
@@ -170,51 +170,58 @@ impl VariableSet {
         self.ctx.unstored_env_secrets().contains(name)
     }
 
-    /// Every definition of every plain name, per name highest layer first: the effective row
-    /// is exactly what [`Self::get`] (and so a send) resolves, and each lower layer that
-    /// defines the name too follows as a shadowed row. Secrets carry no value in any row.
-    /// Lists the same plain names as [`Self::names`], so internal ones stay out.
+    /// Every definition of every plain name, per name highest layer first, as
+    /// [`Self::layers`] lists them. Lists the same plain names as [`Self::names`], so
+    /// internal ones stay out.
     pub fn overview(&self) -> Vec<ScopedVariable> {
-        let captured = self.ctx.runtime_vars().snapshot();
-        let mut out = Vec::new();
-        for name in self
-            .names()
+        self.names()
             .into_iter()
             .filter(|n| !n.contains('.') && !n.starts_with('$'))
-        {
-            let Some(effective) = self.get(&name) else {
+            .flat_map(|name| self.layers(&name))
+            .collect()
+    }
+
+    /// Every definition of `name`, highest layer first: the effective row is exactly what
+    /// [`Self::get`] (and so a send) resolves, and each lower layer that defines the name
+    /// too follows as a shadowed row. A path or `$` name has its effective row only, and an
+    /// undefined name none. Secrets carry no value in any row.
+    pub fn layers(&self, name: &str) -> Vec<ScopedVariable> {
+        let Some(effective) = self.get(name) else {
+            return Vec::new();
+        };
+        let top = effective.scope();
+        let mut out = vec![ScopedVariable {
+            name: name.to_owned(),
+            scope: top,
+            value: effective.value,
+            secret: effective.secret,
+            shadowed: false,
+        }];
+        if name.contains('.') || name.starts_with('$') {
+            return out;
+        }
+        let captured = self.ctx.runtime_vars().snapshot();
+        // The layer that wins is the first one of the effective scope; a scope above all
+        // layers (iteration data, a token field) means every layer is shadowed.
+        let mut winner_seen = false;
+        for (scope, value) in self.ctx.layers_of(&self.req, name, &captured) {
+            let Some(value) = value else { continue };
+            if scope == top && !winner_seen {
+                winner_seen = true;
                 continue;
-            };
-            let top = effective.scope();
-            out.push(ScopedVariable {
-                name: name.clone(),
-                scope: top,
-                value: effective.value.clone(),
-                secret: effective.secret,
-                shadowed: false,
-            });
-            // The layer that wins is the first one of the effective scope; a scope above all
-            // layers (iteration data, a token field) means every layer is shadowed.
-            let mut winner_seen = false;
-            for (scope, value) in self.ctx.layers_of(&self.req, &name, &captured) {
-                let Some(value) = value else { continue };
-                if scope == top && !winner_seen {
-                    winner_seen = true;
-                    continue;
-                }
-                let secret = match scope {
-                    VarScope::Environment => self.ctx.env_name_sensitive(&name),
-                    VarScope::GlobalEnvironment => self.ctx.global_name_sensitive(&name),
-                    _ => false,
-                };
-                out.push(ScopedVariable {
-                    name: name.clone(),
-                    scope,
-                    value: (!secret).then(|| js::to_text(&value)),
-                    secret,
-                    shadowed: true,
-                });
             }
+            let secret = match scope {
+                VarScope::Environment => self.ctx.env_name_sensitive(name),
+                VarScope::GlobalEnvironment => self.ctx.global_name_sensitive(name),
+                _ => false,
+            };
+            out.push(ScopedVariable {
+                name: name.to_owned(),
+                scope,
+                value: (!secret).then(|| js::to_text(&value)),
+                secret,
+                shadowed: true,
+            });
         }
         out
     }
