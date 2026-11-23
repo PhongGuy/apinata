@@ -69,7 +69,7 @@ fn each_server_becomes_an_environment_with_its_variables() {
                 "Production (2)",
                 vec![v("baseUrl", "https://staging.example.test")]
             ),
-            ("Environment 4", vec![v("baseUrl", "http://localhost:8080")]),
+            ("localhost", vec![v("baseUrl", "http://localhost:8080")]),
         ]
     );
     assert!(
@@ -116,7 +116,7 @@ fn swagger_2_servers_come_from_schemes_host_and_base_path() {
     assert_eq!(
         got,
         [(
-            "Environment",
+            "petstore.test",
             vec![v("baseUrl", "https://petstore.test:8080/v2")]
         )]
     );
@@ -131,8 +131,8 @@ fn swagger_2_servers_come_from_schemes_host_and_base_path() {
     assert_eq!(
         urls,
         [
-            ("Environment 1", "http://p.test".to_owned()),
-            ("Environment 2", "https://p.test".to_owned())
+            ("p.test", "http://p.test".to_owned()),
+            ("p.test (2)", "https://p.test".to_owned())
         ]
     );
     let relative = import(&json!({"swagger": "2.0", "paths": {}, "basePath": "/v2"}));

@@ -146,7 +146,7 @@ Converted FolderA / FolderB / FolderC / RequestD / request.auth.password: the va
 Dropped FolderA / FolderB / RequestC / testScript: scripts are not imported (FolderA/FolderB/RequestC.yml)
 Dropped FolderA / RequestB / testScript: scripts are not imported (FolderA/RequestB.yml)
 Dropped RequestA / testScript: scripts are not imported (RequestA.yml)
-Converted collection: runs use the environment `Environment` by default, since it holds the imported credentials (opencollection.yml)
+Converted collection: `Environment` is the default environment because it holds the imported credentials (opencollection.yml)
 Converted imported credentials: the imported credentials are the secret variables `collectiona_token`, `folderb_api_key`, `requestd_password`; their values are kept in the secret store, not in the file (environments/Environment.yml)
 ### collection 1: CollectionB
 == FolderA/RequestB.yml
@@ -221,5 +221,5 @@ extensions:
 Converted collection / auth.token: the value is kept as the secret variable `collectionb_token`, not in the file (opencollection.yml)
 Dropped FolderA / RequestB / testScript: scripts are not imported (FolderA/RequestB.yml)
 Dropped RequestA / testScript: scripts are not imported (RequestA.yml)
-Converted collection: runs use the environment `Environment` by default, since it holds the imported credentials (opencollection.yml)
+Converted collection: `Environment` is the default environment because it holds the imported credentials (opencollection.yml)
 Converted imported credentials: the imported credentials are the secret variables `collectionb_token`; their values are kept in the secret store, not in the file (environments/Environment.yml)

@@ -7,7 +7,7 @@ Converted Users / Get user / request.url.raw [Users/Get user.yml]: the URL fragm
 Renamed Users / Get user [Users/Get user_1.yml]: renamed to `Get user_1` because another request here has the same name
 Renamed Users / a-b [Users/a-b 1.yml]: the name `a-b` makes the same file name as `a/b`, so it was written to `Users/a-b 1.yml`; the display name is kept
 Converted Settings / request.auth.password [Settings.yml]: the value is kept as the secret variable `settings_password`, not in the file
-Converted collection [opencollection.yml]: runs use the environment `Environment` by default, since it holds the imported credentials
+Converted collection [opencollection.yml]: `Environment` is the default environment because it holds the imported credentials
 Converted imported credentials [environments/Environment.yml]: the imported credentials are the secret variables `settings_password`; their values are kept in the secret store, not in the file
 NeedsInput collection [-]: needs a value: `host`, `k`, `token`; nothing imported defines them, so add them to the collection's variables or an environment before sending
 == Settings.yml

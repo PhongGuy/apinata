@@ -1587,6 +1587,11 @@ impl Shell {
                 let text = team_text::read_only_toast(&display_name(root));
                 window.push_notification(ui::info_toast(text), cx);
             }
+            WorkspaceEvent::RenameItem { root, item, name } => {
+                let (root, item, name) = (root.clone(), item.clone(), name.clone());
+                self.sidebar
+                    .update(cx, |s, cx| s.rename_item(&root, item, name, cx));
+            }
             WorkspaceEvent::RevealFolder { root, folder } => {
                 self.sidebar_auto_hidden = false;
                 if !self.sidebar_visible {

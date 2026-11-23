@@ -2,8 +2,8 @@
 source: crates/apinata-core/tests/import_openapi_fixtures.rs
 expression: rendered
 ---
-=== environments/Environment.yml
-name: Environment
+=== environments/petstore.swagger.io.yml
+name: petstore.swagger.io
 variables:
   - name: baseUrl
     value: http://petstore.swagger.io/v1
@@ -20,7 +20,7 @@ extensions:
       - node_modules
       - .git
     presets:
-      defaultEnvironment: Environment
+      defaultEnvironment: petstore.swagger.io
   apinata:
     openapi:
       ops:
@@ -195,4 +195,4 @@ info:
 request:
   auth: inherit
 
-note Converted opencollection.yml | collection | runs use the environment `Environment` by default, as the first environment imported
+note Converted opencollection.yml | collection | `petstore.swagger.io` is the default environment because it was imported first
