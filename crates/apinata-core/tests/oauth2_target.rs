@@ -3,8 +3,8 @@
 use crate::oauth2_support;
 
 use apinata_core::{
-    AuthorizeOptions, CancelHandle, ItemPath, OAuth2Error, OAuth2Target, TokenStatus,
-    clear_oauth2_token, is_oauth2, oauth2_status,
+    AuthorizeOptions, CancelHandle, ItemPath, OAuth2Error, OAuth2Target, Persistence, TokenCache,
+    TokenStatus, clear_oauth2_token, is_oauth2, oauth2_access_token, oauth2_status,
 };
 use oauth2_support::*;
 use serde_json::json;
@@ -54,6 +54,30 @@ async fn get_token_always_fetches_and_reports_the_status() {
     );
     let text = format!("{status:?}");
     assert!(!text.contains(TOKEN), "{text}");
+}
+
+#[tokio::test]
+async fn the_access_token_is_read_only_once_one_is_cached() {
+    let server = wiremock::MockServer::start().await;
+    on_grant(&server, "client_credentials", token_response(json!({})), 1).await;
+    let f = fixture(&server, &[("a.yml", "")]);
+    let req = OAuth2Target::Request(f.request("a.yml"));
+    assert_eq!(oauth2_access_token(req, &f.ctx).unwrap(), None);
+    get(&f, req).await.unwrap();
+    assert_eq!(
+        oauth2_access_token(req, &f.ctx).unwrap().as_deref(),
+        Some(TOKEN)
+    );
+}
+
+#[test]
+fn the_memory_only_note_reads_as_a_sentence() {
+    assert_eq!(
+        TokenCache::in_memory().persistence(),
+        Persistence::MemoryOnly {
+            reason: "Tokens are kept in memory only".to_owned()
+        }
+    );
 }
 
 #[tokio::test]

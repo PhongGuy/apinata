@@ -1,5 +1,6 @@
 //! The token panel under the OAuth 2.0 editor: the cached token's status and scopes, with
-//! Get token, Refresh and Clear for the auth a request, a folder or the collection uses.
+//! Get token, Refresh and Clear for the auth a request, a folder or the collection uses. The
+//! access token itself shows masked, with reveal and copy.
 
 use crate::ui::LockButton as _;
 use crate::ui::SolidRing as _;
@@ -8,16 +9,20 @@ use std::time::{Duration, SystemTime};
 
 use apinata_core::{
     AuthorizeOptions, CancelHandle, ItemPath, OAuth2Error, OAuth2Target, Persistence, RequestFile,
-    RunPlan, TokenStatus, VarContext, clear_oauth2_token, oauth2_status,
+    RunPlan, TokenStatus, VarContext, clear_oauth2_token, oauth2_access_token, oauth2_status,
 };
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
-use gpui_kit::{App, Entity, FocusHandle, Result, Task, TestSupportExt, Window, div};
+use gpui_kit::{
+    App, ClipboardItem, Entity, FocusHandle, Result, Task, TestSupportExt, Window, div,
+};
 
 use crate::command::{Command, Target};
+use crate::env_table::SECRET_HIDDEN;
 use crate::send_model::plan_message;
 use crate::workspace::Workspace;
 use crate::{executor, oauth2_tokens, response_pane, settings, style, tokio_bridge, ui};
@@ -68,14 +73,19 @@ enum Stopped {
     Cancelled,
 }
 
+// What a read finds: the token's status and its access token.
+type Read = (Option<TokenStatus>, Option<String>);
+
 // An action's stop, if it had one, and the status read after it.
-type Outcome = (Option<Stopped>, Result<Option<TokenStatus>, String>);
+type Outcome = (Option<Stopped>, Result<Read, String>);
 
 /// Shows the cached token of one auth and offers Get token, Refresh and Clear.
 pub struct TokenPanel {
     workspace: Entity<Workspace>,
     locate: Locate,
     status: Option<TokenStatus>,
+    token: Option<String>,
+    token_revealed: bool,
     action_error: Option<String>,
     // The raw text behind a reworded action error, shown as its tooltip.
     action_detail: Option<String>,
@@ -110,6 +120,8 @@ impl TokenPanel {
             workspace,
             locate,
             status: None,
+            token: None,
+            token_revealed: false,
             action_error: None,
             action_detail: None,
             action_note: None,
@@ -196,6 +208,29 @@ impl TokenPanel {
     /// `scope_line` of the last read status.
     pub fn scope_text(&self) -> Option<String> {
         scope_line(self.status.as_ref())
+    }
+
+    /// The access token as shown: masked until revealed; `None` when no token is held.
+    pub fn token_text(&self) -> Option<String> {
+        let token = self.token.as_ref()?;
+        Some(if self.token_revealed {
+            token.clone()
+        } else {
+            SECRET_HIDDEN.to_owned()
+        })
+    }
+
+    /// Shows the access token itself when `on`, else its mask.
+    pub fn set_token_revealed(&mut self, on: bool, cx: &mut Context<Self>) {
+        self.token_revealed = on;
+        cx.notify();
+    }
+
+    /// Copies the access token itself, masked or not.
+    pub fn copy_token(&self, cx: &mut App) {
+        if let Some(token) = &self.token {
+            cx.write_to_clipboard(ClipboardItem::new_string(token.clone()));
+        }
     }
 
     /// The last action's error, else its neutral note, else the cache's MemoryOnly reason.
@@ -347,14 +382,20 @@ impl TokenPanel {
             };
         }
         match status {
-            Ok(status) => {
+            Ok((status, token)) => {
                 self.status = status;
+                self.token = token;
                 self.read_error = None;
             }
             Err(e) => {
                 self.status = None;
+                self.token = None;
                 self.read_error = Some(e);
             }
+        }
+        // A token that comes after none starts masked again.
+        if self.token.is_none() {
+            self.token_revealed = false;
         }
         self.memory_only = match persistence {
             Persistence::MemoryOnly { reason } => Some(reason.clone()),
@@ -391,7 +432,9 @@ async fn perform(
         Some((Action::Refresh, exec)) => exec.refresh_token(target, ctx, &cancel).await.map(drop),
         Some((Action::Clear, _)) => clear_oauth2_token(target, ctx).await.map(drop),
     };
-    let status = oauth2_status(target, ctx).map_err(|e| e.to_string());
+    let status = oauth2_status(target, ctx)
+        .and_then(|status| Ok((status, oauth2_access_token(target, ctx)?)))
+        .map_err(|e| e.to_string());
     let stopped = acted.err().map(|e| match e {
         OAuth2Error::Cancelled => Stopped::Cancelled,
         // A transport failure reads as a failed send does; its raw text stays as the detail.
@@ -453,6 +496,41 @@ pub fn status_line(status: Option<&TokenStatus>, now: SystemTime) -> String {
         line.push_str(", has a refresh token");
     }
     line
+}
+
+impl TokenPanel {
+    // The access token on one line, cut short when long, then its eye and copy buttons.
+    fn token_row(&self, text: String, cx: &mut Context<Self>) -> impl IntoElement {
+        let revealed = self.token_revealed;
+        let (face, icon, words) = if revealed {
+            ("oauth2-token-hide", IconName::EyeOff, "Hide token")
+        } else {
+            ("oauth2-token-reveal", IconName::Eye, "Show token")
+        };
+        h_flex()
+            .id("oauth2-token-value-row")
+            .gap(style::SPACE_2)
+            .items_center()
+            .child(
+                div()
+                    .id("oauth2-token-value")
+                    .test_support()
+                    .aria_label(text.clone())
+                    .min_w_0()
+                    .max_w(style::WIDE_INPUT_WIDTH)
+                    .truncate()
+                    .text_size(style::TEXT_SMALL)
+                    .child(text),
+            )
+            .child(
+                ui::swap_icon_button("oauth2-token-eye", face, icon, words, cx)
+                    .on_click(cx.listener(move |p, _, _, cx| p.set_token_revealed(!revealed, cx))),
+            )
+            .child(
+                ui::icon_button("oauth2-token-copy", IconName::Copy, "Copy token", None, cx)
+                    .on_click(cx.listener(|p, _, _, cx| p.copy_token(cx))),
+            )
+    }
 }
 
 impl Render for TokenPanel {
@@ -525,6 +603,7 @@ impl Render for TokenPanel {
                         ),
                 )
                 .child(small("oauth2-token-status", self.status_text()))
+                .children(self.token_text().map(|text| self.token_row(text, cx)))
                 .children(
                     self.scope_text()
                         .map(|text| small("oauth2-token-scope", text)),

@@ -177,7 +177,7 @@ impl TokenCache {
         TokenCache::build(
             None,
             Persistence::MemoryOnly {
-                reason: "tokens are kept in memory only".to_owned(),
+                reason: "Tokens are kept in memory only".to_owned(),
             },
             tokio::sync::OnceCell::new_with(Some(())),
         )
