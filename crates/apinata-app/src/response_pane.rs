@@ -39,10 +39,13 @@ use gpui_kit::{
 
 use crate::app::AppState;
 use crate::body_text::{encoded_size_label, format_size, format_time, size_labels};
-use crate::body_view::{BodyView, MASKED, SCRUBBED_TIP, SetVariable, Shown};
+use crate::body_view::{BodyView, SCRUBBED_TIP, SetVariable, Shown};
 use crate::compare_rows::{ComparePalette, RevealHeader, RowActions, Toggle, compare_row};
 use crate::compare_source::{self, CompareSide, CompareSource, HeaderValue, SourceChoice};
 use crate::compare_view::{self, CompareRow};
+use crate::cookie_jar::{
+    HTTP_ONLY_LABEL, HTTP_ONLY_TIP, SECURE_LABEL, SECURE_TIP, host_search, open_cookie_jar,
+};
 use crate::diff_doc::DiffRow;
 use crate::download_model::DownloadModel;
 use crate::executor;
@@ -1223,11 +1226,7 @@ impl ResponsePane {
     // Snapshot the jar's cookies for the final URL's host. Listing happens on a new result
     // or a delete, never per frame, so rendering never takes the jar's lock.
     fn list_cookies(&mut self, cx: &App) {
-        let host = done(self.send.read(cx)).and_then(|r| {
-            let url = url::Url::parse(r.response.as_ref()?.url()).ok()?;
-            url.host_str().map(str::to_owned)
-        });
-        self.cookies = match (host, executor::shared(cx)) {
+        self.cookies = match (self.jar_host(cx), executor::shared(cx)) {
             (Some(host), Some(exec)) => exec
                 .cookies()
                 .list()
@@ -1236,6 +1235,14 @@ impl ResponsePane {
                 .collect(),
             _ => Vec::new(),
         };
+    }
+
+    // The host of the shown result's final URL, whose cookies the Jar view lists.
+    fn jar_host(&self, cx: &App) -> Option<String> {
+        done(self.send.read(cx)).and_then(|r| {
+            let url = url::Url::parse(r.response.as_ref()?.url()).ok()?;
+            url.host_str().map(str::to_owned)
+        })
     }
 
     /// The selected tab.
@@ -2014,8 +2021,8 @@ impl ResponsePane {
             ("cookie-domain", "Domain"),
             ("cookie-path", "Path"),
             ("cookie-expires", "Expires"),
-            ("cookie-http-only", "HttpOnly"),
-            ("cookie-secure", "Secure"),
+            ("cookie-http-only", HTTP_ONLY_LABEL),
+            ("cookie-secure", SECURE_LABEL),
         ];
         let columns = COLUMNS
             .iter()
@@ -2027,7 +2034,17 @@ impl ResponsePane {
                     // Value is the flexible column, so the fixed widths skip index 1.
                     _ => {
                         let fixed = if i == 0 { 0 } else { i - 1 };
-                        KvColumn::fixed(head, cell, *heading, style::COOKIE_FIXED_WIDTHS[fixed])
+                        let column = KvColumn::fixed(
+                            head,
+                            cell,
+                            *heading,
+                            style::COOKIE_FIXED_WIDTHS[fixed],
+                        );
+                        match i {
+                            5 => column.tip(HTTP_ONLY_TIP),
+                            6 => column.tip(SECURE_TIP),
+                            _ => column,
+                        }
                     }
                 }
             })
@@ -2141,6 +2158,25 @@ impl ResponsePane {
             "Copied the cookies",
             cx,
         )
+        .child(self.manage_cookies(cx))
+    }
+
+    // Opens the Cookies dialog to edit or add, its search set to the response's host.
+    fn manage_cookies(&self, cx: &mut Context<Self>) -> Button {
+        let domains: Vec<&str> = self.cookies.iter().map(|c| c.domain.as_str()).collect();
+        let search = self.jar_host(cx).map(|host| host_search(&host, &domains));
+        Button::new("cookies-manage")
+            .solid_ring(cx)
+            .ghost()
+            .small()
+            .label("Manage cookies")
+            .tooltip("Edit or add cookies in the Cookies dialog")
+            .on_click(move |_, window, cx| {
+                let jar = open_cookie_jar(window, cx);
+                if let Some(search) = &search {
+                    jar.update(cx, |j, cx| j.search_for(search, window, cx));
+                }
+            })
     }
 
     // The Headers tab: the filter bar over the rows it keeps; each row has a copy button.
@@ -2369,6 +2405,36 @@ impl ResponsePane {
                 .child(width_probe(&self.min.status))
                 .into_any_element(),
         ];
+        // Followed hops show as a redirect arrow and count that opens the Timeline; a kept
+        // response has no timeline to open, so no count. Wide, it sits outside the fixed facts
+        // and gives way with the address, so the row's floor is unchanged.
+        let hops = r.redirects_followed();
+        let mut redirects = None;
+        if hops > 0 && !r.timeline().is_empty() {
+            let text = match hops {
+                1 => "1 redirect".to_owned(),
+                n => format!("{n} redirects"),
+            };
+            // A ghost button like the row's other actions, so Tab reaches it; the slot around it
+            // is what shrinks.
+            let button = Button::new("response-redirects")
+                .solid_ring(cx)
+                .ghost()
+                .compact()
+                .icon(ui::glyph("response-redirects", AssetIcon::CornerDownRight))
+                .label(hops.to_string())
+                .accessibility_label(text.clone())
+                .tooltip(format!("{text} followed. Open the Timeline."))
+                .on_click(cx.listener(|p, _, _, cx| p.set_tab(ResponseTab::Timeline, cx)));
+            redirects = Some(
+                h_flex()
+                    .min_w_0()
+                    .flex_shrink(0.1)
+                    .overflow_hidden()
+                    .child(button)
+                    .into_any_element(),
+            );
+        }
         // A GraphQL failure answers 200, so its errors read beside the status as a warning,
         // cut at a fixed width with the whole summary in the tooltip.
         before.extend(self.graphql_summary(result, cx).map(|text| {
@@ -2453,6 +2519,7 @@ impl ResponsePane {
                 .gap(style::SPACE_2)
                 .items_center()
                 .children(before)
+                .children(redirects)
                 // Nothing when the peer is unknown; a narrow pane leaves it to the Timeline.
                 .children(address)
                 .children(after)
@@ -3033,22 +3100,34 @@ impl ResponsePane {
                     .restored()
                     .is_some_and(|r| r.body_dropped) =>
                 {
-                    div()
-                        .id("response-body-dropped")
-                        .test_support()
-                        .p(style::SPACE_2)
-                        .text_size(style::TEXT_SMALL)
-                        .text_color(cx.theme().muted_foreground)
-                        .child("Body too large to keep")
+                    v_flex()
+                        .w_full()
+                        .children(redirect_stop_note(result, cx))
+                        .child(
+                            div()
+                                .id("response-body-dropped")
+                                .test_support()
+                                .p(style::SPACE_2)
+                                .text_size(style::TEXT_SMALL)
+                                .text_color(cx.theme().muted_foreground)
+                                .child("Body too large to keep"),
+                        )
                         .into_any_element()
                 }
-                None => div()
-                    .id("response-body")
-                    .test_support()
+                None => v_flex()
                     .flex_1()
                     .min_h_0()
                     .w_full()
-                    .child(self.body.clone())
+                    .children(redirect_stop_note(result, cx))
+                    .child(
+                        div()
+                            .id("response-body")
+                            .test_support()
+                            .flex_1()
+                            .min_h_0()
+                            .w_full()
+                            .child(self.body.clone()),
+                    )
                     .into_any_element(),
             },
             ResponseTab::Headers => self.headers_list(result, cx),
@@ -3493,12 +3572,13 @@ impl ResponsePane {
         self.cookie_table(now)
             .into_iter()
             .map(|mut c| {
-                // Every value is hidden, as the console hides the whole Set-Cookie header.
+                // Every value hides behind the Cookies dialog's dots, since cookie values are
+                // often session tokens; "[redacted]" stays reserved for scrubbed secrets.
                 let mask = (m.cookies.entry(c.value.clone())).or_insert_with(|| Masked {
                     hidden: if c.value.is_empty() {
                         String::new()
                     } else {
-                        MASKED.to_owned()
+                        NAME_MASK.to_owned()
                     },
                     revealed: c.value.clone(),
                 });
@@ -3528,7 +3608,7 @@ impl ResponsePane {
                 }
                 let on = m.revealed_set.contains(&c.key);
                 if !on {
-                    c.value = MASKED.to_owned();
+                    c.value = NAME_MASK.to_owned();
                 }
                 (c, Some(on))
             })
@@ -4195,8 +4275,8 @@ pub fn header_lines(pairs: &[(String, String)], filter: &str) -> String {
         .join("\n")
 }
 
-/// The `(index, cookie)` of each cookie whose name, value or domain contains `filter`,
-/// ignoring case.
+/// The `(index, cookie)` of each cookie whose name, domain, path or shown value contains
+/// `filter`, ignoring case; a value shown as [`NAME_MASK`] is hidden and never matches.
 pub fn cookie_shown<'a>(cookies: &'a [CookieCells], filter: &str) -> Vec<(usize, &'a CookieCells)> {
     let f = filter.to_lowercase();
     cookies
@@ -4204,11 +4284,16 @@ pub fn cookie_shown<'a>(cookies: &'a [CookieCells], filter: &str) -> Vec<(usize,
         .enumerate()
         .filter(|(_, c)| {
             f.is_empty()
-                || [&c.name, &c.value, &c.domain]
+                || [&c.name, &c.domain, &c.path, shown_value(&c.value)]
                     .iter()
                     .any(|t| t.to_lowercase().contains(&f))
         })
         .collect()
+}
+
+// A cookie value as the filter reads it: nothing while it is hidden behind the mask.
+fn shown_value(value: &str) -> &str {
+    if value == NAME_MASK { "" } else { value }
 }
 
 /// One cookie as a `Set-Cookie`-style line: `name=value; Domain=..; Path=..` and the
@@ -5719,8 +5804,8 @@ fn set_cookie_cells(r: &RequestResult) -> Vec<SetCookieCells> {
         .collect()
 }
 
-/// The `(index, row)` of each Set-Cookie row whose name, hop or result contains `filter`,
-/// ignoring case.
+/// The `(index, row)` of each Set-Cookie row whose name, hop, result or shown value contains
+/// `filter`, ignoring case; a value shown as [`NAME_MASK`] is hidden and never matches.
 pub fn set_cookie_shown<'a>(
     rows: &'a [SetCookieCells],
     filter: &str,
@@ -5729,7 +5814,7 @@ pub fn set_cookie_shown<'a>(
     (rows.iter().enumerate())
         .filter(|(_, c)| {
             f.is_empty()
-                || [&c.name, &c.hop, &c.result]
+                || [&c.name, &c.hop, &c.result, shown_value(&c.value)]
                     .iter()
                     .any(|t| t.to_lowercase().contains(&f))
         })
@@ -6064,4 +6149,37 @@ fn width_probe_plus(cell: &Rc<Cell<Pixels>>, extra: Rems) -> impl IntoElement {
     )
     .absolute()
     .size_full()
+}
+
+// When the redirect limit ended the chain, a note over the body saying so, naming the last
+// Location masked as the Headers tab masks it.
+fn redirect_stop_note(result: &RequestResult, cx: &App) -> Option<AnyElement> {
+    let r = result.response.as_ref()?;
+    if !r.stopped_at_redirect_limit() {
+        return None;
+    }
+    let mut text = format!(
+        "Stopped after {} redirects (the redirect limit).",
+        r.redirects_followed()
+    );
+    if let Some((name, value)) = r.headers().iter().find(|(n, _)| n == "location") {
+        text.push_str(&format!(
+            " The last Location was {}.",
+            result.redact_header(name, value)
+        ));
+    }
+    Some(
+        div()
+            .id("response-redirect-stop")
+            .test_support()
+            .flex_none()
+            .px(style::SPACE_2)
+            .py(style::SPACE_1)
+            .text_size(style::TEXT_SMALL)
+            .text_color(cx.theme().warning)
+            .bg(crate::theme::status_fill(crate::theme::Status::Warning, cx))
+            .aria_label(text.clone())
+            .child(text)
+            .into_any_element(),
+    )
 }

@@ -258,6 +258,10 @@ pub struct EnvVarTable {
     saved_secrets: Vec<String>,
     /// The name input of the row whose last name was refused, and why.
     name_note: Option<(Entity<InputState>, String)>,
+    /// Each own name that overrides an inherited variable, with the ancestor it comes from.
+    overrides: Vec<(String, String)>,
+    /// Each own plain name an inherited secret still wins over, with the secret's ancestor.
+    ignored: Vec<(String, String)>,
 }
 
 impl EventEmitter<EnvTableEvent> for EnvVarTable {}
@@ -279,6 +283,8 @@ impl EnvVarTable {
             last_control: None,
             saved_secrets: Vec::new(),
             name_note: None,
+            overrides: Vec::new(),
+            ignored: Vec::new(),
         }
     }
 
@@ -503,6 +509,39 @@ impl EnvVarTable {
         let twin =
             |(j, r): (usize, &Row)| j != ix && r.meta.secret && r.name.read(cx).value() == name;
         !name.is_empty() && self.rows.iter().enumerate().any(twin)
+    }
+
+    /// Sets which own names override an inherited variable and which plain ones an inherited
+    /// secret still wins over, each with the ancestor involved, so their rows say so.
+    pub fn set_overrides(
+        &mut self,
+        overrides: Vec<(String, String)>,
+        ignored: Vec<(String, String)>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.overrides != overrides || self.ignored != ignored {
+            self.overrides = overrides;
+            self.ignored = ignored;
+            cx.notify();
+        }
+    }
+
+    /// The ancestor whose inherited secret makes plain row `ix` ignored, if one does.
+    pub fn ignored(&self, ix: usize, cx: &App) -> Option<&str> {
+        let row = (self.rows.get(ix)).filter(|row| row.meta.enabled && !row.meta.secret)?;
+        let name = row.name.read(cx).value().to_string();
+        (self.ignored.iter())
+            .find(|(own, _)| *own == name)
+            .map(|(_, from)| from.as_str())
+    }
+
+    /// The ancestor whose variable row `ix` overrides, if it is enabled and overrides one.
+    pub fn overrides(&self, ix: usize, cx: &App) -> Option<&str> {
+        let row = self.rows.get(ix).filter(|row| row.meta.enabled)?;
+        let name = row.name.read(cx).value().to_string();
+        (self.overrides.iter())
+            .find(|(own, _)| *own == name)
+            .map(|(_, from)| from.as_str())
     }
 
     /// Sets the secrets the saved file declares. A locked row not yet saved cannot be renamed
@@ -1245,7 +1284,12 @@ impl EnvVarTable {
             .filter(|(input, _)| !blank && *input == self.rows[ix].name)
             .map(|(_, note)| note.clone());
         let duplicate = self.duplicate_note(ix, cx);
-        if refused.is_none() && duplicate.is_none() {
+        let overrides = self
+            .overrides(ix, cx)
+            .map(|from| format!("Overrides {from}"));
+        let ignored = (self.ignored(ix, cx))
+            .map(|from| format!("Ignored: {from} has a secret with this name"));
+        if refused.is_none() && duplicate.is_none() && overrides.is_none() && ignored.is_none() {
             return Followed::new(("env-row-wrapper", ix), &self.follow, row).into_any_element();
         }
         // Each note sits under the row whose name it is about.
@@ -1263,7 +1307,13 @@ impl EnvVarTable {
             .w_full()
             .child(row)
             .children(refused.map(|text| note("env-name-refused".into(), text)))
-            .children(duplicate.map(|text| note(("env-name-duplicate", ix).into(), text.into())));
+            .children(duplicate.map(|text| note(("env-name-duplicate", ix).into(), text.into())))
+            .children(overrides.map(|text| {
+                note(("env-row-overrides", ix).into(), text).text_color(cx.theme().muted_foreground)
+            }))
+            .children(ignored.map(|text| {
+                note(("env-row-ignored", ix).into(), text).text_color(cx.theme().warning)
+            }));
         Followed::new(("env-row-wrapper", ix), &self.follow, row).into_any_element()
     }
 

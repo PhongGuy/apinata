@@ -72,6 +72,8 @@ pub struct KvColumn {
     pub tip_when_cut: bool,
     /// The narrowest a flexible column gets, so its cells stay usable in a narrow row.
     pub floor: Option<Rems>,
+    /// The heading's tooltip (`kv-head-tip`), saying what a terse heading means.
+    pub tip: Option<SharedString>,
 }
 
 impl KvColumn {
@@ -88,6 +90,7 @@ impl KvColumn {
             width: KvWidth::Flex,
             tip_when_cut: false,
             floor: None,
+            tip: None,
         }
     }
 
@@ -149,6 +152,12 @@ impl KvColumn {
     /// A flexible column that never gets narrower than `floor`.
     pub fn floor(mut self, floor: Rems) -> Self {
         self.floor = Some(floor);
+        self
+    }
+
+    /// A heading that explains itself in a tooltip on hover.
+    pub fn tip(mut self, tip: impl Into<SharedString>) -> Self {
+        self.tip = Some(tip.into());
         self
     }
 
@@ -287,6 +296,10 @@ impl RenderOnce for KvHead {
                         .text_size(TEXT_SMALL)
                         .text_color(text)
                         .truncate()
+                        .aria_label(c.heading.clone())
+                        .when_some(c.tip.clone(), |d, tip| {
+                            d.tooltip(ui::text_tooltip("kv-head-tip", tip))
+                        })
                         .child(c.heading.clone()),
                 )
             }))

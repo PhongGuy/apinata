@@ -957,3 +957,69 @@ fn loading_an_old_send_drops_its_url_username_from_the_file() {
     let entry: serde_json::Value = serde_json::from_slice(&std::fs::read(&json).unwrap()).unwrap();
     assert_eq!(entry["url"], "http://127.0.0.1:1/x");
 }
+
+// The last 3xx of a chain the redirect limit ended.
+fn stopped_response() -> Response {
+    Response::new(302)
+        .with_status_text("Found")
+        .with_header("location", "/loop")
+        .with_url("http://127.0.0.1:9/loop")
+        .with_redirects(5, true)
+}
+
+#[test]
+fn a_redirect_limit_stop_survives_a_kept_round_trip() {
+    let data = tempfile::tempdir().unwrap();
+    let store = ResponseStore::new(data.path().join("r"));
+    let root = Path::new("/c");
+    let stopped = stopped_response();
+    store
+        .save(root, &ip("a.yml"), &result("a.yml", stopped.clone()), at(1))
+        .unwrap();
+    let r = store
+        .load(root, &ip("a.yml"))
+        .unwrap()
+        .result
+        .response
+        .unwrap();
+    assert_eq!(r.redirects_followed(), 5);
+    assert!(r.stopped_at_redirect_limit());
+    assert_eq!(r, stopped);
+}
+
+#[test]
+fn a_send_file_without_the_redirect_fields_still_loads() {
+    let data = tempfile::tempdir().unwrap();
+    let dir = data.path().join("responses");
+    let store = ResponseStore::new(dir.clone());
+    let root = Path::new("/c");
+    store
+        .save(
+            root,
+            &ip("a.yml"),
+            &result("a.yml", stopped_response()),
+            at(5),
+        )
+        .unwrap();
+    // Rewrite the send file as an older build wrote it, with no redirect keys.
+    let file = listing(&dir)
+        .into_iter()
+        .find(|n| n.ends_with(".0.json"))
+        .unwrap();
+    let path = dir.join(file);
+    let mut meta: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let obj = meta.as_object_mut().unwrap();
+    assert!(obj.remove("redirects_followed").is_some());
+    assert!(obj.remove("redirect_limit_stop").is_some());
+    std::fs::write(&path, meta.to_string()).unwrap();
+    let r = store
+        .load(root, &ip("a.yml"))
+        .expect("an old entry still loads")
+        .result
+        .response
+        .unwrap();
+    assert_eq!(r.status(), 302);
+    assert_eq!(r.redirects_followed(), 0);
+    assert!(!r.stopped_at_redirect_limit());
+}

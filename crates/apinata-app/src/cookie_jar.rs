@@ -54,9 +54,16 @@ pub fn parse_expires(text: &str, now: SystemTime) -> Result<Option<SystemTime>, 
     Ok(Some(at))
 }
 
-// The Secure and HttpOnly flags in plain words, on the saved rows and the form's checkboxes.
-const SECURE_LABEL: &str = "HTTPS only";
-const HTTP_ONLY_LABEL: &str = "No script access";
+// The Secure and HttpOnly flags go by the names developers search for, with the plain words as
+// tooltips; the dialog's rows and form and the response pane's Jar view all use them.
+/// The Secure flag's label.
+pub const SECURE_LABEL: &str = "Secure";
+/// The HttpOnly flag's label.
+pub const HTTP_ONLY_LABEL: &str = "HttpOnly";
+/// What the Secure flag means, in plain words.
+pub const SECURE_TIP: &str = "HTTPS only: sent over secure connections only";
+/// What the HttpOnly flag means, in plain words.
+pub const HTTP_ONLY_TIP: &str = "No script access: page scripts cannot read it";
 
 // The local date and time the Expires field shows as its example.
 const EXPIRES_EXAMPLE: &str = "2027-01-01 12:00";
@@ -441,6 +448,14 @@ impl CookieJarView {
         &self.cookies
     }
 
+    /// Puts `query` in the domain search, listing only the domains that contain it.
+    pub fn search_for(&mut self, query: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.search
+            .update(cx, |s, cx| s.set_value(query.to_owned(), window, cx));
+        self.query = query.to_owned();
+        cx.notify();
+    }
+
     /// Indices into `cookies()` whose domain matches the search, in list order.
     pub fn shown(&self) -> Vec<usize> {
         (0..self.cookies.len())
@@ -593,17 +608,30 @@ impl CookieJarView {
         now: SystemTime,
         cx: &mut Context<Self>,
     ) -> Div {
-        let mut flags: Vec<String> = [
-            (c.secure, SECURE_LABEL),
-            (c.http_only, HTTP_ONLY_LABEL),
-            (c.host_only, "This host only"),
+        // Each flag's words, and for Secure and HttpOnly the id and plain-words tooltip.
+        type Flag = (String, Option<(&'static str, &'static str)>);
+        let mut flags: Vec<Flag> = [
+            (
+                c.secure,
+                SECURE_LABEL,
+                Some(("jar-flag-secure", SECURE_TIP)),
+            ),
+            (
+                c.http_only,
+                HTTP_ONLY_LABEL,
+                Some(("jar-flag-http-only", HTTP_ONLY_TIP)),
+            ),
+            (c.host_only, "This host only", None),
         ]
         .into_iter()
-        .filter(|(on, _)| *on)
-        .map(|(_, label)| label.to_owned())
+        .filter(|(on, ..)| *on)
+        .map(|(_, label, tip)| (label.to_owned(), tip))
         .collect();
         // A cookie that set no SameSite shows nothing, rather than guessing a browser default.
-        flags.extend(c.same_site.map(|s| format!("Same site: {}", s.as_str())));
+        flags.extend(
+            c.same_site
+                .map(|s| (format!("Same site: {}", s.as_str()), None)),
+        );
         // The value stays masked until its eye is clicked; the edit form shows the real one.
         let key = (c.domain.clone(), c.path.clone(), c.name.clone());
         let revealed = self.revealed.contains(&key);
@@ -697,14 +725,32 @@ impl CookieJarView {
                                     .child(expiry),
                             )
                             .child({
-                                let flags: SharedString = flags.join(", ").into();
-                                div()
+                                let words: Vec<&str> = flags.iter().map(|f| f.0.as_str()).collect();
+                                let words: SharedString = words.join(", ").into();
+                                let last = flags.len().saturating_sub(1);
+                                h_flex()
                                     .id(("jar-flags", ix))
                                     .test_support()
                                     .flex_1()
                                     .min_w_0()
-                                    .aria_label(flags.clone())
-                                    .child(flags)
+                                    .flex_wrap()
+                                    .gap_x_1()
+                                    .aria_label(words)
+                                    .children(flags.into_iter().enumerate().map(
+                                        |(i, (word, tip))| {
+                                            let text =
+                                                if i < last { format!("{word},") } else { word };
+                                            match tip {
+                                                Some((id, tip)) => div()
+                                                    .id((id, ix))
+                                                    .test_support()
+                                                    .tooltip(ui::text_tooltip("jar-flag-tip", tip))
+                                                    .child(text)
+                                                    .into_any_element(),
+                                                None => div().child(text).into_any_element(),
+                                            }
+                                        },
+                                    ))
                             }),
                     ),
             )
@@ -811,6 +857,7 @@ impl CookieJarView {
                     .child(
                         ui::checkbox("jar-form-secure", form.secure)
                             .label(SECURE_LABEL)
+                            .tooltip(SECURE_TIP)
                             .on_click(cx.listener(|this, on: &bool, _, cx| {
                                 if let Some(f) = this.form.as_mut() {
                                     f.secure = *on;
@@ -821,6 +868,7 @@ impl CookieJarView {
                     .child(
                         ui::checkbox("jar-form-http-only", form.http_only)
                             .label(HTTP_ONLY_LABEL)
+                            .tooltip(HTTP_ONLY_TIP)
                             .on_click(cx.listener(|this, on: &bool, _, cx| {
                                 if let Some(f) = this.form.as_mut() {
                                     f.http_only = *on;
@@ -1015,6 +1063,18 @@ impl CookieJarView {
             )
             .vertical_scrollbar(&self.scroll)
     }
+}
+
+/// The dialog search that lists every cookie `domains` holds, the domains of the cookies
+/// sent to `host`; `host` itself when there are none.
+pub fn host_search(host: &str, domains: &[&str]) -> String {
+    // Each domain sent to the host is a suffix of it, so the shortest is in every other one.
+    domains
+        .iter()
+        .map(|d| d.trim_start_matches('.'))
+        .min_by_key(|d| d.len())
+        .unwrap_or(host)
+        .to_owned()
 }
 
 /// Opens the "Cookies" dialog over `window`, listing the shared jar, and returns its body.
