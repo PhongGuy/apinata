@@ -667,6 +667,17 @@ pub struct RequestResult {
     control: RunnerControl,
     /// The person declined a network change before this send, which ends the run.
     network_declined: bool,
+    /// A post-response script replaced the body, so the assertions read a body the result does
+    /// not keep.
+    pub body_edited: bool,
+    /// The kept response had a secret removed from its body, a header, the URL or the status
+    /// text, so it is not what the assertions read.
+    pub response_scrubbed: bool,
+    /// The body was too large to keep, so the kept response has none.
+    pub body_dropped: bool,
+    /// The kept response was saved before these marks were recorded, so none of them can be
+    /// trusted.
+    pub saved_unmarked: bool,
 }
 
 // The sensitive values a script read are secrets, so Debug shows their count only.
@@ -690,6 +701,10 @@ impl fmt::Debug for RequestResult {
             .field("script_cookies", &self.script_cookies)
             .field("iteration", &self.iteration)
             .field("status_failure", &self.status_failure)
+            .field("body_edited", &self.body_edited)
+            .field("response_scrubbed", &self.response_scrubbed)
+            .field("body_dropped", &self.body_dropped)
+            .field("saved_unmarked", &self.saved_unmarked)
             .finish()
     }
 }
@@ -1699,6 +1714,7 @@ async fn exchange(
     }
     // Assertions read the body a post-response script set; the result keeps the original.
     let effective = state.as_ref().and_then(|s| s.edited_response());
+    result.body_edited = effective.is_some();
     if let Some(response) = effective.as_ref().or(result.response.as_ref()) {
         result.assertions = match &scripted {
             Some(scripted) => evaluate_scripted(request, response, ctx, scripted),
@@ -1749,6 +1765,49 @@ async fn exchange(
         });
         result.outcome = Outcome::Errored;
     }
+}
+
+/// Why [`recheck_assertions`] would not re-evaluate a result's assertions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum RecheckRefused {
+    /// The result has no response to check against.
+    #[error("There is no response to check against.")]
+    NoResponse,
+    /// A post-response script changed the body, so the kept body is not what the assertions read.
+    #[error(
+        "A post-response script changed the body, so the shown response is not what the assertions read. Send again to check."
+    )]
+    BodyEdited,
+    /// The saved response had secrets removed, so it is not what the server sent.
+    #[error(
+        "The saved response had secrets removed, so it cannot be checked. Send again to check."
+    )]
+    ResponseScrubbed,
+    /// The response was saved before re-check marks were kept, so it may hide either of the above.
+    #[error("This response was saved by an older version. Send again to re-check this response.")]
+    SavedUnmarked,
+}
+
+/// Re-evaluates `request`'s enabled assertions against the response `result` kept, without
+/// sending anything.
+pub fn recheck_assertions(
+    request: &RequestFile,
+    result: &RequestResult,
+    ctx: &VarContext,
+) -> Result<Vec<AssertionOutcome>, RecheckRefused> {
+    if let Some(why) = result.recheck_refusal() {
+        return Err(why);
+    }
+    let response = result.response.as_ref().ok_or(RecheckRefused::NoResponse)?;
+    // The send's script host is gone, so left sides that need JavaScript are skipped, and
+    // script tests keep the verdicts the send gave them.
+    if result.body_dropped {
+        // With no body kept, it reads as truncated, so body checks skip rather than fail.
+        let cut = response.clone().with_truncated(response.size());
+        return Ok(evaluate(request, &cut, ctx));
+    }
+    Ok(evaluate(request, response, ctx))
 }
 
 /// Marks `result` cancelled because the person declined a network change, which ends the run.
@@ -1816,6 +1875,21 @@ impl Summary {
 }
 
 impl RequestResult {
+    /// Why [`recheck_assertions`] would refuse this result; `None` when it would re-check it.
+    pub fn recheck_refusal(&self) -> Option<RecheckRefused> {
+        if self.response.is_none() {
+            Some(RecheckRefused::NoResponse)
+        } else if self.saved_unmarked {
+            Some(RecheckRefused::SavedUnmarked)
+        } else if self.body_edited {
+            Some(RecheckRefused::BodyEdited)
+        } else if self.response_scrubbed {
+            Some(RecheckRefused::ResponseScrubbed)
+        } else {
+            None
+        }
+    }
+
     /// The sentence naming the reply status that failed the request, when `fail_on_status` did.
     pub fn status_failure_reason(&self) -> Option<String> {
         let code = self.status_failure?;
@@ -1909,6 +1983,10 @@ impl RequestResult {
             last_attempt_error: None,
             control: RunnerControl::default(),
             network_declined: false,
+            body_edited: false,
+            response_scrubbed: false,
+            body_dropped: false,
+            saved_unmarked: false,
         }
     }
 
@@ -1936,6 +2014,10 @@ impl RequestResult {
             last_attempt_error: None,
             control: RunnerControl::default(),
             network_declined: false,
+            body_edited: false,
+            response_scrubbed: false,
+            body_dropped: false,
+            saved_unmarked: false,
         }
     }
 
