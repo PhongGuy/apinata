@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use apinata_core::{
     Assertion, AuthSpec, BodySpec, Collection, CollectionNetwork, EnvError, EnvVariable,
-    Environment, Folder, ItemPath, KeyValue, Param, PostResponseVar, RequestFile, RequestSettings,
-    ScriptPhase, Sibling, Variable,
+    Environment, Folder, InheritedVariable, ItemPath, KeyValue, Param, PostResponseVar,
+    RequestFile, RequestSettings, ScriptPhase, Sibling, Variable,
 };
 
 use crate::auth_section::inherit_text;
@@ -233,6 +233,10 @@ pub struct EnvView {
     /// The other environments, and a parent `extends` names, that core would refuse as the
     /// parent, so the picker can leave them out or mark them.
     pub refused_parents: Vec<RefusedParent>,
+    /// What the `extends` chain gives, marked against the variables above.
+    pub inherited: Vec<InheritedVariable>,
+    /// Why the `extends` chain stops early, if it does.
+    pub inherited_warning: Option<String>,
     pub dirty: bool,
     pub disk: DiskState,
     /// The seq of the last outside reload of this environment's file, 0 if none.
@@ -484,15 +488,23 @@ impl SnapshotCache {
             .iter()
             .map(|env| {
                 let target = Target::Environment(env.name().to_owned());
-                // A sibling's edit can change which parents loop, so a kept view is reused
-                // only while its refusals still hold.
+                // A sibling's edit can change which parents loop and what is inherited, so a
+                // kept view is reused only while its refusals and inheritance still hold.
                 let refused = refused_parents(c, env);
+                let inheritance = c
+                    .inherited_variables(env.name(), &env.variables())
+                    .unwrap_or_default();
+                let holds = |view: &EnvView| {
+                    view.refused_parents == refused
+                        && view.inherited == inheritance.variables
+                        && view.inherited_warning == inheritance.warning
+                };
                 match self.environments.get(env.name()) {
-                    Some(view) if self.fresh(&target) && view.refused_parents == refused => {
-                        Arc::clone(view)
-                    }
+                    Some(view) if self.fresh(&target) && holds(view) => Arc::clone(view),
                     Some(view) if self.fresh(&target) => Arc::new(EnvView {
                         refused_parents: refused,
+                        inherited: inheritance.variables,
+                        inherited_warning: inheritance.warning,
                         ..(**view).clone()
                     }),
                     _ => {
@@ -503,6 +515,8 @@ impl SnapshotCache {
                             disk,
                             reloaded,
                             refused_parents: refused,
+                            inherited: inheritance.variables,
+                            inherited_warning: inheritance.warning,
                             ..view
                         })
                     }
@@ -785,6 +799,8 @@ fn env_view(e: &Environment) -> EnvView {
         color: e.color(),
         extends: e.extends(),
         refused_parents: Vec::new(),
+        inherited: Vec::new(),
+        inherited_warning: None,
         dirty: e.is_dirty(),
         disk: e.disk_state().into(),
         reloaded: 0,

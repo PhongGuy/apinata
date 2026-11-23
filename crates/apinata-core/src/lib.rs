@@ -195,6 +195,7 @@ pub use env_ops::{
     without_variable,
 };
 pub use env_overlay::{EnvOverlay, OverlayLayer, OverlayVar};
+pub use environment::{Inheritance, InheritedState, InheritedVariable};
 pub use error::{
     ContextError, CreateError, EditError, EnvError, FileError, HintShell, OpenError, RenameRefusal,
     ResolveError, SaveError, TreeError, UndefinedHint,

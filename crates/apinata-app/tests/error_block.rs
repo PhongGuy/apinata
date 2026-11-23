@@ -597,3 +597,46 @@ fn a_dotenv_change_clears_the_error(cx: &mut TestAppContext) {
     assert!(idle(cx, &model));
     assert!(!present(cx, win, "response-error"));
 }
+
+// A 2000 ms request timeout names its limit, its link opens the request's Settings, and the
+// open details copy to the clipboard.
+#[gpui_kit::test]
+fn a_timeout_names_its_limit_and_links_to_the_setting(cx: &mut TestAppContext) {
+    use apinata_app::request_editor::Section;
+    use std::time::Duration;
+    http_ready(cx);
+    let server = mock_server(
+        cx,
+        ResponseTemplate::new(200).set_delay(Duration::from_secs(30)),
+    );
+    let col = collection_for(&server.uri(), "settings:\n  timeout: 2000\n");
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, editor) = editor_for(cx, &ws, &root, "a.yml", false);
+    let model = editor.read_with(cx, |e, _| e.send_model().clone());
+    model.update(cx, |m, cx| m.send(&root, ip("a.yml"), cx));
+    finished(cx, &model);
+    frame(cx, win);
+    let pane = editor.read_with(cx, |e, _| e.response().clone());
+    let shown = pane
+        .read_with(cx, |p, cx| p.error_view(cx))
+        .expect("an error");
+    assert_eq!(shown.kind, ErrorKind::Timeout);
+    assert_eq!(shown.sentence.as_deref(), Some("No response within 2 s."));
+    assert_ne!(editor.read_with(cx, |e, _| e.section()), Section::Settings);
+    cx.update_window(win, |_, w, cx| w.click("response-timeout-settings", cx))
+        .unwrap();
+    cx.run_until_parked();
+    assert_eq!(editor.read_with(cx, |e, _| e.section()), Section::Settings);
+
+    frame(cx, win);
+    assert!(!present(cx, win, "response-error-details-copy"));
+    cx.update_window(win, |_, w, cx| w.click("response-error-details-toggle", cx))
+        .unwrap();
+    cx.run_until_parked();
+    cx.update_window(win, |_, w, cx| w.click("response-error-details-copy", cx))
+        .unwrap();
+    cx.run_until_parked();
+    let copied = cx.read_from_clipboard().and_then(|c| c.text());
+    assert_eq!(copied, shown.message);
+    assert!(copied.is_some_and(|t| t.contains("timed out")));
+}

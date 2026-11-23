@@ -1,7 +1,9 @@
 use crate::support;
 
 use apinata_app::executor;
-use apinata_app::response_pane::{CookiesView, ResponsePane, ResponseTab, cookie_matches};
+use apinata_app::response_pane::{
+    CookiesView, NAME_MASK, ResponsePane, ResponseTab, cookie_matches,
+};
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AppContext, TestAppContext, WindowOptions};
 use support::*;
@@ -426,7 +428,7 @@ fn this_response_lists_every_hops_cookies_with_hop_and_result(cx: &mut TestAppCo
     );
     assert!(present(cx, win, "cookies-view-response"));
     assert!(present(cx, win, "cookies-view-jar"));
-    let row = |n: &str, hop: &str, result: &str| [n, "[redacted]", hop, result].map(str::to_owned);
+    let row = |n: &str, hop: &str, result: &str| [n, NAME_MASK, hop, result].map(str::to_owned);
     assert_eq!(
         response_cells(cx, win, 3),
         [
@@ -452,7 +454,7 @@ fn this_response_lists_every_hops_cookies_with_hop_and_result(cx: &mut TestAppCo
     let cells = response_cells(cx, win, 2);
     assert_eq!(
         (cells[0][1].as_str(), cells[1][1].as_str()),
-        ("[redacted]", "2")
+        (NAME_MASK, "2")
     );
 }
 
@@ -747,7 +749,7 @@ fn a_long_hop_is_not_cut_while_values_are_masked(cx: &mut TestAppContext) {
             need <= room,
             "the hop needs {need:?}, its column is {room:?}"
         );
-        let mask = mono_width(w, cx, "[redacted]");
+        let mask = mono_width(w, cx, NAME_MASK);
         let text = w
             .within(("set-cookie-value", 1usize))
             .find("kv-text")
@@ -885,7 +887,7 @@ fn a_script_cookie_row_reads_its_phase_script_with_its_verdict(cx: &mut TestAppC
     cx.run_until_parked();
     view.update(cx, |p, cx| p.set_tab(ResponseTab::Cookies, cx));
     frame(cx, win);
-    let row = |n: &str, hop: &str, result: &str| [n, "[redacted]", hop, result].map(str::to_owned);
+    let row = |n: &str, hop: &str, result: &str| [n, NAME_MASK, hop, result].map(str::to_owned);
     assert_eq!(
         response_cells(cx, win, 3),
         [

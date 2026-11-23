@@ -11,7 +11,7 @@ use std::time::{Duration, UNIX_EPOCH};
 use apinata_app::body_view::SCRUBBED_TIP;
 use apinata_app::executor::SharedExecutor;
 use apinata_app::last_response::{Limits, ResponseStore};
-use apinata_app::response_pane::ResponseTab;
+use apinata_app::response_pane::{NAME_MASK, ResponseTab};
 use apinata_app::ui::{self, LockButton as _};
 use apinata_core::{ExecOptions, Executor, Outcome, RequestResult, Response};
 use gpui_kit::assets::IconName;
@@ -253,7 +253,7 @@ fn the_kept_files_never_hold_the_secret(cx: &mut TestAppContext) {
 fn the_cookies_tab_eye_on_a_restored_response_reveals_the_jar_value(cx: &mut TestAppContext) {
     let k = restored(cx, ResponseTab::Cookies, true, |_| {});
     let sid = row_named(cx, k.win, "cookie-name", "sid");
-    assert_eq!(label_of(cx, k.win, ("cookie-value", sid)), "[redacted]");
+    assert_eq!(label_of(cx, k.win, ("cookie-value", sid)), NAME_MASK);
     assert!(
         marker(cx, k.win, ("cookie-eye", sid)).is_none(),
         "not locked"

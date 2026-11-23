@@ -83,8 +83,8 @@ pub const COOKIE_TABLE_MIN_WIDTH: Rems = ui(864.);
 /// The This response cookie table's fixed column widths: Name, Hop and Result. Result fits
 /// its longest phrase ("Domain does not match host") whole at the default zoom.
 pub const SET_COOKIE_FIXED_WIDTHS: [Rems; 3] = [ui(120.), ui(240.), ui(216.)];
-/// The This response table's Value width while no shown value is revealed: the masked text
-/// "[redacted]" whole at the default zoom beside its 28 px eye.
+/// The This response table's Value width while no shown value is revealed: the
+/// mask whole at the default zoom beside its 28 px eye.
 pub const SET_COOKIE_MASKED_VALUE_WIDTH: Rems = ui(120.);
 /// The This response table's least width: the 576 px of fixed columns, a 160 px Value with its
 /// 28 px eye, four 8 px gaps, the 8 px right gutter and the 28 px copy slot. A narrower pane
