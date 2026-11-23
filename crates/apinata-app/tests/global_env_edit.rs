@@ -828,7 +828,7 @@ fn deleting_an_extended_global_environment_offers_only_cancel(cx: &mut TestAppCo
     })
     .unwrap();
     cx.run_until_parked();
-    assert!(shown(cx, "confirm-cancel"));
+    assert!(shown(cx, "confirm-ok"));
     assert!(!shown(cx, "confirm-delete"));
     assert!(shown(cx, "confirm-detail"));
     let title = cx
@@ -840,7 +840,7 @@ fn deleting_an_extended_global_environment_offers_only_cancel(cx: &mut TestAppCo
         title.as_deref(),
         Some("Global environment \"base\" is extended by \"dev\"")
     );
-    answer_confirm(cx, "confirm-cancel");
+    answer_confirm(cx, "confirm-ok");
     assert!(g.path().join("base.yml").is_file());
 }
 
