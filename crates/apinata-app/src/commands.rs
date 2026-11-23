@@ -1298,7 +1298,7 @@ pub fn registry() -> Vec<Command> {
             &["environment"],
             asks(command(
                 "environment.runtime_variables",
-                "Edit variables set by requests…",
+                "Runtime variables…",
                 Environment,
                 shell(OpenRuntimeVariables),
                 &[],

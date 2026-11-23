@@ -943,3 +943,100 @@ fn settings_save_matches_the_environment_editors_save(cx: &mut TestAppContext) {
         .unwrap();
     assert_eq!(config, env);
 }
+
+const HEADED: &str = "info:\n  name: Users\n  type: folder\n  seq: 1\nrequest:\n  headers:\n    - name: h1\n      value: one\n    - name: h2\n      value: two\n    - name: h3\n      value: off\n      disabled: true\n";
+
+const HEADED_ROOT: &str = "opencollection: 1.0.0\ninfo:\n  name: c\nrequest:\n  headers:\n    - name: h1\n      value: one\n";
+
+// The tab index of `section` in the strip, whose element ids carry it.
+fn tab_ix(cx: &mut TestAppContext, ed: &Entity<ConfigEditor>, section: ConfigSection) -> usize {
+    ed.read_with(cx, |e, _| e.sections())
+        .iter()
+        .position(|s| *s == section)
+        .unwrap()
+}
+
+#[gpui_kit::test]
+fn a_folder_counts_its_enabled_headers_and_an_empty_one_shows_nothing(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("users/folder.yml", HEADED),
+        ("empty/folder.yml", &folder("Empty")),
+    ]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, ed) = editor(cx, &ws, &root, ConfigTarget::Folder(ip("users")));
+    let ix = tab_ix(cx, &ed, ConfigSection::Headers);
+    assert_eq!(
+        ed.read_with(cx, |e, cx| e.section_count(ConfigSection::Headers, cx)),
+        Some(2)
+    );
+    assert!(present(cx, win, ("config-section-count", ix)));
+    let (win, ed) = editor(cx, &ws, &root, ConfigTarget::Folder(ip("empty")));
+    assert_eq!(
+        ed.read_with(cx, |e, cx| e.section_count(ConfigSection::Headers, cx)),
+        Some(0)
+    );
+    assert!(
+        !present(cx, win, ("config-section-count", ix)),
+        "zero shows nothing"
+    );
+    for section in [
+        ConfigSection::Auth,
+        ConfigSection::Docs,
+        ConfigSection::Script,
+    ] {
+        let ix = tab_ix(cx, &ed, section);
+        assert!(
+            !present(cx, win, ("config-section-mode", ix)),
+            "{section:?}"
+        );
+    }
+}
+
+#[gpui_kit::test]
+fn docs_get_a_dot_that_names_them(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        (
+            "users/folder.yml",
+            &format!("{}docs: notes\n", folder("Users")),
+        ),
+    ]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, ed) = editor(cx, &ws, &root, ConfigTarget::Folder(ip("users")));
+    let ix = tab_ix(cx, &ed, ConfigSection::Docs);
+    assert_eq!(
+        ed.read_with(cx, |e, cx| e.section_mark(ConfigSection::Docs, cx))
+            .as_deref(),
+        Some("Has docs")
+    );
+    assert!(present(cx, win, ("config-section-mode", ix)));
+}
+
+#[gpui_kit::test]
+fn inherited_headers_do_not_count(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", HEADED_ROOT),
+        ("users/folder.yml", &folder("Users")),
+    ]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, ed) = editor(cx, &ws, &root, ConfigTarget::Folder(ip("users")));
+    let ix = tab_ix(cx, &ed, ConfigSection::Headers);
+    assert_eq!(
+        ed.read_with(cx, |e, cx| e.section_count(ConfigSection::Headers, cx)),
+        Some(0)
+    );
+    assert!(!present(cx, win, ("config-section-count", ix)));
+    let (win, _ed) = editor(cx, &ws, &root, ConfigTarget::Collection);
+    assert!(present(cx, win, ("config-section-count", ix)));
+}
+
+#[test]
+fn the_runtime_variables_command_is_named_after_its_dialog() {
+    let cmds = apinata_app::commands::registry();
+    let cmd = cmds
+        .iter()
+        .find(|c| c.id == "environment.runtime_variables")
+        .unwrap();
+    assert_eq!(cmd.label, "Runtime variables…");
+}

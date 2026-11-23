@@ -1082,6 +1082,25 @@ impl CookieJar {
         Ok(())
     }
 
+    /// Puts back a cookie `list` once showed, as an undone delete does; false when it has
+    /// expired since, or a cookie with its domain, path and name is stored again meanwhile.
+    pub fn restore(&self, cookie: &CookieInfo) -> bool {
+        if cookie.expires.is_some_and(|at| at <= SystemTime::now()) {
+            return false;
+        }
+        let domain = cookie.domain.trim_start_matches('.').to_ascii_lowercase();
+        // The check and the put share one lock, so a cookie a response set meanwhile wins.
+        let mut store = self.write();
+        if store.contains(&domain, &cookie.path, &cookie.name) {
+            return false;
+        }
+        let restored = validate(cookie).is_ok() && put(&mut store, cookie).is_ok();
+        if restored {
+            self.bump();
+        }
+        restored
+    }
+
     /// Every unexpired cookie, sorted by domain, path and name.
     pub fn list(&self) -> Vec<CookieInfo> {
         sorted(self.read().iter_unexpired().map(info).collect())
