@@ -406,3 +406,111 @@ fn closing_and_retaining_keep_pinned_tabs_in_front() {
     assert_eq!(gone[0].id, a);
     assert_eq!(names(&t), ["d.yml", "b.yml"]);
 }
+
+fn anywhere(_: &Path, _: &TabKind) -> bool {
+    true
+}
+
+#[test]
+fn back_after_a_preview_was_replaced_reopens_it() {
+    let mut t = Tabs::new();
+    t.open(root(), req("a.yml"), true);
+    t.open(root(), req("b.yml"), true);
+    assert_eq!(names(&t), ["b.yml"]);
+    assert!(t.go_back(anywhere).is_some());
+    assert_eq!(active(&t), Some("a.yml"));
+    assert!(names(&t).contains(&"a.yml"));
+    assert!(t.go_forward(anywhere).is_some());
+    assert_eq!(active(&t), Some("b.yml"));
+}
+
+#[test]
+fn back_and_forward_move_without_recording_and_a_new_visit_clears_forward() {
+    let mut t = Tabs::new();
+    t.open(root(), req("a.yml"), false);
+    t.open(root(), req("b.yml"), false);
+    t.open(root(), req("c.yml"), false);
+    t.go_back(anywhere);
+    t.go_back(anywhere);
+    assert_eq!(active(&t), Some("a.yml"));
+    assert_eq!(t.visits().len(), 3);
+    assert_eq!(t.visit_cursor(), Some(0));
+    t.open(root(), req("d.yml"), false);
+    assert_eq!(t.visits().len(), 2);
+    assert!(t.go_forward(anywhere).is_none());
+    assert_eq!(active(&t), Some("d.yml"));
+    t.go_back(anywhere);
+    assert_eq!(active(&t), Some("a.yml"));
+}
+
+#[test]
+fn a_closed_draft_is_skipped_but_an_open_one_is_visited() {
+    let mut t = Tabs::new();
+    t.open(root(), req("a.yml"), false);
+    let draft = t.open(root(), req("untitled-1.draft"), false);
+    t.open(root(), req("b.yml"), false);
+    t.go_back(anywhere);
+    assert_eq!(active(&t), Some("untitled-1.draft"));
+    t.go_forward(anywhere);
+    t.close(draft);
+    t.go_back(anywhere);
+    assert_eq!(active(&t), Some("a.yml"));
+    assert!(!names(&t).contains(&"untitled-1.draft"));
+}
+
+#[test]
+fn a_closed_runner_is_skipped_and_an_unreachable_target_too() {
+    let mut t = Tabs::new();
+    t.open(root(), req("a.yml"), false);
+    t.open(root(), req("gone.yml"), true);
+    let runner = t.open(root(), TabKind::Runner(ItemPath::root()), false);
+    t.open(root(), req("b.yml"), true);
+    t.close(runner);
+    assert!(t.go_back(|_, k| *k != req("gone.yml")).is_some());
+    assert_eq!(active(&t), Some("a.yml"));
+}
+
+#[test]
+fn back_and_forward_at_either_end_do_nothing() {
+    let mut t = Tabs::new();
+    assert!(t.go_back(anywhere).is_none());
+    assert!(t.go_forward(anywhere).is_none());
+    t.open(root(), req("a.yml"), false);
+    t.open(root(), req("b.yml"), false);
+    assert!(t.go_forward(anywhere).is_none());
+    assert_eq!(active(&t), Some("b.yml"));
+    t.go_back(anywhere);
+    assert!(t.go_back(anywhere).is_none());
+    assert_eq!(active(&t), Some("a.yml"));
+    assert_eq!(t.visit_cursor(), Some(0));
+}
+
+#[test]
+fn reactivating_the_current_tab_records_no_second_visit() {
+    let mut t = Tabs::new();
+    let a = t.open(root(), req("a.yml"), false);
+    t.activate(a);
+    t.open(root(), req("a.yml"), false);
+    assert_eq!(t.visits().len(), 1);
+}
+
+#[test]
+fn the_cap_drops_the_oldest_visit() {
+    let mut t = Tabs::new();
+    for n in 0..=Tabs::VISITS_KEPT {
+        t.open(root(), req(&format!("r{n}.yml")), false);
+    }
+    assert_eq!(t.visits().len(), Tabs::VISITS_KEPT);
+    while t.go_back(anywhere).is_some() {}
+    assert_eq!(active(&t), Some("r1.yml"));
+}
+
+#[test]
+fn visits_follow_a_move() {
+    let mut t = Tabs::new();
+    t.open(root(), req("a.yml"), true);
+    t.open(root(), req("b.yml"), true);
+    t.follow_move(root(), &ip("a.yml"), &ip("moved/a.yml"));
+    t.go_back(anywhere);
+    assert_eq!(active(&t), Some("moved/a.yml"));
+}
