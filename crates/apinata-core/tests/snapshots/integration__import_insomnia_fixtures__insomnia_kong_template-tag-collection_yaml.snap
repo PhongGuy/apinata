@@ -410,4 +410,4 @@ NeedsInput Common Tag / body.text: a template tag has no equivalent, so each is 
 NeedsInput FolderWithRequest / Request Tag / body.text: a template tag has no equivalent, so each is written as a variable: `{% request 'name', '', '' %}` as `{{request}}`, `{% request 'folder', '', '' %}` as `{{request}}`, `{% request 'url', '', '' %}` as `{{request}}`, `{% request 'parameter', 'foo', '' %}` as `{{request}}`, `{% request 'cookie', 'from', '' %}` as `{{request}}`; give `request` a value before sending (FolderWithRequest/Request Tag.yml)
 Converted FolderWithRequest / Request Tag / authentication: `oauth2` authentication is not supported; set to none (FolderWithRequest/Request Tag.yml)
 Dropped collection / cookieJar: cookies are not imported
-Converted collection: runs use the environment `Base Environment` by default, as the first environment imported (opencollection.yml)
+Converted collection: `Base Environment` is the default environment because it was imported first (opencollection.yml)

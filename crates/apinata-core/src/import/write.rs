@@ -9,7 +9,7 @@ use super::update::{
 };
 use super::{
     ImportError, ImportNote, ImportReport, ImportedCollection, ImportedEnvironment, ImportedItem,
-    NoteKind,
+    ImportedScripts, NoteKind,
 };
 use crate::collection::{Collection, ENVIRONMENTS_DIR, FOLDER_FILE, ROOT_FILE};
 use crate::error::{OpenError, TreeError};
@@ -156,6 +156,14 @@ pub(super) fn write_staged(
     report
         .notes
         .extend(placed(&imported.notes, ROOT_FILE.to_owned()));
+    // How imported scripts run is said once for the import; it concerns no one file.
+    if carries_scripts(&imported.scripts, &imported.items) {
+        report.notes.push(ImportNote::new(
+            "collection",
+            NoteKind::Converted,
+            "imported scripts ask before they first run in the app or the MCP server, and apinata run runs them as your own command",
+        ));
+    }
     let environments = staged.join(ENVIRONMENTS_DIR);
     fs::create_dir_all(&environments).map_err(|source| io_error(&environments, source))?;
     write_items(
@@ -187,14 +195,11 @@ pub(super) fn write_staged(
         root_file.set_default_environment(&first.name);
         root_file.save()?;
         let why = if credentials {
-            "since it holds the imported credentials"
+            "it holds the imported credentials"
         } else {
-            "as the first environment imported"
+            "it was imported first"
         };
-        let detail = format!(
-            "runs use the environment `{}` by default, {why}",
-            first.name
-        );
+        let detail = format!("`{}` is the default environment because {why}", first.name);
         let note = ImportNote::new("collection", NoteKind::Converted, detail);
         report.notes.extend(placed(&[note], ROOT_FILE.to_owned()));
     }
@@ -275,6 +280,16 @@ fn io_error(path: &Path, source: io::Error) -> ImportError {
     }
 }
 
+/// Whether the collection's own scripts or any item's at any depth hold code.
+fn carries_scripts(scripts: &ImportedScripts, items: &[ImportedItem]) -> bool {
+    let any = |s: &ImportedScripts| !s.pre_request.is_empty() || !s.post_response.is_empty();
+    any(scripts)
+        || items.iter().any(|item| match item {
+            ImportedItem::Folder(f) => carries_scripts(&f.scripts, &f.items),
+            ImportedItem::Request(r) => any(&r.request.scripts),
+        })
+}
+
 /// `notes`, each tied to `file`.
 pub(super) fn placed(notes: &[ImportNote], file: String) -> impl Iterator<Item = ImportNote> + '_ {
     notes.iter().cloned().map(move |mut note| {
@@ -326,6 +341,7 @@ fn write_items(
         let reason = rename_reason(name, &wanted, taken.get(&wanted.to_lowercase()));
         taken.insert(stem.to_lowercase(), name.to_owned());
         report.items.push(path.clone());
+        report.requests += usize::from(!is_folder);
 
         match item {
             ImportedItem::Folder(folder) => {

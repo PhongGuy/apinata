@@ -1360,33 +1360,35 @@ impl Sidebar {
         Some(self.rename.as_ref()?.error.as_ref()?.1.as_str())
     }
 
-    // The refusal for a name a sibling of the same kind already shows, which would leave two
-    // rows alike. Folders clash only with folders, request files with request files.
+    // A sibling's clash for the typed name; an example has no siblings to clash with.
     fn name_clash(&self, r: &Rename, cx: &App) -> Option<String> {
         let name = r.input.read(cx).value().trim().to_string();
-        if r.example.is_some() || name.is_empty() || name == r.old {
+        if r.example.is_some() {
             return None;
         }
-        let snapshot = self.workspace.read(cx).snapshot(&r.root, cx)?;
-        let rows = &snapshot.content.rows;
-        let folder = rows.iter().find(|row| row.path == r.path)?.kind == RowKind::Folder;
-        let parent = r.path.parent()?;
-        rows.iter().find(|row| {
-            row.path != r.path
-                && row.path.parent().as_ref() == Some(&parent)
-                && (row.kind == RowKind::Folder) == folder
-                && row.name == name
-        })?;
-        let place = if parent.is_root() {
-            let collection = self.nodes.iter().find(|n| n.root == r.root)?;
-            collection.name.clone()
-        } else {
-            rows.iter().find(|row| row.path == parent)?.name.clone()
+        name_clash(self.workspace.read(cx), &r.root, &r.path, &r.old, &name, cx)
+    }
+
+    /// Renames the request or folder `item` of `root` to `name` as the tree's own rename
+    /// does, so Undo in sidebar takes it back; for a rename typed outside the tree.
+    pub fn rename_item(
+        &mut self,
+        root: &Path,
+        item: ItemPath,
+        name: String,
+        cx: &mut Context<Self>,
+    ) {
+        self.send_rename(root, item, name, cx);
+    }
+
+    // Sends the rename of a request or folder as an undoable gesture.
+    fn send_rename(&mut self, root: &Path, item: ItemPath, name: String, cx: &mut Context<Self>) {
+        let op = TreeOp::Rename {
+            item: item.clone(),
+            name,
+            rename_file: true,
         };
-        let what = if folder { "folder" } else { "request" };
-        Some(format!(
-            "A {what} named \"{name}\" is already in \"{place}\""
-        ))
+        self.send_placing(root, vec![(item, op)], Step::Forward, cx);
     }
 
     // Enter and clicking away both commit a real change and end the rename; only Enter hands
@@ -1471,13 +1473,7 @@ impl Sidebar {
                 name,
             },
             None => {
-                let op = TreeOp::Rename {
-                    item: r.path.clone(),
-                    name,
-                    rename_file: true,
-                };
-                let ops = vec![(r.path, op)];
-                self.send_placing(&r.root, ops, Step::Forward, cx);
+                self.send_rename(&r.root, r.path, name, cx);
                 return;
             }
         };
@@ -4341,6 +4337,41 @@ fn row_suffix(n: &Node, change: Option<&GitChange>, rolled: bool, cx: &App) -> g
             n.dirty
                 .then(|| ui::dirty_dot(marker_id("dirty", &n.id)).test_support()),
         )
+}
+
+/// The refusal for renaming `path` of `root` from `old` to `name` when a sibling of the same
+/// kind already shows that name, which would leave two rows alike. Folders clash only with
+/// folders, request files with request files; a blank or unchanged name never clashes.
+pub fn name_clash(
+    workspace: &Workspace,
+    root: &Path,
+    path: &ItemPath,
+    old: &str,
+    name: &str,
+    cx: &App,
+) -> Option<String> {
+    if name.is_empty() || name == old {
+        return None;
+    }
+    let snapshot = workspace.snapshot(root, cx)?;
+    let rows = &snapshot.content.rows;
+    let folder = rows.iter().find(|row| row.path == *path)?.kind == RowKind::Folder;
+    let parent = path.parent()?;
+    rows.iter().find(|row| {
+        row.path != *path
+            && row.path.parent().as_ref() == Some(&parent)
+            && (row.kind == RowKind::Folder) == folder
+            && row.name == name
+    })?;
+    let place = if parent.is_root() {
+        collection_name(root, Some(&*snapshot))
+    } else {
+        rows.iter().find(|row| row.path == parent)?.name.clone()
+    };
+    let what = if folder { "folder" } else { "request" };
+    Some(format!(
+        "A {what} named \"{name}\" is already in \"{place}\""
+    ))
 }
 
 /// The collection's label by the shared rule, from the in-memory snapshot.

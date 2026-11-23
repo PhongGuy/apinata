@@ -4,7 +4,7 @@ expression: snapshot
 ---
 Converted collection / auth.password [opencollection.yml]: the value is kept as the secret variable `basic_auth_password`, not in the file
 Converted Own Auth / request.auth.password [Own Auth.yml]: the value is kept as the secret variable `own_auth_password`, not in the file
-Converted collection [opencollection.yml]: runs use the environment `Environment` by default, since it holds the imported credentials
+Converted collection [opencollection.yml]: `Environment` is the default environment because it holds the imported credentials
 Converted imported credentials [environments/Environment.yml]: the imported credentials are the secret variables `basic_auth_password`, `own_auth_password`; their values are kept in the secret store, not in the file
 == Own Auth.yml
 info:

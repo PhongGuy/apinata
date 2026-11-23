@@ -120,5 +120,5 @@ Converted req-v2 / request.auth.token: the value is kept as the secret variable 
 Converted req-v2 / request.headers[1]: the value is kept as the secret variable `req_v2_authorization`, not in the file (req-v2.yml)
 Converted req-v2 / request.url: the value is kept as the secret variable `req_v2_key`, not in the file (req-v2.yml)
 Converted req-v2 / request.params[0]: the value is kept as the secret variable `req_v2_key`, not in the file (req-v2.yml)
-Converted collection: runs use the environment `Environment` by default, since it holds the imported credentials (opencollection.yml)
+Converted collection: `Environment` is the default environment because it holds the imported credentials (opencollection.yml)
 Converted imported credentials: the imported credentials are the secret variables `req_v2_ii_token`, `req_v2_ii_authorization`, `req_v2_ii_key`, `req_v2_ii_key`, `req_v2_token`, `req_v2_authorization`, `req_v2_key`, `req_v2_key`; their values are kept in the secret store, not in the file (environments/Environment.yml)

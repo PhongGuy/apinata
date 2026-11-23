@@ -47,8 +47,8 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
-=== environments/Environment 1.yml
-name: Environment 1
+=== environments/cycles.example.test.yml
+name: cycles.example.test
 variables:
   - name: baseUrl
     value: https://cycles.example.test
@@ -65,7 +65,7 @@ extensions:
       - node_modules
       - .git
     presets:
-      defaultEnvironment: Environment 1
+      defaultEnvironment: cycles.example.test
   apinata:
     openapi:
       ops:
@@ -94,4 +94,4 @@ note Converted Create node.yml | paths./nodes.post.requestBody | `$ref` `#/compo
 note Converted Pair.yml | paths./pair.get.parameters[0] | `$ref` `#/components/parameters/A` refers back to itself; replaced with an empty object
 note Dropped Pair.yml | paths./pair.get.parameters[0] | not a parameter object, so it was not imported
 note Converted - | paths./loop | `$ref` `#/paths/~1loop` refers back to itself; replaced with an empty object
-note Converted opencollection.yml | collection | runs use the environment `Environment 1` by default, as the first environment imported
+note Converted opencollection.yml | collection | `cycles.example.test` is the default environment because it was imported first

@@ -1472,5 +1472,5 @@ Dropped Dynamic URL Construction / preRequestScript: scripts are not imported (D
 Dropped Dynamic URL Construction / testScript: scripts are not imported (Dynamic URL Construction.yml)
 Dropped crypto-module-test / preRequestScript: scripts are not imported (crypto-module-test.yml)
 Dropped crypto-module-test / testScript: scripts are not imported (crypto-module-test.yml)
-Converted collection: runs use the environment `Environment` by default, since it holds the imported credentials (opencollection.yml)
+Converted collection: `Environment` is the default environment because it holds the imported credentials (opencollection.yml)
 Converted imported credentials: the imported credentials are the secret variables `cookie_assertions_test_cookie`, `url_propertylist_helpers_test_authorization`, `propertylist_advanced_methods_test_authorization`; their values are kept in the secret store, not in the file (environments/Environment.yml)

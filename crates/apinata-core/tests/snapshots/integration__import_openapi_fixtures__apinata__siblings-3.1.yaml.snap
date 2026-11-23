@@ -49,8 +49,8 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
-=== environments/Environment 1.yml
-name: Environment 1
+=== environments/siblings.example.test.yml
+name: siblings.example.test
 variables:
   - name: baseUrl
     value: https://siblings.example.test
@@ -67,7 +67,7 @@ extensions:
       - node_modules
       - .git
     presets:
-      defaultEnvironment: Environment 1
+      defaultEnvironment: siblings.example.test
   apinata:
     openapi:
       ops:
@@ -92,4 +92,4 @@ extensions:
           examples: 7ace431cb61584cb
           file: Add pet.yml
 
-note Converted opencollection.yml | collection | runs use the environment `Environment 1` by default, as the first environment imported
+note Converted opencollection.yml | collection | `siblings.example.test` is the default environment because it was imported first

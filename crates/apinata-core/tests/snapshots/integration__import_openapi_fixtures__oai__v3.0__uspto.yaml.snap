@@ -2,8 +2,8 @@
 source: crates/apinata-core/tests/import_openapi_fixtures.rs
 expression: rendered
 ---
-=== environments/Environment 1.yml
-name: Environment 1
+=== environments/developer.uspto.gov.yml
+name: developer.uspto.gov
 variables:
   - name: baseUrl
     value: "{{scheme}}://developer.uspto.gov/ds-api"
@@ -171,7 +171,7 @@ extensions:
       - node_modules
       - .git
     presets:
-      defaultEnvironment: Environment 1
+      defaultEnvironment: developer.uspto.gov
   apinata:
     openapi:
       ops:
@@ -305,4 +305,4 @@ docs:
   content: Search a data set
   type: text/markdown
 
-note Converted opencollection.yml | collection | runs use the environment `Environment 1` by default, as the first environment imported
+note Converted opencollection.yml | collection | `developer.uspto.gov` is the default environment because it was imported first

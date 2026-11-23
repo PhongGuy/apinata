@@ -268,6 +268,38 @@ fn an_auth_beside_the_request_and_unknown_auth_members_are_reported() {
     assert_eq!(sources, ["r / auth", "r / event[0]"], "{:?}", r.notes);
 }
 
+/// Each carried script gets one sentence about its conversion and nothing about how it runs.
+#[test]
+fn each_script_note_is_one_sentence_about_its_conversion() {
+    let c = parse(
+        r#", "event": [{"listen": "prerequest", "script": {"exec": ["pm.environment.set('a', 1);"]}}]"#,
+        r#"[{"name": "r",
+             "event": [{"listen": "test", "script": {"exec": ["pm.variables.set('a', 1);", "pm.variables.set('b', 2);"]}},
+                       {"listen": "prerequest", "script": {"exec": ["go();"]}}],
+             "request": {"method": "GET", "url": "u"}}]"#,
+    );
+    let all = notes(&c);
+    let detail = |source: &str| {
+        all.iter()
+            .find(|n| n.source == source && n.detail.contains("script: "))
+            .map(|n| n.detail.as_str())
+            .expect(source)
+    };
+    assert_eq!(
+        detail("collection / event[0]"),
+        "pre-request script: 1 Postman call was converted to Apinata's script API"
+    );
+    assert_eq!(
+        detail("r / event[0]"),
+        "post-response script: 2 Postman calls were converted to Apinata's script API"
+    );
+    assert_eq!(
+        detail("r / event[1]"),
+        "pre-request script: kept as written"
+    );
+    assert!(all.iter().all(|n| !n.detail.contains("ask")), "{all:?}");
+}
+
 /// Events at the three levels become scripts and `Converted` notes at the event's source.
 #[test]
 fn events_at_every_level_become_scripts_with_converted_notes() {
@@ -290,11 +322,11 @@ fn events_at_every_level_become_scripts_with_converted_notes() {
     for (source, text) in [
         (
             "collection / event[0]",
-            "pre-request script: 1 Postman call translated",
+            "pre-request script: 1 Postman call was converted to Apinata's script API",
         ),
         (
             "collection / event[2]",
-            "post-response script: 1 Postman call translated",
+            "post-response script: 1 Postman call was converted to Apinata's script API",
         ),
     ] {
         let note = c.notes.iter().find(|n| n.source == source).expect(source);

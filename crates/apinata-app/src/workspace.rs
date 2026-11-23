@@ -100,6 +100,16 @@ pub enum WorkspaceEvent {
     /// Members of the run-selection or folder runner tab with this id left or came back, so
     /// its list is stale.
     SelectionChanged(TabId),
+    /// The breadcrumb asked for this request of `root` to be renamed, through the sidebar's
+    /// rename so Undo in sidebar covers it.
+    RenameItem {
+        /// The collection's root.
+        root: PathBuf,
+        /// The request to rename.
+        item: ItemPath,
+        /// The typed name, trimmed and checked against its siblings.
+        name: String,
+    },
     /// The breadcrumb asked to show this folder of `root` in the sidebar.
     RevealFolder {
         /// The collection's root.
@@ -2480,6 +2490,18 @@ impl Workspace {
             }
         }
         None
+    }
+
+    /// Asks the shell to rename `item` of the collection at `root` to `name`.
+    pub fn rename_item(
+        &mut self,
+        root: &Path,
+        item: ItemPath,
+        name: String,
+        cx: &mut Context<Self>,
+    ) {
+        let root = root.to_path_buf();
+        cx.emit(WorkspaceEvent::RenameItem { root, item, name });
     }
 
     /// Asks the shell to reveal `folder` of the collection at `root` in the sidebar.
