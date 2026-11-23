@@ -39,7 +39,7 @@ use gpui_kit::{
 
 use crate::app::AppState;
 use crate::body_text::{encoded_size_label, format_size, format_time, size_labels};
-use crate::body_view::{BodyView, MASKED, SCRUBBED_TIP, SetVariable, Shown};
+use crate::body_view::{BodyView, SCRUBBED_TIP, SetVariable, Shown};
 use crate::compare_rows::{ComparePalette, RevealHeader, RowActions, Toggle, compare_row};
 use crate::compare_source::{self, CompareSide, CompareSource, HeaderValue, SourceChoice};
 use crate::compare_view::{self, CompareRow};
@@ -2004,13 +2004,12 @@ impl ResponsePane {
             })
             .collect();
         let query = self.cookies_filter.read(cx).value().to_string();
-        // Values show masked unless revealed, but the filter and the copies read the real
-        // value, so a search or a paste never meets the mask's dots.
-        let now = SystemTime::now();
-        let real = self.cookie_table(now);
-        let (masked, eyes): (Vec<CookieCells>, Vec<Option<bool>>) =
-            self.shown_cookies(result, now).into_iter().unzip();
-        let shown = cookie_shown(&real, &query);
+        // Values show masked unless revealed, and the filter and the copies read what is shown.
+        let (table, eyes): (Vec<CookieCells>, Vec<Option<bool>>) = self
+            .shown_cookies(result, SystemTime::now())
+            .into_iter()
+            .unzip();
+        let shown = cookie_shown(&table, &query);
         if self.cookies.is_empty() {
             let bar = self.jar_filter_bar(false, cx);
             return self.cookies_empty(bar, "cookies-none", "No cookies for this host.", cx);
@@ -2023,10 +2022,10 @@ impl ResponsePane {
             .collect();
         let rows = shown
             .into_iter()
-            .map(|(ix, c)| {
+            .map(|(_, c)| {
                 vec![
                     KvCell::Text(c.name.clone().into()),
-                    KvCell::Text(masked[ix].value.clone().into()),
+                    KvCell::Text(c.value.clone().into()),
                     KvCell::Text(c.domain.clone().into()),
                     KvCell::Text(c.path.clone().into()),
                     KvCell::Text(c.expires.clone().into()),
@@ -2100,7 +2099,15 @@ impl ResponsePane {
             any_shown,
             |p, cx| {
                 let filter = p.cookies_filter.read(cx).value().to_string();
-                cookie_lines(&p.cookie_table(SystemTime::now()), &filter)
+                done(p.send.read(cx))
+                    .map(|r| {
+                        let cookies: Vec<CookieCells> = (p.shown_cookies(&r, SystemTime::now()))
+                            .into_iter()
+                            .map(|(c, _)| c)
+                            .collect();
+                        cookie_lines(&cookies, &filter)
+                    })
+                    .unwrap_or_default()
             },
             "Copied the cookies",
             cx,
@@ -3484,7 +3491,7 @@ impl ResponsePane {
                 }
                 let on = m.revealed_set.contains(&c.key);
                 if !on {
-                    c.value = MASKED.to_owned();
+                    c.value = NAME_MASK.to_owned();
                 }
                 (c, Some(on))
             })
@@ -4151,8 +4158,8 @@ pub fn header_lines(pairs: &[(String, String)], filter: &str) -> String {
         .join("\n")
 }
 
-/// The `(index, cookie)` of each cookie whose name, value or domain contains `filter`,
-/// ignoring case.
+/// The `(index, cookie)` of each cookie whose name, domain, path or shown value contains
+/// `filter`, ignoring case; a value shown as [`NAME_MASK`] is hidden and never matches.
 pub fn cookie_shown<'a>(cookies: &'a [CookieCells], filter: &str) -> Vec<(usize, &'a CookieCells)> {
     let f = filter.to_lowercase();
     cookies
@@ -4160,11 +4167,16 @@ pub fn cookie_shown<'a>(cookies: &'a [CookieCells], filter: &str) -> Vec<(usize,
         .enumerate()
         .filter(|(_, c)| {
             f.is_empty()
-                || [&c.name, &c.value, &c.domain]
+                || [&c.name, &c.domain, &c.path, shown_value(&c.value)]
                     .iter()
                     .any(|t| t.to_lowercase().contains(&f))
         })
         .collect()
+}
+
+// A cookie value as the filter reads it: nothing while it is hidden behind the mask.
+fn shown_value(value: &str) -> &str {
+    if value == NAME_MASK { "" } else { value }
 }
 
 /// One cookie as a `Set-Cookie`-style line: `name=value; Domain=..; Path=..` and the
@@ -5675,8 +5687,8 @@ fn set_cookie_cells(r: &RequestResult) -> Vec<SetCookieCells> {
         .collect()
 }
 
-/// The `(index, row)` of each Set-Cookie row whose name, hop or result contains `filter`,
-/// ignoring case.
+/// The `(index, row)` of each Set-Cookie row whose name, hop, result or shown value contains
+/// `filter`, ignoring case; a value shown as [`NAME_MASK`] is hidden and never matches.
 pub fn set_cookie_shown<'a>(
     rows: &'a [SetCookieCells],
     filter: &str,
@@ -5685,7 +5697,7 @@ pub fn set_cookie_shown<'a>(
     (rows.iter().enumerate())
         .filter(|(_, c)| {
             f.is_empty()
-                || [&c.name, &c.hop, &c.result]
+                || [&c.name, &c.hop, &c.result, shown_value(&c.value)]
                     .iter()
                     .any(|t| t.to_lowercase().contains(&f))
         })

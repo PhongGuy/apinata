@@ -6,8 +6,8 @@ use crate::support;
 use std::sync::Arc;
 
 use apinata_app::response_pane::{
-    CookieCells, ResponsePane, ResponseTab, cookie_line, cookie_lines, cookie_shown, header_lines,
-    header_shown,
+    CookieCells, NAME_MASK, ResponsePane, ResponseTab, cookie_line, cookie_lines, cookie_shown,
+    header_lines, header_shown,
 };
 use apinata_core::{Outcome, RequestResult, Response};
 use gpui_kit::component::WindowExt as _;
@@ -249,12 +249,12 @@ fn the_cookie_tab_filters_copies_and_copies_a_value(cx: &mut TestAppContext) {
         .unwrap();
     assert_eq!(
         clipboard(cx).as_deref(),
-        Some("b=2; Domain=127.0.0.1; Path=/")
+        Some(format!("b={NAME_MASK}; Domain=127.0.0.1; Path=/").as_str())
     );
-    // A masked value still copies as the real one, before and after the eye reveals it.
     cx.update_window(win, |_, w, cx| w.click(("cookie-copy", 0usize), cx))
         .unwrap();
-    assert_eq!(clipboard(cx).as_deref(), Some("2"));
+    assert_eq!(clipboard(cx).as_deref(), Some(NAME_MASK));
+    // The eye reveals the value, and the copies follow it.
     cx.update_window(win, |_, w, cx| w.click(("cookie-reveal", 0usize), cx))
         .unwrap();
     frame(cx, win);

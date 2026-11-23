@@ -257,10 +257,9 @@ fn every_cookie_value_is_masked_until_its_eye_reveals_it(cx: &mut TestAppContext
     assert_eq!(label(cx, &fx, ("cookie-value", theme)), "dark");
 }
 
-// The console hides a Set-Cookie header whole, and the Cookies tab hides each value too, behind
-// the Cookies dialog's dots rather than the scrubbed marker.
+// The console hides a Set-Cookie header whole, so the Headers tab and the Cookies tab agree.
 #[gpui_kit::test]
-fn the_cookies_and_headers_tabs_both_hide_a_set_cookie(cx: &mut TestAppContext) {
+fn the_cookies_and_headers_tabs_agree_about_a_set_cookie(cx: &mut TestAppContext) {
     let fx = shown(cx, ResponseTab::Headers);
     let row = row_of(cx, &fx, "header-name", "set-cookie");
     assert_eq!(label(cx, &fx, ("header-value", row)), "[redacted]");
@@ -273,17 +272,16 @@ fn the_cookies_and_headers_tabs_both_hide_a_set_cookie(cx: &mut TestAppContext) 
     }
 }
 
-// A copy is an explicit request for the value, so it gives the real one, never the mask.
 #[gpui_kit::test]
-fn cookie_copies_give_the_real_value_whatever_the_eye(cx: &mut TestAppContext) {
+fn cookie_copies_follow_the_eye(cx: &mut TestAppContext) {
     let fx = shown(cx, ResponseTab::Cookies);
     let sess = row_of(cx, &fx, "cookie-name", "sess");
     click(cx, &fx, ("cookie-copy", sess));
-    assert_eq!(clipboard(cx), SECRET);
+    assert_eq!(clipboard(cx), NAME_MASK);
     click(cx, &fx, "cookies-copy");
     let all = clipboard(cx);
-    assert!(all.contains(&format!("sess={SECRET}")), "{all}");
-    assert!(!all.contains(NAME_MASK), "{all}");
+    assert!(!all.contains(SECRET), "{all}");
+    assert!(all.contains(&format!("sess={NAME_MASK}")), "{all}");
     click(cx, &fx, ("cookie-reveal", sess));
     click(cx, &fx, ("cookie-copy", sess));
     assert_eq!(clipboard(cx), SECRET);

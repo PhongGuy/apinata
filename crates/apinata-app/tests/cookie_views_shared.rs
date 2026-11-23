@@ -1,6 +1,6 @@
 //! The response pane's Jar view and the Cookies dialog describe a cookie alike: the same flag
-//! words and tooltips, the same dots for a hidden value, and a way from the view into the
-//! dialog filtered to the response's host.
+//! words and tooltips, the same dots for a hidden value, copies and a filter that follow the
+//! eye, and a way from the view into the dialog filtered to the response's host.
 
 use crate::support;
 
@@ -150,39 +150,92 @@ fn the_dialog_rows_and_form_use_the_same_flag_words_and_tips(cx: &mut TestAppCon
     assert_eq!(label(cx, win, "jar-form-http-only"), HTTP_ONLY_LABEL);
 }
 
+fn click(cx: &mut TestAppContext, win: AnyWindowHandle, id: impl Into<ElementId>) {
+    let id = id.into();
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.click(id, cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+    frame(cx, win);
+}
+
+fn set_rows_shown(cx: &mut TestAppContext, win: AnyWindowHandle) -> usize {
+    (0..3usize)
+        .filter(|ix| present(cx, win, ("set-cookie", *ix)))
+        .count()
+}
+
 #[gpui_kit::test]
-fn the_jar_view_masks_with_dots_and_copies_the_real_value(cx: &mut TestAppContext) {
+fn the_jar_view_masks_with_dots_and_its_copies_follow_the_eye(cx: &mut TestAppContext) {
     let (_s, win, _view) = jar_view(cx);
-    let value = cx
-        .update_window(win, |_, w, cx| {
-            w.render_frame(cx);
-            w.find(("cookie-value", 0usize)).label().map(str::to_owned)
-        })
-        .unwrap();
-    assert_eq!(value.as_deref(), Some(NAME_MASK));
-    cx.update_window(win, |_, w, cx| w.click(("cookie-copy", 0usize), cx))
-        .unwrap();
-    assert_eq!(clipboard(cx).as_deref(), Some("tok3n9"));
-    cx.update_window(win, |_, w, cx| w.click("cookies-copy", cx))
-        .unwrap();
+    assert_eq!(label(cx, win, ("cookie-value", 0usize)), NAME_MASK);
+    click(cx, win, ("cookie-copy", 0usize));
+    assert_eq!(clipboard(cx).as_deref(), Some(NAME_MASK));
+    click(cx, win, "cookies-copy");
     assert_eq!(
-        clipboard(cx).as_deref(),
-        Some("sid=tok3n9; Domain=127.0.0.1; Path=/; HttpOnly; Secure")
+        clipboard(cx),
+        Some(format!(
+            "sid={NAME_MASK}; Domain=127.0.0.1; Path=/; HttpOnly; Secure"
+        ))
+    );
+    click(cx, win, ("cookie-reveal", 0usize));
+    click(cx, win, ("cookie-copy", 0usize));
+    assert_eq!(clipboard(cx).as_deref(), Some("tok3n9"));
+}
+
+#[gpui_kit::test]
+fn copy_all_with_every_value_hidden_puts_no_secret_on_the_clipboard(cx: &mut TestAppContext) {
+    let (_s, win, _view) = jar_view(cx);
+    click(cx, win, "cookies-copy");
+    let jar = clipboard(cx).unwrap_or_default();
+    assert!(jar.contains(NAME_MASK) && !jar.contains("tok3n9"), "{jar}");
+    click(cx, win, "cookies-view-response");
+    click(cx, win, "cookies-copy");
+    let response = clipboard(cx).unwrap_or_default();
+    assert!(
+        response.contains(NAME_MASK) && !response.contains("tok3n9"),
+        "{response}"
     );
 }
 
 #[gpui_kit::test]
-fn the_jar_filter_reads_the_real_value_never_the_mask(cx: &mut TestAppContext) {
+fn the_jar_filter_matches_a_value_only_once_revealed(cx: &mut TestAppContext) {
     let (_s, win, _view) = jar_view(cx);
     assert_eq!(rows_shown(cx, win), 1);
-    for mask in ["redacted", "•"] {
-        replace_input(cx, win, None, "cookies-filter", mask);
+    for query in ["redacted", "•", "tok3n"] {
+        replace_input(cx, win, None, "cookies-filter", query);
         frame(cx, win);
-        assert_eq!(rows_shown(cx, win), 0, "{mask:?} matched the mask");
+        assert_eq!(rows_shown(cx, win), 0, "{query:?} matched a hidden value");
     }
+    // The path is matched like the name and domain.
+    replace_input(cx, win, None, "cookies-filter", "/");
+    frame(cx, win);
+    assert_eq!(rows_shown(cx, win), 1, "the path did not match");
+    replace_input(cx, win, None, "cookies-filter", "");
+    frame(cx, win);
+    click(cx, win, ("cookie-reveal", 0usize));
     replace_input(cx, win, None, "cookies-filter", "tok3n");
     frame(cx, win);
-    assert_eq!(rows_shown(cx, win), 1);
+    assert_eq!(rows_shown(cx, win), 1, "a revealed value did not match");
+}
+
+#[gpui_kit::test]
+fn the_response_filter_matches_a_value_only_once_revealed(cx: &mut TestAppContext) {
+    let (_s, win, _view) = jar_view(cx);
+    click(cx, win, "cookies-view-response");
+    assert_eq!(set_rows_shown(cx, win), 1);
+    assert_eq!(label(cx, win, ("set-cookie-value", 0usize)), NAME_MASK);
+    replace_input(cx, win, None, "cookies-filter", "tok3n");
+    frame(cx, win);
+    assert_eq!(set_rows_shown(cx, win), 0, "a hidden value matched");
+    replace_input(cx, win, None, "cookies-filter", "");
+    frame(cx, win);
+    click(cx, win, ("set-cookie-reveal", 0usize));
+    replace_input(cx, win, None, "cookies-filter", "tok3n");
+    frame(cx, win);
+    assert_eq!(set_rows_shown(cx, win), 1, "a revealed value did not match");
 }
 
 #[gpui_kit::test]
