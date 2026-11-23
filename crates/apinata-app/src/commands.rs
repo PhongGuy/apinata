@@ -26,11 +26,12 @@ use crate::keymap::{
     ToggleConsole, ToggleOrientation, ToggleSidebar, ToggleTheme, UndoActive, ZoomIn, ZoomOut,
 };
 use crate::palette::{GoToRequest, OpenCommandPalette, PaletteGroup};
+use crate::percent_codec::{PercentDecode, PercentEncode};
 use crate::preferences::{KEY_CONTEXT as PREFERENCES, OpenPreferences};
 use crate::renames_dialog::CheckSecretRenames;
 use crate::request_editor::{
     CancelRequest, KEY_CONTEXT as REQUEST_EDITOR, RUNNING_CONTEXT as RUNNING_REQUEST, RedoEdit,
-    SaveRequest, SendRequest, UndoEdit,
+    RenameTitle, SaveRequest, SendRequest, TITLE_KEY_CONTEXT as REQUEST_TITLE, UndoEdit,
 };
 use crate::row_move::{MoveRowDown, MoveRowUp};
 use crate::search_dialog::OpenCollectionSearch;
@@ -52,8 +53,8 @@ use crate::tab_area::{
     ActivateLastTab, ActivateNextTab, ActivatePrevTab, ActivateTab, BeautifyBody, BeautifyQuery,
     CloseAllTabs, CloseOtherTabs, CloseSavedTabs, CloseTab, CloseTabsToTheLeft,
     CloseTabsToTheRight, Compare, ConvertToGraphql, ConvertToHttp, CopyAsCurl, DuplicateTab,
-    ExportHar, GenerateCode, GoBack, GoForward, MinifyBody, PinTab, ReopenClosedTab,
-    RevealInSidebar, SaveAll, SaveAsExample, SendActive, StopActive, UnpinTab,
+    ExportHar, GenerateCode, GoBack, GoForward, MinifyBody, PinTab, RecheckAssertions,
+    ReopenClosedTab, RevealInSidebar, SaveAll, SaveAsExample, SendActive, StopActive, UnpinTab,
 };
 use crate::ui::{CODE_EDITOR_CONTEXT as CODE_EDITOR, FocusNextControl, FocusPreviousControl};
 use crate::updates::CheckForUpdates;
@@ -629,6 +630,13 @@ pub fn registry() -> Vec<Command> {
             &[],
         ),
         command(
+            "request.recheck_assertions",
+            "Re-check assertions",
+            Request,
+            shell(RecheckAssertions),
+            &[],
+        ),
+        command(
             "request.copy_json_value",
             "Copy JSON value at caret",
             Request,
@@ -780,12 +788,16 @@ pub fn registry() -> Vec<Command> {
             &["secondary-r"],
         ),
         {
-            // F2 renames in the tree alone; anywhere else it would rename a row out of sight.
+            // F2 renames in the tree, where a row is in sight, and on the breadcrumb's focused
+            // name; the crumb target keeps one command, so one rebinding moves both.
             let mut c = command(
                 "request.rename_in_sidebar",
                 "Rename in sidebar",
                 Request,
-                vec![at(RenameSelected, SIDEBAR_TREE)],
+                vec![
+                    at(RenameSelected, SIDEBAR_TREE),
+                    at(RenameTitle, REQUEST_TITLE),
+                ],
                 &["f2"],
             );
             c.scope = Scope::Pane(SIDEBAR);
@@ -1330,6 +1342,26 @@ pub fn registry() -> Vec<Command> {
                 shell(OpenGlobalEnvironments),
                 &[],
             )),
+        ),
+        found_by(
+            &["url", "escape", "uri"],
+            command(
+                "edit.percent_encode",
+                "Percent-encode selection",
+                Edit,
+                shell(PercentEncode),
+                &[],
+            ),
+        ),
+        found_by(
+            &["url", "unescape", "uri"],
+            command(
+                "edit.percent_decode",
+                "Percent-decode selection",
+                Edit,
+                shell(PercentDecode),
+                &[],
+            ),
         ),
     ]);
     cmds

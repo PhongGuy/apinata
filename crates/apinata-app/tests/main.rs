@@ -426,6 +426,7 @@ mod palette_requests;
 mod palette_row_names;
 mod pane_insets;
 mod path_display;
+mod percent_codec;
 mod persisted;
 mod pin_tabs;
 mod post_response_editor;

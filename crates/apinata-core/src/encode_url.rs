@@ -101,7 +101,7 @@ fn encode_query_part(text: &str, start: usize, part: QueryPart, written: &[usize
 
 /// JavaScript's `encodeURIComponent`: everything but `A-Z a-z 0-9 - _ . ! ~ * ' ( )` is
 /// percent-encoded as UTF-8 with uppercase hex.
-fn encode_uri_component(text: &str) -> String {
+pub(crate) fn encode_uri_component(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for &byte in text.as_bytes() {
         if byte.is_ascii_alphanumeric() || b"-_.!~*'()".contains(&byte) {
@@ -161,7 +161,7 @@ fn decode_uri_component(text: &str) -> Option<String> {
 }
 
 /// The byte a well-formed `%XX` at `i` stands for.
-fn escape_at(bytes: &[u8], i: usize) -> Option<u8> {
+pub(crate) fn escape_at(bytes: &[u8], i: usize) -> Option<u8> {
     if bytes.get(i) != Some(&b'%') {
         return None;
     }
