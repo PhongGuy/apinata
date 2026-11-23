@@ -206,17 +206,6 @@ pub fn commit_label(branch: Option<&str>) -> String {
     }
 }
 
-/// Git's output, with a hint on how to set an identity when git complained it has none.
-pub fn with_identity_hint(output: &str) -> String {
-    if output.contains("Author identity unknown") || output.contains("empty ident") {
-        format!(
-            "{output}\n\nSet your identity with `git config user.name` and `git config user.email`."
-        )
-    } else {
-        output.to_owned()
-    }
-}
-
 /// The text the Changes dialog's notice shows for a refused or failed commit.
 pub fn commit_failure_text(error: &CommitError) -> String {
     match error {
@@ -236,7 +225,7 @@ pub fn commit_failure_text(error: &CommitError) -> String {
             }
             text
         }
-        CommitError::Failed { output } => with_identity_hint(output),
+        CommitError::Failed { output } => output.clone(),
         CommitError::Timeout => "git commit timed out".to_owned(),
         other => other.to_string(),
     }

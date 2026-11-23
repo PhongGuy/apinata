@@ -91,7 +91,8 @@ pub fn no_upstream(branch: &str, remotes: &[String]) -> String {
     }
 }
 
-fn capitalized(text: &str) -> String {
+/// `text` with its first letter in upper case.
+pub(crate) fn capitalized(text: &str) -> String {
     let mut chars = text.chars();
     match chars.next() {
         Some(first) => first.to_uppercase().chain(chars).collect(),

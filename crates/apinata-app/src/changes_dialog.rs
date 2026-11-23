@@ -6,11 +6,11 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use apinata_core::file_diff_with;
+use apinata_core::{IdentityScope, file_diff_with};
 use gpui_kit::base::actions::Confirm;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{
-    IndentInline, InputEvent, OutdentInline, Position, Textarea, TextareaState,
+    IndentInline, Input, InputEvent, InputState, OutdentInline, Position, Textarea, TextareaState,
 };
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::tag::Tag;
@@ -31,6 +31,7 @@ use crate::diff_rows::{DiffPalette, diff_row};
 use crate::form_drafts;
 use crate::git_status::{GitChange, GitChanges, GitStage, QUIET_NOTE, commit_label};
 use crate::style;
+use crate::sync_text::capitalized;
 use crate::ui::{self, LockButton as _, RingRoom as _, RingSides};
 use crate::workspace::{GitWrite, GitWriteDone, Workspace};
 
@@ -44,6 +45,15 @@ actions!(
 
 /// Key context of the message field's wrapper; Ctrl+Enter binds at `ChangesMessage > Input`.
 pub const MESSAGE_CONTEXT: &str = "ChangesMessage";
+
+// What the identity form asks for, in place of git's own text.
+const IDENTITY_ASK: &str = "Git needs your name and email before it can commit";
+
+// The identity form's scope choices, in segment order.
+const SCOPES: [(&str, IdentityScope); 2] = [
+    ("This repository", IdentityScope::Repository),
+    ("All repositories", IdentityScope::AllRepositories),
+];
 
 // The list's note when nothing differs from the last commit.
 const NO_CHANGES: &str = "No changes since the last commit";
@@ -140,6 +150,16 @@ pub fn open_changes(
                 cx.notify();
             }
         });
+        let identity_name = cx.new(|cx| InputState::new(window, cx).placeholder("Name"));
+        let identity_email = cx.new(|cx| InputState::new(window, cx).placeholder("Email"));
+        // Typing in the identity form changes what its Save button allows.
+        let identity_changes = [&identity_name, &identity_email].map(|input| {
+            cx.subscribe(input, |_: &mut ChangesView, _, e: &InputEvent, cx| {
+                if matches!(e, InputEvent::Change) {
+                    cx.notify();
+                }
+            })
+        });
         let mut view = ChangesView {
             workspace: workspace.clone(),
             root: root.to_owned(),
@@ -151,6 +171,10 @@ pub fn open_changes(
             message,
             _message_changes: message_changes,
             notice: None,
+            identity_name,
+            identity_email,
+            identity_scope: IdentityScope::Repository,
+            _identity_changes: identity_changes,
             secrets_confirmed: false,
             clear_message: false,
             branch: None,
@@ -220,6 +244,11 @@ pub struct ChangesView {
     message: Entity<TextareaState>,
     // The outcome of the last commit, shown above the buttons until the next one starts.
     notice: Option<Notice>,
+    // The identity form's fields and scope, kept while the dialog is open.
+    identity_name: Entity<InputState>,
+    identity_email: Entity<InputState>,
+    identity_scope: IdentityScope,
+    _identity_changes: [Subscription; 2],
     // Staging a `.env` by hand was confirmed once in this dialog, so it asks no more.
     secrets_confirmed: bool,
     // Set by a landed commit; the next render empties the field, which needs a window.
@@ -254,6 +283,11 @@ pub enum Notice {
     Committed(String),
     /// Git refused or failed; its text, verbatim.
     Failed(String),
+    /// Git has no name and email; the identity form shows, with why the last Save was refused.
+    NeedsIdentity {
+        /// Why the name or email was not saved, in plain words.
+        error: Option<String>,
+    },
 }
 
 impl ChangesView {
@@ -462,6 +496,14 @@ impl ChangesView {
                 self.clear_message = true;
             }
             GitWriteDone::Failed(text) => self.notice = Some(Notice::Failed(text)),
+            GitWriteDone::NeedsIdentity => {
+                self.notice = Some(Notice::NeedsIdentity { error: None })
+            }
+            GitWriteDone::IdentityRefused(text) => {
+                self.notice = Some(Notice::NeedsIdentity {
+                    error: Some(capitalized(&text)),
+                });
+            }
             _ => {}
         }
         cx.notify();
@@ -503,6 +545,28 @@ impl ChangesView {
             let message = self.message(cx);
             self.start(GitWrite::Commit(message), cx);
         }
+    }
+
+    /// Whether the identity form's Save is allowed: Commit is, and both fields have text.
+    pub fn can_save_identity(&self, cx: &App) -> bool {
+        let filled = |input: &Entity<InputState>| !input.read(cx).value().trim().is_empty();
+        self.can_commit(cx) && filled(&self.identity_name) && filled(&self.identity_email)
+    }
+
+    /// Saves the identity form's name and email at its scope, then commits the typed message;
+    /// does nothing unless `can_save_identity`. The form stays until the result is in.
+    pub fn save_identity(&mut self, cx: &mut Context<Self>) {
+        if !self.can_save_identity(cx) {
+            return;
+        }
+        let text = |input: &Entity<InputState>| input.read(cx).value().trim().to_owned();
+        let op = GitWrite::CommitAs {
+            name: text(&self.identity_name),
+            email: text(&self.identity_email),
+            scope: self.identity_scope,
+            message: self.message(cx),
+        };
+        self.start(op, cx);
     }
 
     /// The last commit's outcome.
@@ -1216,6 +1280,11 @@ impl Render for ChangesView {
         let notice_room = self.notice.as_ref().map_or(px(0.), |n| match n {
             Notice::Committed(_) => row + gap,
             Notice::Failed(_) => notice_cap + gap,
+            // The note, the fields and the scope row, plus the error line when there is one.
+            Notice::NeedsIdentity { error } => {
+                let lines = if error.is_some() { 4. } else { 3. };
+                (row + gap) * lines
+            }
         });
         let room = base - notice_room;
         let height = style::resolve(style::CHANGES_DIALOG_HEIGHT, window).min(room.max(min_panes));
@@ -1311,6 +1380,7 @@ impl ChangesView {
                 .text_color(theme.warning)
                 .child(text.clone())
                 .into_any_element(),
+            Notice::NeedsIdentity { error } => self.identity_form(error.as_deref(), window, cx),
         });
         v_flex()
             .gap(style::SPACE_2)
@@ -1351,5 +1421,85 @@ impl ChangesView {
                     .child("Committing does not push."),
             )
             .children(notice)
+    }
+
+    // The identity form in the notice's place: the ask, Name and Email, the scope and Save.
+    fn identity_form(
+        &self,
+        error: Option<&str>,
+        window: &Window,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let field = |id: &'static str, input: &Entity<InputState>| {
+            div().flex_1().child(ui::padded_input(
+                ui::lock_input(Input::new(input), input, self.busy, window, cx)
+                    .id(id)
+                    .w_full()
+                    .bg(ui::field_fill(false, cx)),
+                input,
+            ))
+        };
+        let selected = SCOPES
+            .iter()
+            .position(|(_, scope)| *scope == self.identity_scope)
+            .unwrap_or_default();
+        let this = cx.entity().downgrade();
+        let scope = ui::segmented(
+            "changes-identity-scope",
+            SCOPES.map(|(label, _)| label),
+            selected,
+            move |ix, _, cx| {
+                if let Some(&(_, scope)) = SCOPES.get(*ix) {
+                    let _ = this.update(cx, |v, cx| {
+                        v.identity_scope = scope;
+                        cx.notify();
+                    });
+                }
+            },
+        )
+        .ids(["changes-identity-repo", "changes-identity-all"]);
+        v_flex()
+            .id("changes-identity")
+            .test_support()
+            .gap(style::SPACE_2)
+            .child(
+                div()
+                    .id("changes-identity-note")
+                    .test_support()
+                    .aria_label(IDENTITY_ASK)
+                    .child(IDENTITY_ASK),
+            )
+            .when_some(error, |form, error| {
+                form.child(
+                    div()
+                        .id("changes-identity-error")
+                        .test_support()
+                        .aria_label(error.to_owned())
+                        .text_size(style::TEXT_SMALL)
+                        .text_color(cx.theme().danger)
+                        .child(error.to_owned()),
+                )
+            })
+            .child(
+                h_flex()
+                    .gap(style::SPACE_2)
+                    .child(field("changes-identity-name", &self.identity_name))
+                    .child(field("changes-identity-email", &self.identity_email)),
+            )
+            .child(
+                h_flex()
+                    .gap(style::SPACE_2)
+                    .justify_between()
+                    .child(scope)
+                    .child(
+                        Button::new("changes-identity-save")
+                            .solid_ring(cx)
+                            .label("Save and commit")
+                            .primary()
+                            .lock_filled(!self.can_save_identity(cx), cx)
+                            .on_click(cx.listener(|this, _, _, cx| this.save_identity(cx))),
+                    ),
+            )
+            .into_any_element()
     }
 }

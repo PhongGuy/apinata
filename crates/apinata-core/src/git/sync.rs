@@ -102,6 +102,9 @@ pub enum SyncError {
         /// Git's error output.
         stderr: String,
     },
+    /// Git has no name and email to record the replayed commits with; nothing changed.
+    #[error("git needs your name and email before it can replay local commits")]
+    NoIdentity,
     /// Git could not be started or read.
     #[error(transparent)]
     Io(#[from] io::Error),

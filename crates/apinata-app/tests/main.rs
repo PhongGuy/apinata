@@ -158,6 +158,7 @@ mod changes_dialog_commit;
 mod changes_dialog_diff_edges;
 mod changes_dialog_dotenv;
 mod changes_dialog_gone;
+mod changes_dialog_identity;
 mod changes_dialog_keys;
 mod changes_dialog_layout;
 mod changes_dialog_polish;
