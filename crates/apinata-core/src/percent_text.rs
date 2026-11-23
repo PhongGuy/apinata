@@ -2,6 +2,7 @@
 
 use crate::encode_url::{encode_uri_component, escape_at};
 use crate::interpolate::placeholders;
+use std::ops::Range;
 
 /// Escapes in `text` that do not decode to UTF-8 text.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -34,6 +35,24 @@ pub fn percent_decode(text: &str) -> Result<String, NotUtf8> {
         }
     }
     Ok(out)
+}
+
+/// `range` in `text`, grown so that each end falling inside a `{{var}}` placeholder moves to
+/// that placeholder's edge. An empty range stays as it is.
+pub fn widen_to_placeholders(text: &str, range: Range<usize>) -> Range<usize> {
+    if range.is_empty() {
+        return range;
+    }
+    let (mut start, mut end) = (range.start, range.end);
+    for (whole, _) in placeholders(text) {
+        if whole.start < start && start < whole.end {
+            start = whole.start;
+        }
+        if whole.start < end && end < whole.end {
+            end = whole.end;
+        }
+    }
+    start..end
 }
 
 // `text` cut into runs, each flagged when it is a whole placeholder the resolver would find.

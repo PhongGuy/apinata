@@ -1,6 +1,6 @@
 //! Percent-encoding and decoding a piece of text, keeping `{{var}}` placeholders whole.
 
-use apinata_core::{percent_decode, percent_encode};
+use apinata_core::{percent_decode, percent_encode, widen_to_placeholders};
 
 #[test]
 fn encoding_then_decoding_gives_back_the_text() {
@@ -45,4 +45,36 @@ fn reserved_characters_are_encoded_as_in_a_query_value() {
         "%3A%2F%3F%23%5B%5D%40!%24%26'()*%2B%2C%3B%3D%20~-_.%25"
     );
     assert_eq!(percent_encode("é"), "%C3%A9");
+}
+
+#[test]
+fn a_nested_placeholder_is_kept_as_the_resolver_finds_it() {
+    // The resolver reads `{{a{{b}}` as one placeholder, leaving the last `}}` as text.
+    assert_eq!(percent_encode("{{a{{b}}}}"), "{{a{{b}}%7D%7D");
+    assert_eq!(
+        percent_decode("{{a{{b}}%7D%7D").expect("decodes"),
+        "{{a{{b}}}}"
+    );
+}
+
+#[test]
+fn an_unterminated_placeholder_is_plain_text() {
+    assert_eq!(percent_encode("{{x"), "%7B%7Bx");
+    assert_eq!(percent_encode("{{x }"), "%7B%7Bx%20%7D");
+    assert_eq!(percent_decode("{{x%20").expect("decodes"), "{{x ");
+}
+
+#[test]
+fn a_range_that_cuts_a_placeholder_grows_to_cover_it() {
+    let text = "a {{host}}/{{path}} b";
+    // The end falls inside `{{host}}`.
+    assert_eq!(widen_to_placeholders(text, 0..6), 0..10);
+    // The start falls inside `{{path}}`.
+    assert_eq!(widen_to_placeholders(text, 14..21), 11..21);
+    // Both ends inside, in different placeholders.
+    assert_eq!(widen_to_placeholders(text, 5..13), 2..19);
+    // A range on placeholder edges, or clear of them, stays as it is.
+    assert_eq!(widen_to_placeholders(text, 2..10), 2..10);
+    assert_eq!(widen_to_placeholders(text, 0..2), 0..2);
+    assert_eq!(widen_to_placeholders(text, 6..6), 6..6);
 }
