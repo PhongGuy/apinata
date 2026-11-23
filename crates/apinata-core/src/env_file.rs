@@ -74,7 +74,7 @@ impl EnvVariable {
     }
 
     /// The entry's YAML: as read when unchanged, else Bruno's form with unknown keys kept.
-    fn to_yaml(&self) -> Value {
+    pub(crate) fn to_yaml(&self) -> Value {
         write_entry(self.origin.as_ref(), self.fields(), ENTRY)
     }
 

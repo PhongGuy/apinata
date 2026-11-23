@@ -1535,11 +1535,14 @@ impl Executor {
                 }
                 _ => None,
             };
-            let next =
-                (challenge.is_none() && REDIRECTS.contains(&status.as_u16()) && followed < limit)
-                    .then(|| hop_headers.get("location")?.to_str().ok())
-                    .flatten()
-                    .and_then(|location| url.join(location).ok());
+            // A redirect with a usable Location is followed below the limit; at the limit it
+            // ends the exchange, and the response says the limit stopped it.
+            let target = (challenge.is_none() && REDIRECTS.contains(&status.as_u16()))
+                .then(|| hop_headers.get("location")?.to_str().ok())
+                .flatten()
+                .and_then(|location| url.join(location).ok());
+            let stopped_at_limit = target.is_some() && limit > 0 && followed >= limit;
+            let next = target.filter(|_| followed < limit);
             // A refused handshake names the ws URL and why; it is a response, not an ExecError.
             let refused = |why: String| {
                 StreamEnd::Error(format!(
@@ -1777,6 +1780,7 @@ impl Executor {
                     .with_body(bytes, text)
                     .with_response_time(total)
                     .with_timeline(std::mem::take(&mut buf.hops))
+                    .with_redirects(followed as usize, stopped_at_limit)
                     .with_derived_credentials(derived_list(
                         std::mem::take(&mut buf.placed),
                         req.derived(),

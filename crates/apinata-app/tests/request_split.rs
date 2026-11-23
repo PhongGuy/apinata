@@ -538,32 +538,41 @@ fn the_top_limit_keeps_breadcrumb_method_url_and_response_tabs_visible(cx: &mut 
 }
 
 // A window shrunk after the split sits at its top limit: the rows still stack without
-// overlapping and each pane keeps its floor. Where the rows plus RESPONSE_KEPT no longer fit
-// the new room, the request minimum gives way so the response keeps RESPONSE_KEPT.
+// overlapping and the request keeps its rows plus one editor row. The response takes what is
+// left, never under RESPONSE_FLOOR, and up to RESPONSE_KEPT only where that room is spare.
 #[gpui_kit::test]
-fn a_window_shrunk_at_the_top_limit_keeps_rows_apart_and_the_response_floor(
+fn a_window_shrunk_at_the_top_limit_keeps_the_request_rows_before_the_response(
     cx: &mut TestAppContext,
 ) {
-    use apinata_app::style::RESPONSE_KEPT;
-    // (zoom, window height, whether the cap binds in that room)
-    for (zoom, height, capped) in [
+    use apinata_app::style::{RESPONSE_FLOOR, RESPONSE_KEPT};
+    // (zoom, window height, whether the response is short of RESPONSE_KEPT in that room)
+    for (zoom, height, short) in [
         (1.0, 520., false),
         (1.0, 480., true),
         (2.0, 640., true),
-        (2.0, 560., false),
+        (2.0, 560., true),
     ] {
-        let (b, sizes, _) = at_top_limit(cx, false, zoom, false, Some(height));
+        let (b, sizes, row) = at_top_limit(cx, false, zoom, false, Some(height));
         let case = format!("z={zoom} h={height}");
         assert_rows_stack(&b, false, &case);
-        let floor = PANE_MIN.min((sizes[0] + sizes[1]) * 0.25) - px(0.5);
-        assert!(sizes[0] >= floor && sizes[1] >= floor, "{case}: {sizes:?}");
-        if capped {
-            assert!(
-                (sizes[1] - RESPONSE_KEPT).abs() <= px(0.5),
-                "{case}: response {:?}, want {RESPONSE_KEPT:?}; sizes {sizes:?}",
-                sizes[1]
-            );
-        }
+        let eps = px(0.5);
+        let need = b["section-body"].top() - b["breadcrumb"].top() + row;
+        assert!(
+            sizes[0] >= need - eps && sizes[0] <= need + px(4.),
+            "{case}: request pane {:?}, rows need {need:?}; sizes {sizes:?}",
+            sizes[0]
+        );
+        assert!(
+            sizes[1] >= RESPONSE_FLOOR - eps,
+            "{case}: response {:?} under its floor; sizes {sizes:?}",
+            sizes[1]
+        );
+        assert_eq!(
+            sizes[1] < RESPONSE_KEPT - eps,
+            short,
+            "{case}: response {:?} against {RESPONSE_KEPT:?}; sizes {sizes:?}",
+            sizes[1]
+        );
     }
 }
 
@@ -596,4 +605,114 @@ fn the_response_content_lines_up_with_the_request_content(cx: &mut TestAppContex
         );
     })
     .unwrap();
+}
+
+// Opens a.yml at `zoom` in a `w` x `h` window, sends it, drags the request split to its top
+// limit, then opens the console dock and drags its edge as far up as it goes. Returns the
+// request pane's size, the bounds by id, the editor row plus gutter, and the stored ratio
+// before and after the dock drag.
+fn under_a_raised_dock(
+    cx: &mut TestAppContext,
+    zoom: f32,
+    w: f32,
+    h: f32,
+) -> (Vec<gpui_kit::Pixels>, Rows, gpui_kit::Pixels, f32, f32) {
+    use apinata_app::app::AppState;
+    use gpui_kit::test::TestWindowExt as _;
+    let col = two_requests();
+    let s = started(cx, &col);
+    let tab = open_tab(cx, &s.ws, &s.root, "a.yml");
+    gpui_kit::VisualTestContext::from_window(s.win, cx)
+        .simulate_resize(gpui_kit::size(px(w), px(h)));
+    cx.update(|cx| {
+        let p = cx.global::<AppState>().settings.clone();
+        p.update(cx, |p, cx| p.update(cx, |s| s.zoom = zoom));
+    });
+    cx.run_until_parked();
+    frame(cx, s.win);
+    let ed = editor_of(cx, &s, tab);
+    give_result(cx, &ed);
+    frame(cx, s.win);
+    let split = ed.read_with(cx, |e, _| e.split().clone());
+    cx.update_window(s.win, |_, w, cx| {
+        split.update(cx, |s, cx| s.resize_panel(0, px(10.), w, cx))
+    })
+    .unwrap();
+    frame(cx, s.win);
+    let before = s.ws.read_with(cx, |w, _| w.split_ratio());
+    press_in_shell(cx, &s, "ctrl-`");
+    frame(cx, s.win);
+    let dock = s.shell.read_with(cx, |sh, _| sh.dock_split().clone());
+    cx.update_window(s.win, |_, w, cx| {
+        dock.update(cx, |sp, cx| sp.resize_panel(0, px(10.), w, cx))
+    })
+    .unwrap();
+    frame(cx, s.win);
+    frame(cx, s.win);
+    frame(cx, s.win);
+    let after = s.ws.read_with(cx, |w, _| w.split_ratio());
+    let sizes = split.read_with(cx, |s, _| s.sizes().to_vec());
+    let ids = [
+        "tab-area",
+        "request-column",
+        "breadcrumb",
+        "section-strip",
+        "section-body",
+        "response",
+    ];
+    cx.update_window(s.win, |_, w, _| {
+        let mut b: Rows = ids.iter().map(|&id| (id, w.find(id).bounds())).collect();
+        b.insert("tab", w.find(("response-tab", 0usize)).bounds());
+        let row = apinata_app::style::resolve(apinata_app::style::ROW_HEIGHT, w)
+            + apinata_app::style::resolve(apinata_app::style::SPACE_2, w);
+        (sizes, b, row, before, after)
+    })
+    .unwrap()
+}
+
+// With the dock raised to its limit, the request still shows its URL row, section tabs and
+// one editor row, the tabs sit above the response, and the response keeps its header. At
+// 200% the tab area's minimum holds all of that too. The split's stored ratio is untouched.
+#[gpui_kit::test]
+fn a_raised_dock_leaves_the_request_its_rows_and_the_response_its_header(cx: &mut TestAppContext) {
+    use apinata_app::style::RESPONSE_FLOOR;
+    let eps = px(0.5);
+    for (zoom, w, h) in [(1.0, 900., 700.), (2.0, 900., 1200.)] {
+        let (sizes, b, row, before, after) = under_a_raised_dock(cx, zoom, w, h);
+        let case = format!("z={zoom} {w}x{h}");
+        let need = b["section-body"].top() - b["breadcrumb"].top() + row;
+        assert!(
+            sizes[0] >= need - eps,
+            "{case}: request pane {:?}, rows need {need:?}; sizes {sizes:?}",
+            sizes[0]
+        );
+        let (column, strip, response) = (b["request-column"], b["section-strip"], b["response"]);
+        assert!(
+            strip.top() >= column.top() - eps && strip.bottom() <= column.bottom() + eps,
+            "{case}: section tabs {strip:?} outside {column:?}"
+        );
+        assert!(
+            strip.bottom() <= response.top() + eps,
+            "{case}: section tabs {strip:?} run under the response {response:?}"
+        );
+        assert!(
+            sizes[1] >= RESPONSE_FLOOR - eps,
+            "{case}: response {:?} under its floor; sizes {sizes:?}",
+            sizes[1]
+        );
+        let tab = b["tab"];
+        assert!(
+            tab.top() >= response.top() - eps && tab.bottom() <= response.bottom() + eps,
+            "{case}: response tab {tab:?} clipped by {response:?}"
+        );
+        assert!(
+            response.bottom() <= b["tab-area"].bottom() + eps,
+            "{case}: response {response:?} runs past the tab area {:?}",
+            b["tab-area"]
+        );
+        assert_eq!(
+            before, after,
+            "{case}: the clamp wrote back the stored ratio"
+        );
+    }
 }

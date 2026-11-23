@@ -1665,6 +1665,27 @@ pub fn editor_of(
     })
 }
 
+/// The stacked request pane's height beside what its rows need: every row above the section
+/// body plus one editor row and its gutter.
+pub fn request_pane_and_rows(
+    cx: &mut gpui_kit::TestAppContext,
+    win: gpui_kit::AnyWindowHandle,
+    ed: &gpui_kit::Entity<apinata_app::request_editor::RequestEditor>,
+) -> (gpui_kit::Pixels, gpui_kit::Pixels) {
+    use gpui_kit::AppContext as _;
+    use gpui_kit::test::TestWindowExt as _;
+    let split = ed.read_with(cx, |e, _| e.split().clone());
+    let pane = split.read_with(cx, |s, _| s.sizes()[0]);
+    cx.update_window(win, |_, w, _| {
+        let row = apinata_app::style::resolve(apinata_app::style::ROW_HEIGHT, w)
+            + apinata_app::style::resolve(apinata_app::style::SPACE_2, w);
+        let need =
+            w.find("section-body").bounds().top() - w.find("breadcrumb").bounds().top() + row;
+        (pane, need)
+    })
+    .unwrap()
+}
+
 /// A new draft in `parent`, opened as the active tab: its item path and history key.
 pub fn new_draft_at(
     cx: &mut gpui_kit::TestAppContext,
