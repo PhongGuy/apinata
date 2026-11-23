@@ -5,7 +5,46 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use serde_json::Value;
 
 use crate::collection::Environment;
+use crate::env_file::EnvVariable;
 use crate::js;
+
+/// One variable an environment inherits through `extends`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct InheritedVariable {
+    /// The name.
+    pub name: String,
+    /// The nearest ancestor whose row is inherited.
+    pub from: String,
+    /// Whether the inherited row is a secret.
+    pub secret: bool,
+    /// The plain value as text; `None` for a secret, whose value is never read here.
+    pub value: Option<String>,
+    /// How the environment's own rows stand against it.
+    pub state: InheritedState,
+}
+
+/// How an inherited variable stands against the environment's own rows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum InheritedState {
+    /// No own enabled row has its name.
+    Inherited,
+    /// An own enabled row of its name is what a run uses.
+    OverriddenByOwn,
+    /// An own plain row has its name, but the inherited secret still wins.
+    WinsOverOwn,
+}
+
+/// What an environment inherits, and the warning for a broken `extends` chain.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Inheritance {
+    /// The inherited variables in name order.
+    pub variables: Vec<InheritedVariable>,
+    /// Set when the chain stops at a missing parent or a cycle; what was found is still listed.
+    pub warning: Option<String>,
+}
 
 /// One environment variable's value after inheritance.
 #[derive(Debug, Clone, PartialEq)]
@@ -26,7 +65,7 @@ pub(crate) struct ResolvedEnv {
 }
 
 /// One usable row of an environment's `variables` list.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Row {
     /// The environment this row was read from.
     owner: String,
@@ -40,12 +79,28 @@ pub(crate) fn resolve_environment(envs: &[Environment], name: &str) -> Option<Re
     let target = envs.iter().find(|e| e.name() == name)?;
     let mut warnings = Vec::new();
     let ancestors = ancestors(envs, target, &mut warnings);
+    let mut vars = BTreeMap::new();
+    let mut secret_owners = BTreeMap::new();
+    for (name, (owner, value)) in merge(&ancestors, rows(target)) {
+        if value == EnvValue::Secret {
+            secret_owners.insert(name.clone(), owner);
+        }
+        vars.insert(name, value);
+    }
+    Some(ResolvedEnv {
+        vars,
+        secret_owners,
+        warnings,
+    })
+}
 
+/// Flattens `ancestors` (root first) with the `own` rows into each name's winning owner and value.
+fn merge(ancestors: &[&Environment], own: Vec<Row>) -> BTreeMap<String, (String, EnvValue)> {
     // Ancestors fill one map per kind, nearest last; an own enabled row hides the inherited
     // row of its own kind only, so a plain row cannot hide an inherited secret.
     let mut plain: Vec<Row> = Vec::new();
     let mut secret: Vec<Row> = Vec::new();
-    for env in &ancestors {
+    for env in ancestors {
         for row in rows(env).into_iter().filter(|r| r.enabled) {
             let map = if row.value == EnvValue::Secret {
                 &mut secret
@@ -55,7 +110,6 @@ pub(crate) fn resolve_environment(envs: &[Environment], name: &str) -> Option<Re
             upsert(map, row);
         }
     }
-    let own = rows(target);
     for row in own.iter().filter(|r| r.enabled) {
         let map = if row.value == EnvValue::Secret {
             &mut secret
@@ -67,7 +121,6 @@ pub(crate) fn resolve_environment(envs: &[Environment], name: &str) -> Option<Re
 
     // Port of toVariablesMap: a secret anywhere in the list wins over plain rows of its name.
     let mut vars = BTreeMap::new();
-    let mut secret_owners = BTreeMap::new();
     let mut secret_names = HashSet::new();
     for row in plain.into_iter().chain(secret).chain(own) {
         if !row.enabled {
@@ -75,16 +128,64 @@ pub(crate) fn resolve_environment(envs: &[Environment], name: &str) -> Option<Re
         }
         if row.value == EnvValue::Secret {
             secret_names.insert(row.name.clone());
-            secret_owners.insert(row.name.clone(), row.owner);
         } else if secret_names.contains(&row.name) {
             continue;
         }
-        vars.insert(row.name, row.value);
+        vars.insert(row.name, (row.owner, row.value));
     }
-    Some(ResolvedEnv {
-        vars,
-        secret_owners,
-        warnings,
+    vars
+}
+
+/// What environment `name` inherits, each variable marked against the `own` rows given in
+/// place of its file's, so marks follow unsaved edits; `None` if no such file.
+pub(crate) fn inherited(
+    envs: &[Environment],
+    name: &str,
+    own: &[EnvVariable],
+) -> Option<Inheritance> {
+    let target = envs.iter().find(|e| e.name() == name)?;
+    let mut warnings = Vec::new();
+    let ancestors = ancestors(envs, target, &mut warnings);
+    let own: Vec<Row> = own
+        .iter()
+        .filter_map(|v| row_of(name, &v.to_yaml()))
+        .collect();
+    let overriding: HashSet<&str> = own
+        .iter()
+        .filter(|r| r.enabled)
+        .map(|r| r.name.as_str())
+        .collect();
+
+    // The same merge runs without and with the own rows: the first says what is inherited,
+    // the second whether an own row of that name actually takes effect.
+    let with_own = merge(&ancestors, own.clone());
+    let variables = merge(&ancestors, Vec::new())
+        .into_iter()
+        .map(|(var, (from, value))| {
+            let state = if !overriding.contains(var.as_str()) {
+                InheritedState::Inherited
+            } else if with_own.get(&var).is_some_and(|(owner, _)| owner != name) {
+                InheritedState::WinsOverOwn
+            } else {
+                InheritedState::OverriddenByOwn
+            };
+            let (secret, value) = match value {
+                EnvValue::Secret => (true, None),
+                EnvValue::Plain(Value::String(text)) => (false, Some(text)),
+                EnvValue::Plain(other) => (false, Some(js::stringify(&other))),
+            };
+            InheritedVariable {
+                name: var,
+                from,
+                secret,
+                value,
+                state,
+            }
+        })
+        .collect();
+    Some(Inheritance {
+        variables,
+        warning: warnings.into_iter().next(),
     })
 }
 
@@ -190,25 +291,28 @@ fn rows(env: &Environment) -> Vec<Row> {
     };
     items
         .iter()
-        .filter_map(|item| {
-            let name = js::yaml_to_string(item.get("name")?)?;
-            if name.is_empty() {
-                return None;
-            }
-            let flag = |key: &str| item.get(key).and_then(yaml_serde::Value::as_bool) == Some(true);
-            let value = if flag("secret") {
-                EnvValue::Secret
-            } else {
-                EnvValue::Plain(js::variable_value(item.get("value"))?)
-            };
-            Some(Row {
-                owner: env.name().to_owned(),
-                name,
-                enabled: !flag("disabled"),
-                value,
-            })
-        })
+        .filter_map(|item| row_of(env.name(), item))
         .collect()
+}
+
+/// One `variables` entry of environment `owner` as a row, if it is usable.
+fn row_of(owner: &str, item: &yaml_serde::Value) -> Option<Row> {
+    let name = js::yaml_to_string(item.get("name")?)?;
+    if name.is_empty() {
+        return None;
+    }
+    let flag = |key: &str| item.get(key).and_then(yaml_serde::Value::as_bool) == Some(true);
+    let value = if flag("secret") {
+        EnvValue::Secret
+    } else {
+        EnvValue::Plain(js::variable_value(item.get("value"))?)
+    };
+    Some(Row {
+        owner: owner.to_owned(),
+        name,
+        enabled: !flag("disabled"),
+        value,
+    })
 }
 
 #[cfg(test)]

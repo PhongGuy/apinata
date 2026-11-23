@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use apinata_core::EnvVariable;
+use apinata_core::{EnvVariable, InheritedState, VarValue};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Escape, Input, InputEvent, InputState};
@@ -34,6 +34,7 @@ use crate::env_table::{
     DUPLICATE_SECRET_NAMES, EnvTableEvent, EnvVarTable, SecretRecord, env_rows, env_vars_from,
     secret_records, secrets_collide,
 };
+use crate::inherited_section;
 use crate::orphan_section::{self, Fileless, Orphans};
 use crate::request_editor::{RedoEdit, UndoEdit};
 use crate::scroll_follow::{FocusFollow, Followed};
@@ -221,6 +222,8 @@ pub struct EnvEditor {
     /// A variable to add once the environment being created is selected.
     pending_add: Option<String>,
     orphans: Orphans,
+    /// Whether the inherited variables block shows its rows.
+    inherited_open: bool,
     /// Stored secrets of environments with no file, listed with the orphans.
     fileless: Fileless,
     /// The number of the newest fileless list sent; an older answer arriving late is dropped.
@@ -333,6 +336,7 @@ impl EnvEditor {
             error: None,
             pending_add: None,
             orphans: Orphans::default(),
+            inherited_open: true,
             fileless: Fileless::default(),
             fileless_asked: 0,
             checking: false,
@@ -566,6 +570,34 @@ impl EnvEditor {
     fn draft_variables(&self, cx: &App) -> Vec<EnvVariable> {
         self.view(cx)
             .map_or_else(Vec::new, |view| view.variables.clone())
+    }
+
+    /// Copies inherited variable `name` into the selected environment as an unsaved own row: a
+    /// plain row with its value, a secret as an empty secret row that never copies the stored
+    /// value. Does nothing for a name the environment does not inherit.
+    pub fn override_inherited(&mut self, name: &str, cx: &mut Context<Self>) {
+        let Some(view) = self.view(cx) else {
+            return;
+        };
+        let Some(var) = view.inherited.iter().find(|v| v.name == name) else {
+            return;
+        };
+        let own = if var.secret {
+            EnvVariable::secret(name)
+        } else {
+            // The source's own row keeps a typed value typed; the shown text is the fallback.
+            let source = self.snapshot(cx).and_then(|s| {
+                let env = s.content.environments.iter().find(|e| e.name == var.from)?;
+                (env.variables.iter().rev())
+                    .find(|v| v.name == name && v.enabled && !v.secret)
+                    .map(|v| v.value.clone())
+            });
+            let text = || VarValue::Text(var.value.clone().unwrap_or_default());
+            EnvVariable::new(name, source.unwrap_or_else(text))
+        };
+        let mut vars = env_vars_from(&self.base, &self.table.read(cx).rows(cx));
+        vars.push(own);
+        self.edit(Edit::Variables(vars), cx);
     }
 
     /// The selected environment's variables table.
@@ -1600,6 +1632,12 @@ impl EnvEditor {
         let (Some(view), Some(name)) = (self.view(cx), self.selected.clone()) else {
             return;
         };
+        let overrides = (view.inherited.iter())
+            .filter(|v| v.state == InheritedState::OverriddenByOwn)
+            .map(|v| (v.name.clone(), v.from.clone()))
+            .collect();
+        self.table
+            .update(cx, |t, cx| t.set_overrides(overrides, cx));
         // A dirty environment first seen now counts all its names as saved.
         if !view.dirty || !self.saved.contains_key(&name) {
             let names = view.variables.iter().map(|v| v.name.clone()).collect();
@@ -2400,6 +2438,30 @@ impl Render for EnvEditor {
                 .ok();
         };
         let orphans = orphan_section::section(&orphans, &self.follow, on_remove, cx);
+        let inherited = self.view(cx).and_then(|view| {
+            let toggle = cx.entity().downgrade();
+            let over = cx.entity().downgrade();
+            let actions = inherited_section::Actions {
+                toggle: Box::new(move |_, cx| {
+                    toggle
+                        .update(cx, |e, cx| {
+                            e.inherited_open = !e.inherited_open;
+                            cx.notify();
+                        })
+                        .ok();
+                }),
+                override_row: std::rc::Rc::new(move |name, _, cx| {
+                    over.update(cx, |e, cx| e.override_inherited(name, cx)).ok();
+                }),
+            };
+            let block = inherited_section::Block {
+                parent: view.extends.as_deref(),
+                vars: &view.inherited,
+                warning: view.inherited_warning.as_deref(),
+                open: self.inherited_open,
+            };
+            inherited_section::section(block, &self.follow, actions, cx)
+        });
         self.scrolled(
             root.child(
                 v_flex()
@@ -2425,6 +2487,7 @@ impl Render for EnvEditor {
                             )),
                     ))
                     .child(self.table.clone())
+                    .children(inherited)
                     .children(orphans)
                     .children(fileless)
                     .children(notice)

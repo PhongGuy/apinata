@@ -258,6 +258,8 @@ pub struct EnvVarTable {
     saved_secrets: Vec<String>,
     /// The name input of the row whose last name was refused, and why.
     name_note: Option<(Entity<InputState>, String)>,
+    /// Each own name that overrides an inherited variable, with the ancestor it comes from.
+    overrides: Vec<(String, String)>,
 }
 
 impl EventEmitter<EnvTableEvent> for EnvVarTable {}
@@ -279,6 +281,7 @@ impl EnvVarTable {
             last_control: None,
             saved_secrets: Vec::new(),
             name_note: None,
+            overrides: Vec::new(),
         }
     }
 
@@ -503,6 +506,24 @@ impl EnvVarTable {
         let twin =
             |(j, r): (usize, &Row)| j != ix && r.meta.secret && r.name.read(cx).value() == name;
         !name.is_empty() && self.rows.iter().enumerate().any(twin)
+    }
+
+    /// Sets which own names override an inherited variable, each with the ancestor it comes
+    /// from, so their rows say so.
+    pub fn set_overrides(&mut self, overrides: Vec<(String, String)>, cx: &mut Context<Self>) {
+        if self.overrides != overrides {
+            self.overrides = overrides;
+            cx.notify();
+        }
+    }
+
+    /// The ancestor whose variable row `ix` overrides, if it is enabled and overrides one.
+    pub fn overrides(&self, ix: usize, cx: &App) -> Option<&str> {
+        let row = self.rows.get(ix).filter(|row| row.meta.enabled)?;
+        let name = row.name.read(cx).value().to_string();
+        (self.overrides.iter())
+            .find(|(own, _)| *own == name)
+            .map(|(_, from)| from.as_str())
     }
 
     /// Sets the secrets the saved file declares. A locked row not yet saved cannot be renamed
@@ -1245,7 +1266,10 @@ impl EnvVarTable {
             .filter(|(input, _)| !blank && *input == self.rows[ix].name)
             .map(|(_, note)| note.clone());
         let duplicate = self.duplicate_note(ix, cx);
-        if refused.is_none() && duplicate.is_none() {
+        let overrides = self
+            .overrides(ix, cx)
+            .map(|from| format!("Overrides {from}"));
+        if refused.is_none() && duplicate.is_none() && overrides.is_none() {
             return Followed::new(("env-row-wrapper", ix), &self.follow, row).into_any_element();
         }
         // Each note sits under the row whose name it is about.
@@ -1263,7 +1287,10 @@ impl EnvVarTable {
             .w_full()
             .child(row)
             .children(refused.map(|text| note("env-name-refused".into(), text)))
-            .children(duplicate.map(|text| note(("env-name-duplicate", ix).into(), text.into())));
+            .children(duplicate.map(|text| note(("env-name-duplicate", ix).into(), text.into())))
+            .children(overrides.map(|text| {
+                note(("env-row-overrides", ix).into(), text).text_color(cx.theme().muted_foreground)
+            }));
         Followed::new(("env-row-wrapper", ix), &self.follow, row).into_any_element()
     }
 
