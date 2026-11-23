@@ -310,6 +310,7 @@ dependencies = [
  "futures-util",
  "gethostname",
  "gpui-kit",
+ "http",
  "image",
  "lsp-types",
  "notify-debouncer-full",
