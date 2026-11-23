@@ -63,7 +63,7 @@ pub fn query_at(text: &str, cursor: usize) -> Option<Query> {
 pub struct Choice {
     /// The placeholder name, as inserted.
     pub name: String,
-    /// `var_tokens::scope_label` of its scope.
+    /// `var_tokens::scope_label` of its scope; in the header list, the header's description.
     pub scope: &'static str,
     /// The value cut to PREVIEW_CHARS, SECRET_DOTS for a secret, empty for a dynamic name.
     pub preview: String,
@@ -259,8 +259,8 @@ pub(crate) fn attach_hints(
     let shown: Rc<[Choice]> = offers(hint, &query.typed)
         .into_iter()
         .map(|name| Choice {
+            scope: header_complete::detail(hint, &name),
             name,
-            scope: "",
             preview: String::new(),
             dynamic: false,
         })
