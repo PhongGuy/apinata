@@ -113,6 +113,8 @@ actions!(
         ExportHar,
         /// Opens the Compare tab on the active request's shown response.
         Compare,
+        /// Re-checks the active request's assertions against its shown response, sending nothing.
+        RecheckAssertions,
         /// Rewrites the active saved HTTP request as a GraphQL request.
         ConvertToGraphql,
         /// Rewrites the active saved GraphQL request as an HTTP request.
@@ -1516,6 +1518,28 @@ impl TabArea {
         match choice {
             Some(choice) => pane.update(cx, |p, cx| p.compare_with(choice.source, cx)),
             None => window.push_notification(ui::info_toast(NOTHING_TO_COMPARE), cx),
+        }
+    }
+
+    /// Re-checks the active request's assertions against its shown response; when that response
+    /// cannot be re-checked, a toast says why.
+    pub fn recheck_assertions(
+        &mut self,
+        _: &RecheckAssertions,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(id) = self.workspace.read(cx).tabs().active().map(|e| e.id) else {
+            return;
+        };
+        let Some(editor) = self.editor(id).cloned() else {
+            return;
+        };
+        let pane = editor.read(cx).response().clone();
+        let refused = editor.read(cx).send_model().read(cx).recheck_refusal();
+        match refused {
+            Some(why) => window.push_notification(ui::info_toast(why.to_string()), cx),
+            None => pane.update(cx, |p, cx| p.recheck(cx)),
         }
     }
 

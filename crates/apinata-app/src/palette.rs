@@ -46,8 +46,8 @@ use crate::tab_area::{
     ActivateLastTab, ActivateNextTab, ActivatePrevTab, BeautifyBody, BeautifyQuery, CloseAllTabs,
     CloseOtherTabs, CloseSavedTabs, CloseTab, CloseTabsToTheLeft, CloseTabsToTheRight, Compare,
     ConvertToGraphql, ConvertToHttp, CopyAsCurl, DuplicateTab, ExportHar, GenerateCode, GoBack,
-    GoForward, MinifyBody, PinTab, ReopenClosedTab, RevealInSidebar, SaveAll, SaveAsExample,
-    SendActive, StopActive, TabArea, UnpinTab,
+    GoForward, MinifyBody, PinTab, RecheckAssertions, ReopenClosedTab, RevealInSidebar, SaveAll,
+    SaveAsExample, SendActive, StopActive, TabArea, UnpinTab,
 };
 use crate::tabs::{TabId, TabKind};
 use crate::updates::CheckForUpdates;
@@ -302,8 +302,8 @@ pub struct Availability {
     /// Send, the copy and export commands and the JSON caret commands: the active tab is a
     /// request tab, a draft included.
     pub request_tab: bool,
-    /// "Save response as example", "Export as HAR" and "Compare response": the active request
-    /// tab shows a response.
+    /// "Save response as example", "Export as HAR", "Compare response" and "Re-check
+    /// assertions": the active request tab shows a response.
     pub has_response: bool,
     /// "Copy as curl" and "Generate code": the active tab is a request tab, or the tree holds
     /// focus on one request row, which they then act on.
@@ -495,6 +495,7 @@ pub fn palette_items_for(available: Availability) -> Vec<PaletteEntry> {
         (available.has_response, SaveAsExample.name()),
         (available.has_response, ExportHar.name()),
         (available.has_response, Compare.name()),
+        (available.has_response, RecheckAssertions.name()),
         (available.request_tab, CopyCaretJsonValue.name()),
         (available.request_tab, CopyCaretJsonPath.name()),
         (available.request_tab, SetCaretJsonVariable.name()),
