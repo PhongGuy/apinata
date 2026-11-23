@@ -170,6 +170,14 @@ impl Section {
             _ => self.label(),
         }
     }
+
+    /// The section a new editor opens on: a GraphQL request's query, otherwise its params.
+    pub fn first_for(kind: RequestKind) -> Section {
+        match kind {
+            RequestKind::Graphql => Section::Body,
+            _ => Section::Params,
+        }
+    }
 }
 
 /// The method picker's items: the usual methods, plus the file's own when it is not one of them.
@@ -379,6 +387,7 @@ impl RequestEditor {
     ) -> Self {
         let view = target_of(&workspace, tab, cx)
             .and_then(|(root, item)| workspace.read(cx).request(&root, &item, cx));
+        let section = Section::first_for(view.as_ref().map_or(RequestKind::Http, |v| v.kind));
         let url_text = view.as_ref().map(|v| v.url.clone()).unwrap_or_default();
         let url = cx.new(|cx| {
             InputState::new(window, cx)
@@ -781,7 +790,7 @@ impl RequestEditor {
             header_base: Vec::new(),
             var_base: Vec::new(),
             post_response_base: Vec::new(),
-            section: Section::Params,
+            section,
             section_scroll: ScrollHandle::new(),
             body_scroll: ScrollHandle::new(),
             follow,

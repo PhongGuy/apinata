@@ -607,6 +607,7 @@ mod split_adaptive;
 mod split_ratio;
 mod stale;
 mod start;
+mod start_section;
 mod status_bar;
 mod status_row_age;
 mod stream_events;
