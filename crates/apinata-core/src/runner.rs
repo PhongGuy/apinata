@@ -667,6 +667,11 @@ pub struct RequestResult {
     control: RunnerControl,
     /// The person declined a network change before this send, which ends the run.
     network_declined: bool,
+    /// A post-response script replaced the body, so the assertions read a body the result does
+    /// not keep.
+    pub body_edited: bool,
+    /// The kept body had a secret scrubbed from it, so it is not the body the assertions read.
+    pub body_scrubbed: bool,
 }
 
 // The sensitive values a script read are secrets, so Debug shows their count only.
@@ -690,6 +695,8 @@ impl fmt::Debug for RequestResult {
             .field("script_cookies", &self.script_cookies)
             .field("iteration", &self.iteration)
             .field("status_failure", &self.status_failure)
+            .field("body_edited", &self.body_edited)
+            .field("body_scrubbed", &self.body_scrubbed)
             .finish()
     }
 }
@@ -1699,6 +1706,7 @@ async fn exchange(
     }
     // Assertions read the body a post-response script set; the result keeps the original.
     let effective = state.as_ref().and_then(|s| s.edited_response());
+    result.body_edited = effective.is_some();
     if let Some(response) = effective.as_ref().or(result.response.as_ref()) {
         result.assertions = match &scripted {
             Some(scripted) => evaluate_scripted(request, response, ctx, scripted),
@@ -1749,6 +1757,41 @@ async fn exchange(
         });
         result.outcome = Outcome::Errored;
     }
+}
+
+/// Why [`recheck_assertions`] would not re-evaluate a result's assertions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum RecheckRefused {
+    /// The result has no response to check against.
+    #[error("There is no response to check against.")]
+    NoResponse,
+    /// A post-response script changed the body, so the kept body is not what the assertions read.
+    #[error(
+        "A post-response script changed the body, so the shown response is not what the assertions read. Send again to check."
+    )]
+    BodyEdited,
+    /// A secret was scrubbed from the kept body, so its text is not what the server sent.
+    #[error(
+        "A secret was scrubbed from the kept body, so it cannot be checked. Send again to check."
+    )]
+    BodyScrubbed,
+}
+
+/// Re-evaluates `request`'s enabled assertions against the response `result` kept, without
+/// sending anything.
+pub fn recheck_assertions(
+    request: &RequestFile,
+    result: &RequestResult,
+    ctx: &VarContext,
+) -> Result<Vec<AssertionOutcome>, RecheckRefused> {
+    if let Some(why) = result.recheck_refusal() {
+        return Err(why);
+    }
+    let response = result.response.as_ref().ok_or(RecheckRefused::NoResponse)?;
+    // The send's script host is gone, so left sides that need JavaScript are skipped, and
+    // script tests keep the verdicts the send gave them.
+    Ok(evaluate(request, response, ctx))
 }
 
 /// Marks `result` cancelled because the person declined a network change, which ends the run.
@@ -1816,6 +1859,19 @@ impl Summary {
 }
 
 impl RequestResult {
+    /// Why [`recheck_assertions`] would refuse this result; `None` when it would re-check it.
+    pub fn recheck_refusal(&self) -> Option<RecheckRefused> {
+        if self.response.is_none() {
+            Some(RecheckRefused::NoResponse)
+        } else if self.body_edited {
+            Some(RecheckRefused::BodyEdited)
+        } else if self.body_scrubbed {
+            Some(RecheckRefused::BodyScrubbed)
+        } else {
+            None
+        }
+    }
+
     /// The sentence naming the reply status that failed the request, when `fail_on_status` did.
     pub fn status_failure_reason(&self) -> Option<String> {
         let code = self.status_failure?;
@@ -1909,6 +1965,8 @@ impl RequestResult {
             last_attempt_error: None,
             control: RunnerControl::default(),
             network_declined: false,
+            body_edited: false,
+            body_scrubbed: false,
         }
     }
 
@@ -1936,6 +1994,8 @@ impl RequestResult {
             last_attempt_error: None,
             control: RunnerControl::default(),
             network_declined: false,
+            body_edited: false,
+            body_scrubbed: false,
         }
     }
 
