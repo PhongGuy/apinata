@@ -2212,8 +2212,8 @@ impl ResponsePane {
             .child(copy)
     }
 
-    // The right end of the header row: the status pill, then muted time and size, a note
-    // when the body was cut at the size limit, and when a kept response was received.
+    // The right end of the header row: the status pill, then muted time and size (amber when
+    // the body was cut at the size limit), and when a kept response was received.
     fn status_line(
         &self,
         result: &Arc<RequestResult>,
@@ -2234,8 +2234,6 @@ impl ResponsePane {
         // The size and the cut point share one unit; a compressed body's cut is far below its
         // decoded size.
         let (size_text, cut_text) = size_labels(r.size(), r.body().len() as u64, r.truncated());
-        let truncated =
-            cut_text.map(|cut| muted("response-truncated", format!("truncated at {cut}")));
         // A kept response shows a short age in a box as wide as the widest age, so a growing
         // age never reflows the row. The long label with the date is the aria label and tooltip.
         let compact = self.compact.get();
@@ -2352,21 +2350,28 @@ impl ResponsePane {
             self.timing_bar(r, cx)
                 .or_else(|| kept.then(|| untimed_slot(cx))),
         );
-        // A compressed body names its wire size on hover beside the decoded size shown.
-        let size = muted("response-size", size_text);
-        let size = match r.encoded_size().filter(|&wire| wire > 0) {
-            Some(wire) => size.tooltip(ui::text_tooltip(
-                "response-size-tooltip",
-                encoded_size_label(wire, r.size()),
-            )),
+        // A cut body's size turns amber and names the cut on hover and in its accessible label,
+        // so colour is not the only sign; a compressed body names its wire size on hover.
+        let size = muted("response-size", size_text.clone());
+        let size = match &cut_text {
+            Some(cut) => size
+                .text_color(cx.theme().warning)
+                .aria_label(format!("{size_text}, cut at {cut}")),
             None => size,
+        };
+        let wire = (r.encoded_size().filter(|&wire| wire > 0))
+            .map(|wire| encoded_size_label(wire, r.size()));
+        let cut_tip = cut_text.map(|cut| format!("Cut at {cut}"));
+        let tip = [cut_tip, wire].into_iter().flatten().collect::<Vec<_>>();
+        let size = match tip.is_empty() {
+            true => size,
+            false => size.tooltip(ui::text_tooltip("response-size-tooltip", tip.join("\n"))),
         };
         before.push(size.into_any_element());
         let mut after: Vec<AnyElement> = r
             .stream_end()
             .map(|e| muted("response-stream-end", live_stream::end_label(e).to_owned()))
             .into_iter()
-            .chain(truncated)
             .map(IntoElement::into_any_element)
             .collect();
         after.extend(saved.map(IntoElement::into_any_element));

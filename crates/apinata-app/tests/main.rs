@@ -126,6 +126,7 @@ mod banners;
 mod bar_rings;
 mod binary_first_rows;
 mod binary_view_cap;
+mod body_banner;
 mod body_beautify;
 mod body_binary;
 mod body_binary_format;
