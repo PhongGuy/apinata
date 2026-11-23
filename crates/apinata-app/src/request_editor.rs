@@ -320,6 +320,9 @@ pub struct RequestEditor {
     seen_inherited: Option<Inherited>,
     // The breadcrumb, URL row parts and section bar, each drawn as its own cached view.
     chrome: Vec<Slot<RequestEditor, PartInputs>>,
+    // The request name being retyped in the breadcrumb, and the name crumb's focus.
+    title_rename: Option<title_rename::TitleRename>,
+    title_focus: FocusHandle,
 }
 
 // Everything a chrome part's render reads that does not notify the part itself: a frame
@@ -345,6 +348,8 @@ enum PartInputs {
     ),
 }
 
+mod title_rename;
+
 // The breadcrumb's mark for a team collection that refuses saves.
 const READ_ONLY_LABEL: &str = "Read only";
 
@@ -363,6 +368,10 @@ struct Crumbs {
     read_only: bool,
     title: String,
     tooltip: Option<String>,
+    // Whether the name renames: a saved request in a writable collection.
+    renames: bool,
+    // While the name is retyped: why the typed name was refused, if it was.
+    editing: Option<Option<String>>,
 }
 
 /// What the variable set was asked for: the request's view and the actor's context
@@ -828,6 +837,8 @@ impl RequestEditor {
             seen_env: None,
             seen_inherited: None,
             chrome,
+            title_rename: None,
+            title_focus: cx.focus_handle().tab_stop(true),
         };
         editor.refresh(window, cx);
         editor
@@ -2792,7 +2803,7 @@ impl RequestEditor {
     ) -> AnyElement {
         match part {
             ChromePart::Breadcrumb => match self.crumbs_shown(cx) {
-                Some(crumbs) => self.breadcrumb(crumbs, cx),
+                Some(crumbs) => self.breadcrumb(crumbs, window, cx),
                 None => Empty.into_any_element(),
             },
             ChromePart::Method if !self.custom_open => div()
@@ -2894,6 +2905,8 @@ impl RequestEditor {
             }
         }
         Some(Crumbs {
+            renames: title_rename::renames(workspace, &root, &item),
+            editing: (self.title_rename.as_ref()).map(|r| r.error().map(str::to_owned)),
             read_only: workspace.is_team_read_only(&root),
             collection: workspace.collection_name(&root, cx),
             hint: workspace.collection_hints(cx).remove(&root),
@@ -2907,9 +2920,9 @@ impl RequestEditor {
     }
 
     // The collection and each folder are links that open their settings tab (a folder also
-    // reveals itself in the sidebar); the plain name, in the foreground colour, ends the
-    // line, and hovering the line shows the full path.
-    fn breadcrumb(&self, crumbs: Crumbs, cx: &mut Context<Self>) -> AnyElement {
+    // reveals itself in the sidebar); the name, in the foreground colour, ends the line and
+    // renames on a double-click, and hovering the rest of the line shows the full path.
+    fn breadcrumb(&self, crumbs: Crumbs, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let Crumbs {
             root: root_dir,
             collection: collection_name,
@@ -2919,6 +2932,8 @@ impl RequestEditor {
             read_only,
             title,
             tooltip,
+            renames,
+            editing,
             ..
         } = crumbs;
         let tooltip: Option<SharedString> = tooltip.map(Into::into);
@@ -2959,9 +2974,7 @@ impl RequestEditor {
             .font_family(cx.theme().font_family.clone())
             .text_size(style::TEXT_SMALL)
             .when_some(tooltip, |row, tooltip| {
-                row.tooltip(ui::tooltip(move |window, cx| {
-                    Tooltip::new(tooltip.clone()).build(window, cx)
-                }))
+                row.tooltip(ui::text_tooltip("breadcrumb-tooltip", tooltip))
             })
             .child(collection_crumb)
             // A muted hint after the name, as a tab shows; it gives way before the name does.
@@ -3026,14 +3039,7 @@ impl RequestEditor {
                         ]
                     }),
             )
-            .child(
-                div()
-                    .id("breadcrumb-file")
-                    .test_support()
-                    .flex_none()
-                    .text_color(cx.theme().foreground)
-                    .child(title),
-            )
+            .child(self.title_crumb(title, renames, editing, window, cx))
             .when(read_only, |row| {
                 row.child(
                     div()
