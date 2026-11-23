@@ -51,6 +51,8 @@ pub enum CheckBasis {
     TooLarge,
     /// Syntax only: the check against the schema failed.
     Failed,
+    /// The schema is loading or compiling; the next check runs against it.
+    Pending,
 }
 
 impl CheckBasis {
@@ -88,6 +90,7 @@ impl CheckBasis {
             CheckBasis::Failed => {
                 "Syntax only: the query could not be checked against the schema".to_string()
             }
+            CheckBasis::Pending => "Checking against the schema".to_string(),
         }
     }
 }
