@@ -26,6 +26,7 @@ use crate::keymap::{
     ToggleConsole, ToggleOrientation, ToggleSidebar, ToggleTheme, UndoActive, ZoomIn, ZoomOut,
 };
 use crate::palette::{GoToRequest, OpenCommandPalette, PaletteGroup};
+use crate::percent_codec::{PercentDecode, PercentEncode};
 use crate::preferences::{KEY_CONTEXT as PREFERENCES, OpenPreferences};
 use crate::renames_dialog::CheckSecretRenames;
 use crate::request_editor::{
@@ -1306,6 +1307,26 @@ pub fn registry() -> Vec<Command> {
                 shell(OpenGlobalEnvironments),
                 &[],
             )),
+        ),
+        found_by(
+            &["url", "escape", "uri"],
+            command(
+                "edit.percent_encode",
+                "Percent-encode selection",
+                Edit,
+                shell(PercentEncode),
+                &[],
+            ),
+        ),
+        found_by(
+            &["url", "unescape", "uri"],
+            command(
+                "edit.percent_decode",
+                "Percent-decode selection",
+                Edit,
+                shell(PercentDecode),
+                &[],
+            ),
         ),
     ]);
     cmds
