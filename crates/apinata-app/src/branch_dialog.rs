@@ -6,8 +6,9 @@ use crate::ui::LockButton as _;
 use crate::ui::SolidRing as _;
 use std::path::PathBuf;
 
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{ActiveTheme as _, WindowExt as _, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, App, Entity, Global, Subscription, TestSupportExt, WeakEntity, Window, div,
@@ -15,11 +16,14 @@ use gpui_kit::{
 
 use crate::branch_picker::{Activity, BranchPicker, Notice, PickerEvent};
 use crate::changes_dialog;
-use crate::style::SPACE_2;
+use crate::style::{SPACE_1, SPACE_2};
 use crate::ui::{self, RingRoom as _, RingSides};
 use crate::workspace::Workspace;
 
 const EMPTY: &str = "No branches yet. Fetch to look for them.";
+
+/// Why Fetch, Pull and Push are locked in a repository without a remote.
+pub const NO_REMOTE: &str = "No remote configured";
 
 // The dialog's body: it owns the model, so closing the dialog drops the model and cancels a fetch.
 struct BranchView {
@@ -104,24 +108,48 @@ impl Render for BranchView {
                     .filter(|u| b.local.as_deref().is_some_and(|l| l != u.name))
                     .map(shown);
                 let label = name.unwrap_or_default();
-                let label = if b.head {
-                    format!("{label} (checked out)")
-                } else {
-                    label
-                };
                 let branch = b.clone();
+                // A left-aligned row like the environment selector's: the name, its upstream
+                // when it differs, and a check at the far end on the checked-out branch.
+                let check = b.head.then(|| {
+                    div()
+                        .id("branch-head-check")
+                        .test_support()
+                        .child(Icon::new(IconName::Check).small())
+                });
+                let content = h_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .gap(SPACE_2)
+                    .justify_between()
+                    .child(
+                        h_flex()
+                            .min_w_0()
+                            .gap(SPACE_1)
+                            .child(
+                                div()
+                                    .id(("branch-name", ix))
+                                    .test_support()
+                                    .min_w_0()
+                                    .truncate()
+                                    .child(label.clone()),
+                            )
+                            .children(upstream.map(|u| {
+                                div()
+                                    .id(("branch-upstream", ix))
+                                    .test_support()
+                                    .aria_label(u.clone())
+                                    .text_color(muted)
+                                    .child(u)
+                            })),
+                    )
+                    .children(check);
                 Button::new(("branch-row", ix))
                     .solid_ring(cx)
                     .ghost()
-                    .label(label)
-                    .children(upstream.map(|u| {
-                        div()
-                            .id(("branch-upstream", ix))
-                            .test_support()
-                            .aria_label(u.clone())
-                            .text_color(muted)
-                            .child(u)
-                    }))
+                    .w_full()
+                    .accessibility_label(label)
+                    .child(content)
                     .lock(!idle || b.head, cx)
                     .on_click(cx.listener(move |this, _, _, cx| {
                         let branch = branch.clone();
@@ -178,11 +206,14 @@ impl Render for BranchView {
                 .children(changes)
                 .children(publish)
         });
+        // Without a remote there is nothing to sync with, and the buttons say so up front.
+        let no_remote = picker.lacks_remote();
         let fetching = activity == Activity::Fetching;
         let fetch = Button::new("branch-fetch")
             .solid_ring(cx)
             .label(if fetching { "Fetching…" } else { "Fetch" })
-            .lock(!idle, cx);
+            .lock(!idle || no_remote, cx)
+            .when(no_remote, |b| b.tooltip(NO_REMOTE));
         let fetch = fetch.on_click(cx.listener(|this, _, _, cx| {
             this.picker.update(cx, |p, cx| p.fetch(cx));
         }));
@@ -193,7 +224,8 @@ impl Render for BranchView {
             Button::new(id)
                 .solid_ring(cx)
                 .label(if on { busy } else { label })
-                .lock(!(idle || activity == Activity::Listing), cx)
+                .lock(!(idle || activity == Activity::Listing) || no_remote, cx)
+                .when(no_remote, |b| b.tooltip(NO_REMOTE))
         };
         let pull = syncs.then(|| {
             let on = activity == Activity::Pulling;

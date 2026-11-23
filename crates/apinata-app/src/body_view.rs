@@ -1703,6 +1703,13 @@ impl BodyView {
         }
     }
 
+    /// The format label's tooltip, saying the format was detected from the body when the
+    /// content type was missing or generic; `None` otherwise.
+    pub fn format_tooltip(&self) -> Option<String> {
+        let response = self.result.as_ref()?.response.as_ref()?;
+        crate::body_text::format_tooltip(response.headers(), self.kind?)
+    }
+
     /// Writes exactly the shown text to the clipboard and confirms with a toast: the editor's
     /// value (scratch edits included), a long body's text unchunked, or for a binary body the
     /// Hex rows one per line or the unbroken Base64. Does nothing without a text or binary body.
@@ -3450,12 +3457,16 @@ impl Render for BodyView {
             );
         }
         if let Some(label) = self.format_label() {
+            let tip = self.format_tooltip();
             bar = bar.child(
                 div()
                     .id("body-format")
                     .test_support()
                     .text_size(style::TEXT_SMALL)
                     .text_color(cx.theme().muted_foreground)
+                    .when_some(tip, |d, tip| {
+                        d.tooltip(ui::text_tooltip("body-format-tooltip", tip))
+                    })
                     .child(label),
             );
         }

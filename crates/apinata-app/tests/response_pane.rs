@@ -1,6 +1,7 @@
 use crate::support;
 
 use apinata_app::response_pane::{ResponsePane, ResponseTab, assertion_line};
+use apinata_core::header_description;
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AnyWindowHandle, AppContext, Entity, TestAppContext, WindowOptions};
 use support::*;
@@ -729,4 +730,63 @@ fn a_narrow_headers_table_gives_the_value_the_room(cx: &mut TestAppContext) {
         );
     })
     .unwrap();
+}
+
+// Hover the response header named `name` and return the description tooltip and the cut-name
+// tooltip that show over it, if any.
+fn header_name_tips(
+    cx: &mut TestAppContext,
+    template: ResponseTemplate,
+    name: &str,
+) -> (Option<String>, Option<String>) {
+    let s = send_once(cx, template, "");
+    let (win, view) = pane(cx, &s);
+    view.update(cx, |p, cx| p.set_tab(ResponseTab::Headers, cx));
+    let shown = s.result.response.as_ref().unwrap().headers().len();
+    let ix = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            (0..shown).find(|ix| w.find(("header-name", *ix)).label() == Some(name))
+        })
+        .unwrap()
+        .expect("the header");
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.hover(("header-name", ix), cx)
+    })
+    .unwrap();
+    cx.executor()
+        .advance_clock(std::time::Duration::from_millis(800));
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let label = |id: &'static str| {
+            w.try_find(id)
+                .map(|t| t.label().unwrap_or_default().to_owned())
+        };
+        (label("kv-cell-tip"), label("kv-cut-tooltip"))
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn hovering_a_known_response_header_name_describes_it(cx: &mut TestAppContext) {
+    let tips = header_name_tips(
+        cx,
+        ResponseTemplate::new(200).insert_header("etag", "\"v1\""),
+        "etag",
+    );
+    let described = header_description("etag").map(str::to_owned);
+    assert!(described.is_some());
+    assert_eq!(tips, (described, None));
+}
+
+#[gpui_kit::test]
+fn an_unknown_response_header_name_has_no_tooltip(cx: &mut TestAppContext) {
+    let tips = header_name_tips(
+        cx,
+        ResponseTemplate::new(200).insert_header("x-probe", "1"),
+        "x-probe",
+    );
+    assert_eq!(tips, (None, None));
 }

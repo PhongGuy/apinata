@@ -854,3 +854,87 @@ fn the_json_column_counts_characters_not_bytes() {
         Some("Not valid JSON: expected `,` or `]` at line 2, column 6")
     );
 }
+
+#[test]
+fn json_behind_a_generic_content_type_is_detected() {
+    let body = b"{\"a\":[1,2]}";
+    assert_eq!(body_kind(&ct("text/plain"), body), BodyKind::Json);
+    assert_eq!(
+        body_kind(&ct("text/plain; charset=utf-8"), b" [1, 2]\n"),
+        BodyKind::Json
+    );
+    assert_eq!(
+        body_kind(&ct("application/octet-stream"), body),
+        BodyKind::Json
+    );
+    assert_eq!(body_kind(&[], body), BodyKind::Json);
+    // Another named type keeps its own kind whatever the bytes.
+    assert_eq!(body_kind(&ct("text/csv"), body), BodyKind::Text);
+}
+
+#[test]
+fn a_bare_json_scalar_stays_text() {
+    assert_eq!(body_kind(&ct("text/plain"), b"42"), BodyKind::Text);
+    assert_eq!(body_kind(&[], b"\"42\""), BodyKind::Text);
+    assert_eq!(body_kind(&[], b"true"), BodyKind::Text);
+}
+
+#[test]
+fn a_cut_json_body_stays_text() {
+    let whole = "{\"items\":[1,2,3],\"next\":null}";
+    let cut = &whole.as_bytes()[..whole.len() - 7];
+    assert_eq!(body_kind(&ct("text/plain"), cut), BodyKind::Text);
+    // Cut inside a character: the last bytes are not yet valid UTF-8.
+    let mut split = b"[\"\xc3\xa9\"]".to_vec();
+    split.truncate(3);
+    assert_eq!(body_kind(&[], &split), BodyKind::Text);
+}
+
+#[test]
+fn xml_behind_a_generic_content_type_is_detected() {
+    assert_eq!(
+        body_kind(&ct("application/octet-stream"), b"<a><b>1</b></a>"),
+        BodyKind::Xml
+    );
+    assert_eq!(
+        body_kind(&ct("text/plain"), b"<?xml version=\"1.0\"?>\n<a/>"),
+        BodyKind::Xml
+    );
+    assert_eq!(
+        body_kind(&[], b"\n  <feed x=\"1\"><e/></feed>"),
+        BodyKind::Xml
+    );
+    // Text that merely opens with an angle bracket is not markup.
+    assert_eq!(body_kind(&ct("text/plain"), b"<3 you"), BodyKind::Text);
+}
+
+#[test]
+fn an_html_page_sent_as_plain_text_stays_text() {
+    let page = b"<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\"></head><body><p>Hi</p></body></html>";
+    assert_eq!(body_kind(&ct("text/plain"), page), BodyKind::Text);
+    let no_doctype =
+        b"<html><head><meta charset=\"utf-8\"><title>x</title></head><body><br></body></html>";
+    assert_eq!(body_kind(&ct("text/plain"), no_doctype), BodyKind::Text);
+}
+
+#[test]
+fn the_format_tooltip_says_a_format_was_detected() {
+    assert_eq!(
+        format_tooltip(&ct("text/plain; charset=utf-8"), BodyKind::Json).as_deref(),
+        Some("Detected from the body: sent as text/plain")
+    );
+    assert_eq!(
+        format_tooltip(&ct("Application/Octet-Stream"), BodyKind::Xml).as_deref(),
+        Some("Detected from the body: sent as application/octet-stream")
+    );
+    assert_eq!(
+        format_tooltip(&[], BodyKind::Json).as_deref(),
+        Some("Detected from the body: sent without a Content-Type")
+    );
+    // A format the content type names, or plain text, was not detected.
+    assert_eq!(
+        format_tooltip(&ct("application/json"), BodyKind::Json),
+        None
+    );
+    assert_eq!(format_tooltip(&ct("text/plain"), BodyKind::Text), None);
+}
