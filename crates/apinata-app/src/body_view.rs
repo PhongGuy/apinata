@@ -100,6 +100,12 @@ pub const OPEN_PAGE_TIP: &str = "Opens an inert copy in your browser: scripts, n
 pub const SCRUBBED_TIP: &str = "Secret values are not saved, so they cannot be shown.";
 /// The toast a page handed to the browser shows.
 pub const OPENED_PAGE_NOTE: &str = "Opened in your browser (scripts and remote content blocked)";
+/// The toast an open that succeeded shows: [`OPENED_PAGE_NOTE`] for a page handed to the
+/// browser, nothing for a file handed to the system app.
+pub fn opened_note(page: bool) -> Option<&'static str> {
+    page.then_some(OPENED_PAGE_NOTE)
+}
+
 /// The banner a whole body over the editor's limits shows under its bar.
 pub const LARGE_BODY_NOTE: &str = "Large body: shown as plain text, folding and editing are off";
 
@@ -2399,8 +2405,10 @@ impl BodyView {
             // Nothing visible may open on some desktops, so a page handed over says so.
             let note = match open.await {
                 Err(e) => Notification::error(format!("Could not open the body: {e}")),
-                Ok(()) if page => ui::info_toast(OPENED_PAGE_NOTE),
-                Ok(()) => return,
+                Ok(()) => match opened_note(page) {
+                    Some(note) => ui::info_toast(note),
+                    None => return,
+                },
             };
             cx.update(|window, cx| window.push_notification(note, cx))
                 .ok();
@@ -4031,9 +4039,7 @@ fn save_name(url: Option<&str>, request: &str, headers: &[(String, String)]) -> 
             .map(|(_, value)| value.as_str())
     };
     let ext = type_extension(header("content-type").unwrap_or_default());
-    let offered = header("content-disposition")
-        .and_then(disposition_name)
-        .and_then(|name| plain_name(&name));
+    let offered = header("content-disposition").and_then(disposition_name);
     if let Some(name) = offered {
         return if has_extension(&name) {
             name
@@ -4080,8 +4086,8 @@ fn plain_name(offered: &str) -> Option<String> {
     clean_stem(offered.rsplit(['/', '\\']).next().unwrap_or_default())
 }
 
-// The file name a Content-Disposition value offers: `filename*` (RFC 8187) when it decodes,
-// else the plain `filename`.
+// The plain file name a Content-Disposition value offers: `filename*` (RFC 8187) when it
+// decodes to a usable name, else the plain `filename`.
 fn disposition_name(value: &str) -> Option<String> {
     let params = disposition_params(value);
     let param = |want: &str| {
@@ -4089,7 +4095,9 @@ fn disposition_name(value: &str) -> Option<String> {
             .find(|(key, _)| key.eq_ignore_ascii_case(want))
             .map(|(_, v)| v.as_str())
     };
-    (param("filename*").and_then(extended_value)).or_else(|| param("filename").map(str::to_owned))
+    (param("filename*").and_then(extended_value))
+        .and_then(|name| plain_name(&name))
+        .or_else(|| param("filename").and_then(plain_name))
 }
 
 // The `key=value` parameters after the disposition type. A quoted value is unescaped, and a
@@ -4158,29 +4166,86 @@ fn file_stem(request: &str) -> String {
     clean_stem(request).unwrap_or_else(|| "response".to_string())
 }
 
-// A name of at most 100 chars: characters no file system takes become `-`, edge dots and
-// spaces go, and a name left blank or naming a Windows device is `None`.
+// A name of at most 200 bytes, so an added extension stays under the 255-byte limit:
+// characters no file system takes become `-`, control and invisible format characters go,
+// edge dots and spaces go, and a name left blank or naming a Windows device is `None`.
 fn clean_stem(request: &str) -> Option<String> {
     let edges = |c: char| c == '.' || c.is_whitespace();
     let cleaned: String = (request.chars())
-        .filter(|c| !c.is_control())
+        .filter(|c| !c.is_control() && !is_format(*c))
         .map(|c| match c {
             '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '-',
             c => c,
         })
         .collect();
-    let cut: String = cleaned.trim_matches(edges).chars().take(100).collect();
+    let trimmed = cleaned.trim_matches(edges);
+    // A long name loses the end of its stem, never a short extension.
+    let cut = match trimmed.rsplit_once('.') {
+        Some((stem, ext)) if !stem.is_empty() && !ext.is_empty() && ext.len() <= 16 => {
+            format!("{}.{ext}", cut_bytes(stem, NAME_MAX_BYTES - ext.len() - 1))
+        }
+        _ => cut_bytes(trimmed, NAME_MAX_BYTES).to_string(),
+    };
     let stem = cut.trim_matches(edges);
     // Windows refuses a device name before the first dot, whatever the extension.
     let base = stem.split('.').next().unwrap_or_default().trim_end();
-    let device = ["CON", "PRN", "AUX", "NUL"]
-        .iter()
-        .any(|d| base.eq_ignore_ascii_case(d))
-        || (base.len() == 4
-            && (base.get(..3))
-                .is_some_and(|p| ["COM", "LPT"].iter().any(|d| p.eq_ignore_ascii_case(d)))
-            && matches!(base.as_bytes()[3], b'1'..=b'9'));
-    (!device && safe_file_name(stem)).then(|| stem.to_string())
+    (!device_name(base) && safe_file_name(stem)).then(|| stem.to_string())
+}
+
+const NAME_MAX_BYTES: usize = 200;
+
+// The longest prefix of `text` within `max` bytes that ends on a character boundary.
+fn cut_bytes(text: &str, max: usize) -> &str {
+    let mut end = max.min(text.len());
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
+}
+
+// Whether `base` names a Windows device: CON, PRN, AUX, NUL, CONIN$, CONOUT$, or COM or LPT
+// followed by one digit, superscripts one to three included.
+fn device_name(base: &str) -> bool {
+    let upper = base.to_ascii_uppercase();
+    if ["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"].contains(&upper.as_str()) {
+        return true;
+    }
+    let mut chars = upper.chars();
+    let prefix: String = chars.by_ref().take(3).collect();
+    matches!(prefix.as_str(), "COM" | "LPT")
+        && matches!(
+            (chars.next(), chars.next()),
+            (Some('0'..='9' | '\u{b9}' | '\u{b2}' | '\u{b3}'), None)
+        )
+}
+
+// Unicode format characters (category Cf): invisible marks such as zero-width spaces and the
+// bidirectional overrides that can make `exe` read as `pdf`.
+fn is_format(c: char) -> bool {
+    matches!(
+        c,
+        '\u{ad}'
+            | '\u{600}'..='\u{605}'
+            | '\u{61c}'
+            | '\u{6dd}'
+            | '\u{70f}'
+            | '\u{890}'..='\u{891}'
+            | '\u{8e2}'
+            | '\u{180e}'
+            | '\u{200b}'..='\u{200f}'
+            | '\u{202a}'..='\u{202e}'
+            | '\u{2060}'..='\u{2064}'
+            | '\u{2066}'..='\u{206f}'
+            | '\u{feff}'
+            | '\u{fff9}'..='\u{fffb}'
+            | '\u{110bd}'
+            | '\u{110cd}'
+            | '\u{13430}'..='\u{1343f}'
+            | '\u{1bca0}'..='\u{1bca3}'
+            | '\u{1d173}'..='\u{1d17a}'
+            | '\u{e0001}'
+            | '\u{e0020}'..='\u{e007f}'
+    )
 }
 
 // A name that cannot escape the chosen directory or carry control characters.
@@ -4387,6 +4452,13 @@ mod save_name_tests {
             "COM1",
             "lpt9",
             "con.backup",
+            "COM0",
+            "lpt0",
+            "COM\u{b9}",
+            "LPT\u{b2}",
+            "com\u{b3}",
+            "CONIN$",
+            "conout$.log",
         ] {
             assert_eq!(
                 typed(Some(URL), name, "text/plain"),
@@ -4531,6 +4603,61 @@ mod save_name_tests {
         assert_eq!(
             typed(Some("https://h.example/CON.txt"), "Get", "text/plain"),
             "Get.txt"
+        );
+    }
+
+    #[test]
+    fn format_characters_never_reach_the_name() {
+        // A right-to-left override would show `invoiceexe.pdf` for an executable.
+        assert_eq!(
+            disposed(
+                "attachment; filename*=UTF-8''invoice%E2%80%AEfdp.exe",
+                "Get",
+                "text/plain"
+            ),
+            "invoicefdp.exe"
+        );
+        for format in [
+            '\u{200b}', '\u{200c}', '\u{200d}', '\u{200e}', '\u{200f}', '\u{202a}', '\u{202b}',
+            '\u{202c}', '\u{202d}', '\u{202e}', '\u{2066}', '\u{2067}', '\u{2068}', '\u{2069}',
+            '\u{feff}',
+        ] {
+            let name = format!("a{format}b.txt");
+            assert_eq!(
+                typed(Some(URL), &name, "text/plain"),
+                "ab.txt.txt",
+                "{format:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_long_name_is_cut_by_bytes_and_keeps_its_extension() {
+        let long = "\u{6587}".repeat(100);
+        let encoded: String = long.bytes().map(|b| format!("%{b:02X}")).collect();
+        let saved = disposed(
+            &format!("attachment; filename*=UTF-8''{encoded}.txt"),
+            "Get",
+            "application/octet-stream",
+        );
+        assert!(saved.len() <= 255, "{} bytes", saved.len());
+        assert!(saved.ends_with(".txt"), "{saved}");
+        assert!(saved.starts_with('\u{6587}'), "{saved}");
+        let request = "\u{6587}".repeat(100);
+        let saved = typed(Some(URL), &request, "application/json");
+        assert!(saved.len() <= 255, "{} bytes", saved.len());
+        assert!(saved.ends_with(".json"), "{saved}");
+    }
+
+    #[test]
+    fn a_rejected_extended_name_falls_back_to_the_plain_one() {
+        assert_eq!(
+            disposed(
+                "attachment; filename*=UTF-8''NUL; filename=\"ok.txt\"",
+                "Get",
+                "text/plain"
+            ),
+            "ok.txt"
         );
     }
 }

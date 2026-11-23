@@ -807,3 +807,50 @@ fn an_unparsable_json_text_names_its_line_and_column() {
     );
     assert_eq!(json_problem("{\"a\": 1}"), None);
 }
+
+#[test]
+fn text_and_markup_types_stay_out_of_binary() {
+    assert_eq!(
+        body_kind(&ct("application/problem+json"), b"{}"),
+        BodyKind::Json
+    );
+    assert_eq!(
+        body_kind(&ct("image/svg+xml"), b"<svg/>"),
+        BodyKind::Image(ImageKind::Svg)
+    );
+    assert_eq!(
+        body_kind(&ct("application/atom+xml"), b"<feed/>"),
+        BodyKind::Xml
+    );
+    assert_eq!(body_kind(&ct("text/csv"), b"a,b"), BodyKind::Text);
+    for playlist in [
+        "audio/x-mpegurl",
+        "audio/mpegurl",
+        "application/vnd.apple.mpegurl",
+    ] {
+        assert_eq!(
+            body_kind(&ct(playlist), b"#EXTM3U"),
+            BodyKind::Text,
+            "{playlist}"
+        );
+    }
+    assert_eq!(
+        body_kind(
+            &ct("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+            b"PK ascii"
+        ),
+        BodyKind::Binary
+    );
+}
+
+#[test]
+fn the_json_column_counts_characters_not_bytes() {
+    assert_eq!(
+        json_problem("{\"\u{e9}\": }").as_deref(),
+        Some("Not valid JSON: expected value at line 1, column 7")
+    );
+    assert_eq!(
+        json_problem("[1,\n\"\u{6587}\u{6587}\" x]").as_deref(),
+        Some("Not valid JSON: expected `,` or `]` at line 2, column 6")
+    );
+}

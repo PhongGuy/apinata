@@ -6,7 +6,7 @@ use crate::support;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use apinata_app::body_view::{BodyView, OPENED_PAGE_NOTE};
+use apinata_app::body_view::{BodyView, OPENED_PAGE_NOTE, opened_note};
 use apinata_app::open_external::{self, FileOpener};
 use apinata_core::{Outcome, RequestResult, Response};
 use gpui_kit::component::WindowExt as _;
@@ -166,8 +166,43 @@ fn opening_a_page_in_the_browser_confirms_with_a_toast(cx: &mut TestAppContext) 
     assert_eq!(seen.len(), 1);
     assert!(seen[0].starts_with(base.path()), "{seen:?}");
     assert_eq!(count(cx), before + 1);
+}
+
+#[test]
+fn only_a_page_open_names_what_the_browser_blocks() {
     assert_eq!(
-        OPENED_PAGE_NOTE,
-        "Opened in your browser (scripts and remote content blocked)"
+        opened_note(true),
+        Some("Opened in your browser (scripts and remote content blocked)")
     );
+    assert_eq!(opened_note(true), Some(OPENED_PAGE_NOTE));
+    assert_eq!(opened_note(false), None);
+}
+
+#[gpui_kit::test]
+fn opening_a_binary_body_shows_no_toast(cx: &mut TestAppContext) {
+    let base = tempfile::tempdir().unwrap();
+    let seen = Arc::new(Mutex::new(Vec::<PathBuf>::new()));
+    let log = seen.clone();
+    let opener: FileOpener = Arc::new(move |path, _| log.lock().unwrap().push(path.to_path_buf()));
+    let root = base.path().to_path_buf();
+    cx.update(|cx| open_external::install(opener, root, cx));
+    cx.run_until_parked();
+    let (win, _view) = host(
+        cx,
+        result(&[("content-type", "application/pdf")], "%PDF-1.4", false),
+    );
+    let count = |cx: &mut TestAppContext| {
+        cx.update_window(win, |_, w, cx| w.notifications(cx).len())
+            .unwrap()
+    };
+    let before = count(cx);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("body-open", cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert_eq!(seen.lock().unwrap().len(), 1);
+    assert!(seen.lock().unwrap()[0].starts_with(base.path()));
+    assert_eq!(count(cx), before);
 }

@@ -125,7 +125,8 @@ pub fn body_kind(headers: &[(String, String)], body: &[u8]) -> BodyKind {
     }
 }
 
-// Media types whose bodies are never shown as text (no parameters, lowercased).
+// Media types whose bodies are never shown as text (no parameters, lowercased); a playlist
+// such as `audio/x-mpegurl` is text.
 fn binary_media(media: &str) -> bool {
     matches!(
         media,
@@ -145,9 +146,10 @@ fn binary_media(media: &str) -> bool {
             | "application/msword"
             | "application/vnd.ms-excel"
     ) || media.starts_with("application/vnd.openxmlformats-officedocument.")
-        || ["audio/", "video/", "font/"]
+        || (["audio/", "video/", "font/"]
             .iter()
             .any(|prefix| media.starts_with(prefix))
+            && !media.ends_with("mpegurl"))
 }
 
 pub use apinata_core::json_text::{beautify_json, minify_json, reindent_json};
@@ -160,6 +162,16 @@ pub fn json_problem(text: &str) -> Option<String> {
     let reason = full
         .strip_suffix(&format!(" at line {line} column {column}"))
         .unwrap_or(&full);
+    // The parser counts bytes; the note counts characters, as an editor's column does.
+    let row = text
+        .split('\n')
+        .nth(line.saturating_sub(1))
+        .unwrap_or_default();
+    let mut before = column.saturating_sub(1).min(row.len());
+    while !row.is_char_boundary(before) {
+        before -= 1;
+    }
+    let column = row[..before].chars().count() + 1;
     Some(format!(
         "Not valid JSON: {reason} at line {line}, column {column}"
     ))
