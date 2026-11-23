@@ -35,8 +35,8 @@ fn prefs_on_theme(cx: &mut TestAppContext) -> (tempfile::TempDir, Started) {
     cx.update_window(s.win, |_, w, cx| apinata_app::preferences::open(w, cx))
         .unwrap();
     frame(cx, s.win);
-    // The first Tab stops on the General section's autosave checkbox.
-    keys(cx, &s, "tab tab");
+    // The first two Tabs stop on the General section's autosave and preview tabs checkboxes.
+    keys(cx, &s, "tab tab tab");
     assert_eq!(
         focused(cx, &s),
         Some(0),
