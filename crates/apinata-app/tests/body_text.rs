@@ -766,3 +766,44 @@ fn a_raw_element_ends_only_at_its_own_name() {
         "<script>\n  a</scripts>b\n</script>"
     );
 }
+
+#[test]
+fn known_binary_media_types_are_binary_whatever_their_bytes() {
+    for media in [
+        "application/pdf",
+        "Application/PDF; name=x",
+        "application/zip",
+        "application/gzip",
+        "application/x-gzip",
+        "application/x-tar",
+        "application/x-7z-compressed",
+        "application/wasm",
+        "audio/mpeg",
+        "video/mp4",
+        "font/woff2",
+    ] {
+        assert_eq!(
+            body_kind(&ct(media), b"%PDF-1.4 ascii only"),
+            BodyKind::Binary,
+            "{media}"
+        );
+    }
+    // An octet stream is often text in practice, so its bytes still decide.
+    assert_eq!(
+        body_kind(&ct("application/octet-stream"), b"hello"),
+        BodyKind::Text
+    );
+}
+
+#[test]
+fn an_unparsable_json_text_names_its_line_and_column() {
+    assert_eq!(
+        json_problem("{\n  \"a\": 1\n  \"b\": 2\n}").as_deref(),
+        Some("Not valid JSON: expected `,` or `}` at line 3, column 3")
+    );
+    assert_eq!(
+        json_problem("{\"a\": }").as_deref(),
+        Some("Not valid JSON: expected value at line 1, column 7")
+    );
+    assert_eq!(json_problem("{\"a\": 1}"), None);
+}
