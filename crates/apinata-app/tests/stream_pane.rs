@@ -93,13 +93,16 @@ fn a_tab_chosen_before_the_stream_does_not_break_the_live_view(cx: &mut TestAppC
     pane.update(cx, |p, cx| p.set_tab(ResponseTab::Headers, cx));
     model.update(cx, |m, cx| m.send(&root, ip("a.yml"), cx));
     wait_real(cx, |cx| model.read_with(cx, |m, _| m.is_streaming()));
-    assert!(present(cx, win, "live-body"));
-    assert!(!present(cx, win, "live-note"));
-    assert_eq!(
-        pane.read_with(cx, |p, cx| p.shown_tabs(cx)),
-        [ResponseTab::Body]
+    assert!(present(cx, win, "response-headers"));
+    assert!(!present(cx, win, "live-body"));
+    assert!(
+        pane.read_with(cx, |p, cx| p.shown_tabs(cx))
+            .contains(&ResponseTab::Headers)
     );
     assert!(present(cx, win, "response-tab-strip"));
+    pane.update(cx, |p, cx| p.set_tab(ResponseTab::Body, cx));
+    assert!(present(cx, win, "live-body"));
+    assert!(!present(cx, win, "live-note"));
     model.update(cx, |m, cx| m.cancel(cx));
     finished(cx, &model);
 }

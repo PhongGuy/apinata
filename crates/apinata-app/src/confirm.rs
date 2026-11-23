@@ -143,15 +143,16 @@ pub fn delete_ask(title: impl Into<SharedString>, detail: Option<&'static str>) 
 }
 
 /// The refusal shown instead of the delete prompt while other environments extend `name`:
-/// `kind` ("Environment" or "Global environment") titles it, and Cancel is the only choice.
+/// `kind` ("Environment" or "Global environment") titles it, and OK is the only choice, since
+/// it informs and asks nothing.
 pub fn extended_ask(kind: &str, name: &str, by: &[String]) -> Ask {
     let by: Vec<String> = by.iter().map(|b| format!("\"{b}\"")).collect();
     Ask {
         title: format!("{kind} \"{name}\" is extended by {}", by.join(", ")).into(),
         detail: Some("Change their extends first.".into()),
         choices: vec![Choice {
-            id: "confirm-cancel",
-            label: "Cancel".into(),
+            id: "confirm-ok",
+            label: "OK".into(),
             danger: false,
         }],
         default: 0,

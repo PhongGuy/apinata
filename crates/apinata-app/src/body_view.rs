@@ -52,7 +52,7 @@ use crate::body_node::{
 use crate::body_text::{
     BINARY_VIEW_CAP, BinaryMode, BodyKind, Chunked, EDITOR_MAX_BYTES, ImageInfo, ImageKind,
     Prepared, ROW_WIDTH, binary_rows, body_kind, cells, chunk_lines, display_text, format_size,
-    image_caption, prepare, prepare_body, size_labels, wrap_columns,
+    image_caption, json_problem, prepare, prepare_body, size_labels, wrap_columns,
 };
 use crate::download_model::{DownloadModel, DownloadPolicy, DownloadState, download_policy};
 use crate::keymap::{ResetZoom, ZoomIn, ZoomOut};
@@ -98,6 +98,14 @@ pub const OPEN_PAGE_TIP: &str = "Opens an inert copy in your browser: scripts, n
 
 /// Why a kept body's eye cannot reveal anything: secret values are never saved.
 pub const SCRUBBED_TIP: &str = "Secret values are not saved, so they cannot be shown.";
+/// The toast a page handed to the browser shows.
+pub const OPENED_PAGE_NOTE: &str = "Opened in your browser (scripts and remote content blocked)";
+/// The toast an open that succeeded shows: [`OPENED_PAGE_NOTE`] for a page handed to the
+/// browser, nothing for a file handed to the system app.
+pub fn opened_note(page: bool) -> Option<&'static str> {
+    page.then_some(OPENED_PAGE_NOTE)
+}
+
 /// The banner a whole body over the editor's limits shows under its bar.
 pub const LARGE_BODY_NOTE: &str = "Large body: shown as plain text, folding and editing are off";
 
@@ -319,6 +327,8 @@ pub struct BodyView {
     // valid one, and whether that output matched nothing.
     applied_filter: Option<SharedString>,
     filter_no_match: bool,
+    // Where a whole JSON body stops parsing, shown above the unfiltered body.
+    json_problem: Option<SharedString>,
     // A discard question is open; further mode switches wait for its answer.
     asking: bool,
     // The editor's text as last prepared; a different value means scratch edits.
@@ -554,6 +564,7 @@ impl BodyView {
             filter_input,
             filter_open: false,
             filter_error: None,
+            json_problem: None,
             applied_filter: None,
             filter_no_match: false,
             asking: false,
@@ -1962,6 +1973,32 @@ impl BodyView {
         self.kind == Some(BodyKind::Json) && self.applied_filter.is_none() && !self.edit_on()
     }
 
+    /// The copy button's name: "Copy result" while a filter's output is shown, else "Copy body".
+    pub fn copy_label(&self) -> &'static str {
+        match self.applied_filter {
+            Some(_) => "Copy result",
+            None => "Copy body",
+        }
+    }
+
+    /// Why the shown JSON body does not parse, when it was not cut short.
+    pub fn json_problem(&self) -> Option<&str> {
+        self.json_problem.as_deref()
+    }
+
+    /// The file name the save and full-download prompts suggest for the shown response.
+    pub fn save_suggestion(&self) -> String {
+        let Some(result) = self.result.as_ref() else {
+            return "response.bin".to_string();
+        };
+        let response = result.response.as_ref();
+        let url = response
+            .and_then(|r| r.timeline().last())
+            .map(|hop| hop.url.as_str());
+        let headers = response.map_or(&[][..], |r| r.headers());
+        save_name(url, &result.name, headers)
+    }
+
     /// The toast text Copy shows: "Copied the filtered body" while a filter is applied, else
     /// "Copied the response body".
     pub fn copy_message(&self) -> &'static str {
@@ -2086,14 +2123,7 @@ impl BodyView {
         let dir = dirs::download_dir()
             .or_else(dirs::home_dir)
             .unwrap_or_else(|| PathBuf::from("."));
-        let url = (result.response.as_ref())
-            .and_then(|r| r.timeline().last())
-            .map(|hop| hop.url.clone());
-        let content_type = (result.response.iter())
-            .flat_map(|r| r.headers())
-            .find(|(name, _)| name.eq_ignore_ascii_case("content-type"))
-            .map_or(String::new(), |(_, value)| value.clone());
-        let name = save_name(url.as_deref(), &result.name, &content_type);
+        let name = self.save_suggestion();
         let reply = cx.prompt_for_new_path(&dir, Some(&name));
         cx.spawn_in(window, async move |_, cx| {
             let Some(path) = crate::file_dialog::picked(reply, "save the response", cx).await
@@ -2215,13 +2245,7 @@ impl BodyView {
         let dir = dirs::download_dir()
             .or_else(dirs::home_dir)
             .unwrap_or_else(|| PathBuf::from("."));
-        let url = (self.result.as_ref())
-            .and_then(|r| r.response.as_ref())
-            .and_then(|r| r.timeline().last())
-            .map(|hop| hop.url.clone());
-        let name = url
-            .as_deref()
-            .map_or("response.bin".to_string(), download_name);
+        let name = self.save_suggestion();
         let reply = cx.prompt_for_new_path(&dir, Some(&name));
         cx.spawn_in(window, async move |this, cx| {
             let Some(path) = crate::file_dialog::picked(reply, "download the response", cx).await
@@ -2352,6 +2376,7 @@ impl BodyView {
         // The body travels to the writer inside the shared result, so the main thread copies
         // nothing. A page is always redacted: writing to disk is not viewing, whatever the eye
         // shows.
+        let page = self.browser_page().is_some();
         let open = match self.browser_page() {
             Some(BrowserPage::Html) => open_external::open_page(
                 move || {
@@ -2377,11 +2402,16 @@ impl BodyView {
             }
         };
         cx.spawn_in(window, async move |_, cx| {
-            if let Err(e) = open.await {
-                let note = Notification::error(format!("Could not open the body: {e}"));
-                cx.update(|window, cx| window.push_notification(note, cx))
-                    .ok();
-            }
+            // Nothing visible may open on some desktops, so a page handed over says so.
+            let note = match open.await {
+                Err(e) => Notification::error(format!("Could not open the body: {e}")),
+                Ok(()) => match opened_note(page) {
+                    Some(note) => ui::info_toast(note),
+                    None => return,
+                },
+            };
+            cx.update(|window, cx| window.push_notification(note, cx))
+                .ok();
         })
         .detach();
     }
@@ -2438,6 +2468,7 @@ impl BodyView {
             self.image = None;
             self.applied_filter = None;
             self.filter_no_match = false;
+            self.json_problem = None;
             self.end_find_without_text(window, cx);
             cx.notify();
             return;
@@ -2469,6 +2500,7 @@ impl BodyView {
                         Some(Prepared::Empty),
                         None,
                         Vec::new(),
+                        None,
                         None,
                     ));
                 };
@@ -2535,18 +2567,23 @@ impl BodyView {
                             Prepared::Binary { .. } => binary_rows(r.body(), binary_mode),
                             _ => Vec::new(),
                         };
-                        return Some((kind, Some(prepared), None, binary, None));
+                        // A cut body would always fail to parse, so only a whole one is checked.
+                        let problem = (kind == BodyKind::Json && !r.truncated())
+                            .then(|| json_problem(r.text()))
+                            .flatten();
+                        return Some((kind, Some(prepared), None, binary, None, problem));
                     }
                 };
                 Some(match filtered {
                     Ok((prepared, applied)) => {
-                        (kind, Some(prepared), None, Vec::new(), Some(applied))
+                        (kind, Some(prepared), None, Vec::new(), Some(applied), None)
                     }
                     Err(e) => (
                         kind,
                         (!keep).then(whole),
                         Some(e.to_string()),
                         Vec::new(),
+                        None,
                         None,
                     ),
                 })
@@ -2555,7 +2592,7 @@ impl BodyView {
         });
         self.task = Some(cx.spawn_in(window, async move |this, cx| {
             // A replaced job lands nothing; the newer one already bumped the generation.
-            let Some((kind, mut prepared, error, binary, applied)) = job.await else {
+            let Some((kind, mut prepared, error, binary, applied, problem)) = job.await else {
                 return;
             };
             // A long body is cut for the pane it lands in, so it never shows at the fixed width
@@ -2584,6 +2621,7 @@ impl BodyView {
                             Some((expr, none)) => (Some(expr.into()), none),
                             None => (None, false),
                         };
+                        this.json_problem = problem.map(SharedString::from);
                     }
                     match prepared {
                         Some(prepared) => this.apply(prepared, binary, width, window, cx),
@@ -3435,7 +3473,7 @@ impl Render for BodyView {
                         ui::icon_button(
                             "body-copy-button",
                             ui::glyph("body-copy-button", IconName::Copy),
-                            "Copy body",
+                            self.copy_label(),
                             None,
                             cx,
                         )
@@ -3688,6 +3726,17 @@ impl Render for BodyView {
                 })
                 .children(controls)
         });
+        let json_note = (self.json_problem.clone())
+            .filter(|_| self.applied_filter.is_none())
+            .map(|note| {
+                div()
+                    .id("body-json-invalid")
+                    .test_support()
+                    .aria_label(note.clone())
+                    .text_size(style::TEXT_SMALL)
+                    .text_color(cx.theme().danger)
+                    .child(note)
+            });
         let content = match self.shown {
             _ if let Some(expr) = no_match => {
                 let text = format!("No match for {expr}");
@@ -3882,6 +3931,7 @@ impl Render for BodyView {
             .on_action(|_: &ResetZoom, _, cx| zoom::apply_step(Response, ZoomStep::Reset, cx))
             .child(bar)
             .children(banner)
+            .children(json_note)
             .children(filter_bar)
             .children(filter_chip)
             .children(find_bar)
@@ -3979,22 +4029,45 @@ fn download_name(url: &str) -> String {
     }
 }
 
-// The Save body prompt's default name: the URL's last segment if it has an extension, else
-// the request's name (or `response`) plus an extension from the Content-Type, else `.bin`.
-fn save_name(url: Option<&str>, request: &str, content_type: &str) -> String {
+// The save prompts' default name: the Content-Disposition file name, then the URL's last
+// segment if it has an extension, then the request's name (or `response`). Every candidate is
+// cut to a plain name, and one without an extension takes one from the Content-Type.
+fn save_name(url: Option<&str>, request: &str, headers: &[(String, String)]) -> String {
+    let header = |want: &str| {
+        (headers.iter())
+            .find(|(name, _)| name.eq_ignore_ascii_case(want))
+            .map(|(_, value)| value.as_str())
+    };
+    let ext = type_extension(header("content-type").unwrap_or_default());
+    let offered = header("content-disposition").and_then(disposition_name);
+    if let Some(name) = offered {
+        return if has_extension(&name) {
+            name
+        } else {
+            format!("{name}.{ext}")
+        };
+    }
     let from_url = url
         .map(download_name)
-        .filter(|n| n != "response.bin" && n.rfind('.').is_some_and(|i| i > 0 && i + 1 < n.len()));
-    if let Some(name) = from_url {
-        return name;
-    }
+        .filter(|n| n != "response.bin")
+        .and_then(|n| plain_name(&n))
+        .filter(|n| has_extension(n));
+    from_url.unwrap_or_else(|| format!("{}.{ext}", file_stem(request)))
+}
+
+fn has_extension(name: &str) -> bool {
+    name.rfind('.').is_some_and(|i| i > 0 && i + 1 < name.len())
+}
+
+// The extension a Content-Type suggests for a saved body, `bin` when it names none.
+fn type_extension(content_type: &str) -> &'static str {
     let media = content_type
         .split(';')
         .next()
         .unwrap_or_default()
         .trim()
         .to_ascii_lowercase();
-    let ext = if media == "application/json" || media.ends_with("+json") {
+    if media == "application/json" || media.ends_with("+json") {
         "json"
     } else if media == "application/xml" || media == "text/xml" || media.ends_with("+xml") {
         "xml"
@@ -4004,37 +4077,175 @@ fn save_name(url: Option<&str>, request: &str, content_type: &str) -> String {
         "txt"
     } else {
         open_external::extension(&media)
-    };
-    format!("{}.{ext}", file_stem(request))
+    }
 }
 
-// A request name as a file stem of at most 100 chars: characters no file system takes become
-// `-`, edge dots and spaces go, and a name left blank or naming a Windows device is `response`.
+// A server-offered name reduced to its last path component and cleaned like a request name;
+// `None` when nothing usable is left, so the next candidate is tried.
+fn plain_name(offered: &str) -> Option<String> {
+    clean_stem(offered.rsplit(['/', '\\']).next().unwrap_or_default())
+}
+
+// The plain file name a Content-Disposition value offers: `filename*` (RFC 8187) when it
+// decodes to a usable name, else the plain `filename`.
+fn disposition_name(value: &str) -> Option<String> {
+    let params = disposition_params(value);
+    let param = |want: &str| {
+        (params.iter())
+            .find(|(key, _)| key.eq_ignore_ascii_case(want))
+            .map(|(_, v)| v.as_str())
+    };
+    (param("filename*").and_then(extended_value))
+        .and_then(|name| plain_name(&name))
+        .or_else(|| param("filename").and_then(plain_name))
+}
+
+// The `key=value` parameters after the disposition type. A quoted value is unescaped, and a
+// `;` inside quotes belongs to the value.
+fn disposition_params(value: &str) -> Vec<(String, String)> {
+    let mut params = Vec::new();
+    let mut rest = value.split_once(';').map_or("", |(_, r)| r);
+    loop {
+        rest = rest.trim_start_matches([' ', '\t', ';']);
+        if rest.is_empty() {
+            return params;
+        }
+        let key_end = rest.find(['=', ';']).unwrap_or(rest.len());
+        let key = rest[..key_end].trim().to_string();
+        let Some(after) = rest[key_end..].strip_prefix('=') else {
+            rest = &rest[key_end..];
+            continue;
+        };
+        let after = after.trim_start();
+        let (value, tail) = match after.strip_prefix('"') {
+            Some(quoted) => {
+                let (mut value, mut escaped, mut end) = (String::new(), false, quoted.len());
+                for (i, c) in quoted.char_indices() {
+                    match c {
+                        _ if escaped => {
+                            value.push(c);
+                            escaped = false;
+                        }
+                        '\\' => escaped = true,
+                        '"' => {
+                            end = i + 1;
+                            break;
+                        }
+                        _ => value.push(c),
+                    }
+                }
+                (value, &quoted[end..])
+            }
+            None => {
+                let end = after.find(';').unwrap_or(after.len());
+                (after[..end].trim().to_string(), &after[end..])
+            }
+        };
+        params.push((key, value));
+        rest = tail;
+    }
+}
+
+// An RFC 8187 `charset'language'percent-encoded` value in UTF-8 or ISO-8859-1; any other
+// charset or a broken encoding is `None`.
+fn extended_value(value: &str) -> Option<String> {
+    let mut parts = value.splitn(3, '\'');
+    let (charset, _language, encoded) = (parts.next()?, parts.next()?, parts.next()?);
+    let bytes: Vec<u8> = percent_encoding::percent_decode_str(encoded).collect();
+    if charset.eq_ignore_ascii_case("utf-8") {
+        String::from_utf8(bytes).ok()
+    } else if charset.eq_ignore_ascii_case("iso-8859-1") {
+        Some(bytes.into_iter().map(char::from).collect())
+    } else {
+        None
+    }
+}
+
+// A request name as a file stem: its clean form, or `response` when nothing usable is left.
 fn file_stem(request: &str) -> String {
+    clean_stem(request).unwrap_or_else(|| "response".to_string())
+}
+
+// A name of at most 200 bytes, so an added extension stays under the 255-byte limit:
+// characters no file system takes become `-`, control and invisible format characters go,
+// edge dots and spaces go, and a name left blank or naming a Windows device is `None`.
+fn clean_stem(request: &str) -> Option<String> {
     let edges = |c: char| c == '.' || c.is_whitespace();
     let cleaned: String = (request.chars())
-        .filter(|c| !c.is_control())
+        .filter(|c| !c.is_control() && !is_format(*c))
         .map(|c| match c {
             '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '-',
             c => c,
         })
         .collect();
-    let cut: String = cleaned.trim_matches(edges).chars().take(100).collect();
+    let trimmed = cleaned.trim_matches(edges);
+    // A long name loses the end of its stem, never a short extension.
+    let cut = match trimmed.rsplit_once('.') {
+        Some((stem, ext)) if !stem.is_empty() && !ext.is_empty() && ext.len() <= 16 => {
+            format!("{}.{ext}", cut_bytes(stem, NAME_MAX_BYTES - ext.len() - 1))
+        }
+        _ => cut_bytes(trimmed, NAME_MAX_BYTES).to_string(),
+    };
     let stem = cut.trim_matches(edges);
     // Windows refuses a device name before the first dot, whatever the extension.
     let base = stem.split('.').next().unwrap_or_default().trim_end();
-    let device = ["CON", "PRN", "AUX", "NUL"]
-        .iter()
-        .any(|d| base.eq_ignore_ascii_case(d))
-        || (base.len() == 4
-            && (base.get(..3))
-                .is_some_and(|p| ["COM", "LPT"].iter().any(|d| p.eq_ignore_ascii_case(d)))
-            && matches!(base.as_bytes()[3], b'1'..=b'9'));
-    if device || !safe_file_name(stem) {
-        "response".to_string()
-    } else {
-        stem.to_string()
+    (!device_name(base) && safe_file_name(stem)).then(|| stem.to_string())
+}
+
+const NAME_MAX_BYTES: usize = 200;
+
+// The longest prefix of `text` within `max` bytes that ends on a character boundary.
+fn cut_bytes(text: &str, max: usize) -> &str {
+    let mut end = max.min(text.len());
+    while !text.is_char_boundary(end) {
+        end -= 1;
     }
+    &text[..end]
+}
+
+// Whether `base` names a Windows device: CON, PRN, AUX, NUL, CONIN$, CONOUT$, or COM or LPT
+// followed by one digit, superscripts one to three included.
+fn device_name(base: &str) -> bool {
+    let upper = base.to_ascii_uppercase();
+    if ["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"].contains(&upper.as_str()) {
+        return true;
+    }
+    let mut chars = upper.chars();
+    let prefix: String = chars.by_ref().take(3).collect();
+    matches!(prefix.as_str(), "COM" | "LPT")
+        && matches!(
+            (chars.next(), chars.next()),
+            (Some('0'..='9' | '\u{b9}' | '\u{b2}' | '\u{b3}'), None)
+        )
+}
+
+// Unicode format characters (category Cf): invisible marks such as zero-width spaces and the
+// bidirectional overrides that can make `exe` read as `pdf`.
+fn is_format(c: char) -> bool {
+    matches!(
+        c,
+        '\u{ad}'
+            | '\u{600}'..='\u{605}'
+            | '\u{61c}'
+            | '\u{6dd}'
+            | '\u{70f}'
+            | '\u{890}'..='\u{891}'
+            | '\u{8e2}'
+            | '\u{180e}'
+            | '\u{200b}'..='\u{200f}'
+            | '\u{202a}'..='\u{202e}'
+            | '\u{2060}'..='\u{2064}'
+            | '\u{2066}'..='\u{206f}'
+            | '\u{feff}'
+            | '\u{fff9}'..='\u{fffb}'
+            | '\u{110bd}'
+            | '\u{110cd}'
+            | '\u{13430}'..='\u{1343f}'
+            | '\u{1bca0}'..='\u{1bca3}'
+            | '\u{1d173}'..='\u{1d17a}'
+            | '\u{e0001}'
+            | '\u{e0020}'..='\u{e007f}'
+    )
 }
 
 // A name that cannot escape the chosen directory or carry control characters.
@@ -4121,58 +4332,67 @@ mod download_name_tests {
 mod save_name_tests {
     use super::save_name;
 
+    // The suggestion for a response whose only header is its Content-Type.
+    fn typed(url: Option<&str>, request: &str, content_type: &str) -> String {
+        save_name(
+            url,
+            request,
+            &[("Content-Type".into(), content_type.into())],
+        )
+    }
+
+    // The suggestion for a response carrying `disposition` beside its Content-Type.
+    fn disposed(disposition: &str, request: &str, content_type: &str) -> String {
+        let headers = [
+            ("content-type".to_string(), content_type.to_string()),
+            ("Content-Disposition".to_string(), disposition.to_string()),
+        ];
+        save_name(Some(URL), request, &headers)
+    }
+
     const URL: &str = "https://h.example/api/items";
 
     #[test]
     fn json_body_gets_json() {
+        assert_eq!(typed(Some(URL), "", "application/json"), "response.json");
         assert_eq!(
-            save_name(Some(URL), "", "application/json"),
+            typed(Some(URL), "", "Application/JSON; charset=utf-8"),
             "response.json"
         );
         assert_eq!(
-            save_name(Some(URL), "", "Application/JSON; charset=utf-8"),
-            "response.json"
-        );
-        assert_eq!(
-            save_name(Some(URL), "", "application/vnd.api+json"),
+            typed(Some(URL), "", "application/vnd.api+json"),
             "response.json"
         );
     }
 
     #[test]
     fn xml_html_and_text_bodies() {
-        assert_eq!(save_name(Some(URL), "", "application/xml"), "response.xml");
-        assert_eq!(save_name(Some(URL), "", "text/xml"), "response.xml");
+        assert_eq!(typed(Some(URL), "", "application/xml"), "response.xml");
+        assert_eq!(typed(Some(URL), "", "text/xml"), "response.xml");
+        assert_eq!(typed(Some(URL), "", "application/atom+xml"), "response.xml");
         assert_eq!(
-            save_name(Some(URL), "", "application/atom+xml"),
-            "response.xml"
-        );
-        assert_eq!(
-            save_name(Some(URL), "", "text/html; charset=x"),
+            typed(Some(URL), "", "text/html; charset=x"),
             "response.html"
         );
-        assert_eq!(save_name(Some(URL), "", "text/plain"), "response.txt");
+        assert_eq!(typed(Some(URL), "", "text/plain"), "response.txt");
     }
 
     #[test]
     fn known_binary_type_keeps_its_extension() {
-        assert_eq!(save_name(Some(URL), "", "image/png"), "response.png");
+        assert_eq!(typed(Some(URL), "", "image/png"), "response.png");
     }
 
     #[test]
     fn unknown_or_missing_type_is_bin() {
-        assert_eq!(
-            save_name(Some(URL), "", "application/x-weird"),
-            "response.bin"
-        );
-        assert_eq!(save_name(Some(URL), "", ""), "response.bin");
-        assert_eq!(save_name(None, "", "application/json"), "response.json");
+        assert_eq!(typed(Some(URL), "", "application/x-weird"), "response.bin");
+        assert_eq!(typed(Some(URL), "", ""), "response.bin");
+        assert_eq!(typed(None, "", "application/json"), "response.json");
     }
 
     #[test]
     fn url_segment_with_extension_wins() {
         assert_eq!(
-            save_name(
+            typed(
                 Some("https://h.example/files/report.pdf?x=1"),
                 "",
                 "application/json"
@@ -4184,15 +4404,15 @@ mod save_name_tests {
     #[test]
     fn dotfile_and_trailing_dot_segments_have_no_extension() {
         assert_eq!(
-            save_name(Some("https://h.example/.env"), "", "text/plain"),
+            typed(Some("https://h.example/.env"), "", "text/plain"),
             "response.txt"
         );
         assert_eq!(
-            save_name(Some("https://h.example/file."), "", "application/json"),
+            typed(Some("https://h.example/file."), "", "application/json"),
             "response.json"
         );
         assert_eq!(
-            save_name(Some("https://h.example/dir/"), "", "application/x-weird"),
+            typed(Some("https://h.example/dir/"), "", "application/x-weird"),
             "response.bin"
         );
     }
@@ -4200,12 +4420,12 @@ mod save_name_tests {
     #[test]
     fn the_request_name_is_the_stem() {
         assert_eq!(
-            save_name(Some(URL), "Get items", "application/json"),
+            typed(Some(URL), "Get items", "application/json"),
             "Get items.json"
         );
-        assert_eq!(save_name(None, "Ping", ""), "Ping.bin");
+        assert_eq!(typed(None, "Ping", ""), "Ping.bin");
         assert_eq!(
-            save_name(
+            typed(
                 Some("https://h.example/files/report.pdf"),
                 "Get report",
                 "application/pdf"
@@ -4216,12 +4436,9 @@ mod save_name_tests {
 
     #[test]
     fn a_request_name_that_is_no_file_name_is_cleaned_or_dropped() {
-        assert_eq!(
-            save_name(Some(URL), "  a/b: c?  ", "text/plain"),
-            "a-b- c-.txt"
-        );
-        assert_eq!(save_name(Some(URL), "..", "text/plain"), "response.txt");
-        assert_eq!(save_name(Some(URL), " \t ", "text/plain"), "response.txt");
+        assert_eq!(typed(Some(URL), "  a/b: c?  ", "text/plain"), "a-b- c-.txt");
+        assert_eq!(typed(Some(URL), "..", "text/plain"), "response.txt");
+        assert_eq!(typed(Some(URL), " \t ", "text/plain"), "response.txt");
     }
 
     #[test]
@@ -4235,17 +4452,24 @@ mod save_name_tests {
             "COM1",
             "lpt9",
             "con.backup",
+            "COM0",
+            "lpt0",
+            "COM\u{b9}",
+            "LPT\u{b2}",
+            "com\u{b3}",
+            "CONIN$",
+            "conout$.log",
         ] {
             assert_eq!(
-                save_name(Some(URL), name, "text/plain"),
+                typed(Some(URL), name, "text/plain"),
                 "response.txt",
                 "{name}"
             );
         }
-        assert_eq!(save_name(Some(URL), "COM10", "text/plain"), "COM10.txt");
-        assert_eq!(save_name(Some(URL), "abé", "text/plain"), "abé.txt");
+        assert_eq!(typed(Some(URL), "COM10", "text/plain"), "COM10.txt");
+        assert_eq!(typed(Some(URL), "abé", "text/plain"), "abé.txt");
         assert_eq!(
-            save_name(Some(URL), " ..hidden. . ", "text/plain"),
+            typed(Some(URL), " ..hidden. . ", "text/plain"),
             "hidden.txt"
         );
     }
@@ -4253,14 +4477,14 @@ mod save_name_tests {
     #[test]
     fn a_long_request_name_is_cut_on_a_char_boundary() {
         let name = "é".repeat(300);
-        let saved = save_name(Some(URL), &name, "application/json");
+        let saved = typed(Some(URL), &name, "application/json");
         assert_eq!(saved, format!("{}.json", "é".repeat(100)));
     }
 
     #[test]
     fn url_segment_without_extension_uses_the_type() {
         assert_eq!(
-            save_name(
+            typed(
                 Some("https://h.example/files/report"),
                 "",
                 "application/json"
@@ -4268,8 +4492,172 @@ mod save_name_tests {
             "response.json"
         );
         assert_eq!(
-            save_name(Some("https://h.example/"), "", "text/plain"),
+            typed(Some("https://h.example/"), "", "text/plain"),
             "response.txt"
+        );
+    }
+
+    #[test]
+    fn the_disposition_file_name_wins() {
+        assert_eq!(
+            disposed(
+                "attachment; filename=\"blob.bin\"",
+                "Binary",
+                "application/octet-stream"
+            ),
+            "blob.bin"
+        );
+        assert_eq!(
+            disposed("attachment; filename=report.csv", "Get", "text/csv"),
+            "report.csv"
+        );
+        assert_eq!(
+            disposed("inline; FILENAME=\"a;b.txt\"", "Get", "text/plain"),
+            "a;b.txt"
+        );
+    }
+
+    #[test]
+    fn the_extended_file_name_wins_over_the_plain_one() {
+        assert_eq!(
+            disposed(
+                "attachment; filename=\"plain.txt\"; filename*=UTF-8''na%C3%AFve%20file.txt",
+                "Get",
+                "text/plain"
+            ),
+            "na\u{ef}ve file.txt"
+        );
+        assert_eq!(
+            disposed(
+                "attachment; filename*=iso-8859-1'en'%E9t%E9.txt",
+                "Get",
+                "text/plain"
+            ),
+            "\u{e9}t\u{e9}.txt"
+        );
+        // An unknown charset or a broken encoding falls back to the plain name.
+        assert_eq!(
+            disposed(
+                "attachment; filename*=koi8-r''%E9.txt; filename=\"plain.txt\"",
+                "Get",
+                "text/plain"
+            ),
+            "plain.txt"
+        );
+        assert_eq!(
+            disposed(
+                "attachment; filename*=UTF-8''%FF.txt; filename=\"plain.txt\"",
+                "Get",
+                "text/plain"
+            ),
+            "plain.txt"
+        );
+    }
+
+    #[test]
+    fn a_disposition_name_without_an_extension_gets_one_from_the_type() {
+        assert_eq!(
+            disposed("attachment; filename=\"report\"", "Get", "application/pdf"),
+            "report.pdf"
+        );
+    }
+
+    #[test]
+    fn a_hostile_disposition_name_becomes_a_plain_name() {
+        for (disposition, name) in [
+            ("attachment; filename=\"../../etc/passwd\"", "passwd.txt"),
+            ("attachment; filename=\"..\\\\..\\\\boot.ini\"", "boot.ini"),
+            ("attachment; filename=\"/etc/shadow.txt\"", "shadow.txt"),
+            ("attachment; filename=\"C:\\\\Windows\\\\x.dll\"", "x.dll"),
+            ("attachment; filename*=UTF-8''..%2F..%2Fevil.sh", "evil.sh"),
+            ("attachment; filename=\"a\\\"b.txt\"", "a-b.txt"),
+        ] {
+            assert_eq!(
+                disposed(disposition, "Get", "text/plain"),
+                name,
+                "{disposition}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_disposition_name_that_is_no_file_name_falls_back() {
+        for disposition in [
+            "attachment; filename=\"CON.txt\"",
+            "attachment; filename*=UTF-8''NUL",
+            "attachment; filename=\"..\"",
+            "attachment; filename=\"../\"",
+            "attachment; filename=\"\"",
+            "attachment",
+        ] {
+            assert_eq!(
+                disposed(disposition, "Get", "text/plain"),
+                "Get.txt",
+                "{disposition}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_url_segment_naming_a_device_falls_back_to_the_request_name() {
+        assert_eq!(
+            typed(Some("https://h.example/CON.txt"), "Get", "text/plain"),
+            "Get.txt"
+        );
+    }
+
+    #[test]
+    fn format_characters_never_reach_the_name() {
+        // A right-to-left override would show `invoiceexe.pdf` for an executable.
+        assert_eq!(
+            disposed(
+                "attachment; filename*=UTF-8''invoice%E2%80%AEfdp.exe",
+                "Get",
+                "text/plain"
+            ),
+            "invoicefdp.exe"
+        );
+        for format in [
+            '\u{200b}', '\u{200c}', '\u{200d}', '\u{200e}', '\u{200f}', '\u{202a}', '\u{202b}',
+            '\u{202c}', '\u{202d}', '\u{202e}', '\u{2066}', '\u{2067}', '\u{2068}', '\u{2069}',
+            '\u{feff}',
+        ] {
+            let name = format!("a{format}b.txt");
+            assert_eq!(
+                typed(Some(URL), &name, "text/plain"),
+                "ab.txt.txt",
+                "{format:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_long_name_is_cut_by_bytes_and_keeps_its_extension() {
+        let long = "\u{6587}".repeat(100);
+        let encoded: String = long.bytes().map(|b| format!("%{b:02X}")).collect();
+        let saved = disposed(
+            &format!("attachment; filename*=UTF-8''{encoded}.txt"),
+            "Get",
+            "application/octet-stream",
+        );
+        assert!(saved.len() <= 255, "{} bytes", saved.len());
+        assert!(saved.ends_with(".txt"), "{saved}");
+        assert!(saved.starts_with('\u{6587}'), "{saved}");
+        let request = "\u{6587}".repeat(100);
+        let saved = typed(Some(URL), &request, "application/json");
+        assert!(saved.len() <= 255, "{} bytes", saved.len());
+        assert!(saved.ends_with(".json"), "{saved}");
+    }
+
+    #[test]
+    fn a_rejected_extended_name_falls_back_to_the_plain_one() {
+        assert_eq!(
+            disposed(
+                "attachment; filename*=UTF-8''NUL; filename=\"ok.txt\"",
+                "Get",
+                "text/plain"
+            ),
+            "ok.txt"
         );
     }
 }

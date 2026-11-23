@@ -17,18 +17,19 @@ use crate::tokio_bridge;
 /// The toggle's tooltip while the server is off.
 pub const MOCK_TIP: &str = "Answer calls on 127.0.0.1 with this collection's saved examples";
 
-/// The toggle's tooltip while the server answers on `port`: how to add examples and stop it.
-pub fn running_tip(port: u16) -> String {
+/// The toggle's tooltip while the server answers for the collection `name` on `port`: which
+/// collection, how to add examples and how to stop it.
+pub fn running_tip(name: &str, port: u16) -> String {
     format!(
-        "Answering on port {port} with saved examples. Save a response as an example to add \
-         one. Click to stop the mock server."
+        "Mocking {name} on port {port} with saved examples. Save a response as an example to \
+         add one. Click to stop the mock server."
     )
 }
 
 /// The status bar's short line beside the address: how many examples the server answers from.
 pub fn status(examples: usize) -> String {
     match examples {
-        0 => "No saved examples".to_owned(),
+        0 => "No examples yet".to_owned(),
         1 => "1 example".to_owned(),
         n => format!("{n} examples"),
     }
@@ -44,6 +45,9 @@ pub struct ServedRoute {
     /// The example names, in the order the server tries them.
     pub names: Vec<String>,
 }
+
+/// The served list's line while nothing is saved: where an example comes from.
+pub const EMPTY_HOW_TO: &str = "Send a request, then use Save example in the response pane.";
 
 /// The served list's note on what counts and what a miss gets.
 pub const SERVED_NOTE: &str = "Only saved examples are served. Other calls get 404.";
