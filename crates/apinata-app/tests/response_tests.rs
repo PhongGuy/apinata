@@ -1,10 +1,11 @@
-//! The Tests tab: assertions, then each script test with its phase.
+//! The Tests tab: assertions, then the script tests under one heading per script, with a
+//! verdict filter.
 
 use crate::support;
 
 use apinata_app::response_pane::{
-    ResponsePane, ResponseTab, shows_no_tests, test_line, test_source, test_summary, tests_total,
-    verdict_colour,
+    ResponsePane, ResponseTab, TEST_FILTERS, TestFilter, shows_no_tests, test_filter_keeps,
+    test_line, test_source, test_summary, tests_total, verdict_colour,
 };
 use apinata_app::ui::{Tone, success_count_badge};
 use apinata_core::{
@@ -115,23 +116,148 @@ fn script_errors_are_not_counted_as_tests() {
     assert_eq!(test_summary(&[]), None);
 }
 
+#[test]
+fn the_filter_keeps_rows_by_their_verdict_word() {
+    let words: Vec<_> = outcomes().iter().map(|t| test_line(t).0).collect();
+    let kept = |f: Option<TestFilter>| -> Vec<&str> {
+        words
+            .iter()
+            .copied()
+            .filter(|w| test_filter_keeps(f, w))
+            .collect()
+    };
+    assert_eq!(
+        TEST_FILTERS,
+        [
+            None,
+            Some(TestFilter::Passed),
+            Some(TestFilter::Failed),
+            Some(TestFilter::Skipped)
+        ]
+    );
+    assert_eq!(kept(None), ["pass", "fail", "skipped", "error"]);
+    assert_eq!(kept(Some(TestFilter::Passed)), ["pass"]);
+    // A script that failed to run is a failure the filter must not hide.
+    assert_eq!(kept(Some(TestFilter::Failed)), ["fail", "error"]);
+    assert_eq!(kept(Some(TestFilter::Skipped)), ["skipped"]);
+}
+
 #[gpui_kit::test]
-fn the_tab_lists_assertions_then_tests_with_phases(cx: &mut TestAppContext) {
+fn the_tab_lists_assertions_then_tests_under_their_script(cx: &mut TestAppContext) {
     let extra = "runtime:\n  assertions:\n    - expression: res.status\n      operator: eq\n      value: \"200\"\n";
     let (_s, win, view) = shown(cx, outcomes(), extra);
     assert!(present(cx, win, ("assertion", 0usize)));
     assert!(present(cx, win, "tests-summary"));
-    for ix in 0..3usize {
-        assert!(present(cx, win, ("test", ix)) && present(cx, win, ("test-phase", ix)));
+    for ix in 0..4usize {
+        assert!(present(cx, win, ("test", ix)) && !present(cx, win, ("test-phase", ix)));
     }
-    // A script error's own name says which script it was, so its row has no phase cell.
-    assert!(present(cx, win, ("test", 3usize)) && !present(cx, win, ("test-phase", 3usize)));
+    // One heading per script, in the order the scripts run.
+    let headings: Vec<_> = (0..3usize)
+        .map(|ix| {
+            cx.update_window(win, |_, w, cx| {
+                w.render_frame(cx);
+                w.try_find(("test-script", ix))
+                    .and_then(|e| e.label().map(str::to_owned))
+            })
+            .unwrap()
+        })
+        .collect();
+    assert_eq!(
+        headings,
+        [
+            Some("Post-response script".to_owned()),
+            Some("Test script".to_owned()),
+            None
+        ]
+    );
+    let y = |cx: &mut TestAppContext, id: (&'static str, usize)| {
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.find(id).bounds().origin.y
+        })
+        .unwrap()
+    };
+    assert!(y(cx, ("test-script", 0)) < y(cx, ("test", 1)));
+    assert!(y(cx, ("test", 1)) < y(cx, ("test-script", 1)));
+    assert!(y(cx, ("test-script", 1)) < y(cx, ("test", 0)));
     assert_eq!(
         view.read_with(cx, |p, cx| p.tab_count(ResponseTab::Tests, cx)),
         Some(5)
     );
     assert!(view.read_with(cx, |p, cx| p.count_is_danger(ResponseTab::Tests, cx)));
     cx.update(|cx| assert_eq!(verdict_colour("error", cx), cx.theme().danger));
+}
+
+// Every verdict word sits in one fixed-width column, so each row's text starts at the same x.
+#[gpui_kit::test]
+fn every_row_text_starts_at_the_same_x(cx: &mut TestAppContext) {
+    let (_s, win, _view) = shown(cx, outcomes(), PASSES);
+    let x = |cx: &mut TestAppContext, id: (&'static str, usize)| {
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.find(id).bounds().origin.x
+        })
+        .unwrap()
+    };
+    let first = x(cx, ("test-text", 0));
+    for ix in 1..4usize {
+        assert_eq!(x(cx, ("test-text", ix)), first, "test row {ix}");
+    }
+    assert_eq!(x(cx, ("assertion-text", 0)), first, "assertion row");
+}
+
+#[gpui_kit::test]
+fn the_filter_shows_only_rows_with_its_verdict(cx: &mut TestAppContext) {
+    let (_s, win, view) = shown(cx, outcomes(), PASSES);
+    assert!(present(cx, win, "tests-filter"));
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.within("tests-filter").click(2usize, cx)
+    })
+    .unwrap();
+    frame(cx, win);
+    assert_eq!(
+        view.read_with(cx, |p, _| p.tests_filter()),
+        Some(TestFilter::Failed)
+    );
+    let shown_rows = |cx: &mut TestAppContext| -> Vec<bool> {
+        let mut rows: Vec<bool> = (0..4usize)
+            .map(|ix| present(cx, win, ("test", ix)))
+            .collect();
+        rows.push(present(cx, win, ("assertion", 0usize)));
+        rows
+    };
+    assert_eq!(shown_rows(cx), [false, true, false, true, false]);
+    // A script with no row left loses its heading too; the totals stay whole.
+    assert!(present(cx, win, ("test-script", 1usize)) && !present(cx, win, "assertions-heading"));
+    assert!(present(cx, win, "tests-summary"));
+    assert_eq!(
+        label(cx, win, "tests-total").as_deref(),
+        Some("2 passed, 1 failed, 1 skipped, 1 errored")
+    );
+    view.update(cx, |p, cx| p.set_tests_filter(Some(TestFilter::Passed), cx));
+    frame(cx, win);
+    assert_eq!(shown_rows(cx), [true, false, false, false, true]);
+    view.update(cx, |p, cx| p.set_tests_filter(None, cx));
+    frame(cx, win);
+    assert_eq!(shown_rows(cx), [true; 5]);
+}
+
+#[gpui_kit::test]
+fn a_filter_with_no_rows_says_so(cx: &mut TestAppContext) {
+    let (_s, win, view) = shown(
+        cx,
+        vec![TestOutcome::new(ScriptPhase::Tests, "ok", Verdict::Pass)],
+        "",
+    );
+    view.update(cx, |p, cx| {
+        p.set_tests_filter(Some(TestFilter::Skipped), cx)
+    });
+    frame(cx, win);
+    assert_eq!(
+        label(cx, win, "tests-filter-none").as_deref(),
+        Some("No skipped tests")
+    );
 }
 
 #[gpui_kit::test]

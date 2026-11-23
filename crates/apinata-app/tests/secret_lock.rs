@@ -1298,10 +1298,7 @@ fn duplicate_asks_over_held_typing(cx: &mut TestAppContext) {
     let f = fix(cx, Kind::Collection, HOST);
     f.hold(cx);
     let duplicate = |cx: &mut TestAppContext| {
-        frame(cx, f.win);
-        cx.update_window(f.win, |_, w, cx| w.click("env-duplicate", cx))
-            .unwrap();
-        cx.run_until_parked();
+        env_menu(cx, f.win, apinata_app::env_editor::ENV_MENU_DUPLICATE);
     };
     duplicate(cx);
     assert_eq!(

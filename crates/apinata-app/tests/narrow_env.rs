@@ -664,7 +664,6 @@ fn collection_tab_stops() -> Vec<ElementId> {
         ("env-item", 0usize).into(),
         "env-create".into(),
         "env-more".into(),
-        "env-duplicate".into(),
         "env-save".into(),
         "env-swatch-none".into(),
     ];
