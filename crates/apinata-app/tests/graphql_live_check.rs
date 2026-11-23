@@ -233,3 +233,67 @@ fn a_schema_file_is_named_only_while_its_load_succeeded(cx: &mut TestAppContext)
     assert_eq!(got, CheckBasis::NoSchema);
     assert!(!got.label().contains("check.graphql"), "{}", got.label());
 }
+
+#[gpui_kit::test]
+fn loading_a_schema_shows_pending_with_a_spinner(cx: &mut TestAppContext) {
+    let (win, s) = section(cx, None, "{ me { name } }");
+    pause(cx, CHECK_DELAY);
+    assert_eq!(basis(cx, &s), Some(CheckBasis::NoSchema));
+    let g = cx.update(|cx| cx.default_global::<SchemaStore>().begin(URL));
+    cx.run_until_parked();
+    assert_eq!(basis(cx, &s), Some(CheckBasis::Pending));
+    assert_eq!(CheckBasis::Pending.label(), "Checking against the schema");
+    assert!(present(cx, win, "graphql-schema-loading"));
+    assert!(present(cx, win, "graphql-schema-loading-spinner"));
+    // A check scheduled while the load runs keeps Pending rather than an old basis.
+    replace_code(cx, win, None, "graphql-query", "{ me { nmae } }");
+    pause(cx, CHECK_DELAY);
+    assert_eq!(basis(cx, &s), Some(CheckBasis::Pending));
+    cx.update(|cx| {
+        cx.default_global::<SchemaStore>()
+            .finish(URL, g, Ok(Schema::from_sdl(SDL_A).unwrap()))
+    });
+    cx.update(|cx| compiled(URL, cx));
+    cx.run_until_parked();
+    pause(cx, CHECK_DELAY);
+    assert_eq!(
+        basis(cx, &s),
+        Some(CheckBasis::Schema { source: URL.into() })
+    );
+    assert!(!present(cx, win, "graphql-schema-loading-spinner"));
+}
+
+#[gpui_kit::test]
+fn a_failed_load_leaves_pending_for_syntax_only(cx: &mut TestAppContext) {
+    let (_win, s) = section(cx, None, "{ me { name } }");
+    pause(cx, CHECK_DELAY);
+    let g = cx.update(|cx| cx.default_global::<SchemaStore>().begin(URL));
+    cx.run_until_parked();
+    assert_eq!(basis(cx, &s), Some(CheckBasis::Pending));
+    cx.update(|cx| {
+        cx.default_global::<SchemaStore>()
+            .finish(URL, g, Err("boom".into()))
+    });
+    cx.run_until_parked();
+    pause(cx, CHECK_DELAY);
+    assert_eq!(basis(cx, &s), Some(CheckBasis::NoSchema));
+}
+
+#[gpui_kit::test]
+fn typing_with_a_loaded_schema_never_shows_pending(cx: &mut TestAppContext) {
+    let (win, s) = section(cx, Some(SDL_A), "{ me { name } }");
+    pause(cx, CHECK_DELAY);
+    let checked = Some(CheckBasis::Schema { source: URL.into() });
+    assert_eq!(basis(cx, &s), checked);
+    for text in ["{ me { nmae } }", "{ me { name } }", "query Q"] {
+        replace_code(cx, win, None, "graphql-query", text);
+        assert_ne!(basis(cx, &s), Some(CheckBasis::Pending));
+        for _ in 0..5 {
+            pause(cx, CHECK_DELAY / 5);
+            assert_ne!(basis(cx, &s), Some(CheckBasis::Pending));
+        }
+    }
+    replace_code(cx, win, None, "graphql-query", "{ me { name } }");
+    pause(cx, CHECK_DELAY);
+    assert_eq!(basis(cx, &s), checked);
+}

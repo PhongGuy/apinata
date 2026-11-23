@@ -9,8 +9,9 @@ use std::sync::Arc;
 use apinata_core::{BodySpec, QuerySyntaxError, VariableSet, check_query, format_query};
 use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Editor, EditorState, Enter, InputEvent, ShowDocumentHandler};
+use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::tooltip::Tooltip;
-use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{
@@ -169,10 +170,13 @@ impl GraphqlSection {
                 }
             }),
             cx.subscribe(&variables, on_change),
-            // A schema that settles on a key other than the last check's gets a new check.
+            // A schema that starts loading shows Pending; one that settles on a key other than
+            // the last check's gets a new check.
             cx.observe_global::<SchemaStore>(|this, cx| {
                 let key = graphql_schema_store::compiled(&this.schema_url, cx).key();
-                if key.is_some() && key != this.checked_key {
+                if key.is_none() {
+                    this.mark_pending();
+                } else if key != this.checked_key {
                     this.schedule_check(cx);
                 }
                 cx.notify();
@@ -360,11 +364,8 @@ impl GraphqlSection {
     // result, and only to the text it was computed from.
     fn start_check(&mut self, cx: &mut Context<Self>) {
         let lookup = graphql_schema_store::compiled(&self.schema_url, cx);
-        // Pending forgets the last key, so whatever key the store settles on reschedules, and a
-        // check still running against the old schema must not apply meanwhile.
         let Some(key) = lookup.key() else {
-            self.checked_key = None;
-            self.running_check = None;
+            self.mark_pending();
             return;
         };
         self.checked_key = Some(key);
@@ -410,6 +411,14 @@ impl GraphqlSection {
                 cx.notify();
             });
         }));
+    }
+
+    // Pending forgets the last key, so whatever key the store settles on reschedules, and a
+    // check still running against the old schema must not apply meanwhile.
+    fn mark_pending(&mut self) {
+        self.checked_key = None;
+        self.running_check = None;
+        self.basis = Some(CheckBasis::Pending);
     }
 
     // The schema file's name while a load from it is in place, else the URL; a failed file
@@ -500,12 +509,25 @@ impl GraphqlSection {
             None | Some(SchemaState::Failed(_)) => {
                 load("graphql-schema-load", "Load schema").into_any_element()
             }
-            Some(SchemaState::Loading) => div()
-                .id("graphql-schema-loading")
-                .test_support()
-                .text_size(style::TEXT_SMALL)
-                .text_color(cx.theme().muted_foreground)
-                .child("Loading schema")
+            // The text stays beside the spinner, so screen readers still hear the state.
+            Some(SchemaState::Loading) => h_flex()
+                .gap_1()
+                .items_center()
+                .child(
+                    div()
+                        .id("graphql-schema-loading-spinner")
+                        .test_support()
+                        .flex_none()
+                        .child(Spinner::new().small()),
+                )
+                .child(
+                    div()
+                        .id("graphql-schema-loading")
+                        .test_support()
+                        .text_size(style::TEXT_SMALL)
+                        .text_color(cx.theme().muted_foreground)
+                        .child("Loading schema"),
+                )
                 .into_any_element(),
             Some(SchemaState::Loaded(_)) if from_file => {
                 load("graphql-schema-load", "Load schema from URL").into_any_element()
