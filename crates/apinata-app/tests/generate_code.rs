@@ -106,24 +106,135 @@ fn the_sidebar_menu_opens_it_with_the_last_target(cx: &mut TestAppContext) {
     assert!(text.starts_with("package main\n"), "{text}");
 }
 
-#[gpui_kit::test]
-fn secrets_wait_for_confirmation_before_the_dialog(cx: &mut TestAppContext) {
+// A request whose Authorization header carries a `.env` token.
+fn env_token_request() -> tempfile::TempDir {
     let file = format!(
         "{}  headers:\n    - name: Authorization\n      value: \"Bearer {{{{process.env.APINATA_GEN_TOKEN}}}}\"\n",
         request("a", "http://x.test/s")
     );
-    let col = with_request(&file, &[(".env", "APINATA_GEN_TOKEN=s3cret\n")]);
+    with_request(&file, &[(".env", "APINATA_GEN_TOKEN=s3cret-env-token\n")])
+}
+fn click(cx: &mut TestAppContext, s: &Started, id: &'static str) {
+    cx.update_window(s.win, |_, w, cx| {
+        use gpui_kit::test::TestWindowExt as _;
+        w.click(id, cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+}
+fn copied(cx: &mut TestAppContext, s: &Started) -> Option<String> {
+    click(cx, s, "generate-code-copy");
+    cx.read_from_clipboard().and_then(|c| c.text())
+}
+
+#[gpui_kit::test]
+fn secrets_open_masked_without_asking(cx: &mut TestAppContext) {
+    let col = env_token_request();
     let s = started(cx, &col);
     open_tab(cx, &s.ws, &s.root, "a.yml");
     frame(cx, s.win);
     palette(cx, &s, "generate code");
-    assert!(confirm_open(cx));
-    assert!(shown(cx).is_none());
-    answer_confirm(cx, "confirm-cancel");
-    assert!(shown(cx).is_none());
+    assert!(!confirm_open(cx));
+    let (_, text) = shown(cx).expect("the dialog opens at once");
+    assert!(!text.contains("s3cret-env-token"), "{text}");
+    assert!(
+        text.contains("Bearer {{process.env.APINATA_GEN_TOKEN}}"),
+        "{text}"
+    );
+}
+
+#[gpui_kit::test]
+fn show_secrets_reveals_them_and_hides_them_again(cx: &mut TestAppContext) {
+    let col = env_token_request();
+    let s = started(cx, &col);
+    open_tab(cx, &s.ws, &s.root, "a.yml");
+    frame(cx, s.win);
     palette(cx, &s, "generate code");
-    answer_confirm(cx, "confirm-show");
-    assert!(shown(cx).is_some_and(|(_, t)| t.contains("Bearer s3cret")));
+    click(cx, &s, "generate-code-show-secrets");
+    let (_, text) = shown(cx).unwrap();
+    assert!(text.contains("Bearer s3cret-env-token"), "{text}");
+    let view = cx.update(|cx| current(cx)).unwrap();
+    let editor = cx.update(|cx| view.read(cx).editor().read(cx).value().to_string());
+    assert_eq!(editor, text);
+    click(cx, &s, "generate-code-show-secrets");
+    let (_, text) = shown(cx).unwrap();
+    assert!(!text.contains("s3cret-env-token"), "{text}");
+}
+
+#[gpui_kit::test]
+fn copy_copies_what_is_shown(cx: &mut TestAppContext) {
+    let col = env_token_request();
+    let s = started(cx, &col);
+    open_tab(cx, &s.ws, &s.root, "a.yml");
+    frame(cx, s.win);
+    palette(cx, &s, "generate code");
+    let masked = shown(cx).unwrap().1;
+    assert_eq!(copied(cx, &s), Some(masked.clone()));
+    click(cx, &s, "generate-code-show-secrets");
+    let revealed = shown(cx).unwrap().1;
+    assert_ne!(revealed, masked);
+    assert_eq!(copied(cx, &s), Some(revealed));
+}
+
+#[gpui_kit::test]
+fn no_secret_shows_masked_in_any_target(cx: &mut TestAppContext) {
+    // One request per kind of secret, each value long enough for the redactor to match.
+    let cases = [
+        (
+            "  auth:\n    type: bearer\n    token: bearer-token-value\n",
+            "",
+            "bearer-token-value",
+        ),
+        (
+            "  auth:\n    type: basic\n    username: someone\n    password: basic-password-value\n",
+            "",
+            "basic-password-value",
+        ),
+        (
+            "  auth:\n    type: apikey\n    key: X-Api-Key\n    value: api-key-value\n    placement: header\n",
+            "",
+            "api-key-value",
+        ),
+        (
+            "  headers:\n    - name: X-Env\n      value: \"{{process.env.APINATA_GEN_ENV}}\"\n",
+            "APINATA_GEN_ENV=dotenv-secret-value\n",
+            "dotenv-secret-value",
+        ),
+    ];
+    let files: Vec<(String, String)> = (cases.iter().enumerate())
+        .map(|(ix, (extra, _, _))| {
+            let name = format!("r{ix}");
+            let text = format!("{}{extra}", request(&name, "http://x.test/s"));
+            (format!("{name}.yml"), text)
+        })
+        .collect();
+    let mut tree: Vec<(&str, &str)> = vec![("opencollection.yml", ROOT), (".env", cases[3].1)];
+    tree.extend(files.iter().map(|(n, t)| (n.as_str(), t.as_str())));
+    let col = write_tree(&tree);
+    let s = started(cx, &col);
+    for ((name, _), (_, _, secret)) in files.iter().zip(cases) {
+        open_tab(cx, &s.ws, &s.root, name);
+        frame(cx, s.win);
+        palette(cx, &s, "generate code");
+        let view = cx.update(|cx| current(cx)).expect("the dialog is open");
+        for target in Target::ALL {
+            cx.update_window(s.win, |_, w, cx| {
+                view.update(cx, |v, cx| v.set_target(*target, w, cx))
+            })
+            .unwrap();
+            let (_, text) = shown(cx).unwrap();
+            assert!(!text.contains(secret), "{name} {target:?}: {text}");
+            // Basic auth also travels base64-encoded with its user name.
+            let encoded = "c29tZW9uZTpiYXNpYy1wYXNzd29yZC12YWx1ZQ";
+            assert!(!text.contains(encoded), "{name} {target:?}: {text}");
+            if *target == Target::Curl {
+                let placeholder =
+                    text.contains("[redacted]") || text.contains("{{process.env.APINATA_GEN_ENV}}");
+                assert!(placeholder, "{name}: {text}");
+            }
+        }
+        close(cx, &s);
+    }
 }
 
 #[gpui_kit::test]

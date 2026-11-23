@@ -1,9 +1,10 @@
 //! The Generate Code dialog: resolves a request as Copy as curl does and shows it as a snippet
-//! in a chosen target, highlighted and read-only, with a Copy button.
+//! in a chosen target, highlighted and read-only, with a Copy button. Secrets show masked until
+//! "Show secrets" is ticked, and Copy copies what is shown.
 
 use std::path::Path;
 
-use apinata_core::{ItemPath, ResolvedRequest, Target};
+use apinata_core::{ItemPath, NamedSecret, ResolvedRequest, Target, replace_secrets};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::{Editor, EditorState};
 use gpui_kit::component::notification::Notification;
@@ -14,7 +15,7 @@ use gpui_kit::{
     App, ClipboardItem, Entity, Global, Rems, Subscription, TestSupportExt, WeakEntity, Window, div,
 };
 
-use crate::copy_curl::{confirm_secrets, plan_and_resolve};
+use crate::copy_curl::{Resolved, plan_and_resolve};
 use crate::ui::{RingRoom as _, RingSides};
 use crate::workspace::Workspace;
 use crate::{style, ui};
@@ -62,8 +63,8 @@ pub fn current(cx: &App) -> Option<Entity<GenerateCodeView>> {
     cx.try_global::<OpenView>().and_then(|v| v.0.upgrade())
 }
 
-/// Resolves `item` as Send would, asks before showing secret values, then opens the dialog on
-/// the last target; on failure it opens nothing and toasts why.
+/// Resolves `item` as Send would, then opens the dialog on the last target with its secrets
+/// masked; on failure it opens nothing and toasts why.
 pub fn open_generate_code(
     workspace: &Entity<Workspace>,
     root: &Path,
@@ -74,7 +75,7 @@ pub fn open_generate_code(
     let planned = plan_and_resolve(workspace, root, item, window, cx);
     window
         .spawn(cx, async move |cx| {
-            let request = match planned.recv().await {
+            let Resolved { request, secrets } = match planned.recv().await {
                 Ok(Ok(r)) => r,
                 Ok(Err(message)) => {
                     let note = Notification::error(format!("Could not generate code: {message}"));
@@ -84,19 +85,15 @@ pub fn open_generate_code(
                 }
                 Err(_) => return,
             };
-            if !request.sensitive_values().is_empty()
-                && !confirm_secrets("Show secrets?", "confirm-show", "Show with secrets", cx).await
-            {
-                return;
-            }
-            cx.update(|window, cx| show(request, window, cx)).ok();
+            cx.update(|window, cx| show(request, secrets, window, cx))
+                .ok();
         })
         .detach();
 }
 
-fn show(request: ResolvedRequest, window: &mut Window, cx: &mut App) {
+fn show(request: ResolvedRequest, secrets: Vec<NamedSecret>, window: &mut Window, cx: &mut App) {
     let target = cx.try_global::<LastTarget>().map_or(Target::Curl, |t| t.0);
-    let view = cx.new(|cx| GenerateCodeView::new(request, target, window, cx));
+    let view = cx.new(|cx| GenerateCodeView::new(request, secrets, target, window, cx));
     cx.set_global(OpenView(view.downgrade()));
     crate::ui::open_dialog(window, cx, move |d, window, _| {
         // Code reads best unbroken, so the dialog is wider than the default, within the window.
@@ -116,6 +113,8 @@ fn show(request: ResolvedRequest, window: &mut Window, cx: &mut App) {
 /// The dialog body: the resolved request, the chosen target and its snippet.
 pub struct GenerateCodeView {
     request: ResolvedRequest,
+    secrets: Vec<NamedSecret>,
+    revealed: bool,
     target: Target,
     text: String,
     select: Entity<ui::IdSelect>,
@@ -126,6 +125,7 @@ pub struct GenerateCodeView {
 impl GenerateCodeView {
     fn new(
         request: ResolvedRequest,
+        secrets: Vec<NamedSecret>,
         target: Target,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -155,6 +155,8 @@ impl GenerateCodeView {
         );
         let mut view = GenerateCodeView {
             request,
+            secrets,
+            revealed: false,
             target,
             text: String::new(),
             select,
@@ -170,9 +172,15 @@ impl GenerateCodeView {
         self.target
     }
 
-    /// The shown snippet: `generate(&request, target)`.
+    /// The shown snippet: `generate(&request, target)`, its secrets masked unless revealed.
     pub fn text(&self) -> &str {
         &self.text
+    }
+
+    /// Shows the secret values when `on`, else their `{{name}}` or `[redacted]` stand-ins.
+    pub fn set_revealed(&mut self, on: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.revealed = on;
+        self.set_target(self.target, window, cx);
     }
 
     /// The read-only editor showing the snippet.
@@ -183,7 +191,12 @@ impl GenerateCodeView {
     /// Shows `target`'s snippet with its highlighter and remembers it for the next dialog.
     pub fn set_target(&mut self, target: Target, window: &mut Window, cx: &mut Context<Self>) {
         self.target = target;
-        self.text = apinata_core::generate(&self.request, target);
+        let code = apinata_core::generate(&self.request, target);
+        self.text = if self.revealed {
+            code
+        } else {
+            replace_secrets(&code, &self.secrets)
+        };
         cx.set_global(LastTarget(target));
         let text = self.text.clone();
         self.editor.update(cx, |e, cx| {
@@ -237,6 +250,14 @@ impl Render for GenerateCodeView {
         let copy = ui::icon_button("generate-code-copy", IconName::Copy, "Copy", None, cx)
             .key_context(ui::DIALOG_FOOTER_CONTEXT)
             .on_click(cx.listener(|this, _, window, cx| this.copy(window, cx)));
+        // Only a request with secrets has anything to reveal.
+        let reveal = (!self.secrets.is_empty()).then(|| {
+            ui::checkbox("generate-code-show-secrets", self.revealed)
+                .label("Show secrets")
+                .on_click(
+                    cx.listener(|this, on: &bool, window, cx| this.set_revealed(*on, window, cx)),
+                )
+        });
         // Tall enough that every target shows without scrolling.
         let target = div().min_w_0().child(ui::dialog_select(
             Select::new(&self.select)
@@ -268,7 +289,7 @@ impl Render for GenerateCodeView {
                         .flex_none()
                         .gap_2()
                         .child(target)
-                        .child(h_flex().justify_end().child(copy)),
+                        .child(h_flex().gap_2().justify_end().children(reveal).child(copy)),
                 )
                 .child(preview.h(preview_h).flex_1())
         } else {
@@ -281,6 +302,7 @@ impl Render for GenerateCodeView {
                     h_flex()
                         .gap_2()
                         .child(target.flex_1())
+                        .children(reveal.map(|r| div().flex_none().child(r)))
                         .child(div().flex_none().child(copy)),
                 )
                 .child(preview.h(preview_h))
