@@ -10,36 +10,57 @@ use apinata_core::import::{ImportNote, ImportReport, NoteKind};
 use gpui_kit::component::WindowExt;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::scroll::ScrollableElement as _;
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, InteractiveElement, ParentElement, ScrollHandle, StatefulInteractiveElement as _, Styled,
     TestSupportExt, Window, div, px, relative,
 };
 use std::path::Path;
 
-/// "<items>, <environments> imported; <notes>." with each count singular or plural.
+/// "Imported <requests> in <folders> and <environments>.", leaving out what is none, with each
+/// count singular or plural.
 pub fn summary(report: &ImportReport) -> String {
-    format!(
-        "{}, {} imported; {}.",
-        count(report.items.len(), "item"),
-        count(report.environments.len(), "environment"),
-        count(report.notes.len(), "note")
-    )
+    let folders = report.items.len().saturating_sub(report.requests);
+    let mut parts = Vec::new();
+    if !report.items.is_empty() {
+        let mut tree = count(report.requests, "request");
+        if folders > 0 {
+            tree.push_str(&format!(" in {}", count(folders, "folder")));
+        }
+        parts.push(tree);
+    }
+    if !report.environments.is_empty() {
+        parts.push(count(report.environments.len(), "environment"));
+    }
+    match parts.is_empty() {
+        true => "Nothing was imported.".to_owned(),
+        false => format!("Imported {}.", parts.join(" and ")),
+    }
 }
 
 /// The non-empty note groups, each a plain heading with its kinds of note as [`kind_lines`]
 /// writes them, each place followed by its file: "Left out", "Changed", "Renamed",
-/// "Needs a value", then "Other".
+/// "Needs a value", then "Other". A kind that only repeats its heading is left empty, so its
+/// line starts with a newline.
 pub fn groups(report: &ImportReport) -> Vec<(&'static str, Vec<String>)> {
     HEADINGS
         .iter()
         .filter_map(|&heading| {
-            let lines = kind_lines(
+            let lines: Vec<String> = kind_lines(
                 report
                     .notes
                     .iter()
                     .filter(|n| self::heading(&n.kind) == heading)
                     .map(parts),
-            );
+            )
+            .into_iter()
+            .map(|line| match line.split_once('\n') {
+                Some((kind, places)) if kind.eq_ignore_ascii_case(heading) => {
+                    format!("\n{places}")
+                }
+                _ => line,
+            })
+            .collect();
             (!lines.is_empty()).then_some((heading, lines))
         })
         .collect()
@@ -183,7 +204,8 @@ const IMPORT_IDS: ReportIds = ReportIds {
 
 /// A report dialog titled `title`: `summary`, then each group's optional heading and its lines
 /// in a box that scrolls when they outgrow the window, then a Close button. A line's rows after
-/// its first ("report-kind") are drawn indented under it ("report-place", p).
+/// its first ("report-kind") are drawn indented under it ("report-place", p); an empty first row
+/// is left out and its places are not indented.
 pub fn open_report(
     title: &'static str,
     ids: ReportIds,
@@ -204,10 +226,10 @@ pub fn open_report(
             let notes = lines.iter().enumerate().map(move |(i, l)| {
                 let mut rows = l.split('\n');
                 let kind = rows.next().unwrap_or_default().to_owned();
-                // A place's file keeps to one line, cut at its start so the name that tells files
-                // apart stays in view. It sits beside a short place and wraps under a long one,
-                // so the file always follows the words that lead into it.
-                let places = rows.enumerate().map(|(p, place)| {
+                let indent = !kind.is_empty();
+                // A place's file is shown in full: it sits beside a short place and wraps under
+                // a long one, so the file always follows the words that lead into it.
+                let places = rows.enumerate().map(move |(p, place)| {
                     let (at, file) = match place.rsplit_once(FILE_JOIN) {
                         Some((at, file)) => (format!("{at}{FILE_JOIN}"), Some(file.to_owned())),
                         None => (place.to_owned(), None),
@@ -216,7 +238,7 @@ pub fn open_report(
                         .id(("report-place", p))
                         .test_support()
                         .aria_label(place.to_owned())
-                        .ml(SPACE_3)
+                        .when(indent, |d| d.ml(SPACE_3))
                         .flex()
                         .flex_wrap()
                         .items_start()
@@ -229,9 +251,6 @@ pub fn open_report(
                                 .aria_label(file.clone())
                                 .flex_1()
                                 .min_w(relative(0.25))
-                                .overflow_hidden()
-                                .whitespace_nowrap()
-                                .text_ellipsis_start()
                                 .child(file)
                         }))
                 });
@@ -241,13 +260,13 @@ pub fn open_report(
                     .aria_label(l.clone())
                     .flex()
                     .flex_col()
-                    .child(
+                    .children(indent.then(|| {
                         div()
                             .id("report-kind")
                             .test_support()
                             .aria_label(kind.clone())
-                            .child(kind),
-                    )
+                            .child(kind)
+                    }))
                     .children(places)
             });
             div()

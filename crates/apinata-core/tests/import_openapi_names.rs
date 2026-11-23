@@ -116,3 +116,49 @@ fn yaml_documents_with_numeric_versions_and_merge_keys_import() {
             .any(|n| n.kind == NoteKind::Converted && n.source == "paths./a.put.<<")
     );
 }
+
+fn environment_names(doc: &serde_json::Value) -> Vec<String> {
+    import(doc)
+        .environments
+        .into_iter()
+        .map(|e| e.name)
+        .collect()
+}
+
+#[test]
+fn an_unnamed_server_names_its_environment_after_its_host() {
+    let doc = json!({"openapi": "3.0.0", "paths": {}, "servers": [
+        {"url": "http://127.0.0.1:18083/v1"},
+        {"url": "https://api.example.test/v2", "description": "Live"},
+        {"url": "https://{region}.example.test", "variables": {"region": {"default": "eu"}}},
+        {"url": "/relative"}
+    ]});
+    assert_eq!(
+        environment_names(&doc),
+        ["127.0.0.1", "Live", "eu.example.test", "Environment 4"]
+    );
+}
+
+#[test]
+fn servers_sharing_a_host_add_their_port() {
+    let doc = json!({"openapi": "3.0.0", "paths": {}, "servers": [
+        {"url": "http://localhost:8080"},
+        {"url": "http://user@localhost:9090/v1"},
+        {"url": "https://other.test"}
+    ]});
+    assert_eq!(
+        environment_names(&doc),
+        ["localhost:8080", "localhost:9090", "other.test"]
+    );
+}
+
+#[test]
+fn swagger_environments_take_the_host_and_repeats_count_up() {
+    let one = json!({"swagger": "2.0", "paths": {}, "host": "petstore.test:8080"});
+    assert_eq!(environment_names(&one), ["petstore.test"]);
+    let two =
+        json!({"swagger": "2.0", "paths": {}, "host": "p.test", "schemes": ["http", "https"]});
+    assert_eq!(environment_names(&two), ["p.test", "p.test (2)"]);
+    let relative = json!({"swagger": "2.0", "paths": {}, "basePath": "/v2"});
+    assert_eq!(environment_names(&relative), ["Environment"]);
+}
