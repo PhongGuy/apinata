@@ -7,7 +7,7 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-use super::branch::{self, SwitchError, lines};
+use super::branch::{self, SwitchError, Untracked, lines};
 use super::stream::{CancelFlag, StreamError, git_stream};
 use super::sync::{
     UpstreamRef, counts, current_branch, failed, fast_forward, from_fetch, from_git, from_switch,
@@ -95,7 +95,7 @@ pub fn rebase_pull(
         name: upstream,
         ..
     } = upstream_of(root, &branch, opts)?;
-    branch::ready(root, opts).map_err(from_switch)?;
+    branch::ready(root, opts, Untracked::Refuse).map_err(from_switch)?;
     write_step(&["update-ref", PRE_SYNC, &local], root, opts)?;
     branch::fetch(root, &remote, cancel, opts).map_err(from_fetch)?;
     if cancel.is_cancelled() {
@@ -103,7 +103,7 @@ pub fn rebase_pull(
     }
     // A save can land while the fetch runs; it reads as a dirty tree the caller retries, not a
     // failure git's own refusal would report.
-    branch::ready(root, opts).map_err(from_switch)?;
+    branch::ready(root, opts, Untracked::Refuse).map_err(from_switch)?;
     let Some(tip) = verify(root, &format!("{tracking}^{{commit}}"), opts)? else {
         return Err(SyncError::NoUpstream {
             branch,
@@ -166,7 +166,7 @@ pub(super) fn replay_onto(
         .is_some_and(|paths| paths.iter().any(|p| p.exists()));
     if !stopped {
         // A save after the last check makes git refuse over the tree; that is still a dirty tree.
-        if let Err(SwitchError::Dirty) = branch::ready(root, opts) {
+        if let Err(SwitchError::Dirty) = branch::ready(root, opts, Untracked::Refuse) {
             return Err(SyncError::Dirty);
         }
         return Err(match run::refused_lock(&done.stderr, root) {

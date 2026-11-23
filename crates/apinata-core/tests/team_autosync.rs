@@ -8,8 +8,8 @@ use crate::git_sync::{advance, clean, local_commit, rev};
 use std::fs;
 
 use apinata_core::{
-    CancelFlag, CommitError, RebasePulled, commit_all, discard_changes, is_dirty, remote_tip,
-    squash_unpushed, tracking_tip, unpushed,
+    CancelFlag, CommitError, RebasePulled, SyncError, commit_all, discard_changes, is_dirty,
+    remote_tip, squash_unpushed, tracking_tip, unpushed,
 };
 
 #[test]
@@ -161,4 +161,23 @@ fn is_dirty_counts_an_untracked_file_when_status_hides_untracked_files() {
     sb.git(&col, &["config", "status.showUntrackedFiles", "no"]);
     write(&col, "new.txt", "n\n");
     assert!(is_dirty(&col, &sb.options()).unwrap());
+}
+
+#[test]
+fn squash_still_refuses_an_untracked_file_and_leaves_it() {
+    let sb = Sandbox::new();
+    let col = cloned(&sb);
+    local_commit(&sb, &col, "c.txt");
+    let l = rev(&sb, &col, "HEAD");
+    write(&col, "loose.txt", "x\n");
+    let got = squash_unpushed(
+        &col,
+        "Save changes",
+        &sb.path().join("copies"),
+        &CancelFlag::new(),
+        &sb.options(),
+    );
+    assert!(matches!(got, Err(SyncError::Dirty)), "{got:?}");
+    assert_eq!(rev(&sb, &col, "HEAD"), l);
+    assert_eq!(fs::read_to_string(col.join("loose.txt")).unwrap(), "x\n");
 }

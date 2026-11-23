@@ -263,7 +263,7 @@ fn a_dirty_tree_refuses_the_switch_and_changes_nothing(cx: &mut TestAppContext) 
     let sb = Sandbox::new();
     let options = sb.options();
     let r = rig(cx, sb, options, |_| {});
-    write(r.dir.path(), "scratch.txt", "mine\n");
+    write(r.dir.path(), "a.txt", "mine\n");
     let feature = find(cx, &r, "feature");
     r.picker.update(cx, |p, cx| p.switch(feature, cx));
     idle(cx, &r);
@@ -279,7 +279,7 @@ fn a_dirty_tree_refuses_the_switch_and_changes_nothing(cx: &mut TestAppContext) 
     );
     assert!(r.events.borrow().is_empty());
     assert_eq!(
-        std::fs::read_to_string(r.dir.path().join("scratch.txt")).unwrap(),
+        std::fs::read_to_string(r.dir.path().join("a.txt")).unwrap(),
         "mine\n"
     );
 }
