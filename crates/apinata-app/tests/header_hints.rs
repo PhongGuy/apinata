@@ -2,6 +2,7 @@ use crate::support;
 
 use apinata_app::kv_table::KvTable;
 use apinata_app::request_editor::{RequestEditor, Section};
+use apinata_core::header_description;
 use gpui_kit::AppContext as _;
 use gpui_kit::component::input::InputState;
 use gpui_kit::test::TestWindowExt as _;
@@ -64,8 +65,9 @@ fn keys(cx: &mut TestAppContext, win: AnyWindowHandle, text: &str, then: &[&str]
     cx.run_until_parked();
 }
 
-/// The hint list's row labels, or `None` while it is closed.
-fn offered(cx: &mut TestAppContext, win: AnyWindowHandle) -> Option<Vec<String>> {
+/// The hint list's row labels, `name, detail` where a row has a detail, or `None` while it is
+/// closed.
+fn labels(cx: &mut TestAppContext, win: AnyWindowHandle) -> Option<Vec<String>> {
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
         w.try_find("hint-complete")?;
@@ -76,6 +78,17 @@ fn offered(cx: &mut TestAppContext, win: AnyWindowHandle) -> Option<Vec<String>>
         Some(found)
     })
     .unwrap()
+}
+
+/// The texts the hint list offers, without their details (no header name holds a comma), or
+/// `None` while it is closed.
+fn offered(cx: &mut TestAppContext, win: AnyWindowHandle) -> Option<Vec<String>> {
+    let rows = labels(cx, win)?;
+    Some(
+        rows.into_iter()
+            .map(|l| l.split(", ").next().unwrap_or_default().to_owned())
+            .collect(),
+    )
 }
 
 fn listed_vars(cx: &mut TestAppContext, win: AnyWindowHandle) -> bool {
@@ -159,4 +172,32 @@ fn the_params_table_offers_no_header_hints(cx: &mut TestAppContext) {
     focus_end(cx, o.win, &name);
     keys(cx, o.win, "con", &[]);
     assert!(offered(cx, o.win).is_none());
+}
+
+#[gpui_kit::test]
+fn a_header_name_row_says_what_the_header_means(cx: &mut TestAppContext) {
+    let o = opened(cx);
+    let t = table(cx, &o, Section::Headers);
+    let name = t.read_with(cx, |t, _| t.name_input(1).cloned().unwrap());
+    focus_end(cx, o.win, &name);
+    keys(cx, o.win, "content-ty", &[]);
+    let got = labels(cx, o.win).expect("a list");
+    let described = format!(
+        "Content-Type, {}",
+        header_description("Content-Type").unwrap()
+    );
+    assert_eq!(got, [described]);
+}
+
+#[gpui_kit::test]
+fn a_header_value_row_carries_no_detail(cx: &mut TestAppContext) {
+    let o = opened(cx);
+    let t = table(cx, &o, Section::Headers);
+    let name = t.read_with(cx, |t, _| t.name_input(1).cloned().unwrap());
+    focus_end(cx, o.win, &name);
+    keys(cx, o.win, "content-type", &["enter"]);
+    let value = t.read_with(cx, |t, _| t.value_input(1).cloned().unwrap());
+    focus_end(cx, o.win, &value);
+    keys(cx, o.win, "text/cs", &[]);
+    assert_eq!(labels(cx, o.win).expect("a list"), ["text/csv"]);
 }
