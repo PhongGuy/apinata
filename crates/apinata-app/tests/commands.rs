@@ -33,6 +33,7 @@ const IDS: &[&str] = &[
     "collection.export_keep_scripts",
     "collection.export_openapi",
     "collection.export_html",
+    "collection.last_export_report",
     "collection.new",
     "collection.clone",
     "collection.join_team_server",

@@ -764,3 +764,94 @@ fn every_export_that_asks_for_a_file_ends_with_an_ellipsis() {
         assert!(command.label.ends_with('…'), "{id}: {}", command.label);
     }
 }
+
+// The palette's rows, filtered to `label`, whose label starts with it.
+fn palette_rows(cx: &mut TestAppContext, s: &Started, label: &str) -> usize {
+    use gpui_kit::test::TestWindowExt as _;
+    focus_shell(cx, s);
+    cx.simulate_keystrokes(s.win, &key("shift-p"));
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| w.input(label, cx))
+        .unwrap();
+    frame(cx, s.win);
+    let found = cx
+        .update_window(s.win, |_, w, _| {
+            gpui_kit::base::test_support::snapshots(w)
+                .iter()
+                .filter(|n| n.role() == Some(gpui_kit::Role::ListBoxOption))
+                .filter(|n| n.label().is_some_and(|l| l.starts_with(label)))
+                .count()
+        })
+        .unwrap();
+    cx.simulate_keystrokes(s.win, "escape");
+    frame(cx, s.win);
+    found
+}
+
+// A toast with a report leaves on its own like the others, only later, so it stops covering
+// what sits under it.
+#[gpui_kit::test]
+fn the_export_toast_with_a_report_hides_after_fifteen_seconds(cx: &mut TestAppContext) {
+    use apinata_app::export::EXPORT_TOAST_TIMEOUT;
+    use std::time::Duration;
+    assert_eq!(EXPORT_TOAST_TIMEOUT, Duration::from_secs(15));
+    let col = with_grpc_items(2);
+    let s = started(cx, &col);
+    let out = tempfile::tempdir().unwrap();
+    export_postman(cx, &s, &out);
+    assert!(present(cx, s.win, "export-details"));
+    cx.executor()
+        .advance_clock(EXPORT_TOAST_TIMEOUT - Duration::from_secs(1));
+    cx.run_until_parked();
+    assert!(present(cx, s.win, "export-details"), "still up before 15 s");
+    cx.executor().advance_clock(Duration::from_secs(2));
+    cx.run_until_parked();
+    cx.executor().advance_clock(Duration::from_secs(1));
+    cx.run_until_parked();
+    assert!(!present(cx, s.win, "export-details"), "gone after 15 s");
+    assert_eq!(toasts(cx, &s), 0);
+}
+
+#[gpui_kit::test]
+fn last_export_report_is_not_offered_before_an_export(cx: &mut TestAppContext) {
+    let col = with_grpc_items(2);
+    let s = started(cx, &col);
+    assert_eq!(palette_rows(cx, &s, "Last export report"), 0);
+    let out = tempfile::tempdir().unwrap();
+    export_postman(cx, &s, &out);
+    assert_eq!(palette_rows(cx, &s, "Last export report"), 1);
+}
+
+// After the toast is gone, the palette still opens the last export's report.
+#[gpui_kit::test]
+fn last_export_report_reopens_the_report_after_the_toast_left(cx: &mut TestAppContext) {
+    use apinata_app::export::EXPORT_TOAST_TIMEOUT;
+    let col = with_grpc_items(2);
+    let s = started(cx, &col);
+    let out = tempfile::tempdir().unwrap();
+    export_postman(cx, &s, &out);
+    cx.executor()
+        .advance_clock(EXPORT_TOAST_TIMEOUT + std::time::Duration::from_secs(2));
+    cx.run_until_parked();
+    assert!(!present(cx, s.win, "export-details"));
+    palette(cx, &s, "Last export report");
+    assert!(dialog_open(cx, &s));
+    assert_eq!(
+        shown(cx, &s, "export-summary"),
+        "2 items were not carried over to c.postman_collection.json."
+    );
+}
+
+// A clean export has no report, so the command does not offer an older one.
+#[gpui_kit::test]
+fn a_clean_export_withdraws_the_last_report(cx: &mut TestAppContext) {
+    let col = with_grpc_items(2);
+    let s = started(cx, &col);
+    let out = tempfile::tempdir().unwrap();
+    export_postman(cx, &s, &out);
+    assert_eq!(palette_rows(cx, &s, "Last export report"), 1);
+    std::fs::remove_file(col.path().join("g01.yml")).unwrap();
+    std::fs::remove_file(col.path().join("g02.yml")).unwrap();
+    export_postman(cx, &s, &out);
+    assert_eq!(palette_rows(cx, &s, "Last export report"), 0);
+}

@@ -25,7 +25,12 @@ fn listed(a: Availability, id: &str) -> bool {
 
 // One row per flag: how to clear it in an Availability, and the commands it governs.
 type Clear = fn(&mut Availability);
-const FLAGS: [(&str, Clear, &[&str]); 30] = [
+const FLAGS: [(&str, Clear, &[&str]); 31] = [
+    (
+        "last_export",
+        |a| a.last_export = false,
+        &["collection.last_export_report"],
+    ),
     (
         "close_others",
         |a| a.close_others = false,
