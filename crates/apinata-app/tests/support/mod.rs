@@ -908,6 +908,18 @@ pub fn fill_jar(exec: &apinata_core::Executor) {
     });
 }
 
+/// Waits until the executors are built from the current settings, so a rebuild still reading
+/// the proxy password off thread has landed before the next send.
+pub fn network_installed(cx: &mut gpui_kit::TestAppContext) {
+    wait_for(cx, "the network settings to install", |cx| {
+        cx.update(|cx| {
+            let state = cx.global::<apinata_app::app::AppState>();
+            let now = state.settings.read(cx).get().clone();
+            apinata_app::executor::installed_for(&now, cx)
+        })
+    });
+}
+
 /// Sends a GET to `<uri>/ok` through `exec` directly, on the app's tokio runtime.
 pub fn send_direct(cx: &mut gpui_kit::TestAppContext, exec: &apinata_core::Executor, uri: &str) {
     let col = collection_for(uri, "");

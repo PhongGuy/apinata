@@ -31,6 +31,33 @@ fn edit_settings(cx: &mut TestAppContext, f: impl FnOnce(&mut Settings)) {
     cx.run_until_parked();
 }
 
+// A memory store whose reads answer only after `delay`, so a password rebuild is still in
+// flight when the edit that started it returns.
+struct SlowStore {
+    inner: MemoryStore,
+    delay: std::time::Duration,
+}
+
+impl SecretStore for SlowStore {
+    fn get(
+        &self,
+        key: &apinata_core::SecretKey,
+    ) -> Result<Option<String>, apinata_core::SecretError> {
+        std::thread::sleep(self.delay);
+        self.inner.get(key)
+    }
+    fn set(
+        &self,
+        key: &apinata_core::SecretKey,
+        value: &str,
+    ) -> Result<(), apinata_core::SecretError> {
+        self.inner.set(key, value)
+    }
+    fn delete(&self, key: &apinata_core::SecretKey) -> Result<(), apinata_core::SecretError> {
+        self.inner.delete(key)
+    }
+}
+
 fn manual_proxy(proxy: &wiremock::MockServer, username: &str) -> ProxyPrefs {
     let addr = proxy.address();
     ProxyPrefs {
@@ -68,12 +95,14 @@ fn a_proxy_chosen_in_preferences_carries_the_next_send(cx: &mut TestAppContext) 
 fn a_proxy_user_chosen_in_preferences_sends_the_stored_password(cx: &mut TestAppContext) {
     ready(cx);
     let col = two_requests();
-    let store = Arc::new(MemoryStore::new());
-    store.set(&proxy_password_key(), "p1").unwrap();
-    let _s = started_with_store(cx, &col, store);
+    let inner = MemoryStore::new();
+    inner.set(&proxy_password_key(), "p1").unwrap();
+    let delay = std::time::Duration::from_millis(200);
+    let _s = started_with_store(cx, &col, Arc::new(SlowStore { inner, delay }));
     let target = mock_server(cx, wiremock::ResponseTemplate::new(200));
     let proxy = mock_server(cx, wiremock::ResponseTemplate::new(200));
     edit_settings(cx, |s| s.proxy = manual_proxy(&proxy, "u"));
+    network_installed(cx);
     send_now(cx, &target);
     let got = requests_to(cx, &proxy);
     assert_eq!(got.len(), 1);
