@@ -494,6 +494,7 @@ fn a_typed_proxy_password_applies_to_the_next_send(cx: &mut TestAppContext) {
     cx.run_until_parked();
     open_prefs(cx, &s);
     enter(cx, &s, "global-proxy-password", "p2");
+    network_installed(cx);
     let exec = cx.update(|cx| apinata_app::executor::shared(cx)).unwrap();
     send_direct(cx, &exec, &target.uri());
     let handle = cx.update(|cx| apinata_app::tokio_bridge::handle(cx));
