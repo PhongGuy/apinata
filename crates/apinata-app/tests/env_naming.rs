@@ -114,10 +114,33 @@ fn new_refuses_a_name_it_would_change(cx: &mut TestAppContext) {
         drawn(cx, win),
         (
             Some("a/b".into()),
-            Some("\"a/b\" is not a valid environment name".into())
+            Some("Names cannot contain \"/\"".into())
         )
     );
     assert_eq!(env_files(&col), ["dev.yml", &format!("{LONG}.yml")]);
+}
+
+// The refusal names the first character a file name cannot hold, not every one typed.
+#[gpui_kit::test]
+fn new_names_the_first_character_it_cannot_take(cx: &mut TestAppContext) {
+    let Opened { win, .. } = opened(cx);
+    create(cx, win, "a:b*c");
+    assert_eq!(
+        drawn(cx, win).1.as_deref(),
+        Some("Names cannot contain \":\"")
+    );
+}
+
+// A name changed only by trimming its ends has no character to name, so the refusal is
+// the general one.
+#[gpui_kit::test]
+fn new_refuses_a_trimmed_name_in_general_words(cx: &mut TestAppContext) {
+    let Opened { win, .. } = opened(cx);
+    create(cx, win, "a.");
+    assert_eq!(
+        drawn(cx, win).1.as_deref(),
+        Some("\"a.\" is not a valid environment name")
+    );
 }
 
 // A free, valid name still creates the environment and closes the field.
@@ -336,7 +359,7 @@ fn global_new_refuses_a_name_it_would_change(cx: &mut TestAppContext) {
         drawn_global(cx, g.win),
         (
             Some("a/b".into()),
-            Some("\"a/b\" is not a valid environment name".into())
+            Some("Names cannot contain \"/\"".into())
         )
     );
     assert_eq!(global_files(&g), ["dev.yml", &format!("{LONG}.yml")]);
