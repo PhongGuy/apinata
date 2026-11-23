@@ -108,14 +108,13 @@ fn uses_the_existing_tracking_branch() {
 #[test]
 fn any_change_refuses_the_switch_and_leaves_files_alone() {
     type Setup = fn(&Sandbox, &Path);
-    let cases: [(&str, Setup); 4] = [
+    let cases: [(&str, Setup); 3] = [
         ("unstaged", |_, r| write(r, "a.txt", "changed\n")),
         ("staged", |sb, r| {
             write(r, "a.txt", "changed\n");
             sb.git(r, &["add", "a.txt"]);
         }),
-        ("untracked", |_, r| write(r, "new.txt", "new\n")),
-        ("outside the root", |_, r| write(r, "../zz.txt", "new\n")),
+        ("outside the root", |_, r| write(r, "../a.txt", "changed\n")),
     ];
     for (name, setup) in cases {
         let sb = Sandbox::new();
@@ -432,7 +431,7 @@ fn switch_branch_to_a_local_branch_on_a_dirty_tree_is_refused() {
     let root = cloned(&sb);
     sb.git(&root, &["branch", "topic", "main"]);
     let topic = listed(&sb, &root, "topic", true);
-    write(&root, "new.txt", "new\n");
+    write(&root, "a.txt", "changed\n");
     let r = switch_branch(&root, &topic, &sb.options());
     assert!(matches!(r, Err(SwitchError::Dirty)), "{r:?}");
     assert_eq!(head(&sb, &root), "main");
@@ -505,7 +504,7 @@ fn an_add_n_beside_another_change_stays_dirty() {
     sb.git(&root, &["branch", "topic", "main"]);
     let topic = listed(&sb, &root, "topic", true);
     add_n_removed(&sb, &root, "n.yml");
-    write(&root, "new.txt", "new\n");
+    write(&root, "a.txt", "changed\n");
     let r = switch_branch(&root, &topic, &sb.options());
     assert!(matches!(r, Err(SwitchError::Dirty)), "{r:?}");
 }
@@ -605,4 +604,78 @@ fn switch_branch_on_a_remote_only_row_creates_a_tracking_branch() {
     assert_eq!(done.upstream, Upstream::Created);
     assert_eq!(head(&sb, &root), "feature");
     assert_eq!(upstream(&sb, &root, "feature"), "origin/feature");
+}
+
+/// Bytes no text normalisation would keep: a CR, a NUL and invalid UTF-8.
+const LOOSE: &[u8] = b"mine\r\n\0\xff\n";
+
+#[test]
+fn an_unrelated_untracked_file_does_not_block_a_switch_and_stays_byte_for_byte() {
+    let sb = Sandbox::new();
+    let root = cloned(&sb);
+    sb.git(&root, &["branch", "topic", "main"]);
+    let topic = listed(&sb, &root, "topic", true);
+    fs::write(root.join("loose.bin"), LOOSE).unwrap();
+    switch_branch(&root, &topic, &sb.options()).expect("switch to a local branch");
+    assert_eq!(head(&sb, &root), "topic");
+    assert_eq!(fs::read(root.join("loose.bin")).unwrap(), LOOSE);
+    let feature = find(&sb, &root, "feature");
+    switch_to_remote(&root, &feature, &sb.options()).expect("switch to a remote branch");
+    assert_eq!(head(&sb, &root), "feature");
+    assert_eq!(fs::read(root.join("loose.bin")).unwrap(), LOOSE);
+    assert_eq!(sb.git(&root, &["status", "--porcelain"]), "?? loose.bin\n");
+}
+
+#[test]
+fn an_untracked_file_the_remote_branch_holds_refuses_the_switch_by_name() {
+    let sb = Sandbox::new();
+    let root = cloned(&sb);
+    fs::write(root.join("b.txt"), LOOSE).unwrap();
+    let feature = find(&sb, &root, "feature");
+    let r = switch_to_remote(&root, &feature, &sb.options());
+    let Err(e @ SwitchError::WouldOverwrite { paths }) = &r else {
+        panic!("expected WouldOverwrite, got {r:?}");
+    };
+    assert_eq!(paths, &["b.txt"]);
+    assert_eq!(
+        e.to_string(),
+        "Switching would overwrite the untracked file b.txt. Move or remove it, then switch again."
+    );
+    assert_eq!(head(&sb, &root), "main");
+    assert!(
+        !has_branch(&sb, &root, "feature"),
+        "the new branch was left"
+    );
+    assert!(branch_keys(&sb, &root, "feature").is_empty());
+    assert_eq!(fs::read(root.join("b.txt")).unwrap(), LOOSE);
+    assert_eq!(sb.git(&root, &["status", "--porcelain"]), "?? b.txt\n");
+}
+
+#[test]
+fn untracked_files_a_local_branch_holds_refuse_the_switch_by_name() {
+    let sb = Sandbox::new();
+    let root = cloned(&sb);
+    sb.git(&root, &["switch", "-q", "-c", "topic"]);
+    write(&root, "b.txt", "theirs\n");
+    write(&root, "d/c.txt", "theirs\n");
+    sb.commit_all(&root, "topic");
+    sb.git(&root, &["switch", "-q", "main"]);
+    let topic = listed(&sb, &root, "topic", true);
+    fs::write(root.join("b.txt"), LOOSE).unwrap();
+    write(&root, "d/c.txt", "mine\n");
+    let before = tip(&sb, &root, "HEAD");
+    let r = switch_branch(&root, &topic, &sb.options());
+    let Err(e @ SwitchError::WouldOverwrite { paths }) = &r else {
+        panic!("expected WouldOverwrite, got {r:?}");
+    };
+    assert_eq!(paths, &["b.txt", "d/c.txt"]);
+    assert_eq!(
+        e.to_string(),
+        "Switching would overwrite these untracked files: b.txt, d/c.txt. \
+         Move or remove them, then switch again."
+    );
+    assert_eq!(head(&sb, &root), "main");
+    assert_eq!(tip(&sb, &root, "HEAD"), before);
+    assert_eq!(fs::read(root.join("b.txt")).unwrap(), LOOSE);
+    assert_eq!(fs::read_to_string(root.join("d/c.txt")).unwrap(), "mine\n");
 }

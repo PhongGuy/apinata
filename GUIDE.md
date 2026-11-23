@@ -1149,7 +1149,9 @@ Git:
 The agent can also work with branches and the remote. `git_branches` lists the
 local branches and the remote branches as of the last fetch, and never fetches.
 `git_switch_branch` switches to a local branch, or to a remote one as
-`<remote>/<name>`, and is refused while anything is uncommitted. `git_pull`
+`<remote>/<name>`, and is refused while a tracked file has uncommitted changes.
+Untracked files are carried over, unless the branch holds one of them; then the
+switch is refused with the files named. `git_pull`
 fast-forwards the current branch to its upstream, and `git_push` pushes it to
 its existing upstream, never forced and never setting a new upstream. Pull and
 push follow the same trust rule as sends: a remote on a host other than a local
