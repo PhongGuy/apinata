@@ -35,6 +35,8 @@ pub struct Response {
     /// The cookies the request's scripts wrote, each with its phase, in write order.
     scripted: Vec<(ScriptPhase, SetCookie)>,
     warnings: Vec<Warning>,
+    redirects_followed: usize,
+    stopped_at_redirect_limit: bool,
 }
 
 /// Where a [`Response::set_cookies`] or [`crate::RequestResult::set_cookies`] row came from.
@@ -193,7 +195,27 @@ impl Response {
             derived: Vec::new(),
             scripted: Vec::new(),
             warnings: Vec::new(),
+            redirects_followed: 0,
+            stopped_at_redirect_limit: false,
         }
+    }
+
+    /// How many redirects the exchange followed; a digest retry is not one.
+    pub fn redirects_followed(&self) -> usize {
+        self.redirects_followed
+    }
+
+    /// Whether the redirect limit ended the exchange: this response is a redirect with a
+    /// usable Location that was not followed only because the limit was reached.
+    pub fn stopped_at_redirect_limit(&self) -> bool {
+        self.stopped_at_redirect_limit
+    }
+
+    /// Records the redirects followed and whether the limit stopped the chain.
+    pub fn with_redirects(mut self, followed: usize, stopped_at_limit: bool) -> Response {
+        self.redirects_followed = followed;
+        self.stopped_at_redirect_limit = stopped_at_limit;
+        self
     }
 
     /// What the executor noticed about this send that the caller should be told.
@@ -474,6 +496,8 @@ impl fmt::Debug for Response {
             .field("derived_credentials", &self.derived.len())
             .field("script_cookies", &self.scripted)
             .field("warnings", &self.warnings)
+            .field("redirects_followed", &self.redirects_followed)
+            .field("stopped_at_redirect_limit", &self.stopped_at_redirect_limit)
             .finish()
     }
 }

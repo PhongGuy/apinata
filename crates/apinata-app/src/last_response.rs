@@ -271,6 +271,11 @@ struct Entry {
     // Keyed digests of the masked values' true text; an older or keyless file has none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     digests: Option<KeptDigests>,
+    // The redirects followed and whether the limit ended the chain; an older file has neither.
+    #[serde(default)]
+    redirects_followed: usize,
+    #[serde(default)]
+    redirect_limit_stop: bool,
 }
 
 // Just enough of an entry file to read its snapshot without rebuilding the body.
@@ -1370,6 +1375,8 @@ impl Entry {
                 .collect(),
             tests: kept_tests(result, forms),
             request: None,
+            redirects_followed: response.redirects_followed(),
+            redirect_limit_stop: response.stopped_at_redirect_limit(),
         }
     }
 
@@ -1422,6 +1429,7 @@ impl Entry {
         if let Some(encoded) = self.encoded_size {
             response = response.with_encoded_size(encoded);
         }
+        response = response.with_redirects(self.redirects_followed, self.redirect_limit_stop);
         // A hand-edited or odd time reads as zero rather than panicking in from_secs_f64.
         let secs = self.time_ms / 1000.0;
         let time = Duration::try_from_secs_f64(secs).unwrap_or_default();
