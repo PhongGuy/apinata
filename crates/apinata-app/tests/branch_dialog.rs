@@ -426,7 +426,7 @@ fn close_dialog(cx: &mut TestAppContext, r: &Rig) {
     cx.update_window(r.win, |_, w, cx| w.press("escape", cx))
         .unwrap();
     frame(cx, r.win);
-    assert!(!dialog_open(cx, &r));
+    assert!(!dialog_open(cx, r));
 }
 
 #[gpui_kit::test]
