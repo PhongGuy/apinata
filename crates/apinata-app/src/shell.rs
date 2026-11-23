@@ -58,7 +58,7 @@ use crate::export::ExportFormat;
 use crate::git_status::{GitChanges, branch_text};
 use crate::global_env_editor::open_global_env_editor;
 use crate::global_env_selector::GlobalEnvSelector;
-use crate::history_palette::{OpenHistory, OpenHistoryEntry};
+use crate::history_palette::{OpenHistory, OpenHistoryEntry, OpenHistoryFailure};
 use crate::keymap::{
     NewRequest, OpenCollectionSettings, OpenEnvironmentSelector, OpenEnvironments, ResetZoom,
     RunCollection, RunFolder, SHELL_CONTEXT, SaveActive, ToggleConsole, ToggleOrientation,
@@ -963,28 +963,32 @@ impl Shell {
         .detach();
     }
 
-    // The list is read through the store queue so sends saved just before are in it; a
+    // The lists are read through the store queue so sends saved just before are in them; a
     // closed channel (no queue) opens an empty list.
     fn open_history(&mut self, _: &OpenHistory, window: &mut Window, cx: &mut Context<Self>) {
         let ws = self.workspace.read(cx);
-        let roots = ws
+        let roots: Vec<PathBuf> = ws
             .collections()
             .iter()
             .map(|c| c.root().to_path_buf())
             .collect();
         let (reply, list) = async_channel::bounded(1);
         let op = crate::last_response::StoreOp::Recent {
-            roots,
+            roots: roots.clone(),
             // Uncapped: the palette searches every send of a request still open.
             limit: usize::MAX,
             reply,
         };
         crate::last_response::enqueue(op, cx);
+        let (reply, failed) = async_channel::bounded(1);
+        crate::last_response::enqueue(crate::last_response::StoreOp::Failures { roots, reply }, cx);
         cx.spawn_in(window, async move |this, cx| {
             let recent = list.recv().await.unwrap_or_default();
+            let failures = failed.recv().await.unwrap_or_default();
             let _ = this.update_in(cx, |this, window, cx| {
-                let entries = crate::history_palette::all_history_entries(
+                let entries = crate::history_palette::history_rows(
                     &recent,
+                    &failures,
                     this.workspace.read(cx),
                     cx,
                 );
@@ -3351,6 +3355,16 @@ impl Render for Shell {
                     .update(cx, |w, cx| w.open_item(&a.root, a.path.clone(), false, cx));
                 if let Some(tab) = tab {
                     (this.tab_area).update(cx, |t, cx| t.show_kept_send(tab, a.seq, window, cx));
+                }
+            }))
+            // A failure kept nothing to show, so its request opens as it is now; a draft that
+            // is gone cannot be opened.
+            .on_action(cx.listener(|this, a: &OpenHistoryFailure, window, cx| {
+                let tab = (this.workspace)
+                    .update(cx, |w, cx| w.open_item(&a.root, a.path.clone(), false, cx));
+                if tab.is_none() && a.path.is_draft() {
+                    let gone = Notification::warning(crate::history_palette::DRAFT_GONE);
+                    window.push_notification(gone, cx);
                 }
             }))
             .on_action(cx.listener(|this, a: &OpenRunResult, window, cx| {

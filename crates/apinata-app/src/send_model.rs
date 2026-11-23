@@ -606,24 +606,31 @@ impl SendModel {
         self.restored.as_ref()
     }
 
-    // A send's result is kept once, for the request it was sent as, when it got a response.
+    // A send's result is kept once, for the request it was sent as, when it got a response;
+    // one that failed on the network goes to the failure list instead.
     fn done(&mut self, result: Arc<RequestResult>, cx: &mut Context<Self>) {
         // A live result ends any history view picked between a followed run's results.
         self.restored = None;
         self.shown_secrets.clear();
         self.leave_history();
+        if result.response.is_none()
+            && let Some((root, item)) = self.keep_as.take()
+        {
+            self.snapshot = None;
+            let item = self.kept_item(&root, item, cx);
+            let mut secrets = std::mem::take(&mut self.secrets);
+            let mut method = String::new();
+            if let Some((file, ctx)) = self.secrets_of.take() {
+                extend_unique(&mut secrets, secret_values(&file, &ctx));
+                method = file.method().to_owned();
+            }
+            let failed = Arc::clone(&result);
+            last_response::record_failure(root, item, failed, method, secrets, None, cx);
+        }
         if let Some((root, item)) = self.keep_as.take()
             && result.response.is_some()
         {
-            // A draft saved while this send was in flight keeps it under the saved file.
-            let item = if item.is_draft() {
-                self.workspace
-                    .read(cx)
-                    .saved_as(&root, &item)
-                    .unwrap_or(item)
-            } else {
-                item
-            };
+            let item = self.kept_item(&root, item, cx);
             // The context's clones share the token cache, so this lookup sees a token the run
             // fetched or refreshed; the union keeps whatever the earlier lookup found.
             let mut secrets = std::mem::take(&mut self.secrets);
@@ -666,6 +673,18 @@ impl SendModel {
             text,
         });
         self.finish(SendState::Done(result), cx);
+    }
+
+    // A draft saved while its send was in flight keeps the send under the saved file.
+    fn kept_item(&self, root: &Path, item: ItemPath, cx: &App) -> ItemPath {
+        if item.is_draft() {
+            self.workspace
+                .read(cx)
+                .saved_as(root, &item)
+                .unwrap_or(item)
+        } else {
+            item
+        }
     }
 
     // What the pane showed before a send, so a cancelled prompt can put it back exactly.

@@ -170,3 +170,52 @@ fn only_connect_errors_have_a_hint() {
     assert!(timeout.connect_hint().is_none());
     assert!(timeout.hinted_line().is_none());
 }
+
+// A failed send's History row names the hop it reached for and a short, secret-free reason.
+#[test]
+fn network_failures_give_their_url_and_a_short_reason() {
+    let url = "http://127.0.0.1:9/x?q=1";
+    let cases = [
+        (
+            ExecError::connect(url, "detail", ConnectCause::Refused),
+            "Connection refused",
+        ),
+        (
+            ExecError::connect(url, "detail", ConnectCause::Dns),
+            "DNS lookup failed",
+        ),
+        (
+            ExecError::connect(url, "detail", ConnectCause::TlsExpired),
+            "TLS error",
+        ),
+        (
+            ExecError::connect(url, "detail", ConnectCause::Other),
+            "Could not connect",
+        ),
+        (ExecError::timeout(url), "Timed out"),
+        (
+            ExecError::transport(url, "body cut short"),
+            "Connection dropped",
+        ),
+    ];
+    for (error, reason) in cases {
+        assert_eq!(error.send_failure(), Some((url, reason)), "{error:?}");
+        let run = apinata_core::RunError::Exec(error);
+        assert_eq!(run.send_failure(), Some((url, reason)));
+    }
+}
+
+// Errors that never reached the network, or that the person chose, are not failed sends.
+#[test]
+fn other_errors_are_not_send_failures() {
+    let errors = [
+        ExecError::Cancelled,
+        ExecError::NetworkDeclined,
+        ExecError::host_not_allowed(0, "example.com"),
+        ExecError::file("body.bin", "missing"),
+        ExecError::proxy("http://h/", "http://p:1", "refused"),
+    ];
+    for error in errors {
+        assert_eq!(error.send_failure(), None, "{error:?}");
+    }
+}

@@ -151,6 +151,7 @@ pub mod search_dialog;
 pub mod secret_lock;
 pub mod secret_storage;
 pub mod section;
+mod send_failures;
 pub mod send_model;
 pub mod session;
 pub mod set_variable;

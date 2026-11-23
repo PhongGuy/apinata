@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use apinata_core::{
-    Assertion, AssertionOutcome, DigestKey, ItemPath, Outcome, RequestResult, Response,
+    Assertion, AssertionOutcome, DigestKey, ItemPath, Outcome, RequestResult, Response, RunError,
     ScriptPhase, TestOutcome, Verdict,
 };
 use chrono::{DateTime, Datelike as _, FixedOffset, Local};
@@ -82,7 +82,7 @@ pub struct ResponseStore {
 impl Global for ResponseStore {}
 
 /// Both store locks, released on drop: the file's first, as fields drop in order.
-struct StoreGuard<'a> {
+pub(crate) struct StoreGuard<'a> {
     _file: Option<std::fs::File>,
     _mutex: MutexGuard<'a, ()>,
 }
@@ -143,10 +143,15 @@ pub struct KeptSend {
 impl KeptSend {
     /// "GET https://h/p?q=1"; the URL alone without a method; "" without a URL.
     pub fn target(&self) -> String {
-        match (self.method.is_empty(), self.url.is_empty()) {
+        KeptSend::target_of(&self.method, &self.url)
+    }
+
+    /// [`KeptSend::target`] of a `method` and `url` pair.
+    pub fn target_of(method: &str, url: &str) -> String {
+        match (method.is_empty(), url.is_empty()) {
             (_, true) => String::new(),
-            (true, false) => self.url.clone(),
-            (false, false) => format!("{} {}", self.method, self.url),
+            (true, false) => url.to_owned(),
+            (false, false) => format!("{method} {url}"),
         }
     }
 }
@@ -160,6 +165,25 @@ pub struct RecentSend {
     pub item: ItemPath,
     /// The send.
     pub send: KeptSend,
+    /// Who sent it: [`RUN_ORIGIN`] for the runner, `None` for a tab.
+    pub origin: Option<String>,
+}
+
+/// A send that failed on the network, as listed by [`ResponseStore::failures`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecentFailure {
+    /// The collection root.
+    pub root: PathBuf,
+    /// The request's item path.
+    pub item: ItemPath,
+    /// When the send failed.
+    pub at: SystemTime,
+    /// The method sent, "" when unknown.
+    pub method: String,
+    /// The URL it went to, secrets scrubbed.
+    pub url: String,
+    /// Why it failed, in a few words.
+    pub reason: String,
     /// Who sent it: [`RUN_ORIGIN`] for the runner, `None` for a tab.
     pub origin: Option<String>,
 }
@@ -334,13 +358,13 @@ impl ResponseStore {
     /// parent as needed. It sits beside the store, so `clear` never deletes a held one and a
     /// writer never depends on the store existing. A lock file that cannot be opened or locked
     /// leaves the Mutex alone in charge.
-    fn guard(&self) -> StoreGuard<'_> {
+    pub(crate) fn guard(&self) -> StoreGuard<'_> {
         self.locked(true)
     }
 
     /// The guard for calls that never write: as [`Self::guard`], but a missing store has nothing
     /// to read, so no parent or lock file is made for it.
-    fn read_guard(&self) -> StoreGuard<'_> {
+    pub(crate) fn read_guard(&self) -> StoreGuard<'_> {
         self.locked(false)
     }
 
@@ -677,6 +701,7 @@ impl ResponseStore {
     /// Re-keys the entry of `from`, and every entry under it when it is a folder, to `to`.
     pub fn rename(&self, root: &Path, from: &ItemPath, to: &ItemPath) -> io::Result<()> {
         let _guard = self.guard();
+        self.rebase_failures(root, from, to)?;
         let root = root.to_string_lossy().into_owned();
         let mut index = self.read_index()?;
         let moves: Vec<(usize, String)> = index
@@ -712,6 +737,7 @@ impl ResponseStore {
     /// Drops the entry of `item` and every entry under it, files included.
     pub fn remove(&self, root: &Path, item: &ItemPath) -> io::Result<()> {
         let _guard = self.guard();
+        self.drop_failures(root, item)?;
         let root = root.to_string_lossy().into_owned();
         let mut index = self.read_index()?;
         let gone = index.take(|e| {
@@ -1189,7 +1215,9 @@ fn send_file_name(name: &str) -> Option<(&str, Option<u64>, bool)> {
         None => (stem, None),
     };
     let id_ok = !id.is_empty() && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-');
-    (id_ok && id != "index").then_some((id, seq, is_json))
+    // The index and the failure list sit beside the send files but are never sends.
+    let own = id == "index" || name == crate::send_failures::FILE;
+    (id_ok && !own).then_some((id, seq, is_json))
 }
 
 /// The on-disk size of a send's `json` and, when present, `body`; None when `json` is missing.
@@ -1241,7 +1269,7 @@ fn remasked_snapshot(json: &str) -> Option<String> {
 
 /// A sent url as a kept response records it: no userinfo at all, since a username alone can be
 /// a token, every credential-named query value hidden and every secret scrubbed.
-fn kept_url(url: &str, secrets: &[String]) -> String {
+pub(crate) fn kept_url(url: &str, secrets: &[String]) -> String {
     let url = apinata_core::mask_credential_query(&apinata_core::redact_url_userinfo(url));
     scrub_url(&url, secrets)
 }
@@ -1665,6 +1693,25 @@ pub enum StoreOp {
         /// Told the seq the send was kept as, when it was kept.
         kept: Option<async_channel::Sender<KeptAs>>,
     },
+    /// Keep a send that failed on the network in the failure list of (root, item).
+    SaveFailure {
+        /// The collection root.
+        root: PathBuf,
+        /// The request's item path.
+        item: ItemPath,
+        /// The failed send.
+        result: Arc<RequestResult>,
+        /// The method it was sent with.
+        method: String,
+        /// The secret values the request substituted, scrubbed from the kept URL.
+        secrets: Vec<String>,
+        /// When it failed.
+        at: SystemTime,
+        /// How many failures per request the list keeps.
+        limits: Limits,
+        /// Who sent it: [`RUN_ORIGIN`] for the runner, `None` for a tab.
+        origin: Option<String>,
+    },
     /// Re-key (root, from), and everything under it, to `to`.
     Rename {
         /// The collection root.
@@ -1700,6 +1747,13 @@ pub enum StoreOp {
         limit: usize,
         /// Where the list goes.
         reply: async_channel::Sender<Vec<RecentSend>>,
+    },
+    /// Reply with the failures under `roots`, newest first.
+    Failures {
+        /// The collection roots to list.
+        roots: Vec<PathBuf>,
+        /// Where the list goes.
+        reply: async_channel::Sender<Vec<RecentFailure>>,
     },
     /// Reply with send `seq` of (root, item), or None when it is gone or unreadable.
     LoadSend {
@@ -1755,6 +1809,19 @@ impl StoreOp {
                     let _ = kept.try_send(KeptAs::new(seq, saved_at));
                 }
             }
+            StoreOp::SaveFailure {
+                root,
+                item,
+                result,
+                method,
+                secrets,
+                at,
+                limits,
+                origin,
+            } => {
+                let _ = store
+                    .save_failure(&root, &item, &result, &method, &secrets, at, limits, origin);
+            }
             StoreOp::Rename { root, from, to } => {
                 let _ = store.rename(&root, &from, &to);
             }
@@ -1774,6 +1841,9 @@ impl StoreOp {
                 reply,
             } => {
                 let _ = reply.try_send(store.recent(&roots, limit));
+            }
+            StoreOp::Failures { roots, reply } => {
+                let _ = reply.try_send(store.failures(&roots));
             }
             StoreOp::LoadSend {
                 root,
@@ -1871,18 +1941,7 @@ pub fn record(
     extra: SendExtra,
     cx: &App,
 ) -> Option<async_channel::Receiver<KeptAs>> {
-    // Remembering counts as on without `AppState`, so a model built alone still keeps.
-    let app = cx.try_global::<AppState>();
-    let remember = app.is_none_or(|app| app.settings.read(cx).get().remember_responses);
-    if !remember || !cx.has_global::<ResponseStore>() {
-        return None;
-    }
-    let limits = app
-        .map(|app| Limits {
-            per_request: app.settings.read(cx).get().history_limit as usize,
-            total_bytes: STORE_LIMIT,
-        })
-        .unwrap_or_default();
+    let limits = remembering(cx)?;
     let (reply, answer) = async_channel::bounded(1);
     let op = StoreOp::Save {
         root,
@@ -1896,6 +1955,51 @@ pub fn record(
     };
     enqueue(op, cx);
     Some(answer)
+}
+
+// The limits to keep a send under, or `None` when remembering is off or no store is installed.
+fn remembering(cx: &App) -> Option<Limits> {
+    // Remembering counts as on without `AppState`, so a model built alone still keeps.
+    let app = cx.try_global::<AppState>();
+    let remember = app.is_none_or(|app| app.settings.read(cx).get().remember_responses);
+    if !remember || !cx.has_global::<ResponseStore>() {
+        return None;
+    }
+    Some(
+        app.map(|app| Limits {
+            per_request: app.settings.read(cx).get().history_limit as usize,
+            total_bytes: STORE_LIMIT,
+        })
+        .unwrap_or_default(),
+    )
+}
+
+/// Queues a SaveFailure of (root, item) under the same settings as [`record`], when `result`
+/// failed on the network.
+pub fn record_failure(
+    root: PathBuf,
+    item: ItemPath,
+    result: Arc<RequestResult>,
+    method: String,
+    secrets: Vec<String>,
+    origin: Option<String>,
+    cx: &App,
+) {
+    let failed = result.error.as_ref().and_then(RunError::send_failure);
+    let Some(limits) = remembering(cx).filter(|_| failed.is_some()) else {
+        return;
+    };
+    let op = StoreOp::SaveFailure {
+        root,
+        item,
+        result,
+        method,
+        secrets,
+        at: SystemTime::now(),
+        limits,
+        origin,
+    };
+    enqueue(op, cx);
 }
 
 /// Clears every kept send, takes shown kept results off screen and re-reads every live

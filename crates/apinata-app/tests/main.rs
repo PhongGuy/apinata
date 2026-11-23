@@ -314,6 +314,7 @@ mod header_complete;
 mod header_hints;
 mod history_drafts;
 mod history_extras;
+mod history_failures;
 mod history_key;
 mod history_migration;
 mod history_palette;

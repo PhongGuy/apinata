@@ -77,6 +77,20 @@ impl ConnectHint {
 }
 
 impl ExecError {
+    /// For a send that went out but got no response (refused, DNS, TLS, other connect
+    /// failures, a timeout or a dropped connection), the hop's URL and a short reason.
+    pub fn send_failure(&self) -> Option<(&str, &'static str)> {
+        match self {
+            // The title is the cause's fixed name, so it never carries a value from the request.
+            ExecError::Connect { url, cause, .. } => {
+                Some((url, ConnectHint::new(url, *cause).title))
+            }
+            ExecError::Timeout { url, .. } => Some((url, "Timed out")),
+            ExecError::Transport { url, .. } => Some((url, "Connection dropped")),
+            _ => None,
+        }
+    }
+
     /// The hint for a connect failure; `None` for every other error.
     pub fn connect_hint(&self) -> Option<ConnectHint> {
         match self {
@@ -119,6 +133,14 @@ impl ExecError {
 }
 
 impl RunError {
+    /// [`ExecError::send_failure`] of the request's own send; `None` for any other error.
+    pub fn send_failure(&self) -> Option<(&str, &'static str)> {
+        match self {
+            RunError::Exec(e) => e.send_failure(),
+            _ => None,
+        }
+    }
+
     /// The hint for a failed request whose cause was a connect failure, also inside an OAuth2
     /// token fetch; `None` otherwise.
     pub fn connect_hint(&self) -> Option<ConnectHint> {

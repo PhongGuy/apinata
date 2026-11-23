@@ -987,12 +987,21 @@ impl RunnerModel {
         cx.notify();
     }
 
-    // Keeps a finished send as a run. The context's clones share the token cache, so a
-    // lookup after the send also sees a token the run fetched or refreshed.
+    // Keeps a finished send as a run, or a network failure in the failure list. The context's
+    // clones share the token cache, so a lookup after the send also sees a token the run
+    // fetched or refreshed.
     fn record(&self, result: Arc<RequestResult>, cx: &App) {
         let mut secrets = self.run_secrets.clone();
-        if let (Some(file), Some(ctx)) = (self.run_files.get(&result.path), &self.run_context) {
+        let file = self.run_files.get(&result.path);
+        if let (Some(file), Some(ctx)) = (file, &self.run_context) {
             extend_unique(&mut secrets, secret_values(file, ctx));
+        }
+        if result.response.is_none() {
+            let method = file.map(|f| f.method().to_owned()).unwrap_or_default();
+            let (item, origin) = (result.path.clone(), Some(last_response::RUN_ORIGIN.into()));
+            let root = self.root.clone();
+            last_response::record_failure(root, item, result, method, secrets, origin, cx);
+            return;
         }
         let extra = SendExtra {
             request: None,
@@ -1037,9 +1046,9 @@ impl RunnerModel {
             RunEvent::RequestFinished { index, result } => {
                 self.retrying = None;
                 let ix = at(index, self);
-                if result.response.is_some() {
-                    self.record(Arc::clone(&result), cx);
-                }
+                // Every send is kept once, a re-run's included: a re-run that fails again is a
+                // second send, so History lists it as its own, later row.
+                self.record(Arc::clone(&result), cx);
                 if let Some(row) = ix.and_then(|ix| self.rows.get_mut(ix)) {
                     row.state = RowState::Done(result);
                 }

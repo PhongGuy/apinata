@@ -21,7 +21,7 @@ use gpui_kit::{
     div, relative, rems,
 };
 
-use crate::last_response::{RecentSend, age_of};
+use crate::last_response::{KeptSend, RecentFailure, RecentSend, age_of};
 use crate::palette::{RowsKey, request_entries};
 use crate::style;
 use crate::workspace::Workspace;
@@ -46,6 +46,16 @@ pub struct OpenHistoryEntry {
     pub seq: u64,
 }
 
+/// Opens the request of a failed send listed in History; the Shell handles it.
+#[derive(Clone, PartialEq, Debug, Action)]
+#[action(namespace = apinata, no_json)]
+pub struct OpenHistoryFailure {
+    /// The root of the request's collection.
+    pub root: PathBuf,
+    /// The request's path in its collection.
+    pub path: ItemPath,
+}
+
 /// One row of the History palette.
 #[derive(Debug, Clone, PartialEq)]
 pub struct HistoryEntry {
@@ -67,8 +77,10 @@ pub struct HistoryEntry {
     pub method: String,
     /// The URL sent to as stored, secrets already scrubbed.
     pub url: String,
-    /// The response status.
+    /// The response status; 0 for a failure.
     pub status: u16,
+    /// Why the send failed, for a send that got no response.
+    pub reason: Option<String>,
 }
 
 /// A row the History search keeps, with the byte ranges of its label, target and detail
@@ -117,7 +129,7 @@ impl Term {
 
 /// The entries matching every whitespace-separated term of `query`, case-insensitively, in
 /// order and at most [`HISTORY_MAX`], with what to highlight. Only the name, method, stored
-/// URL and status are searched; an empty query keeps the first rows, unhighlighted.
+/// URL and status (a failure's reason) are searched; an empty query keeps the first rows, unhighlighted.
 pub fn filter_history(entries: &[HistoryEntry], query: &str) -> Vec<HistoryMatch> {
     let terms: Vec<Term> = query.split_whitespace().map(Term::parse).collect();
     entries
@@ -218,20 +230,25 @@ fn match_entry(index: usize, e: &HistoryEntry, terms: &[Term]) -> Option<History
     let name_is_target = e.target.is_empty() && !e.url.is_empty();
     let name = (!name_is_target).then(|| Folded::new(&e.label));
     let (url, method) = (Folded::new(&e.url), Folded::new(&e.method));
-    let status = e.status.to_string();
+    // A failure shows its reason where a send shows its status, and is searched there.
+    let status_text = match &e.reason {
+        Some(reason) => reason.clone(),
+        None => e.status.to_string(),
+    };
+    let status = Folded::new(&status_text);
     let url_at = if e.method.is_empty() {
         0
     } else {
         e.method.len() + 1
     };
-    let shown_status = e.detail.starts_with(&status);
-    let status_class = e.status / 100;
+    let shown_status = e.detail.starts_with(&status_text);
+    let status_class = e.reason.is_none().then_some(e.status / 100);
     for term in terms {
         let (method_hit, url_hit, status_hit, name_hit) = match term {
             Term::Class(class) => (
                 None,
                 None,
-                (status_class == *class).then_some(0..status.len()),
+                (status_class == Some(*class)).then_some(0..status_text.len()),
                 None,
             ),
             Term::Method(word) => (
@@ -243,7 +260,7 @@ fn match_entry(index: usize, e: &HistoryEntry, terms: &[Term]) -> Option<History
             Term::Text(text) => (
                 method.find(text),
                 url.find(text),
-                status.find(text.as_str()).map(|at| at..at + text.len()),
+                status.find(text),
                 name.as_ref().and_then(|n| n.find(text)),
             ),
         };
@@ -337,47 +354,85 @@ pub fn history_entries(recent: &[RecentSend], ws: &Workspace, cx: &App) -> Vec<H
 
 /// As [`history_entries`], uncapped: the History palette searches every listable send.
 pub fn all_history_entries(recent: &[RecentSend], ws: &Workspace, cx: &App) -> Vec<HistoryEntry> {
+    history_rows(recent, &[], ws, cx)
+}
+
+/// The rows for `recent` and `failures`, both newest first, merged newest first (a send before
+/// a failure saved in the same instant), without requests no open collection has; uncapped.
+pub fn history_rows(
+    recent: &[RecentSend],
+    failures: &[RecentFailure],
+    ws: &Workspace,
+    cx: &App,
+) -> Vec<HistoryEntry> {
     let names: HashMap<(PathBuf, ItemPath), String> = request_entries(ws, cx)
         .into_iter()
         .map(|r| ((r.root, r.path), r.label))
         .collect();
     let now = SystemTime::now();
     let open = |root: &PathBuf| ws.collections().iter().any(|c| c.root() == root);
-    recent
-        .iter()
-        .filter_map(|r| {
-            // A draft's send names its request by method and URL alone, since the draft
-            // itself may be long gone; a saved request's send needs the request still listed.
-            let (label, target, tag) = if r.item.is_draft() {
-                if !open(&r.root) {
-                    return None;
-                }
-                let target = r.send.target();
-                let label = if target.is_empty() {
-                    UNTITLED.to_owned()
-                } else {
-                    target
-                };
-                (label, String::new(), Some(UNSAVED_TAG))
+    // A draft's send names its request by method and URL alone, since the draft itself may be
+    // long gone; a saved request's send needs the request still listed.
+    let naming = |root: &PathBuf, item: &ItemPath, target: String, origin: Option<&str>| {
+        if item.is_draft() {
+            if !open(root) {
+                return None;
+            }
+            let label = if target.is_empty() {
+                UNTITLED.to_owned()
             } else {
-                let label = names.get(&(r.root.clone(), r.item.clone()))?.clone();
-                let run = r.origin.as_deref() == Some(crate::last_response::RUN_ORIGIN);
-                (label, r.send.target(), run.then_some(RUN_TAG))
+                target
             };
-            Some(HistoryEntry {
-                root: r.root.clone(),
-                path: r.item.clone(),
-                seq: r.send.seq,
-                label,
-                detail: format!("{} · {}", r.send.status, age_of(r.send.saved_at, now)),
-                target,
-                tag,
-                method: r.send.method.clone(),
-                url: r.send.url.clone(),
-                status: r.send.status,
-            })
-        })
-        .collect()
+            Some((label, String::new(), Some(UNSAVED_TAG)))
+        } else {
+            let label = names.get(&(root.clone(), item.clone()))?.clone();
+            let run = origin == Some(crate::last_response::RUN_ORIGIN);
+            Some((label, target, run.then_some(RUN_TAG)))
+        }
+    };
+    let sends = recent.iter().filter_map(|r| {
+        let (label, target, tag) = naming(&r.root, &r.item, r.send.target(), r.origin.as_deref())?;
+        let entry = HistoryEntry {
+            root: r.root.clone(),
+            path: r.item.clone(),
+            seq: r.send.seq,
+            label,
+            detail: format!("{} · {}", r.send.status, age_of(r.send.saved_at, now)),
+            target,
+            tag,
+            method: r.send.method.clone(),
+            url: r.send.url.clone(),
+            status: r.send.status,
+            reason: None,
+        };
+        Some((r.send.saved_at, entry))
+    });
+    let failed = failures.iter().filter_map(|f| {
+        let target = KeptSend::target_of(&f.method, &f.url);
+        let (label, target, tag) = naming(&f.root, &f.item, target, f.origin.as_deref())?;
+        let entry = HistoryEntry {
+            root: f.root.clone(),
+            path: f.item.clone(),
+            seq: 0,
+            label,
+            detail: format!("{} · {}", f.reason, age_of(f.at, now)),
+            target,
+            tag,
+            method: f.method.clone(),
+            url: f.url.clone(),
+            status: 0,
+            reason: Some(f.reason.clone()),
+        };
+        Some((f.at, entry))
+    });
+    let (mut sends, mut failed) = (sends.peekable(), failed.peekable());
+    std::iter::from_fn(|| match (sends.peek(), failed.peek()) {
+        (Some((s, _)), Some((f, _))) if f > s => failed.next(),
+        (Some(_), _) => sends.next(),
+        _ => failed.next(),
+    })
+    .map(|(_, entry)| entry)
+    .collect()
 }
 
 /// Opens the History dialog (`#history-palette`) over `window`; confirming dispatches
@@ -508,11 +563,18 @@ fn empty_message(id: &'static str, message: &'static str, cx: &App) -> impl Into
 // As in the command palette: close first so the dialog restores its focus record, focus
 // `target` so the fallback wins, then dispatch from there a defer later.
 fn confirm(e: &HistoryEntry, target: &FocusHandle, window: &mut Window, cx: &mut App) {
-    let action: Box<dyn Action> = Box::new(OpenHistoryEntry {
-        root: e.root.clone(),
-        path: e.path.clone(),
-        seq: e.seq,
-    });
+    // A failure kept no response, so its row opens the request alone.
+    let action: Box<dyn Action> = match e.reason {
+        Some(_) => Box::new(OpenHistoryFailure {
+            root: e.root.clone(),
+            path: e.path.clone(),
+        }),
+        None => Box::new(OpenHistoryEntry {
+            root: e.root.clone(),
+            path: e.path.clone(),
+            seq: e.seq,
+        }),
+    };
     window.close_dialog(cx);
     target.focus(window, cx);
     window.defer(cx, move |window, cx| window.dispatch_action(action, cx));
@@ -528,6 +590,7 @@ fn history_row(
     columns: Columns,
 ) -> CommandItem {
     let (detail, tag, method) = (entry.detail.clone(), entry.tag, entry.method.clone());
+    let failed = entry.reason.is_some();
     let mut found = found.clone();
     // The tag column shows the method, so the text that names the send drops it: a draft's
     // name, or a saved request's target.
@@ -613,9 +676,10 @@ fn history_row(
                         .id((detail_id, r))
                         .test_support()
                         .flex_none()
+                        .aria_label(detail.clone())
                         .w(columns.detail)
                         .truncate()
-                        .text_color(muted)
+                        .text_color(if failed { cx.theme().danger } else { muted })
                         .child(marked(&detail, &found.detail)),
                 )
                 // Every row keeps the tag slot last while any send is tagged, so tags line up
