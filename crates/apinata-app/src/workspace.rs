@@ -2501,6 +2501,30 @@ impl Workspace {
         None
     }
 
+    /// Steps back, or with `forward` forward, through the visited tabs; a closed target
+    /// reopens while it still exists. `None` when there is nowhere to go.
+    pub fn step_visits(&mut self, forward: bool, cx: &mut Context<Self>) -> Option<TabId> {
+        let reachable: Vec<(PathBuf, TabKind)> = (self.tabs.visits().iter())
+            .filter(|(root, kind)| self.has_tab_target(root, kind, cx))
+            .cloned()
+            .collect();
+        let exists =
+            |root: &Path, kind: &TabKind| (reachable.iter()).any(|(r, k)| r == root && k == kind);
+        self.update_tabs(cx, |t| match forward {
+            true => t.go_forward(exists),
+            false => t.go_back(exists),
+        })
+    }
+
+    /// Whether [`Workspace::step_visits`] would go anywhere.
+    pub fn can_step_visits(&self, forward: bool, cx: &App) -> bool {
+        let reachable = |root: &Path, kind: &TabKind| self.has_tab_target(root, kind, cx);
+        match forward {
+            true => self.tabs.can_go_forward(reachable),
+            false => self.tabs.can_go_back(reachable),
+        }
+    }
+
     /// Asks the shell to rename `item` of the collection at `root` to `name`.
     pub fn rename_item(
         &mut self,
