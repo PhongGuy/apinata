@@ -167,6 +167,7 @@ pub fn start_with_trash(
         ..window_options(&session.value, &displays(cx))
     };
     let settings = cx.new(|_| Persisted::new(settings.value, paths.settings.clone()));
+    crate::executor::follow(&settings, Arc::clone(&store), cx);
     let session = cx.new(|_| Persisted::new(session.value, paths.session.clone()));
     let keymap = cx.new(|_| Persisted::new(keymap.value, paths.keymap.clone()));
     let (trust_file, inbox) = (paths.trusted_hosts.clone(), paths.approvals.clone());

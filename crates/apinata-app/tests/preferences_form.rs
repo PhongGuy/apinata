@@ -123,7 +123,7 @@ fn rows_sit_in_their_sections_in_two_shared_columns(cx: &mut TestAppContext) {
             ),
             (
                 "prefs-network",
-                &["pref-verify-tls", "pref-body-cap", "prefs-network-restart"],
+                &["pref-verify-tls", "pref-body-cap", "prefs-network-note"],
             ),
             ("prefs-updates", &["pref-updates-unavailable"]),
         ];

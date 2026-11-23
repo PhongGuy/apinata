@@ -62,7 +62,7 @@ fn the_checkboxes_save_and_apply_at_once(cx: &mut TestAppContext) {
     let s = started(cx, &col);
     assert_eq!(exec_flags(cx), (true, true));
     open_prefs(cx, &s);
-    assert!(present(cx, s.win, "prefs-cookies-note"));
+    assert!(present(cx, s.win, "prefs-network-note"));
     prefs_click(cx, &s, "store-cookies");
     cx.run_until_parked();
     assert!(!app_settings(cx).store_cookies);

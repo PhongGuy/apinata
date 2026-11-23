@@ -5,7 +5,7 @@ use crate::support;
 use apinata_app::app::{AppState, VolatileSecrets};
 use apinata_app::executor::proxy_password_key;
 use apinata_app::preferences::{
-    NETWORK_RESTART, PAC_HINT, PAC_PLACEHOLDER, PROXY_NOTE, parse_proxy_port,
+    NETWORK_NOTE, PAC_HINT, PAC_PLACEHOLDER, PROXY_NOTE, parse_proxy_port,
 };
 use apinata_app::settings::{ProxyMode, Settings};
 use gpui_kit::test::TestWindowExt as _;
@@ -443,28 +443,68 @@ fn the_proxy_help_shows_under_the_control_in_system_mode_only(cx: &mut TestAppCo
     }
 }
 
-// Whatever the proxy mode, the settings read only at start share one note in the Network
-// section instead of one under each control.
+// Whatever the proxy mode, the Network section has one note on when its settings apply,
+// and none of them asks for a restart.
 #[gpui_kit::test]
-fn the_network_section_names_the_restart_once(cx: &mut TestAppContext) {
+fn the_network_section_never_asks_for_a_restart(cx: &mut TestAppContext) {
     let col = two_requests();
     let s = started(cx, &col);
     open_prefs(cx, &s);
     for mode in 0..4 {
         choose(cx, &s, "global-proxy-mode", mode);
-        let notes = cx
+        let labels = cx
             .update_window(s.win, |_, w, cx| {
                 w.render_frame(cx);
                 w.within("prefs-network")
                     .elements()
                     .iter()
                     .filter_map(|e| e.label().or(e.value()).map(str::to_owned))
-                    .filter(|l| l.contains("after restart"))
                     .collect::<Vec<_>>()
             })
             .unwrap();
-        assert_eq!(notes, [NETWORK_RESTART], "mode {mode}");
+        let restart: Vec<_> = labels.iter().filter(|l| l.contains("restart")).collect();
+        assert!(restart.is_empty(), "mode {mode}: {restart:?}");
+        let notes = labels.iter().filter(|l| *l == NETWORK_NOTE).count();
+        assert_eq!(notes, 1, "mode {mode}");
     }
+}
+
+// A password typed in Preferences reaches the next send through a proxy that names a user.
+#[gpui_kit::test]
+fn a_typed_proxy_password_applies_to_the_next_send(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    cx.update(apinata_app::tokio_bridge::init);
+    let col = two_requests();
+    let s = started(cx, &col);
+    let target = mock_server(cx, wiremock::ResponseTemplate::new(200));
+    let proxy = mock_server(cx, wiremock::ResponseTemplate::new(200));
+    let addr = proxy.address();
+    cx.update(|cx| {
+        let settings = cx.global::<AppState>().settings.clone();
+        settings.update(cx, |p, cx| {
+            p.update(cx, |s| {
+                s.proxy.mode = ProxyMode::Manual;
+                s.proxy.host = addr.ip().to_string();
+                s.proxy.port = addr.port().to_string();
+                s.proxy.username = "u".into();
+                s.proxy.bypass = String::new();
+            })
+        });
+    });
+    cx.run_until_parked();
+    open_prefs(cx, &s);
+    enter(cx, &s, "global-proxy-password", "p2");
+    let exec = cx.update(|cx| apinata_app::executor::shared(cx)).unwrap();
+    send_direct(cx, &exec, &target.uri());
+    let handle = cx.update(|cx| apinata_app::tokio_bridge::handle(cx));
+    let got = handle.block_on(proxy.received_requests()).unwrap();
+    assert_eq!(got.len(), 1);
+    let auth = got[0]
+        .headers
+        .get("proxy-authorization")
+        .map(|v| v.to_str().unwrap().to_owned());
+    // Basic base64 of "u:p2".
+    assert_eq!(auth.as_deref(), Some("Basic dTpwMg=="));
 }
 
 // The PAC example fits inside its input at the input's text size, so it is never cut.
