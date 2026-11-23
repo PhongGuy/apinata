@@ -2292,6 +2292,8 @@ mod inherited_tests {
             color: None,
             extends: extends.map(Into::into),
             refused_parents: Vec::new(),
+            inherited: Vec::new(),
+            inherited_warning: None,
             dirty: false,
             disk: DiskState::Present,
             reloaded: 0,

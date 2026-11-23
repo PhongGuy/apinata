@@ -254,6 +254,7 @@ mod env_editor;
 mod env_extends;
 mod env_fileless;
 mod env_gone_roots;
+mod env_inherited;
 mod env_move;
 mod env_naming;
 mod env_orphans;

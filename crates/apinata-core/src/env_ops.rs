@@ -8,7 +8,7 @@ use crate::document::Document;
 use crate::edit::VarValue;
 use crate::env_file::EnvVariable;
 use crate::env_file::TOP as ENV_TOP;
-use crate::environment::{self, ChainEnd};
+use crate::environment::{self, ChainEnd, Inheritance};
 use crate::error::{EnvError, SaveError};
 use crate::js;
 use crate::naming::{sanitize_name, validate_name};
@@ -142,6 +142,13 @@ impl Collection {
         parent: Option<&str>,
     ) -> Result<(), EnvError> {
         check_environment_extends(self, name, parent)
+    }
+
+    /// What environment `name` inherits through `extends`, marked against `own`, the rows to
+    /// judge in place of its file's (an editor passes its unsaved rows). `None` for an unknown
+    /// name. Secret values are never read.
+    pub fn inherited_variables(&self, name: &str, own: &[EnvVariable]) -> Option<Inheritance> {
+        environment::inherited(self.environments(), name, own)
     }
 
     /// The other environments whose `extends` names `name`, in name order; empty for an
