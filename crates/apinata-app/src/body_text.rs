@@ -27,7 +27,7 @@ pub enum BodyKind {
     Xml,
     /// Any other text.
     Text,
-    /// Invalid UTF-8 with no charset named.
+    /// A document, archive or media type, or invalid UTF-8 with no charset named.
     Binary,
     /// The content type names a previewable image format.
     Image(ImageKind),
@@ -104,6 +104,11 @@ pub fn body_kind(headers: &[(String, String)], body: &[u8]) -> BodyKind {
     if let Some(image) = ImageKind::from_media_type(media) {
         return BodyKind::Image(image);
     }
+    // Documents, archives and media are binary whatever their bytes; an octet stream is often
+    // text in practice, so its bytes still decide.
+    if binary_media(media) {
+        return BodyKind::Binary;
+    }
     // An error with no length is an incomplete final character, which the
     // body cap can cut, so only an invalid sequence before it means binary.
     let invalid = std::str::from_utf8(body).is_err_and(|e| e.error_len().is_some());
@@ -120,7 +125,57 @@ pub fn body_kind(headers: &[(String, String)], body: &[u8]) -> BodyKind {
     }
 }
 
+// Media types whose bodies are never shown as text (no parameters, lowercased); a playlist
+// such as `audio/x-mpegurl` is text.
+fn binary_media(media: &str) -> bool {
+    matches!(
+        media,
+        "application/pdf"
+            | "application/zip"
+            | "application/x-zip-compressed"
+            | "application/gzip"
+            | "application/x-gzip"
+            | "application/x-tar"
+            | "application/x-7z-compressed"
+            | "application/x-rar-compressed"
+            | "application/vnd.rar"
+            | "application/x-bzip2"
+            | "application/x-xz"
+            | "application/zstd"
+            | "application/wasm"
+            | "application/msword"
+            | "application/vnd.ms-excel"
+    ) || media.starts_with("application/vnd.openxmlformats-officedocument.")
+        || (["audio/", "video/", "font/"]
+            .iter()
+            .any(|prefix| media.starts_with(prefix))
+            && !media.ends_with("mpegurl"))
+}
+
 pub use apinata_core::json_text::{beautify_json, minify_json, reindent_json};
+
+/// Why `text` is not JSON, as "Not valid JSON: <reason> at line L, column C"; `None` when it parses.
+pub fn json_problem(text: &str) -> Option<String> {
+    let e = serde_json::from_str::<serde::de::IgnoredAny>(text).err()?;
+    let (line, column) = (e.line(), e.column());
+    let full = e.to_string();
+    let reason = full
+        .strip_suffix(&format!(" at line {line} column {column}"))
+        .unwrap_or(&full);
+    // The parser counts bytes; the note counts characters, as an editor's column does.
+    let row = text
+        .split('\n')
+        .nth(line.saturating_sub(1))
+        .unwrap_or_default();
+    let mut before = column.saturating_sub(1).min(row.len());
+    while !row.is_char_boundary(before) {
+        before -= 1;
+    }
+    let column = row[..before].chars().count() + 1;
+    Some(format!(
+        "Not valid JSON: {reason} at line {line}, column {column}"
+    ))
+}
 
 /// Re-indents XML by two spaces per element, dropping whitespace-only text
 /// and keeping comments, CDATA, PIs and the DOCTYPE; `None` when malformed.

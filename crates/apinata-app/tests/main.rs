@@ -131,6 +131,7 @@ mod body_beautify;
 mod body_binary;
 mod body_binary_format;
 mod body_copy;
+mod body_details;
 mod body_edit;
 mod body_find_escape;
 mod body_format;
