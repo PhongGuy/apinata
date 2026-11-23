@@ -265,6 +265,18 @@ fn is_newest(generation: u64, cx: &App) -> bool {
         .is_some_and(|r| r.generation == generation)
 }
 
+/// Whether the installed executors were built from `settings`' network preferences, with no
+/// rebuild still waiting on its password read. Tests wait on this before they send.
+pub fn installed_for(settings: &Settings, cx: &App) -> bool {
+    let waiting = cx
+        .try_global::<Rebuilds>()
+        .is_some_and(|r| r.pending.is_some());
+    let built = cx
+        .try_global::<Installed>()
+        .and_then(|i| i.built_from.as_ref());
+    !waiting && built == Some(&NetworkPrefs::of(settings))
+}
+
 /// Reads the proxy password on a thread of its own, so a hung secret service holds no
 /// executor worker, and hands the result to `then` on the UI thread unless a newer install
 /// started meanwhile. Startup reads through this as well.
