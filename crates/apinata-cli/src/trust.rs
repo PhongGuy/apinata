@@ -8,8 +8,7 @@ use std::process::ExitCode;
 use anyhow::{Context, anyhow, bail};
 use apinata_core::{
     Collection, ContextOptions, ScriptDecision, ScriptTextKind, ScriptTrust, TrustError,
-    TrustStore, VarContext, bare_host_refusal, is_hidden_char, is_variation_selector,
-    normalize_bare_host, plan_script_texts,
+    TrustStore, VarContext, is_hidden_char, is_variation_selector, plan_script_texts, typed_host,
 };
 
 use crate::collection_arg;
@@ -180,10 +179,10 @@ pub(crate) fn directory_root(collection: Option<&Path>) -> anyhow::Result<PathBu
     collection_root(collection)
 }
 
-/// `typed` as a normalised host, refused unless it is a bare host, so a URL or authority
-/// never puts a host on a list other than the one the user read.
+/// `typed` as a normalised host: a bare host, or a pasted http or https URL's host. A URL
+/// with a user name or a bare authority is refused, so no list gains a host the user did not read.
 fn bare_host(typed: &str) -> anyhow::Result<String> {
-    normalize_bare_host(typed).ok_or_else(|| anyhow!(bare_host_refusal(typed)))
+    typed_host(typed).map_err(|message| anyhow!(message))
 }
 
 /// `text` with each [`is_hidden_char`] written as a `\u{..}` escape and variation selectors

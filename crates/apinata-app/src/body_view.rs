@@ -52,7 +52,7 @@ use crate::body_node::{
 use crate::body_text::{
     BINARY_VIEW_CAP, BinaryMode, BodyKind, Chunked, EDITOR_MAX_BYTES, ImageInfo, ImageKind,
     Prepared, ROW_WIDTH, binary_rows, body_kind, cells, chunk_lines, display_text, format_size,
-    image_caption, prepare, prepare_body, wrap_columns,
+    image_caption, prepare, prepare_body, size_labels, wrap_columns,
 };
 use crate::download_model::{DownloadModel, DownloadPolicy, DownloadState, download_policy};
 use crate::keymap::{ResetZoom, ZoomIn, ZoomOut};
@@ -98,7 +98,7 @@ pub const OPEN_PAGE_TIP: &str = "Opens an inert copy in your browser: scripts, n
 
 /// Why a kept body's eye cannot reveal anything: secret values are never saved.
 pub const SCRUBBED_TIP: &str = "Secret values are not saved, so they cannot be shown.";
-/// The note a body over the editor's limits shows in its bar.
+/// The banner a whole body over the editor's limits shows under its bar.
 pub const LARGE_BODY_NOTE: &str = "Large body: shown as plain text, folding and editing are off";
 
 /// How long typing in the filter, or a rows-mode find query, must pause before it runs.
@@ -743,6 +743,24 @@ impl BodyView {
         }
         if let Some(text) = self.source_text().map(str::to_owned) {
             cx.emit(SchemaTest(text));
+        }
+    }
+
+    // What the banner under the bar says about how much of the body is on screen: the cut
+    // point when the body was cut, and that it is plain text when too large for the editor.
+    fn banner_text(&self) -> Option<String> {
+        let large = self.in_rows() && !self.editor_backed;
+        let cut = (self.result.as_ref())
+            .and_then(|r| r.response.as_ref())
+            .filter(|r| r.truncated())
+            .map(|r| size_labels(r.size(), r.body().len() as u64, true));
+        match (cut, large) {
+            (Some((size, Some(cut))), true) => {
+                Some(format!("Showing the first {cut} of {size} as plain text."))
+            }
+            (Some((size, Some(cut))), false) => Some(format!("Showing the first {cut} of {size}.")),
+            (_, true) => Some(LARGE_BODY_NOTE.into()),
+            (_, false) => None,
         }
     }
 
@@ -3329,20 +3347,6 @@ impl Render for BodyView {
             .justify_end()
             .gap(style::SPACE_2);
         let filterable = matches!(self.kind, Some(BodyKind::Json | BodyKind::Xml));
-        // A body too large for the editor has no fold arrows and no View/Edit switch, so a
-        // muted note at the bar's start says why; a wide line's rows return to the editor.
-        if self.in_rows() && !self.editor_backed {
-            bar = bar.child(
-                div()
-                    .id("body-large-note")
-                    .test_support()
-                    .aria_label(LARGE_BODY_NOTE)
-                    .mr_auto()
-                    .text_size(style::TEXT_SMALL)
-                    .text_color(cx.theme().muted_foreground)
-                    .child(LARGE_BODY_NOTE),
-            );
-        }
         // One eye for the whole body, when redaction hid something in it.
         if self.maskable() {
             let on = self.reveal;
@@ -3661,26 +3665,29 @@ impl Render for BodyView {
         let no_match = (self.filter_no_match)
             .then(|| self.applied_filter.clone())
             .flatten();
-        // A cut binary view carries its own note; any other view gets a row to hold the controls.
+        // A cut binary view carries its own note; any other view says how much is shown in one
+        // banner above find, so opening find never moves it.
         let in_binary_note = matches!(self.shown, Shown::Binary(_)) && self.truncated();
-        let cut = self.truncated();
-        let cut_row = (!in_binary_note)
+        let note = (!in_binary_note).then(|| self.banner_text()).flatten();
+        let controls = (!in_binary_note)
             .then(|| self.download_controls(cx))
-            .flatten()
-            .map(|controls| {
-                h_flex()
-                    .id("body-cut")
-                    .test_support()
-                    .gap(style::SPACE_2)
-                    .items_center()
-                    .children(cut.then(|| {
+            .flatten();
+        let banner = (note.is_some() || controls.is_some()).then(|| {
+            h_flex()
+                .id("body-banner")
+                .test_support()
+                .gap(style::SPACE_2)
+                .items_center()
+                .when_some(note, |row, note| {
+                    row.aria_label(note.clone()).child(
                         div()
                             .text_size(style::TEXT_SMALL)
                             .text_color(cx.theme().muted_foreground)
-                            .child("The body was cut at the size limit.")
-                    }))
-                    .child(controls)
-            });
+                            .child(note),
+                    )
+                })
+                .children(controls)
+        });
         let content = match self.shown {
             _ if let Some(expr) = no_match => {
                 let text = format!("No match for {expr}");
@@ -3874,10 +3881,10 @@ impl Render for BodyView {
             .on_action(|_: &ZoomOut, _, cx| zoom::apply_step(Response, ZoomStep::Out, cx))
             .on_action(|_: &ResetZoom, _, cx| zoom::apply_step(Response, ZoomStep::Reset, cx))
             .child(bar)
+            .children(banner)
             .children(filter_bar)
             .children(filter_chip)
             .children(find_bar)
-            .children(cut_row)
             .child(content)
             .child(
                 // Painted before the shell's catch-all listener, so a ctrl+scroll over the

@@ -245,3 +245,67 @@ async fn a_cap_bounds_a_later_redirect_hop_and_names_itself() {
     assert!(err.to_string().contains("run-wide timeout of"), "{err}");
     assert!(started.elapsed() < Duration::from_secs(2));
 }
+
+/// The limit a `Timeout` names, and the run-wide cap when that was it.
+fn limits(err: &ExecError) -> (Option<Duration>, Option<Duration>) {
+    match err {
+        ExecError::Timeout {
+            limit, run_wide, ..
+        } => (*limit, *run_wide),
+        other => panic!("not a timeout: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_timeout_carries_the_request_limit_that_ran_out() {
+    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::any};
+    let s = MockServer::start().await;
+    Mock::given(any())
+        .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_secs(4)))
+        .mount(&s)
+        .await;
+    let top = "settings:\n  timeout: 2000\n";
+    let err = executor()
+        .send(&resolved_one("GET", &format!("{}/", s.uri()), "", top))
+        .await
+        .expect_err("times out");
+    assert_eq!(limits(&err), (Some(Duration::from_secs(2)), None));
+    assert!(err.to_string().ends_with(": timed out"), "{err}");
+}
+
+#[tokio::test]
+async fn a_run_wide_cap_is_the_limit_and_named_as_such() {
+    let port = server(
+        Duration::from_secs(3),
+        "HTTP/1.1 200 OK\r\n\r\n".into(),
+        |_| async {},
+    )
+    .await;
+    let cap = Duration::from_millis(300);
+    let err = capped(300)
+        .send(&req(port, Some(2000)))
+        .await
+        .expect_err("times out");
+    assert_eq!(limits(&err), (Some(cap), Some(cap)));
+    // A shorter own timeout is the limit, and no cap is named.
+    let err = capped(2000)
+        .send(&req(port, Some(300)))
+        .await
+        .expect_err("times out");
+    assert_eq!(limits(&err), (Some(cap), None));
+}
+
+#[tokio::test]
+async fn a_stalled_body_names_the_limit_too() {
+    let head = "HTTP/1.1 200 OK\r\ncontent-length: 100\r\n\r\npartial".to_owned();
+    let port = server(Duration::ZERO, head, |sock| async move {
+        let _open = sock;
+        std::future::pending::<()>().await
+    })
+    .await;
+    let err = executor()
+        .send(&req(port, Some(300)))
+        .await
+        .expect_err("times out");
+    assert_eq!(limits(&err), (Some(Duration::from_millis(300)), None));
+}

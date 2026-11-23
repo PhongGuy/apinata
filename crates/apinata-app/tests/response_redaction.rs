@@ -5,7 +5,7 @@ use crate::support;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use apinata_app::response_pane::{ResponsePane, ResponseTab};
+use apinata_app::response_pane::{NAME_MASK, ResponsePane, ResponseTab};
 use apinata_core::RequestResult;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{
@@ -245,14 +245,14 @@ fn every_cookie_value_is_masked_until_its_eye_reveals_it(cx: &mut TestAppContext
     let fx = shown(cx, ResponseTab::Cookies);
     let sess = row_of(cx, &fx, "cookie-name", "sess");
     let theme = row_of(cx, &fx, "cookie-name", "theme");
-    assert_eq!(label(cx, &fx, ("cookie-value", sess)), "[redacted]");
-    assert_eq!(label(cx, &fx, ("cookie-value", theme)), "[redacted]");
+    assert_eq!(label(cx, &fx, ("cookie-value", sess)), NAME_MASK);
+    assert_eq!(label(cx, &fx, ("cookie-value", theme)), NAME_MASK);
     assert!(present(cx, fx.win, ("cookie-reveal", theme)));
     click(cx, &fx, ("cookie-reveal", sess));
     assert_eq!(label(cx, &fx, ("cookie-value", sess)), SECRET);
-    assert_eq!(label(cx, &fx, ("cookie-value", theme)), "[redacted]");
+    assert_eq!(label(cx, &fx, ("cookie-value", theme)), NAME_MASK);
     click(cx, &fx, ("cookie-hide", sess));
-    assert_eq!(label(cx, &fx, ("cookie-value", sess)), "[redacted]");
+    assert_eq!(label(cx, &fx, ("cookie-value", sess)), NAME_MASK);
     click(cx, &fx, ("cookie-reveal", theme));
     assert_eq!(label(cx, &fx, ("cookie-value", theme)), "dark");
 }
@@ -268,7 +268,7 @@ fn the_cookies_and_headers_tabs_agree_about_a_set_cookie(cx: &mut TestAppContext
     frame(cx, fx.win);
     for name in ["sess", "theme"] {
         let c = row_of(cx, &fx, "cookie-name", name);
-        assert_eq!(label(cx, &fx, ("cookie-value", c)), "[redacted]", "{name}");
+        assert_eq!(label(cx, &fx, ("cookie-value", c)), NAME_MASK, "{name}");
     }
 }
 
@@ -277,11 +277,11 @@ fn cookie_copies_follow_the_eye(cx: &mut TestAppContext) {
     let fx = shown(cx, ResponseTab::Cookies);
     let sess = row_of(cx, &fx, "cookie-name", "sess");
     click(cx, &fx, ("cookie-copy", sess));
-    assert_eq!(clipboard(cx), "[redacted]");
+    assert_eq!(clipboard(cx), NAME_MASK);
     click(cx, &fx, "cookies-copy");
     let all = clipboard(cx);
     assert!(!all.contains(SECRET), "{all}");
-    assert!(all.contains("sess=[redacted]"), "{all}");
+    assert!(all.contains(&format!("sess={NAME_MASK}")), "{all}");
     click(cx, &fx, ("cookie-reveal", sess));
     click(cx, &fx, ("cookie-copy", sess));
     assert_eq!(clipboard(cx), SECRET);

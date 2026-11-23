@@ -131,11 +131,11 @@ fn a_saved_row_says_this_host_only_and_masks_as_the_timeline_does(cx: &mut TestA
     // Every flag reads as plain words in one style, and the form's checkboxes match them.
     assert_eq!(
         label(cx, s.win, ("jar-flags", 1usize)),
-        "HTTPS only, No script access, This host only"
+        "Secure, HttpOnly, This host only"
     );
     click(cx, s.win, "jar-add");
-    assert_eq!(label(cx, s.win, "jar-form-secure"), "HTTPS only");
-    assert_eq!(label(cx, s.win, "jar-form-http-only"), "No script access");
+    assert_eq!(label(cx, s.win, "jar-form-secure"), "Secure");
+    assert_eq!(label(cx, s.win, "jar-form-http-only"), "HttpOnly");
 }
 
 #[gpui_kit::test]

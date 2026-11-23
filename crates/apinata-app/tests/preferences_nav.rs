@@ -7,13 +7,14 @@ use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, Bounds, Pixels, ScrollDelta, TestAppContext, point, px};
 use support::*;
 
-const SECTIONS: [&str; 7] = [
+const SECTIONS: [&str; 8] = [
     "prefs-general",
     "prefs-appearance",
     "prefs-network",
     "prefs-scripts",
     "prefs-updates",
     "prefs-history",
+    "prefs-mcp",
     "prefs-keyboard",
 ];
 
@@ -431,12 +432,22 @@ fn the_entries_read_from_the_left(cx: &mut TestAppContext) {
     open_prefs(cx, &s);
     cx.update_window(s.win, |_, w, cx| {
         w.render_frame(cx);
+        // A short name shows it is not centred; every name, however long, starts at that inset.
+        let mut inset = None;
         for id in SECTIONS {
             let e = w.find(entry(id)).bounds();
             let texts = drawn_text_in(w, &entry(id));
             let (text, t) = texts.first().expect("the entry draws its name");
+            let left = t.left() - e.left();
+            if inset.is_none() {
+                assert!(
+                    left < (e.right() - t.right()) / 2.,
+                    "{text:?} at {t:?} in {e:?}"
+                );
+            }
+            let first = *inset.get_or_insert(left);
             assert!(
-                t.left() - e.left() < (e.right() - t.right()) / 2.,
+                (f32::from(left) - f32::from(first)).abs() < 0.5,
                 "{text:?} at {t:?} in {e:?}"
             );
         }

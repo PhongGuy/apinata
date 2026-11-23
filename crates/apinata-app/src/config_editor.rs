@@ -1,5 +1,5 @@
 //! The settings editor of a folder or the collection: headers, auth, vars, script, tests and
-//! docs, plus the collection's trusted hosts, network settings and script trust.
+//! docs, plus the collection's AI access hosts, network settings and script trust.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -97,7 +97,8 @@ impl ConfigSection {
         ConfigSection::Docs,
     ];
 
-    fn label(self) -> &'static str {
+    /// The section's tab label.
+    pub fn label(self) -> &'static str {
         match self {
             ConfigSection::Headers => "Headers",
             ConfigSection::Auth => "Auth",
@@ -106,7 +107,7 @@ impl ConfigSection {
             ConfigSection::Tests => "Tests",
             ConfigSection::Docs => "Docs",
             ConfigSection::Tags => "Tags",
-            ConfigSection::Hosts => "Trusted hosts",
+            ConfigSection::Hosts => "AI access",
             ConfigSection::Network => "Network",
             ConfigSection::Presets => "Presets",
             ConfigSection::Scripts => "Script trust",

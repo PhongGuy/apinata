@@ -462,3 +462,32 @@ async fn a_send_time_auth_names_the_header_it_replaces_on_the_wire() {
         assert_ne!(sent[0].1, "by-hand", "{rel}");
     }
 }
+
+#[tokio::test]
+async fn a_digest_retry_is_not_counted_as_a_redirect() {
+    let server = MockServer::start().await;
+    Mock::given(path("/start"))
+        .respond_with(ResponseTemplate::new(302).insert_header("location", "/d"))
+        .mount(&server)
+        .await;
+    Mock::given(path("/d"))
+        .respond_with(DigestServer {
+            user: "u",
+            pass: "p",
+            qop: true,
+        })
+        .mount(&server)
+        .await;
+    let url = format!("{}/start", server.uri());
+    let req = resolved_one(
+        "GET",
+        &url,
+        &digest_auth("u", "p"),
+        "settings:\n  maxRedirects: 1\n",
+    );
+    let res = executor().send(&req).await.expect("sent");
+    assert_eq!(res.status(), 200);
+    assert_eq!(res.timeline().len(), 3);
+    assert_eq!(res.redirects_followed(), 1);
+    assert!(!res.stopped_at_redirect_limit());
+}

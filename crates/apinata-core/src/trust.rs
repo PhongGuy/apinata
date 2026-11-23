@@ -99,19 +99,38 @@ pub fn normalize_bare_host(input: &str) -> Option<String> {
     host.eq_ignore_ascii_case(bare).then_some(host)
 }
 
+/// The host to put on a trust list for what a person typed or pasted: a bare host, or the
+/// host of an `http` or `https` URL without a user name. The lists hold hosts only, so a
+/// port, path or query is dropped. `Err` holds why there is none, as a message.
+pub fn typed_host(input: &str) -> Result<String, String> {
+    if let Some(host) = normalize_bare_host(input) {
+        return Ok(host);
+    }
+    // A user name could hide the real host behind a trusted-looking one, so it is refused.
+    let url = Url::parse(input.trim()).ok().filter(|url| {
+        matches!(url.scheme(), "http" | "https")
+            && url.username().is_empty()
+            && url.password().is_none()
+    });
+    url.as_ref()
+        .and_then(Url::host_str)
+        .and_then(normalize_host)
+        .ok_or_else(|| bare_host_refusal(input))
+}
+
 /// Why `input` is not a bare host, as a message to show the person who typed it.
 pub fn bare_host_refusal(input: &str) -> String {
     let input = input.trim();
     // The host after an `@` may be the one an attacker wants trusted; never suggest it.
     if input.contains('@') {
-        return "not a bare host: enter a bare host name, without a user name or @".to_owned();
+        return "Not a bare host: enter a bare host name, without a user name or @".to_owned();
     }
     if let Some(fault) = label_fault(input) {
-        return format!("not a bare host: {fault}");
+        return format!("Not a bare host: {fault}");
     }
     match normalize_host(input) {
-        Some(host) => format!("not a bare host: give it as {host}"),
-        None => format!("not a host: {input}"),
+        Some(host) => format!("Not a bare host: give it as {host}"),
+        None => format!("Not a host: {input}"),
     }
 }
 

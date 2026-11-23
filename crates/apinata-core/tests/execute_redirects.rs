@@ -224,3 +224,65 @@ async fn response_time_sums_every_hop() {
         res.response_time()
     );
 }
+
+#[tokio::test]
+async fn a_loop_that_reaches_the_limit_is_flagged_as_stopped() {
+    let server = MockServer::start().await;
+    Mock::given(path("/loop"))
+        .respond_with(redirect(302, "/loop"))
+        .mount(&server)
+        .await;
+    let url = format!("{}/loop", server.uri());
+    let req = resolved_one("GET", &url, "", "settings:\n  maxRedirects: 5\n");
+    let res = executor().send(&req).await.expect("sent");
+    assert_eq!(res.status(), 302);
+    assert_eq!(server.received_requests().await.expect("recorded").len(), 6);
+    assert_eq!(res.redirects_followed(), 5);
+    assert!(res.stopped_at_redirect_limit());
+}
+
+#[tokio::test]
+async fn a_chain_that_ends_below_the_limit_counts_its_hops_without_a_stop() {
+    let server = MockServer::start().await;
+    for n in 0..4 {
+        Mock::given(path(format!("/h{n}")))
+            .respond_with(redirect(302, &format!("/h{}", n + 1)))
+            .mount(&server)
+            .await;
+    }
+    Mock::given(path("/h4"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    let url = format!("{}/h0", server.uri());
+    let res = executor()
+        .send(&resolved_one(
+            "GET",
+            &url,
+            "",
+            "settings:\n  maxRedirects: 5\n",
+        ))
+        .await
+        .expect("sent");
+    assert_eq!(res.status(), 200);
+    assert_eq!(res.redirects_followed(), 4);
+    assert!(!res.stopped_at_redirect_limit());
+}
+
+#[tokio::test]
+async fn a_redirect_not_followed_is_no_stop() {
+    let server = chain().await;
+    let url = format!("{}/r0", server.uri());
+    for settings in [
+        "settings:\n  followRedirects: false\n",
+        "settings:\n  maxRedirects: 0\n",
+    ] {
+        let res = executor()
+            .send(&resolved_one("GET", &url, "", settings))
+            .await
+            .expect("sent");
+        assert_eq!(res.status(), 302, "{settings}");
+        assert_eq!(res.redirects_followed(), 0, "{settings}");
+        assert!(!res.stopped_at_redirect_limit(), "{settings}");
+    }
+}

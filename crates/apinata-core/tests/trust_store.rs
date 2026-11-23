@@ -2,6 +2,7 @@
 
 use apinata_core::{
     TrustError, TrustStore, bare_host_refusal, is_loopback, normalize_bare_host, normalize_host,
+    typed_host,
 };
 use std::fs;
 use std::net::IpAddr;
@@ -312,4 +313,48 @@ fn display_host_handles_case_brackets_and_mapped_forms() {
     // An IPv6 address that is not IPv4-mapped is unchanged, as is junk in brackets.
     assert_eq!(display_host("[2001:DB8::1]"), "[2001:DB8::1]");
     assert_eq!(display_host("[not-an-ip]"), "[not-an-ip]");
+}
+
+#[test]
+fn a_pasted_url_becomes_its_host_and_a_bare_host_stays_as_typed() {
+    for (input, expected) in [
+        ("api.example.com", "api.example.com"),
+        ("https://API.Example.com", "api.example.com"),
+        ("http://api.example.com:8443", "api.example.com"),
+        (
+            "https://api.example.com/v1/users?page=2#top",
+            "api.example.com",
+        ),
+        ("  http://[::1]:9000/x ", "[::1]"),
+    ] {
+        assert_eq!(typed_host(input).as_deref(), Ok(expected), "{input:?}");
+    }
+}
+
+#[test]
+fn a_url_with_a_user_name_or_another_scheme_is_still_refused() {
+    for bad in [
+        "http://good.example@evil.example",
+        "https://user:pw@evil.example/",
+        "ftp://files.example",
+        "good.example@evil.example",
+        "evil.example#.good.example",
+        "good.example:8080",
+        "http://",
+    ] {
+        assert!(typed_host(bad).is_err(), "{bad:?}");
+    }
+    let message = typed_host("http://good.example@evil.example").unwrap_err();
+    assert!(!message.contains("evil.example"), "{message}");
+}
+
+#[test]
+fn refusals_start_with_a_capital() {
+    for bad in ["exa mple", "good.example:8080", "*.example", "a@b.example"] {
+        let message = bare_host_refusal(bad);
+        assert!(
+            message.starts_with(char::is_uppercase),
+            "{bad:?}: {message}"
+        );
+    }
 }
