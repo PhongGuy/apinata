@@ -398,7 +398,7 @@ fn the_status_counts_the_examples_and_the_port_shows_once(cx: &mut TestAppContex
 #[test]
 fn the_status_stays_short_with_and_without_examples() {
     use apinata_app::mock_server::status;
-    assert_eq!(status(0), "No saved examples");
+    assert_eq!(status(0), "No examples yet");
     assert_eq!(status(3), "3 examples");
 }
 
@@ -439,7 +439,7 @@ fn hovering_the_running_toggle_names_the_port_how_to_add_examples_and_how_to_sto
         .unwrap();
     cx.executor().advance_clock(Duration::from_secs(2));
     let want = format!(
-        "Answering on port {} with saved examples. Save a response as an example to add one. Click to stop the mock server.",
+        "Mocking c on port {} with saved examples. Save a response as an example to add one. Click to stop the mock server.",
         addr.port()
     );
     assert_eq!(label(cx, s.win, "mock-tooltip"), Some(want));
@@ -810,6 +810,60 @@ fn clicking_the_status_lists_what_the_mock_serves(cx: &mut TestAppContext) {
     assert_eq!(
         label(cx, s.win, "mock-served-winner").as_deref(),
         Some(WINNER_NOTE)
+    );
+    assert!(!present(cx, s.win, "mock-served-empty"));
+}
+
+#[test]
+fn the_running_tip_names_the_collection() {
+    let tip = apinata_app::mock_server::running_tip("Shop API", 4010);
+    assert!(tip.starts_with("Mocking Shop API on port 4010 "), "{tip}");
+}
+
+#[test]
+fn the_empty_how_to_says_where_examples_come_from() {
+    assert_eq!(
+        apinata_app::mock_server::EMPTY_HOW_TO,
+        "Send a request, then use Save example in the response pane."
+    );
+}
+
+fn top(cx: &mut TestAppContext, win: AnyWindowHandle, id: &'static str) -> gpui_kit::Pixels {
+    frame(cx, win);
+    cx.update_window(win, |_, w, _| w.find(id).bounds().origin.y)
+        .unwrap()
+}
+
+// With nothing saved, the served list names the collection and says how to add an example,
+// above the note on what is served.
+#[gpui_kit::test]
+fn an_empty_mock_says_how_to_give_it_something_to_serve(cx: &mut TestAppContext) {
+    use apinata_app::mock_server::{EMPTY_HOW_TO, SERVED_NOTE};
+    let users = request("users", "http://api.test/users");
+    let col = write_tree(&[("opencollection.yml", ROOT), ("users.yml", &users)]);
+    let (s, _) = serving_mock(cx, &col);
+    assert_eq!(
+        label(cx, s.win, "mock-status").as_deref(),
+        Some("No examples yet")
+    );
+    click(cx, s.win, "mock-status");
+    assert_eq!(
+        label(cx, s.win, "mock-served-heading").as_deref(),
+        Some("Mocking c")
+    );
+    assert_eq!(
+        label(cx, s.win, "mock-served-empty").as_deref(),
+        Some(EMPTY_HOW_TO)
+    );
+    assert!(!present(cx, s.win, "mock-served-0"));
+    let (how_to, note) = (
+        top(cx, s.win, "mock-served-empty"),
+        top(cx, s.win, "mock-served-note"),
+    );
+    assert!(how_to < note, "{how_to:?} {note:?}");
+    assert_eq!(
+        label(cx, s.win, "mock-served-note").as_deref(),
+        Some(SERVED_NOTE)
     );
 }
 
