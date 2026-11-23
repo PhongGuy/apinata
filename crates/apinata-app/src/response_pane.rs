@@ -528,6 +528,15 @@ pub struct Summary {
 /// Where the pane's request lives, read at call time so renames follow.
 pub type HistoryTarget = Rc<dyn Fn(&App) -> Option<(PathBuf, ItemPath)>>;
 
+/// The Tests tab's Re-check button.
+pub const RECHECK_LABEL: &str = "Re-check";
+
+/// The Re-check button's tooltip when the shown response can be re-checked.
+pub const RECHECK_TIP: &str = "Check the assertions again against this response, without sending";
+
+/// The note over script tests a re-check kept from the send, since it never runs scripts.
+pub const TESTS_FROM_SEND: &str = "Script tests are from the send; Re-check does not run scripts.";
+
 /// What the response shows before its tab has sent anything.
 pub const RESPONSE_HINT: &str = "Send a request to see the response";
 
@@ -3477,11 +3486,17 @@ impl ResponsePane {
                             cx,
                         )
                     });
+                // Re-check sits beside the filter, so it stays in reach whatever the filter shows.
+                let top = h_flex()
+                    .items_start()
+                    .gap(style::SPACE_2)
+                    .child(v_flex().flex_1().min_w_0().children(none).children(pick))
+                    .child(self.recheck_button(cx));
+                let from_send = self.send.read(cx).is_rechecked();
                 scroll_frame(
                     "response-assertions",
                     v_flex()
-                        .children(none)
-                        .children(pick)
+                        .child(top)
                         .children(total)
                         .children(filtered_out)
                         .children(heading)
@@ -3502,7 +3517,7 @@ impl ResponsePane {
                                     },
                                 ))
                         }))
-                        .children(tests_block(result, filter, cx)),
+                        .children(tests_block(result, filter, from_send, cx)),
                 )
             }
             ResponseTab::Console => {
@@ -3512,6 +3527,50 @@ impl ResponsePane {
             ResponseTab::Compare => self.compare_body(window, cx),
             ResponseTab::Events => self.events_body(cx),
         }
+    }
+
+    // Re-check, locked with the refusal as its tooltip when the shown response cannot be used.
+    fn recheck_button(&self, cx: &Context<Self>) -> AnyElement {
+        let button = Button::new("tests-recheck")
+            .solid_ring(cx)
+            .ghost()
+            .small()
+            .label(RECHECK_LABEL)
+            .accessibility_label(RECHECK_LABEL);
+        let (button, tip) = match self.send.read(cx).recheck_refusal() {
+            Some(why) => (button.lock(true, cx), why.to_string()),
+            None => {
+                let pane = cx.entity().downgrade();
+                let button = button.on_click(move |_, _, cx| {
+                    let _ = pane.update(cx, |p, cx| p.recheck(cx));
+                });
+                (button, RECHECK_TIP.to_owned())
+            }
+        };
+        div()
+            .id("tests-recheck-tip")
+            .flex_none()
+            .tooltip(ui::text_tooltip("tests-recheck-tooltip", tip))
+            .child(button)
+            .into_any_element()
+    }
+
+    /// Re-evaluates the shown response's assertions as the request now stands and shows the
+    /// Tests tab; nothing is sent. Does nothing when the response cannot be re-checked.
+    pub fn recheck(&mut self, cx: &mut Context<Self>) {
+        // A pane without a request target re-checks the item the shown result came from.
+        let target = self.target.as_ref().and_then(|t| t(cx)).or_else(|| {
+            let send = self.send.read(cx);
+            let SendState::Done(shown) = send.state() else {
+                return None;
+            };
+            Some((send.root()?.to_path_buf(), shown.path.clone()))
+        });
+        let Some((root, item)) = target else {
+            return;
+        };
+        self.send.update(cx, |m, cx| m.recheck(&root, item, cx));
+        self.set_tab(ResponseTab::Tests, cx);
     }
 
     /// The summary of `r`'s GraphQL errors, redacted, when this pane's request is GraphQL and
@@ -4060,8 +4119,14 @@ pub fn console_text(entries: &[ConsoleEntry], filter: Option<ConsoleLevel>) -> S
 
 // The script tests under the assertions: a summary, then one heading per script in run order
 // over the rows `filter` keeps. A script left with no rows drops its heading, and the block
-// drops entirely when no row is left.
-fn tests_block(result: &RequestResult, filter: Option<TestFilter>, cx: &App) -> Option<Div> {
+// drops entirely when no row is left. After a re-check (`from_send`) a note under the heading
+// says the rows are the send's, since scripts never run again.
+fn tests_block(
+    result: &RequestResult,
+    filter: Option<TestFilter>,
+    from_send: bool,
+    cx: &App,
+) -> Option<Div> {
     let summary = test_summary(&result.tests)?;
     let mut phases: Vec<ScriptPhase> = Vec::new();
     for t in &result.tests {
@@ -4114,6 +4179,17 @@ fn tests_block(result: &RequestResult, filter: Option<TestFilter>, cx: &App) -> 
                 summary,
                 cx,
             ))
+            .when(from_send, |block| {
+                block.child(
+                    div()
+                        .id("tests-from-send")
+                        .test_support()
+                        .aria_label(TESTS_FROM_SEND)
+                        .pb(style::SPACE_1)
+                        .text_color(cx.theme().muted_foreground)
+                        .child(TESTS_FROM_SEND),
+                )
+            })
             .children(groups)
     })
 }

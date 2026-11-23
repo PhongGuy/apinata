@@ -65,6 +65,7 @@ const IDS: &[&str] = &[
     "request.save_as_example",
     "request.export_har",
     "request.compare_response",
+    "request.recheck_assertions",
     "request.copy_json_value",
     "request.copy_json_path",
     "request.set_json_variable",

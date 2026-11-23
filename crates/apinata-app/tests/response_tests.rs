@@ -573,3 +573,156 @@ fn dropped_url_credentials_read_as_a_sentence(cx: &mut TestAppContext) {
     );
     assert!(present(cx, win, ("response-warning", 0usize)));
 }
+
+// `shown`, with `edit` applied to the sent result before it goes on screen.
+fn shown_edited(
+    cx: &mut TestAppContext,
+    extra: &str,
+    edit: impl FnOnce(&mut RequestResult),
+) -> (Sent, AnyWindowHandle, Entity<ResponsePane>) {
+    let (s, win, view) = shown(cx, Vec::new(), extra);
+    let mut r = (*s.result).clone();
+    edit(&mut r);
+    s.model
+        .update(cx, |m, cx| m.show(std::sync::Arc::new(r), cx));
+    cx.run_until_parked();
+    (s, win, view)
+}
+
+// The verdict a stale result claims for `res.status eq 200`, which a re-check overturns.
+fn stale_verdict(r: &mut RequestResult) {
+    let assertion = Assertion::new("res.status", "eq", Some("200".to_owned()));
+    r.assertions = vec![AssertionOutcome::new(assertion, Verdict::fail("500", None))];
+    r.outcome = Outcome::Failed;
+}
+
+fn shown_verdicts(cx: &mut TestAppContext, s: &Sent) -> Vec<&'static str> {
+    use apinata_app::send_model::SendState;
+    s.model.read_with(cx, |m, _| match m.state() {
+        SendState::Done(r) => (r.assertions.iter())
+            .map(|a| match a.verdict() {
+                Verdict::Pass => "pass",
+                Verdict::Fail { .. } => "fail",
+                _ => "other",
+            })
+            .collect(),
+        _ => Vec::new(),
+    })
+}
+
+#[gpui_kit::test]
+fn re_check_evaluates_the_shown_response_without_sending(cx: &mut TestAppContext) {
+    let (s, win, _view) = shown_edited(cx, PASSES, stale_verdict);
+    assert_eq!(shown_verdicts(cx, &s), ["fail"]);
+    assert_eq!(label(cx, win, "tests-recheck").as_deref(), Some("Re-check"));
+    cx.update_window(win, |_, w, cx| w.click("tests-recheck", cx))
+        .unwrap();
+    wait_real(cx, |cx| shown_verdicts(cx, &s) == ["pass"]);
+    let outcome = s.model.read_with(cx, |m, _| match m.state() {
+        apinata_app::send_model::SendState::Done(r) => r.outcome,
+        _ => panic!("no result"),
+    });
+    assert_eq!(outcome, Outcome::Passed);
+    assert_eq!(served(cx, &s.server).len(), 1);
+}
+
+#[gpui_kit::test]
+fn a_refused_re_check_says_why_in_its_tooltip(cx: &mut TestAppContext) {
+    let (s, win, _view) = shown_edited(cx, PASSES, |r| {
+        stale_verdict(r);
+        r.response_scrubbed = true;
+    });
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.hover("tests-recheck", cx)
+    })
+    .unwrap();
+    cx.executor()
+        .advance_clock(std::time::Duration::from_millis(800));
+    frame(cx, win);
+    assert_eq!(
+        label(cx, win, "tests-recheck-tooltip"),
+        Some(apinata_core::RecheckRefused::ResponseScrubbed.to_string())
+    );
+    // A locked button does nothing when pressed.
+    cx.update_window(win, |_, w, cx| w.click("tests-recheck", cx))
+        .unwrap();
+    cx.run_until_parked();
+    assert_eq!(shown_verdicts(cx, &s), ["fail"]);
+}
+
+#[gpui_kit::test]
+fn script_tests_kept_through_a_re_check_say_they_are_from_the_send(cx: &mut TestAppContext) {
+    let (s, win, _view) = shown_edited(cx, PASSES, |r| {
+        stale_verdict(r);
+        r.tests = vec![TestOutcome::new(ScriptPhase::Tests, "ok", Verdict::Pass)];
+    });
+    assert!(!present(cx, win, "tests-from-send"));
+    cx.update_window(win, |_, w, cx| w.click("tests-recheck", cx))
+        .unwrap();
+    wait_real(cx, |cx| shown_verdicts(cx, &s) == ["pass"]);
+    frame(cx, win);
+    assert!(present(cx, win, ("test", 0usize)));
+    assert_eq!(
+        label(cx, win, "tests-from-send").as_deref(),
+        Some(apinata_app::response_pane::TESTS_FROM_SEND)
+    );
+}
+
+#[gpui_kit::test]
+fn the_palette_command_re_checks_the_active_tab(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let server = mock_server(cx, ResponseTemplate::new(200));
+    let col = collection_for(&server.uri(), PASSES);
+    let s = started(cx, &col);
+    let tab = open_tab(cx, &s.ws, &s.root, "a.yml");
+    frame(cx, s.win);
+    let editor = editor_of(cx, &s, tab);
+    let model = editor.read_with(cx, |e, _| e.send_model().clone());
+    let r = s.root.clone();
+    model.update(cx, |m, cx| m.send(&r, ip("a.yml"), cx));
+    let sent = finished(cx, &model);
+    let mut stale = (*sent).clone();
+    stale_verdict(&mut stale);
+    model.update(cx, |m, cx| m.show(std::sync::Arc::new(stale), cx));
+    gpui_kit::VisualTestContext::from_window(s.win, cx)
+        .dispatch_action(apinata_app::tab_area::RecheckAssertions);
+    wait_real(cx, |cx| {
+        model.read_with(cx, |m, _| match m.state() {
+            apinata_app::send_model::SendState::Done(r) => {
+                matches!(r.assertions[0].verdict(), Verdict::Pass)
+            }
+            _ => false,
+        })
+    });
+    assert_eq!(served(cx, &server).len(), 1);
+}
+
+// The filter reads the re-checked verdicts, and the send's note sits under the Tests heading.
+#[gpui_kit::test]
+fn the_filter_follows_re_checked_verdicts(cx: &mut TestAppContext) {
+    let (s, win, view) = shown_edited(cx, PASSES, |r| {
+        stale_verdict(r);
+        r.tests = vec![TestOutcome::new(ScriptPhase::Tests, "ok", Verdict::Pass)];
+    });
+    view.update(cx, |p, cx| p.set_tests_filter(Some(TestFilter::Failed), cx));
+    frame(cx, win);
+    assert!(present(cx, win, ("assertion", 0usize)));
+    cx.update_window(win, |_, w, cx| w.click("tests-recheck", cx))
+        .unwrap();
+    wait_real(cx, |cx| shown_verdicts(cx, &s) == ["pass"]);
+    frame(cx, win);
+    assert!(!present(cx, win, ("assertion", 0usize)));
+    assert!(present(cx, win, "tests-filter-none"));
+    view.update(cx, |p, cx| p.set_tests_filter(Some(TestFilter::Passed), cx));
+    frame(cx, win);
+    assert!(present(cx, win, ("assertion", 0usize)));
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let heading = w.find("tests-heading").bounds();
+        let note = w.find("tests-from-send").bounds();
+        let row = w.find(("test", 0usize)).bounds();
+        assert!(heading.bottom() <= note.top() && note.bottom() <= row.top());
+    })
+    .unwrap();
+}
