@@ -403,6 +403,32 @@ fn a_clean_tree_offers_no_changes_button(cx: &mut TestAppContext) {
     assert!(!present(cx, r.win, "branch-open-changes"));
 }
 
+fn locked(cx: &mut TestAppContext, r: &Rig, id: impl Into<gpui_kit::ElementId>) -> bool {
+    let id = id.into();
+    cx.update_window(r.win, |_, w, _| w.within(id).try_find("locked").is_some())
+        .unwrap()
+}
+
+fn description_of(
+    cx: &mut TestAppContext,
+    r: &Rig,
+    id: impl Into<gpui_kit::ElementId>,
+) -> Option<String> {
+    let id = id.into();
+    cx.update_window(r.win, |_, w, _| {
+        w.try_find(id)
+            .and_then(|e| e.description().map(str::to_owned))
+    })
+    .unwrap()
+}
+
+fn close_dialog(cx: &mut TestAppContext, r: &Rig) {
+    cx.update_window(r.win, |_, w, cx| w.press("escape", cx))
+        .unwrap();
+    frame(cx, r.win);
+    assert!(!dialog_open(cx, &r));
+}
+
 #[gpui_kit::test]
 fn a_checked_out_local_only_branch_is_marked_and_locked(cx: &mut TestAppContext) {
     let sb = Sandbox::new();
@@ -410,15 +436,109 @@ fn a_checked_out_local_only_branch_is_marked_and_locked(cx: &mut TestAppContext)
     sb.git(r.dir.path(), &["switch", "-q", "-c", "topic"]);
     open_dialog(cx, &r);
     let ix = row_of(cx, "topic");
-    assert_eq!(label_of(cx, &r, ("branch-row", ix)), "topic (checked out)");
-    let locked = cx
+    assert_eq!(label_of(cx, &r, ("branch-row", ix)), "topic");
+    let marked = cx
         .update_window(r.win, |_, w, _| {
-            w.within(("branch-row", ix)).try_find("locked").is_some()
+            w.within(("branch-row", ix))
+                .try_find("branch-head-check")
+                .is_some()
         })
         .unwrap();
-    assert!(locked, "the checked-out row is locked");
+    assert!(marked, "the checked-out row carries the check mark");
+    assert!(
+        locked(cx, &r, ("branch-row", ix)),
+        "the checked-out row is locked"
+    );
+    click(cx, &r, ("branch-row", ix));
+    let picker = cx.update(|cx| branch_dialog::current(cx)).expect("open");
+    assert_eq!(picker.read_with(cx, |p, _| p.activity()), Activity::Idle);
+    assert!(dialog_open(cx, &r), "a click on the head row does nothing");
     let main = row_of(cx, "main");
     assert_eq!(label_of(cx, &r, ("branch-row", main)), "main");
+    let main_marked = cx
+        .update_window(r.win, |_, w, _| {
+            w.within(("branch-row", main))
+                .try_find("branch-head-check")
+                .is_some()
+        })
+        .unwrap();
+    assert!(!main_marked, "only the checked-out row is marked");
+}
+
+// The rows read as a list: every row spans the list and its name starts at its left edge.
+#[gpui_kit::test]
+fn the_branch_rows_are_a_left_aligned_list(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let r = rig(cx, &sb, |_| {});
+    sb.git(r.dir.path(), &["branch", "a-much-longer-branch-name"]);
+    open_dialog(cx, &r);
+    let short = row_of(cx, "main");
+    let long = row_of(cx, "a-much-longer-branch-name");
+    cx.update_window(r.win, |_, w, cx| {
+        w.render_frame(cx);
+        let (a, b) = (
+            w.find(("branch-row", short)).bounds(),
+            w.find(("branch-row", long)).bounds(),
+        );
+        assert_eq!(
+            (a.left(), a.right()),
+            (b.left(), b.right()),
+            "rows share a width"
+        );
+        for ix in [short, long] {
+            let row = w.find(("branch-row", ix)).bounds();
+            let name = w.find(("branch-name", ix)).bounds();
+            assert!(
+                name.left() - row.left() <= gpui_kit::px(16.),
+                "{name:?} starts at the left of {row:?}"
+            );
+        }
+    })
+    .unwrap();
+}
+
+#[gpui_kit::test]
+fn a_repository_without_a_remote_locks_fetch_pull_and_push(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let r = rig(cx, &sb, |_| {});
+    sb.git(r.dir.path(), &["remote", "remove", "origin"]);
+    open_dialog(cx, &r);
+    for id in ["branch-fetch", "branch-pull", "branch-push"] {
+        assert!(locked(cx, &r, id), "{id} is locked");
+        assert_eq!(
+            description_of(cx, &r, id).as_deref(),
+            Some("No remote configured"),
+            "{id}"
+        );
+    }
+}
+
+// A remote added outside the app counts as soon as the dialog lists again.
+#[gpui_kit::test]
+fn adding_a_remote_unlocks_fetch_pull_and_push_on_the_next_listing(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let r = rig(cx, &sb, |_| {});
+    let url = sb.git(r.dir.path(), &["remote", "get-url", "origin"]);
+    sb.git(r.dir.path(), &["remote", "remove", "origin"]);
+    open_dialog(cx, &r);
+    assert!(locked(cx, &r, "branch-push"));
+    close_dialog(cx, &r);
+    sb.git(r.dir.path(), &["remote", "add", "origin", url.trim()]);
+    open_dialog(cx, &r);
+    for id in ["branch-fetch", "branch-pull", "branch-push"] {
+        assert!(!locked(cx, &r, id), "{id} is open again");
+        assert_eq!(description_of(cx, &r, id), None, "{id}");
+    }
+}
+
+// A branch with no upstream can still be pushed: the push offers to publish it.
+#[gpui_kit::test]
+fn push_stays_open_for_a_branch_without_an_upstream(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let r = rig(cx, &sb, |_| {});
+    sb.git(r.dir.path(), &["switch", "-q", "-c", "fresh"]);
+    open_dialog(cx, &r);
+    assert!(!locked(cx, &r, "branch-push"));
 }
 
 #[gpui_kit::test]
