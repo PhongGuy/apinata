@@ -7,7 +7,7 @@ use crate::ui::SolidRing as _;
 use std::collections::BTreeSet;
 use std::time::{Duration, SystemTime};
 
-use apinata_core::{CookieError, CookieInfo, CookieJar, Persistence};
+use apinata_core::{CookieError, CookieInfo, CookieJar, Persistence, SameSite};
 use chrono::{DateTime, Local, NaiveDateTime, SecondsFormat, TimeZone as _};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -30,6 +30,30 @@ use crate::style::{
     SPACE_2, SPACE_3, TEXT_SMALL,
 };
 use crate::ui::{self, LockButton as _};
+
+// The (domain, path, name) a cookie is stored under; the jar lists in this order.
+fn identity(c: &CookieInfo) -> (&str, &str, &str) {
+    (&c.domain, &c.path, &c.name)
+}
+
+// The form's SameSite row: one segment per choice, opened on the cookie's own.
+fn same_site_row(current: Option<SameSite>, cx: &mut Context<CookieJarView>) -> impl IntoElement {
+    let selected = SAME_SITE_CHOICES
+        .iter()
+        .position(|(_, s)| *s == current)
+        .unwrap_or(0);
+    let this = cx.entity();
+    let labels = SAME_SITE_CHOICES.map(|(label, _)| label);
+    let control = ui::segmented("jar-form-same-site", labels, selected, move |ix, _, cx| {
+        this.update(cx, |v, cx| {
+            if let (Some(f), Some((_, s))) = (v.form.as_mut(), SAME_SITE_CHOICES.get(*ix)) {
+                f.same_site = *s;
+            }
+            cx.notify();
+        })
+    });
+    ui::form_row("jar-form-same-site-row", "Same site", control).label_width(SHORT_FORM_LABEL_WIDTH)
+}
 
 /// How often the dialog relists while the saved jar is still loading.
 const LOAD_POLL: Duration = Duration::from_millis(250);
@@ -64,6 +88,14 @@ pub const HTTP_ONLY_LABEL: &str = "HttpOnly";
 pub const SECURE_TIP: &str = "HTTPS only: sent over secure connections only";
 /// What the HttpOnly flag means, in plain words.
 pub const HTTP_ONLY_TIP: &str = "No script access: page scripts cannot read it";
+
+// The form's SameSite choices, in the order the segmented control shows them.
+const SAME_SITE_CHOICES: [(&str, Option<SameSite>); 4] = [
+    ("Not set", None),
+    ("Lax", Some(SameSite::Lax)),
+    ("Strict", Some(SameSite::Strict)),
+    ("None", Some(SameSite::None)),
+];
 
 // The local date and time the Expires field shows as its example.
 const EXPIRES_EXAMPLE: &str = "2027-01-01 12:00";
@@ -114,6 +146,7 @@ struct CookieForm {
     expires: Entity<InputState>,
     secure: bool,
     http_only: bool,
+    same_site: Option<SameSite>,
     error: Option<String>,
     // Each refused field's input id and its message, drawn under that field; every refused
     // field is marked, not only the first.
@@ -121,13 +154,16 @@ struct CookieForm {
     // Refusals no field owns, drawn above the buttons.
     loose_errors: Vec<String>,
     // What the fields and flags held when the form opened, to tell an edit from a glance.
-    opened: (Vec<String>, bool, bool),
+    opened: FormState,
     // Enter in any field saves, as the Save button does.
     _enter: Vec<Subscription>,
 }
 
+// The form's fields, flags and SameSite, compared to tell an edit from a glance.
+type FormState = (Vec<String>, bool, bool, Option<SameSite>);
+
 impl CookieForm {
-    fn state(&self, cx: &App) -> (Vec<String>, bool, bool) {
+    fn state(&self, cx: &App) -> FormState {
         let fields = [
             &self.domain,
             &self.path,
@@ -136,7 +172,7 @@ impl CookieForm {
             &self.expires,
         ];
         let text = fields.map(|f| f.read(cx).value().to_string());
-        (text.into(), self.secure, self.http_only)
+        (text.into(), self.secure, self.http_only, self.same_site)
     }
 }
 
@@ -184,6 +220,13 @@ fn cookie_count(n: usize) -> String {
     }
 }
 
+/// A just-deleted cookie, drawn in its old slot with an Undo until the next change.
+struct DeletedCookie {
+    cookie: CookieInfo,
+    // Why an Undo left it out, once one has; the Undo button is gone then.
+    note: Option<&'static str>,
+}
+
 /// The dialog body: a snapshot of the shared jar, relisted after every action.
 pub struct CookieJarView {
     cookies: Vec<CookieInfo>,
@@ -195,6 +238,9 @@ pub struct CookieJarView {
     query: String,
     /// Cookies whose value is shown, keyed (domain, path, name) so it survives relisting.
     revealed: BTreeSet<(String, String, String)>,
+    // The last single delete holds its row's place, so the list never shifts under the
+    // pointer and a second click lands on nothing.
+    deleted: Option<DeletedCookie>,
     /// Scrolls the list under the fixed Add and search, or the form standing in for it.
     scroll: ScrollHandle,
     // Where the list was scrolled when the form opened; the short form caps the shared
@@ -226,6 +272,7 @@ impl CookieJarView {
             search,
             query: String::new(),
             revealed: BTreeSet::new(),
+            deleted: None,
             scroll: ScrollHandle::new(),
             list_offset: Point::default(),
             _subscriptions: subscriptions,
@@ -259,6 +306,7 @@ impl CookieJarView {
         if !self.editable() {
             return;
         }
+        self.deleted = None;
         let editing = match edit {
             Some(ix) => match self.cookies.get(ix) {
                 Some(c) => Some(c.clone()),
@@ -300,6 +348,7 @@ impl CookieJarView {
             expires,
             secure: c.is_some_and(|c| c.secure),
             http_only: c.is_some_and(|c| c.http_only),
+            same_site: c.and_then(|c| c.same_site),
             error: None,
             field_errors: Vec::new(),
             loose_errors: Vec::new(),
@@ -332,6 +381,11 @@ impl CookieJarView {
             }
             .clone(),
         )
+    }
+
+    /// The form's SameSite choice, `None` while the form is closed.
+    pub fn form_same_site(&self) -> Option<Option<SameSite>> {
+        self.form.as_ref().map(|f| f.same_site)
     }
 
     /// The form's last refusal, `None` while it is closed or has none.
@@ -380,6 +434,7 @@ impl CookieJarView {
         c.expires = expires;
         c.secure = form.secure;
         c.http_only = form.http_only;
+        c.same_site = form.same_site;
         for e in CookieJar::check(&c) {
             let field = match &e {
                 CookieError::Invalid { field, .. } => field_id(field),
@@ -463,15 +518,44 @@ impl CookieJarView {
             .collect()
     }
 
-    /// Deletes the listed cookie at `ix` from the jar. A no-op while not `editable`.
+    /// Deletes the listed cookie at `ix` from the jar, leaving an Undo in its place that
+    /// names it but never shows its value. A no-op while not `editable`.
     pub fn delete(&mut self, ix: usize, cx: &mut Context<Self>) {
         if !self.editable() {
             return;
         }
-        if let (Some(c), Some(exec)) = (self.cookies.get(ix), shared(cx)) {
-            exec.cookies().delete(&c.domain, &c.path, &c.name);
+        if let (Some(c), Some(exec)) = (self.cookies.get(ix).cloned(), shared(cx))
+            && exec.cookies().delete(&c.domain, &c.path, &c.name)
+        {
+            // A restored cookie comes back masked.
+            self.revealed
+                .remove(&(c.domain.clone(), c.path.clone(), c.name.clone()));
+            self.deleted = Some(DeletedCookie {
+                cookie: c,
+                note: None,
+            });
         }
         self.changed(cx);
+    }
+
+    /// Puts the last deleted cookie back. When it has expired since, or a newer cookie took
+    /// its domain, path and name, it stays out and its slot says why.
+    pub fn undo_delete(&mut self, cx: &mut Context<Self>) {
+        let (Some(d), Some(exec)) = (self.deleted.as_mut(), shared(cx)) else {
+            return;
+        };
+        if exec.cookies().restore(&d.cookie) {
+            self.deleted = None;
+            self.changed(cx);
+            return;
+        }
+        let expired = d.cookie.expires.is_some_and(|at| at <= SystemTime::now());
+        d.note = Some(if expired {
+            "has expired, so it was not restored"
+        } else {
+            "was set again meanwhile, so the newer one was kept"
+        });
+        cx.notify();
     }
 
     /// Deletes every cookie stored under `domain`. A no-op while not `editable`.
@@ -482,6 +566,7 @@ impl CookieJarView {
         if let Some(exec) = shared(cx) {
             exec.cookies().delete_domain(domain);
         }
+        self.deleted = None;
         self.changed(cx);
     }
 
@@ -493,6 +578,7 @@ impl CookieJarView {
         if let Some(exec) = shared(cx) {
             exec.cookies().clear();
         }
+        self.deleted = None;
         self.changed(cx);
     }
 
@@ -516,6 +602,7 @@ impl CookieJarView {
                 exec.cookies().delete_domain(domain);
             }
         }
+        self.deleted = None;
         self.changed(cx);
     }
 
@@ -571,6 +658,14 @@ impl CookieJarView {
         self.available = exec.is_some();
         self.persistence = exec.as_ref().map(|e| e.cookies().persistence());
         self.cookies = exec.map(|e| e.cookies().list()).unwrap_or_default();
+        // A cookie that came back by any route needs no Undo slot.
+        let back = |d: &DeletedCookie| {
+            let k = identity(&d.cookie);
+            self.cookies.iter().any(|c| identity(c) == k)
+        };
+        if self.deleted.as_ref().is_some_and(back) {
+            self.deleted = None;
+        }
         if self.persistence != Some(Persistence::NotLoaded) {
             self.load_poll = None;
         } else if self.load_poll.is_none() {
@@ -599,6 +694,48 @@ impl CookieJarView {
             cx.background_spawn(async move { save_cookies(exec.cookies()) })
                 .detach();
         }
+    }
+
+    // The deleted cookie's slot: its name and path, never its value, with Undo where its
+    // value sat, so a second click on the old Delete hits nothing.
+    fn deleted_row(&self, d: &DeletedCookie, cx: &mut Context<Self>) -> Div {
+        let name = d.cookie.name.clone();
+        let status = d.note.unwrap_or("deleted");
+        let label: SharedString = match d.note {
+            None => format!("Deleted cookie \"{name}\""),
+            Some(note) => format!("Cookie \"{name}\" {note}"),
+        }
+        .into();
+        let muted = cx.theme().muted_foreground;
+        h_flex().gap_2().child(
+            v_flex()
+                .id("jar-deleted")
+                .test_support()
+                .aria_label(label)
+                .flex_1()
+                .min_w_0()
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .child(div().w(JAR_NAME_WIDTH).flex_none().truncate().child(name))
+                        .child(div().min_w_0().truncate().text_color(muted).child(status))
+                        .when(d.note.is_none(), |line| {
+                            line.child(
+                                Button::new("jar-undo-delete")
+                                    .solid_ring(cx)
+                                    .key_context(ui::DIALOG_FOOTER_CONTEXT)
+                                    .label("Undo")
+                                    .on_click(cx.listener(|this, _, _, cx| this.undo_delete(cx))),
+                            )
+                        }),
+                )
+                .child(
+                    div()
+                        .text_color(muted)
+                        .truncate()
+                        .child(format!("Path {}", d.cookie.path)),
+                ),
+        )
     }
 
     fn cookie_row(
@@ -851,6 +988,7 @@ impl CookieJarView {
                     .text_color(cx.theme().muted_foreground)
                     .child(hint),
             )
+            .child(same_site_row(form.same_site, cx))
             .child(
                 h_flex()
                     .gap_2()
@@ -958,7 +1096,10 @@ impl Render for CookieJarView {
             );
         let mut list = v_flex().gap_2();
         let shown = self.shown();
-        if self.cookies.is_empty() {
+        // The deleted cookie keeps its sorted slot while the search would show its domain.
+        let deleted =
+            (self.deleted.as_ref()).filter(|d| domain_matches(&d.cookie.domain, &self.query));
+        if self.cookies.is_empty() && deleted.is_none() {
             // The empty note stands apart from the search above and the footer below.
             list = list.child(
                 div()
@@ -969,7 +1110,7 @@ impl Render for CookieJarView {
                     .child("No cookies."),
             );
         } else {
-            if shown.is_empty() {
+            if shown.is_empty() && deleted.is_none() {
                 list = list.child(
                     div()
                         .id("jar-no-match")
@@ -983,8 +1124,25 @@ impl Render for CookieJarView {
             let mut domains = 0usize;
             let mut previous: Option<&str> = None;
             let any_shown = !shown.is_empty();
-            for ix in shown {
-                let c = &self.cookies[ix];
+            let slot = deleted.map(|d| {
+                let k = identity(&d.cookie);
+                shown
+                    .iter()
+                    .position(|&ix| identity(&self.cookies[ix]) > k)
+                    .unwrap_or(shown.len())
+            });
+            let mut rows: Vec<Option<usize>> = shown.into_iter().map(Some).collect();
+            if let Some(at) = slot {
+                rows.insert(at, None);
+            }
+            for row in rows {
+                let c = match row {
+                    Some(ix) => &self.cookies[ix],
+                    None => match deleted {
+                        Some(d) => &d.cookie,
+                        None => continue,
+                    },
+                };
                 if previous != Some(c.domain.as_str()) {
                     let domain = c.domain.clone();
                     list = list.child(
@@ -1011,7 +1169,12 @@ impl Render for CookieJarView {
                     domains += 1;
                 }
                 previous = Some(c.domain.as_str());
-                list = list.child(self.cookie_row(ix, c, now, cx));
+                let el = match (row, deleted) {
+                    (Some(ix), _) => self.cookie_row(ix, c, now, cx),
+                    (None, Some(d)) => self.deleted_row(d, cx),
+                    (None, None) => continue,
+                };
+                list = list.child(el);
             }
             // Under a search the button only reaches what the list shows, so hidden
             // domains survive; with nothing shown there is nothing to offer.
