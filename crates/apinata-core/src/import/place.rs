@@ -211,11 +211,7 @@ pub fn place_items(
         })
     };
     push_unset_note(collection, &written, &mut report.notes);
-    let requests = report
-        .items
-        .iter()
-        .filter(|item| staged.request(item).is_some())
-        .count();
+    let requests = report.requests;
     Ok(Placed {
         folder: folder.clone(),
         report,

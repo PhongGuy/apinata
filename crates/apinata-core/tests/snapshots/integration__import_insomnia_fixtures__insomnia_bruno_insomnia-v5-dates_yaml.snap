@@ -59,4 +59,4 @@ extensions:
     presets:
       defaultEnvironment: Base
 -- report
-Converted collection: runs use the environment `Base` by default, as the first environment imported (opencollection.yml)
+Converted collection: `Base` is the default environment because it was imported first (opencollection.yml)

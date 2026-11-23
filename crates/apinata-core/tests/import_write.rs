@@ -52,6 +52,7 @@ fn a_collection_is_written_under_its_sanitised_name_with_nothing_left_behind() {
         "2 folders and 12 requests: {:?}",
         report.items
     );
+    assert_eq!(report.requests, 12, "the requests among the items");
     // "a/b" and "a-b" sanitise alike: the second gets a suffix and keeps its display name.
     let renamed = ItemPath::new("Users/a-b 1.yml").expect("path");
     assert_eq!(collection.request(&renamed).expect("written").name(), "a-b");

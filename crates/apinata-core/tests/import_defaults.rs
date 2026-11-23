@@ -135,9 +135,8 @@ fn the_base_environment_is_the_default_without_any_credentials() {
         EnvironmentChoice::Preset("Base Environment".into())
     );
     assert!(
-        report.notes.iter().any(|n| n
-            .detail
-            .contains("runs use the environment `Base Environment` by default")),
+        report.notes.iter().any(|n| n.detail
+            == "`Base Environment` is the default environment because it was imported first"),
         "{:#?}",
         report.notes
     );

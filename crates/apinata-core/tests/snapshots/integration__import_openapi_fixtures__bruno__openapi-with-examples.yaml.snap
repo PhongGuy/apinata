@@ -316,4 +316,4 @@ extensions:
           file: Create a new user.yml
           operationId: createUser
 
-note Converted opencollection.yml | collection | runs use the environment `Production server` by default, as the first environment imported
+note Converted opencollection.yml | collection | `Production server` is the default environment because it was imported first

@@ -2,5 +2,6 @@
 source: crates/apinata-core/tests/import_parity.rs
 expression: snapshot
 ---
-Converted Login / event[0] [Login.yml]: pre-request script: 1 Postman call translated; the app and the MCP server ask before it first runs, and apinata run runs it as your own command
-Converted Login / event[1] [Login.yml]: post-response script: 2 Postman calls translated; the app and the MCP server ask before it first runs, and apinata run runs it as your own command
+Converted collection [-]: imported scripts ask before they first run in the app or the MCP server, and apinata run runs them as your own command
+Converted Login / event[0] [Login.yml]: pre-request script: 1 Postman call was converted to Apinata's script API
+Converted Login / event[1] [Login.yml]: post-response script: 2 Postman calls were converted to Apinata's script API
