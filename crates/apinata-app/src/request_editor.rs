@@ -2630,8 +2630,9 @@ impl Render for RequestEditor {
             ratio
         };
         // Side by side, the request panel never gets narrower than its URL row; stacked, it
-        // keeps its rows above the section body plus one editor row first, and gives way only
-        // so the response keeps its header floor. The clamped share is not written back.
+        // keeps its rows above the section body plus one editor row before the response gets
+        // more than its header floor. A room too short for both keeps the quarter minimum, so
+        // the divider still moves. The clamped share is not written back.
         let floor = style::RESPONSE_FLOOR.min(min);
         let request_min = match axis {
             _ if room <= Pixels::ZERO => min,
@@ -2641,7 +2642,11 @@ impl Render for RequestEditor {
                     let need = rows
                         + style::resolve(style::ROW_HEIGHT, window)
                         + style::resolve(style::SPACE_2, window);
-                    need.min(room - floor).max(min)
+                    if need <= room - floor {
+                        need.max(min)
+                    } else {
+                        min
+                    }
                 }
                 None => min,
             },
