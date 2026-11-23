@@ -574,7 +574,9 @@ impl EnvEditor {
 
     /// Copies inherited variable `name` into the selected environment as an unsaved own row: a
     /// plain row with its value, a secret as an empty secret row that never copies the stored
-    /// value. Does nothing for a name the environment does not inherit.
+    /// value. An own row of the name that is turned off is turned on instead, as Add to
+    /// environment reuses a row rather than adding a second one. Does nothing for a name the
+    /// environment does not inherit.
     pub fn override_inherited(&mut self, name: &str, cx: &mut Context<Self>) {
         let Some(view) = self.view(cx) else {
             return;
@@ -596,7 +598,10 @@ impl EnvEditor {
             EnvVariable::new(name, source.unwrap_or_else(text))
         };
         let mut vars = env_vars_from(&self.base, &self.table.read(cx).rows(cx));
-        vars.push(own);
+        match vars.iter_mut().find(|v| v.name == name) {
+            Some(existing) => existing.enabled = true,
+            None => vars.push(own),
+        }
         self.edit(Edit::Variables(vars), cx);
     }
 
@@ -1632,12 +1637,16 @@ impl EnvEditor {
         let (Some(view), Some(name)) = (self.view(cx), self.selected.clone()) else {
             return;
         };
-        let overrides = (view.inherited.iter())
-            .filter(|v| v.state == InheritedState::OverriddenByOwn)
-            .map(|v| (v.name.clone(), v.from.clone()))
-            .collect();
+        let marked = |state: InheritedState| {
+            (view.inherited.iter())
+                .filter(|v| v.state == state)
+                .map(|v| (v.name.clone(), v.from.clone()))
+                .collect()
+        };
+        let overrides = marked(InheritedState::OverriddenByOwn);
+        let ignored = marked(InheritedState::WinsOverOwn);
         self.table
-            .update(cx, |t, cx| t.set_overrides(overrides, cx));
+            .update(cx, |t, cx| t.set_overrides(overrides, ignored, cx));
         // A dirty environment first seen now counts all its names as saved.
         if !view.dirty || !self.saved.contains_key(&name) {
             let names = view.variables.iter().map(|v| v.name.clone()).collect();

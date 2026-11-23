@@ -152,3 +152,48 @@ fn a_broken_chain_shows_its_warning(cx: &mut TestAppContext) {
     assert!(warning.contains("ghost"), "{warning}");
     assert!(present(cx, win, "env-inherited-warning"));
 }
+
+#[gpui_kit::test]
+fn override_enables_a_disabled_own_row_instead_of_adding_a_twin(cx: &mut TestAppContext) {
+    let leaf = "name: leaf\nextends: mid\nvariables:\n  - name: deep\n    value: mine\n    disabled: true\n";
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("environments/base.yml", BASE),
+        ("environments/mid.yml", MID),
+        ("environments/leaf.yml", leaf),
+    ]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, ed) = env_editor(cx, &ws, &root);
+    pick(cx, win, &ed, "leaf");
+    override_row(cx, win, &ed, "deep");
+    let view = env_view(cx, &ws, &root, "leaf");
+    let deep: Vec<_> = view.variables.iter().filter(|v| v.name == "deep").collect();
+    assert_eq!(deep.len(), 1, "no second row of the name");
+    assert!(deep[0].enabled);
+    assert!(
+        deep[0].value == VarValue::Text("mine".into()),
+        "own value kept"
+    );
+    let inherited = view.inherited.iter().find(|v| v.name == "deep").unwrap();
+    assert_eq!(inherited.state, InheritedState::OverriddenByOwn);
+}
+
+#[gpui_kit::test]
+fn an_own_row_an_inherited_secret_beats_is_marked_ignored(cx: &mut TestAppContext) {
+    let leaf = "name: leaf\nextends: mid\nvariables:\n  - name: token\n    value: plain\n";
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("environments/base.yml", BASE),
+        ("environments/mid.yml", MID),
+        ("environments/leaf.yml", leaf),
+    ]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, ed) = env_editor(cx, &ws, &root);
+    pick(cx, win, &ed, "leaf");
+    assert!(present(cx, win, ("env-row-ignored", 0usize)));
+    assert!(!present(cx, win, ("env-row-overrides", 0usize)));
+    let note = ed.read_with(cx, |e, cx| {
+        e.table().read(cx).ignored(0, cx).map(str::to_owned)
+    });
+    assert_eq!(note.as_deref(), Some("base"));
+}
