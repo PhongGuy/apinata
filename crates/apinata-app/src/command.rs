@@ -209,6 +209,10 @@ pub enum TreeOp {
     CreateDraftFromPresets {
         parent: ItemPath,
     },
+    /// Start an unsaved copy of the request `item` in its folder; answers `Created` with its path.
+    CreateDraftCopy {
+        item: ItemPath,
+    },
     /// Start a draft in `parent` holding `snapshot`, unsaved until saved when `unsaved`;
     /// answers `Created` with its path.
     CreateDraftFrom {

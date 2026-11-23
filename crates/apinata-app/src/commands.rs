@@ -49,9 +49,10 @@ use crate::sidebar::{
 };
 use crate::tab_area::{
     ActivateLastTab, ActivateNextTab, ActivatePrevTab, ActivateTab, BeautifyBody, BeautifyQuery,
-    CloseAllTabs, CloseOtherTabs, CloseSavedTabs, CloseTab, CloseTabsToTheRight, Compare,
-    ConvertToGraphql, ConvertToHttp, CopyAsCurl, ExportHar, GenerateCode, MinifyBody, PinTab,
-    ReopenClosedTab, RevealInSidebar, SaveAll, SaveAsExample, SendActive, StopActive, UnpinTab,
+    CloseAllTabs, CloseOtherTabs, CloseSavedTabs, CloseTab, CloseTabsToTheLeft,
+    CloseTabsToTheRight, Compare, ConvertToGraphql, ConvertToHttp, CopyAsCurl, DuplicateTab,
+    ExportHar, GenerateCode, MinifyBody, PinTab, ReopenClosedTab, RevealInSidebar, SaveAll,
+    SaveAsExample, SendActive, StopActive, UnpinTab,
 };
 use crate::ui::{CODE_EDITOR_CONTEXT as CODE_EDITOR, FocusNextControl, FocusPreviousControl};
 use crate::updates::CheckForUpdates;
@@ -890,10 +891,24 @@ pub fn registry() -> Vec<Command> {
             &[],
         ),
         command(
+            "tabs.close_to_left",
+            "Close to the left",
+            Tabs,
+            shell(CloseTabsToTheLeft),
+            &[],
+        ),
+        command(
             "tabs.close_to_right",
             "Close to the right",
             Tabs,
             shell(CloseTabsToTheRight),
+            &[],
+        ),
+        command(
+            "tabs.duplicate",
+            "Duplicate tab",
+            Tabs,
+            shell(DuplicateTab),
             &[],
         ),
         command(

@@ -43,9 +43,10 @@ use crate::snapshot::{RowKind, Unsupported};
 use crate::style;
 use crate::tab_area::{
     ActivateLastTab, ActivateNextTab, ActivatePrevTab, BeautifyBody, BeautifyQuery, CloseAllTabs,
-    CloseOtherTabs, CloseSavedTabs, CloseTab, CloseTabsToTheRight, Compare, ConvertToGraphql,
-    ConvertToHttp, CopyAsCurl, ExportHar, GenerateCode, MinifyBody, PinTab, ReopenClosedTab,
-    RevealInSidebar, SaveAll, SaveAsExample, SendActive, StopActive, TabArea, UnpinTab,
+    CloseOtherTabs, CloseSavedTabs, CloseTab, CloseTabsToTheLeft, CloseTabsToTheRight, Compare,
+    ConvertToGraphql, ConvertToHttp, CopyAsCurl, DuplicateTab, ExportHar, GenerateCode, MinifyBody,
+    PinTab, ReopenClosedTab, RevealInSidebar, SaveAll, SaveAsExample, SendActive, StopActive,
+    TabArea, UnpinTab,
 };
 use crate::updates::CheckForUpdates;
 use crate::workspace::Workspace;
@@ -248,8 +249,12 @@ pub struct PaletteEntry {
 pub struct Availability {
     /// "Run selected requests": several rows, or a folder or collection row, are selected.
     pub run_selected: bool,
+    /// "Close to the left": the active tab has an unpinned tab before it.
+    pub close_to_left: bool,
     /// "Close to the right": the active tab has an unpinned tab after it.
     pub close_to_right: bool,
+    /// "Duplicate tab": the active tab shows a request.
+    pub duplicate_tab: bool,
     /// "Reveal in sidebar": the active tab has a sidebar row.
     pub reveal: bool,
     /// "Close other tabs": an unpinned tab other than the active one is open.
@@ -337,7 +342,9 @@ impl Availability {
     pub fn all() -> Self {
         Availability {
             run_selected: true,
+            close_to_left: true,
             close_to_right: true,
+            duplicate_tab: true,
             reveal: true,
             close_others: true,
             reopen_closed: true,
@@ -424,7 +431,9 @@ pub fn palette_items() -> Vec<PaletteEntry> {
 pub fn palette_items_for(available: Availability) -> Vec<PaletteEntry> {
     let hidden: Vec<&str> = [
         (available.run_selected, RunSelected.name()),
+        (available.close_to_left, CloseTabsToTheLeft.name()),
         (available.close_to_right, CloseTabsToTheRight.name()),
+        (available.duplicate_tab, DuplicateTab.name()),
         (available.reveal, RevealInSidebar.name()),
         (available.close_others, CloseOtherTabs.name()),
         (available.reopen_closed, ReopenClosedTab.name()),
@@ -725,16 +734,15 @@ fn availability_now(
         updates,
         tree_request,
     } = opening;
-    let (close_to_right, reveal) = workspace.map_or((true, true), |w| {
-        let tab = crate::tab_area::active_tab_commands(w.read(cx).tabs());
-        (tab.close_to_right, tab.reveal)
-    });
+    let tab = workspace.map(|w| crate::tab_area::active_tab_commands(w.read(cx).tabs()));
     let tabs = tab_area.map(|t| t.read(cx).palette_flags(cx));
     let offers = |entry| sidebar.is_none_or(|s| s.read(cx).selection_offers(entry, cx));
     Availability {
         run_selected: sidebar.is_none_or(|s| s.read(cx).run_selected_available(cx)),
-        close_to_right,
-        reveal,
+        close_to_left: tab.is_none_or(|t| t.close_to_left),
+        close_to_right: tab.is_none_or(|t| t.close_to_right),
+        duplicate_tab: tab.is_none_or(|t| t.duplicate),
+        reveal: tab.is_none_or(|t| t.reveal),
         close_others: tabs.is_none_or(|t| t.close_others),
         reopen_closed: tabs.is_none_or(|t| t.reopen_closed),
         stop: tabs.is_none_or(|t| t.stop),

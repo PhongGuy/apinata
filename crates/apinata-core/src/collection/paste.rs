@@ -142,7 +142,7 @@ fn top_folder_root(folder_file: Option<&Mapping>, name: &str, seq: u64) -> Mappi
 }
 
 /// `base` with Bruno-style copy suffix number `n`: none for 0, ` (copy)`, ` (copy 2)`...
-fn copy_name(base: &str, n: u32) -> String {
+pub(super) fn copy_name(base: &str, n: u32) -> String {
     match n {
         0 => base.to_owned(),
         1 => format!("{base} (copy)"),

@@ -65,8 +65,12 @@ actions!(
         /// Closes every tab but the active one and the pinned ones, asking once for the
         /// dirty ones.
         CloseOtherTabs,
+        /// Closes the unpinned tabs left of the active one, asking once for the dirty ones.
+        CloseTabsToTheLeft,
         /// Closes the unpinned tabs right of the active one, asking once for the dirty ones.
         CloseTabsToTheRight,
+        /// Opens an unsaved copy of the active request tab in the same folder.
+        DuplicateTab,
         /// Selects the active tab's item in the sidebar, opening its folders.
         RevealInSidebar,
         /// Closes every unpinned tab without unsaved changes.
@@ -122,19 +126,23 @@ pub struct ActivateTab(pub usize);
 enum MenuChoice {
     Close,
     CloseOthers,
+    CloseToLeft,
     CloseToRight,
     CloseSaved,
     CloseAll,
+    Duplicate,
     Reveal,
 }
 
 impl MenuChoice {
-    const ALL: [MenuChoice; 6] = [
+    const ALL: [MenuChoice; 8] = [
         MenuChoice::Close,
         MenuChoice::CloseOthers,
+        MenuChoice::CloseToLeft,
         MenuChoice::CloseToRight,
         MenuChoice::CloseSaved,
         MenuChoice::CloseAll,
+        MenuChoice::Duplicate,
         MenuChoice::Reveal,
     ];
 
@@ -142,9 +150,11 @@ impl MenuChoice {
         match self {
             MenuChoice::Close => "Close",
             MenuChoice::CloseOthers => label("tabs.close_others"),
+            MenuChoice::CloseToLeft => label("tabs.close_to_left"),
             MenuChoice::CloseToRight => label("tabs.close_to_right"),
             MenuChoice::CloseSaved => label("tabs.close_saved"),
             MenuChoice::CloseAll => label("tabs.close_all"),
+            MenuChoice::Duplicate => "Duplicate",
             MenuChoice::Reveal => label("tabs.reveal_in_sidebar"),
         }
     }
@@ -154,9 +164,11 @@ impl MenuChoice {
         match self {
             MenuChoice::Close => Box::new(CloseTab),
             MenuChoice::CloseOthers => Box::new(CloseOtherTabs),
+            MenuChoice::CloseToLeft => Box::new(CloseTabsToTheLeft),
             MenuChoice::CloseToRight => Box::new(CloseTabsToTheRight),
             MenuChoice::CloseSaved => Box::new(CloseSavedTabs),
             MenuChoice::CloseAll => Box::new(CloseAllTabs),
+            MenuChoice::Duplicate => Box::new(DuplicateTab),
             MenuChoice::Reveal => Box::new(RevealInSidebar),
         }
     }
@@ -166,7 +178,7 @@ impl MenuChoice {
 const TAB_KEYS: &[&str] = &[SHELL_CONTEXT];
 
 /// The labels of a tab's context menu, in menu order.
-pub fn tab_menu_labels() -> [&'static str; 6] {
+pub fn tab_menu_labels() -> [&'static str; 8] {
     MenuChoice::ALL.map(MenuChoice::label)
 }
 
@@ -178,6 +190,27 @@ fn reveal_path(kind: &TabKind) -> Option<ItemPath> {
         TabKind::Folder(path) | TabKind::Runner(path) => Some(path.clone()),
         TabKind::Collection => Some(ItemPath::root()),
         TabKind::Environments | TabKind::RunSelection(_) => None,
+    }
+}
+
+/// The unpinned tabs before `from` in the strip, which the tab menu and the palette close
+/// for "Close to the left".
+pub(crate) fn tabs_left_of(tabs: &Tabs, from: TabId) -> Vec<TabId> {
+    let entries = tabs.entries();
+    let Some(at) = entries.iter().position(|e| e.id == from) else {
+        return Vec::new();
+    };
+    (entries[..at].iter())
+        .filter(|e| !e.pinned)
+        .map(|e| e.id)
+        .collect()
+}
+
+/// The request a tab's Duplicate copies: only a request tab, saved or draft, has one.
+fn duplicable(kind: &TabKind) -> Option<&ItemPath> {
+    match kind {
+        TabKind::Request(item) => Some(item),
+        _ => None,
     }
 }
 
@@ -221,7 +254,9 @@ pub(crate) struct TabPaletteFlags {
 /// Which tab commands apply to the active tab, as the tab menu decides for its own tab.
 #[derive(Clone, Copy)]
 pub(crate) struct TabCommands {
+    pub close_to_left: bool,
     pub close_to_right: bool,
+    pub duplicate: bool,
     pub reveal: bool,
 }
 
@@ -229,12 +264,16 @@ pub(crate) struct TabCommands {
 pub(crate) fn active_tab_commands(tabs: &Tabs) -> TabCommands {
     let Some(active) = tabs.active() else {
         return TabCommands {
+            close_to_left: false,
             close_to_right: false,
+            duplicate: false,
             reveal: false,
         };
     };
     TabCommands {
+        close_to_left: !tabs_left_of(tabs, active.id).is_empty(),
         close_to_right: !tabs_right_of(tabs, active.id).is_empty(),
+        duplicate: duplicable(&active.kind).is_some(),
         reveal: reveal_path(&active.kind).is_some(),
     }
 }
@@ -588,9 +627,20 @@ impl TabArea {
             [one] => format!("Save changes to \"{}\"?", self.tab_label(one, cx)),
             many => format!("Save changes to {} tabs?", many.len()),
         };
+        // The detail line is worded as the window close prompt words its own.
+        let names: Vec<String> = dirty.iter().map(|e| self.tab_label(e, cx)).collect();
+        let detail = {
+            let ws = self.workspace.read(cx);
+            let mut roots: Vec<&Path> = dirty.iter().map(|e| e.root.as_path()).collect();
+            roots.sort();
+            roots.dedup();
+            let scratch = roots.iter().any(|r| ws.is_scratch(r));
+            let collections = roots.iter().filter(|r| !ws.is_scratch(r)).count();
+            closing::close_detail(&names, collections, scratch)
+        };
         closing::hold(window, cx);
         let answer = confirm::ask(
-            confirm::save_ask(message.into(), None, "Don't save", "Save"),
+            confirm::save_ask(message.into(), Some(detail.into()), "Don't save", "Save"),
             window,
             cx,
         );
@@ -1038,9 +1088,11 @@ impl TabArea {
             .filter(|choice| match choice {
                 MenuChoice::Close => false,
                 MenuChoice::CloseOthers => !unpinned(&|e| e.id != tab),
+                MenuChoice::CloseToLeft => tabs_left_of(tabs, tab).is_empty(),
                 MenuChoice::CloseToRight => tabs_right_of(tabs, tab).is_empty(),
                 MenuChoice::CloseSaved => !unpinned(&|e| !self.is_dirty(e, cx)),
                 MenuChoice::CloseAll => !unpinned(&|_| true),
+                MenuChoice::Duplicate => duplicable(&entry.kind).is_none(),
                 MenuChoice::Reveal => reveal_path(&entry.kind).is_none(),
             })
             .map(MenuChoice::label)
@@ -2122,8 +2174,16 @@ impl TabArea {
                 self.close_others(tab, window, cx);
                 return;
             }
+            MenuChoice::CloseToLeft => {
+                self.close_to_left(tab, window, cx);
+                return;
+            }
             MenuChoice::CloseToRight => {
                 self.close_to_right(tab, window, cx);
+                return;
+            }
+            MenuChoice::Duplicate => {
+                self.duplicate(tab, cx);
                 return;
             }
             MenuChoice::Reveal => {
@@ -2146,6 +2206,28 @@ impl TabArea {
             .map(|e| e.id)
             .collect();
         self.close(ids, window, cx);
+    }
+
+    // Closes the unpinned tabs before `from`, asking once for the dirty ones.
+    fn close_to_left(&mut self, from: TabId, window: &mut Window, cx: &mut Context<Self>) {
+        let ids = tabs_left_of(self.workspace.read(cx).tabs(), from);
+        if !ids.is_empty() {
+            self.close(ids, window, cx);
+        }
+    }
+
+    // Asks for an unsaved copy of tab `id`'s request beside it; it opens as a draft tab once
+    // made. A tab with no request does nothing.
+    fn duplicate(&mut self, id: TabId, cx: &mut Context<Self>) {
+        let ws = self.workspace.clone();
+        let Some(entry) = ws.read(cx).tabs().get(id) else {
+            return;
+        };
+        let Some(item) = duplicable(&entry.kind).cloned() else {
+            return;
+        };
+        let root = entry.root.clone();
+        ws.update(cx, |w, cx| w.new_draft_copy(&root, item, cx));
     }
 
     // Closes the unpinned tabs after `from`, asking once for the dirty ones.
@@ -2206,6 +2288,26 @@ impl TabArea {
     ) {
         if let Some(id) = self.workspace.read(cx).tabs().active().map(|e| e.id) {
             self.close_to_right(id, window, cx);
+        }
+    }
+
+    /// Closes the unpinned tabs left of the active one, asking once for the dirty ones; with
+    /// no active tab, or nothing to its left, it does nothing.
+    pub fn close_tabs_to_the_left(
+        &mut self,
+        _: &CloseTabsToTheLeft,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(id) = self.workspace.read(cx).tabs().active().map(|e| e.id) {
+            self.close_to_left(id, window, cx);
+        }
+    }
+
+    /// Opens an unsaved copy of the active request tab in its folder; other tabs do nothing.
+    pub fn duplicate_tab(&mut self, _: &DuplicateTab, _: &mut Window, cx: &mut Context<Self>) {
+        if let Some(id) = self.workspace.read(cx).tabs().active().map(|e| e.id) {
+            self.duplicate(id, cx);
         }
     }
 
@@ -2429,13 +2531,14 @@ impl TabArea {
                             .ok();
                     },
                 );
-                // The close choices, Reveal, the change entries and pinning each form a group.
+                // The close choices, Duplicate with Reveal, the change entries and pinning each
+                // form a group.
                 for choice in MenuChoice::ALL {
                     let view = menu_view.clone();
                     menu = ui::MenuLine::new(choice.label())
                         .action(choice.action())
                         .disabled(greyed.contains(&choice.label()))
-                        .group_break(choice == MenuChoice::Reveal)
+                        .group_break(choice == MenuChoice::Duplicate)
                         .add_to(
                             menu,
                             TAB_KEYS,

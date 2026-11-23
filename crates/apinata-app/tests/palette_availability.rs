@@ -520,7 +520,9 @@ fn tab_commands_follow_the_open_tabs_and_their_state(cx: &mut TestAppContext) {
 // With no tab open, every command of the Tabs group is hidden.
 fn no_tabs() -> Availability {
     Availability {
+        close_to_left: false,
         close_to_right: false,
+        duplicate_tab: false,
         reveal: false,
         reopen_closed: false,
         close_others: false,
