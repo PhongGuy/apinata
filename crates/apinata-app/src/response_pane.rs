@@ -2898,6 +2898,7 @@ impl ResponsePane {
         let mut h = std::hash::DefaultHasher::new();
         (
             "live",
+            self.key.is_some(),
             send.viewing(),
             self.history.is_empty(),
             self.save_example,
@@ -4564,6 +4565,20 @@ impl ResponsePane {
         self.compare_menu("response-compare", "Compare", Some(COMPARE_ICON), cx)
     }
 
+    // A first send's History button, locked until the run it will list has ended; a pane
+    // that keeps no history shows none.
+    fn live_history_button(&self, cx: &Context<Self>) -> Option<AnyElement> {
+        self.key.as_ref()?;
+        let id = "response-history";
+        let button =
+            icon_dropdown(id, AssetIcon::RotateCcwClock, "Previous runs", cx).lock(true, cx);
+        Some(tipped(
+            id,
+            "Previous runs: Available when the stream ends".into(),
+            button,
+        ))
+    }
+
     // The Compare dropdown as the finished line will offer it, locked until the result exists.
     fn live_compare_button(&self, cx: &Context<Self>) -> Option<AnyElement> {
         if self.compact.get() || !self.compare_offered || self.compare_choices(cx).is_empty() {
@@ -4960,7 +4975,10 @@ impl ResponsePane {
                 )
                 .child(har_button(Some(pending), cx))
             })
-            .children(self.history_button(cx))
+            .children(
+                self.history_button(cx)
+                    .or_else(|| self.live_history_button(cx)),
+            )
             .children(self.live_compare_button(cx));
         let after = vec![
             stream_chip("response-stream-state", "streaming", cx),

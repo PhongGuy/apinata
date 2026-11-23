@@ -141,3 +141,37 @@ fn the_status_line_keeps_its_shape_when_the_stream_ends(cx: &mut TestAppContext)
     assert_eq!(after.size.height, line.size.height);
     assert_eq!(after.origin.y, line.origin.y);
 }
+
+// A first send has no previous runs, yet its History button lands when the stream ends; the
+// live line holds that place, so the button does not move in.
+#[gpui_kit::test]
+fn the_history_button_holds_its_place_on_a_first_send(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let steps = vec![
+        event("one"),
+        Step::Pause(Duration::from_secs(2)),
+        Step::Finish,
+    ];
+    let server = sse(cx, Script::sse(steps));
+    let col = sse_collection(&server);
+    let s = started(cx, &col);
+    let tab = open_tab(cx, &s.ws, &s.root, "a.yml");
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| w.click("send", cx))
+        .unwrap();
+    let ed = editor_of(cx, &s, tab);
+    let model = ed.read_with(cx, |e, _| e.send_model().clone());
+    wait_real(cx, |cx| {
+        model.read_with(cx, |m, _| m.live().is_some_and(|l| l.events().len() == 1))
+    });
+    frame(cx, s.win);
+    assert!(
+        present(cx, s.win, "response-history"),
+        "no History while streaming"
+    );
+    let live = bounds(cx, s.win, "response-history");
+    finished(cx, &model);
+    wait_real(cx, |cx| present(cx, s.win, "response-stream-end"));
+    frame(cx, s.win);
+    assert_eq!(bounds(cx, s.win, "response-history"), live);
+}
