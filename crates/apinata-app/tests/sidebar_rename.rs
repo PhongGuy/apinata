@@ -509,3 +509,79 @@ fn an_echoed_enter_on_a_siblings_name_draws_the_refusal(cx: &mut TestAppContext)
         "an edit clears it"
     );
 }
+
+fn renaming(
+    cx: &mut TestAppContext,
+    h: &SidebarHarness,
+) -> Option<(std::path::PathBuf, apinata_core::ItemPath)> {
+    h.view.read_with(cx, |s, _| s.renaming())
+}
+
+fn root_text(h: &SidebarHarness) -> String {
+    std::fs::read_to_string(h.root.join("opencollection.yml")).unwrap()
+}
+
+#[gpui_kit::test]
+fn f2_on_the_collection_row_renames_only_its_display_name(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    cx.update_window(h.win, |_, w, cx| w.click(row(""), cx))
+        .unwrap();
+    frame(cx, h.win);
+    focus_tree(cx, &h);
+    cx.simulate_keystrokes(h.win, "f2");
+    frame(cx, h.win);
+    assert_eq!(renaming(cx, &h), Some((h.root.clone(), ip(""))));
+    assert!(shown(
+        cx,
+        h.win,
+        apinata_app::sidebar::marker_id("rename", &row(""))
+    ));
+    type_and(cx, &h, "Renamed collection", "enter");
+    frame(cx, h.win);
+    // The writer's own layout, with only the name changed.
+    assert_eq!(
+        root_text(&h),
+        "opencollection: 1.0.0\n\ninfo:\n  name: Renamed collection\n"
+    );
+    assert!(h.root.join("health.yml").exists(), "the directory stays");
+    assert_eq!(renaming(cx, &h), None);
+    let name = h.view.read_with(cx, |s, cx| s.selected_name(cx));
+    assert_eq!(name.as_deref(), Some("Renamed collection"));
+}
+
+#[gpui_kit::test]
+fn the_collection_menus_rename_refuses_a_blank_name(cx: &mut TestAppContext) {
+    use apinata_app::sidebar::menu::MenuEntry;
+    use apinata_app::sidebar::model::NodeKind;
+    let h = open_sidebar(cx);
+    choose_menu(cx, h.win, "", NodeKind::Collection, MenuEntry::Rename);
+    frame(cx, h.win);
+    assert_eq!(renaming(cx, &h), Some((h.root.clone(), ip(""))));
+    type_and(cx, &h, "   ", "enter");
+    assert_eq!(renaming(cx, &h), None);
+    assert_eq!(root_text(&h), ROOT);
+    let s = h.ws.read_with(cx, |w, cx| w.snapshot(&h.root, cx)).unwrap();
+    assert_eq!(s.acked, 0, "no command reached the actor");
+}
+
+#[gpui_kit::test]
+fn the_scratch_row_cannot_be_renamed(cx: &mut TestAppContext) {
+    use apinata_app::sidebar::menu::{MenuEntry, scratch_blocked};
+    assert!(scratch_blocked(MenuEntry::Rename));
+    let col = collection();
+    let s = started(cx, &col);
+    let scratch = s.ws.update(cx, |w, cx| w.open_scratch(cx)).unwrap();
+    s.ws.update(cx, |w, cx| {
+        w.new_draft(&scratch, apinata_core::ItemPath::root(), cx)
+    });
+    frame(cx, s.win);
+    let sidebar = s.shell.read_with(cx, |sh, _| sh.sidebar().clone());
+    cx.update_window(s.win, |_, w, cx| {
+        sidebar.update(cx, |sb, cx| {
+            sb.start_rename(&scratch, &apinata_core::ItemPath::root(), w, cx)
+        })
+    })
+    .unwrap();
+    frame(cx, s.win);
+    assert_eq!(sidebar.read_with(cx, |sb, _| sb.renaming()), None);
+}

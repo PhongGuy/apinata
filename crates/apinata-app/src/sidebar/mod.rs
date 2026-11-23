@@ -1177,8 +1177,8 @@ impl Sidebar {
             .unwrap_or_else(ItemPath::root)
     }
 
-    /// Folders and requests only; any other row is ignored. Focuses an input holding the
-    /// name, all selected.
+    /// Folders, requests and collection rows only; any other row is ignored. Focuses an input
+    /// holding the name, all selected.
     pub fn start_rename(
         &mut self,
         root: &Path,
@@ -1192,12 +1192,15 @@ impl Sidebar {
     }
 
     // Renames `node` itself, so an example row brings its own index and name rather than
-    // its request's, with which it shares a path.
+    // its request's, with which it shares a path. A collection row renames its display name
+    // alone, and the scratch pad keeps its own.
     fn begin_rename(&mut self, node: &Node, window: &mut Window, cx: &mut Context<Self>) {
-        if !matches!(
-            node.kind,
-            NodeKind::Folder | NodeKind::Request | NodeKind::Example
-        ) {
+        let renames = match node.kind {
+            NodeKind::Folder | NodeKind::Request | NodeKind::Example => true,
+            NodeKind::Collection => !self.workspace.read(cx).is_scratch(&node.root),
+            _ => false,
+        };
+        if !renames {
             return;
         }
         let old = node.name.clone();
@@ -1461,6 +1464,7 @@ impl Sidebar {
             return;
         }
         let op = match r.example {
+            None if r.path.is_root() => TreeOp::RenameCollection { name },
             Some(index) => TreeOp::RenameExample {
                 item: r.path,
                 index,
@@ -3200,6 +3204,7 @@ impl Render for Sidebar {
                                 // indent, chevron slot and icon or method tag.
                                 let lead = match n.kind {
                                     NodeKind::Example => example_lead(n),
+                                    NodeKind::Collection => h_flex().child(chevron_slot(n)),
                                     _ => item_lead(
                                         n,
                                         (n.kind == NodeKind::Request && entry.is_folder()).then(

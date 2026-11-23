@@ -822,6 +822,7 @@ impl Actor {
                     name,
                     rename_file,
                 },
+                TreeOp::RenameCollection { name } => TreeOp::RenameCollection { name },
                 TreeOp::Delete { item } => TreeOp::Delete { item: p(item) },
                 TreeOp::DeleteEmptyFolder { item } => TreeOp::DeleteEmptyFolder { item: p(item) },
                 TreeOp::Trash { item } => TreeOp::Trash { item: p(item) },
@@ -1040,6 +1041,10 @@ impl Actor {
                 let to = self.collection.rename(&item, &name, rename_file);
                 self.moved_to(from, to)
             }
+            TreeOp::RenameCollection { name } => c
+                .rename_collection(&name)
+                .map(|()| None)
+                .map_err(|e| failed(&Target::Collection, e)),
             TreeOp::Paste { target, source } => created(c.paste(&target, &source)),
             TreeOp::Move { item, to } => {
                 let from = self.item_target(&item);

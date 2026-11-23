@@ -569,6 +569,20 @@ impl Collection {
         self.insert_file(&parent, &path)
     }
 
+    /// Set the collection's display name, `info.name` in `opencollection.yml`, to `name`
+    /// trimmed, writing it at once; unsaved edits stay unsaved and the directory keeps its name.
+    ///
+    /// Fails with `InvalidName` for a blank name, and `Conflict` or `Io` when the write fails.
+    pub fn rename_collection(&mut self, name: &str) -> Result<(), TreeError> {
+        let trimmed = js_trim(name);
+        if trimmed.is_empty() {
+            return Err(TreeError::InvalidName {
+                name: name.to_owned(),
+            });
+        }
+        Ok(self.file.write_name(trimmed)?)
+    }
+
     /// Set the display name of the request or folder at `item`, writing it at once; unsaved
     /// edits stay unsaved. With `rename_file` the file or directory is then renamed to the
     /// sanitised name, with Bruno's numeric suffix when that is taken. Returns the item's path.

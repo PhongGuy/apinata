@@ -175,7 +175,7 @@ impl MenuEntry {
 }
 
 /// Whether the scratch pad's row greys out `entry`: the scratch has no collection files to run,
-/// configure, export or close.
+/// configure, rename, export or close.
 pub fn scratch_blocked(entry: MenuEntry) -> bool {
     use MenuEntry as E;
     matches!(
@@ -188,6 +188,7 @@ pub fn scratch_blocked(entry: MenuEntry) -> bool {
             | E::ExportPostmanKeepScripts
             | E::ExportOpenApi
             | E::ExportHtml
+            | E::Rename
             | E::Close
     )
 }
@@ -214,6 +215,7 @@ pub fn menu_entries(kind: NodeKind) -> &'static [MenuEntry] {
             E::OpenInTerminal,
             E::CollapseAll,
             E::ExpandAll,
+            E::Rename,
             E::Close,
         ],
         NodeKind::Folder => &[

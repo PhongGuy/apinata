@@ -66,6 +66,7 @@ fn entries_follow_the_row_kind() {
             E::OpenInTerminal,
             E::CollapseAll,
             E::ExpandAll,
+            E::Rename,
             E::Close
         ]
     );

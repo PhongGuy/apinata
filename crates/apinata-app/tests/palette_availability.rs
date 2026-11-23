@@ -680,6 +680,46 @@ fn rename_is_hidden_while_a_rename_is_under_way(cx: &mut TestAppContext) {
     assert!(palette_lists(cx, &s, rename), "listed after");
 }
 
+#[gpui_kit::test]
+fn the_palettes_rename_starts_renaming_a_selected_collection_row(cx: &mut TestAppContext) {
+    let col = with_folder();
+    let s = started(cx, &col);
+    frame(cx, s.win);
+    click_row(cx, &s, "");
+    let rename = label("request.rename");
+    assert!(palette_lists(cx, &s, rename));
+    cx.simulate_keystrokes(s.win, &key("shift-p"));
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| w.input(rename, cx))
+        .unwrap();
+    frame(cx, s.win);
+    // "Check for renamed secrets" also matches, in an order the palette's ranking decides, so
+    // the keys step down to wherever Rename lists.
+    let labels: Vec<String> = cx
+        .update_window(s.win, |_, w, _| {
+            gpui_kit::base::test_support::snapshots(w)
+                .iter()
+                .filter(|n| n.role() == Some(gpui_kit::Role::ListBoxOption))
+                .filter_map(|n| n.label().map(str::to_owned))
+                .collect()
+        })
+        .unwrap();
+    let at = labels
+        .iter()
+        .position(|l| l == rename)
+        .expect("Rename lists");
+    for _ in 0..at {
+        cx.simulate_keystrokes(s.win, "down");
+    }
+    cx.simulate_keystrokes(s.win, "enter");
+    frame(cx, s.win);
+    let sidebar = s.shell.read_with(cx, |sh, _| sh.sidebar().clone());
+    assert_eq!(
+        sidebar.read_with(cx, |sb, _| sb.renaming()),
+        Some((s.root.clone(), ip("")))
+    );
+}
+
 // With no tab the Request group is gone, so Enter must still run the row it highlights in
 // the sections after it.
 #[gpui_kit::test]

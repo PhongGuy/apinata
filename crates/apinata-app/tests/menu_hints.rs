@@ -72,7 +72,7 @@ fn the_collection_menu_is_split_into_groups(cx: &mut TestAppContext) {
             ]),
             some(&["Show in file manager", "Open in terminal"]),
             some(&["Collapse all", "Expand all"]),
-            some(&["Close collection"]),
+            some(&["Rename", "Close collection"]),
         ]
     );
 }
