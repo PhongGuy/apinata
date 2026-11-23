@@ -105,7 +105,8 @@ fn a_delete_under_a_search_removes_the_cookie_shown(cx: &mut TestAppContext) {
         v.cookies().iter().map(|c| c.name.clone()).collect()
     });
     assert_eq!(left, ["a", "b"]);
-    assert!(present(cx, win, "jar-no-match"));
+    // The deleted cookie's Undo slot stands where it was, so the list is not empty yet.
+    assert!(present(cx, win, "jar-deleted") && !present(cx, win, "jar-no-match"));
 }
 
 fn clear_label(cx: &mut TestAppContext, win: AnyWindowHandle) -> Option<String> {

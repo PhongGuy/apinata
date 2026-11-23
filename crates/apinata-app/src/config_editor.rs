@@ -5,15 +5,15 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use apinata_core::{ItemPath, KeyValue, PostResponseVar, ScriptPhase, Variable};
+use apinata_core::{AuthSpec, ItemPath, KeyValue, PostResponseVar, ScriptPhase, Variable};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::tab::Tab;
 use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, AnyView, App, Entity, FocusHandle, Focusable, Role, ScrollHandle, Subscription,
-    TestSupportExt, Window, actions, div, relative,
+    AnyElement, AnyView, App, Entity, FocusHandle, Focusable, Role, ScrollHandle, SharedString,
+    Subscription, TestSupportExt, Window, actions, div,
 };
 
 use crate::app::AppState;
@@ -439,6 +439,45 @@ impl ConfigEditor {
             self.section = section;
             cx.notify();
         }
+    }
+
+    /// The enabled rows this folder or collection owns in a counted section: Headers, and
+    /// Vars with its post-response rows; `None` for the other sections or before a snapshot.
+    pub fn section_count(&self, section: ConfigSection, cx: &App) -> Option<usize> {
+        let view = self.view(cx)?;
+        match section {
+            ConfigSection::Headers => Some(view.headers.iter().filter(|h| h.enabled).count()),
+            ConfigSection::Vars => {
+                let vars = view.vars.iter().filter(|v| v.enabled).count();
+                let post = view.post_response_vars.iter().filter(|v| v.enabled());
+                Some(vars + post.count())
+            }
+            _ => None,
+        }
+    }
+
+    /// What a marked section's dot says when hovered: Auth with a mode of its own other than
+    /// No Auth, Script with a pre-request or post-response script, Tests with a tests script,
+    /// Docs with docs; `None` when unmarked. Inherited values never mark a section.
+    pub fn section_mark(&self, section: ConfigSection, cx: &App) -> Option<SharedString> {
+        let view = self.view(cx)?;
+        let scripts = &view.scripts;
+        let (marked, words) = match section {
+            ConfigSection::Auth => {
+                return match &view.auth {
+                    AuthSpec::None | AuthSpec::Inherit => None,
+                    auth => Some(format!("Uses {}", crate::auth_section::auth_label(auth)).into()),
+                };
+            }
+            ConfigSection::Script => (
+                !scripts.pre_request.is_empty() || !scripts.post_response.is_empty(),
+                "Has a script",
+            ),
+            ConfigSection::Tests => (!scripts.tests.is_empty(), "Has tests"),
+            ConfigSection::Docs => (!view.docs.trim().is_empty(), "Has docs"),
+            _ => (false, ""),
+        };
+        marked.then(|| words.into())
     }
 
     /// The folder's tag chip input; the collection has none.
@@ -1076,14 +1115,17 @@ impl ConfigEditor {
             .iter()
             .position(|s| *s == self.section)
             .unwrap_or(0);
-        let tabs = sections.iter().enumerate().map(|(ix, s)| {
-            Tab::new().child(
-                div()
-                    .line_height(relative(style::TAB_LINE_HEIGHT))
-                    .id(("config-section", ix))
-                    .test_support()
-                    .child(s.label()),
-            )
+        // Like the request editor's strip, a counted section shows its enabled rows and the
+        // others a dot naming what they hold.
+        let tabs = sections.iter().enumerate().map(|(ix, &s)| {
+            Tab::new().child(ui::section_tab(
+                &SECTION_TAB_IDS,
+                ix,
+                s.label(),
+                self.section_count(s, cx),
+                self.section_mark(s, cx),
+                None,
+            ))
         });
         // The menu shows only while last frame's layout overflowed; the watch redraws once
         // when this frame's layout disagrees.
@@ -1315,3 +1357,11 @@ impl Render for ConfigEditor {
             )
     }
 }
+
+const SECTION_TAB_IDS: ui::SectionTabIds = ui::SectionTabIds {
+    tab: "config-section-tab",
+    label: "config-section",
+    count: "config-section-count",
+    mark: "config-section-mode",
+    tooltip: "config-section-mode-tooltip",
+};
