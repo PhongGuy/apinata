@@ -177,6 +177,10 @@ pub enum TreeOp {
         name: String,
         rename_file: bool,
     },
+    /// Set the collection's display name; its directory keeps its name. Answers nothing.
+    RenameCollection {
+        name: String,
+    },
     Delete {
         item: ItemPath,
     },

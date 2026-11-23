@@ -54,6 +54,7 @@ mod codegen;
 mod collection_create;
 #[cfg(unix)]
 mod collection_fifo;
+mod collection_rename;
 mod compare;
 mod compare_cap;
 mod compare_texts;

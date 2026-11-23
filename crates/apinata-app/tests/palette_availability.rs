@@ -687,6 +687,48 @@ fn rename_is_hidden_while_a_rename_is_under_way(cx: &mut TestAppContext) {
     assert!(palette_lists(cx, &s, rename), "listed after");
 }
 
+#[gpui_kit::test]
+fn the_palettes_rename_starts_renaming_a_selected_collection_row(cx: &mut TestAppContext) {
+    let col = with_folder();
+    let s = started(cx, &col);
+    frame(cx, s.win);
+    click_row(cx, &s, "");
+    let rename = label("request.rename");
+    assert!(palette_lists(cx, &s, rename));
+    cx.simulate_keystrokes(s.win, &key("shift-p"));
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| w.input(rename, cx))
+        .unwrap();
+    frame(cx, s.win);
+    // "Check for renamed secrets" also matches, so Down steps until Rename is the highlighted
+    // row. Snapshots come back unordered, so the highlight is read, never a list position.
+    let highlighted = |cx: &mut TestAppContext| {
+        cx.update_window(s.win, |_, w, _| {
+            gpui_kit::base::test_support::snapshots(w)
+                .iter()
+                .filter(|n| n.role() == Some(gpui_kit::Role::ListBoxOption))
+                .find(|n| n.selected() == Some(true))
+                .and_then(|n| n.label().map(str::to_owned))
+        })
+        .unwrap()
+    };
+    for _ in 0..4 {
+        if highlighted(cx).as_deref() == Some(rename) {
+            break;
+        }
+        cx.simulate_keystrokes(s.win, "down");
+        frame(cx, s.win);
+    }
+    assert_eq!(highlighted(cx).as_deref(), Some(rename));
+    cx.simulate_keystrokes(s.win, "enter");
+    frame(cx, s.win);
+    let sidebar = s.shell.read_with(cx, |sh, _| sh.sidebar().clone());
+    assert_eq!(
+        sidebar.read_with(cx, |sb, _| sb.renaming()),
+        Some((s.root.clone(), ip("")))
+    );
+}
+
 // With no tab the Request group is gone, so Enter must still run the row it highlights in
 // the sections after it.
 #[gpui_kit::test]

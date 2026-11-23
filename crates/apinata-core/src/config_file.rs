@@ -344,6 +344,15 @@ impl CollectionFile {
         &mut self.inner.doc
     }
 
+    /// Write `info.name` through to disk, keeping unsaved edits unsaved.
+    pub(crate) fn write_name(&mut self, name: &str) -> Result<(), SaveError> {
+        self.inner.doc.write_through(
+            &["info", "name"],
+            Value::from(name),
+            &[COLLECTION_TOP, COLLECTION_INFO],
+        )
+    }
+
     /// The collection's `config.proxy` and `config.clientCertificates`.
     pub fn network(&self) -> CollectionNetwork {
         read_network(&self.inner.doc)
