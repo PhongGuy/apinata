@@ -263,8 +263,8 @@ pub const DEFAULT_SPLIT_RATIO: f32 = 0.5;
 /// The request pane height an untouched split reserves on a short room: toolbar, section bar
 /// and the three NTLM rows.
 pub const REQUEST_PANE_NEEDED: Rems = ui(232.);
-/// The response height a stacked request pane's row minimum leaves before it gives way; px,
-/// so it does not scale with zoom.
+/// The response height a stacked split leaves once the request pane holds its rows, room
+/// allowing; a shorter room gives the response only what is left. px, so it does not scale.
 pub const RESPONSE_KEPT: Pixels = px(240.);
 /// The response height an untouched split keeps when it favours the request pane.
 pub const RESPONSE_FLOOR: Pixels = px(72.);

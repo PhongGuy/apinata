@@ -2634,9 +2634,11 @@ impl Render for RequestEditor {
         } else {
             ratio
         };
-        // Side by side, the request panel never gets narrower than its URL row; stacked, never
-        // shorter than its rows above the section body plus one editor row, giving way on a
-        // short room so the response keeps RESPONSE_KEPT. The clamped share is not written back.
+        // Side by side, the request panel never gets narrower than its URL row; stacked, it
+        // keeps its rows above the section body plus one editor row before the response gets
+        // more than its header floor. A room too short for both keeps the quarter minimum, so
+        // the divider still moves. The clamped share is not written back.
+        let floor = style::RESPONSE_FLOOR.min(min);
         let request_min = match axis {
             _ if room <= Pixels::ZERO => min,
             Orientation::Horizontal => min.max(Self::url_row_need(window)),
@@ -2645,18 +2647,22 @@ impl Render for RequestEditor {
                     let need = rows
                         + style::resolve(style::ROW_HEIGHT, window)
                         + style::resolve(style::SPACE_2, window);
-                    need.min(room - style::RESPONSE_KEPT).max(min)
+                    if need <= room - floor {
+                        need.max(min)
+                    } else {
+                        min
+                    }
                 }
                 None => min,
             },
         };
         // The response keeps its header whole beside the request, giving way to the request's
-        // URL row for the frame before the axis stacks.
+        // URL row for the frame before the axis stacks; stacked, it takes what the request's
+        // rows leave, down to its header floor.
         let response_min = match axis {
-            Orientation::Horizontal if room > Pixels::ZERO => {
-                response_need.min(room - request_min).max(min)
-            }
-            _ => min,
+            _ if room <= Pixels::ZERO => min,
+            Orientation::Horizontal => response_need.min(room - request_min).max(min),
+            Orientation::Vertical => min.min(room - request_min).max(floor),
         };
         let ratio = if room > Pixels::ZERO {
             ratio
