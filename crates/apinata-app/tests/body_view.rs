@@ -379,3 +379,26 @@ fn find_opens_no_bar_on_an_image(cx: &mut TestAppContext) {
     assert!(!view.read_with(cx, |v, _| v.find_open()));
     assert!(!present(cx, win, "body-find"));
 }
+
+#[gpui_kit::test]
+fn a_detected_format_says_so_in_its_tooltip(cx: &mut TestAppContext) {
+    let plain = send_once(
+        cx,
+        ResponseTemplate::new(200).set_body_raw("{\"a\":1}", "text/plain"),
+        "",
+    );
+    let named = send_once(
+        cx,
+        ResponseTemplate::new(200).set_body_raw("{\"a\":1}", "application/json"),
+        "",
+    );
+    let (win, view) = host(cx);
+    show(cx, win, &view, &plain);
+    assert_eq!(view.read_with(cx, |v, _| v.format_label()), Some("JSON"));
+    assert_eq!(
+        view.read_with(cx, |v, _| v.format_tooltip()).as_deref(),
+        Some("Detected from the body: sent as text/plain")
+    );
+    show(cx, win, &view, &named);
+    assert_eq!(view.read_with(cx, |v, _| v.format_tooltip()), None);
+}
