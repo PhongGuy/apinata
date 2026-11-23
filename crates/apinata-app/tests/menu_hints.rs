@@ -198,7 +198,11 @@ fn the_tab_menu_groups_and_shows_keys(cx: &mut TestAppContext) {
     let all = labels(cx, s.win);
     let groups: Vec<Vec<Option<String>>> = all.split(Option::is_none).map(<[_]>::to_vec).collect();
     assert_eq!(groups.len(), 4, "{all:?}");
-    assert_eq!(groups[1], some(&["Reveal in sidebar"]));
+    assert!(
+        groups[0].contains(&Some("Close to the left".to_owned())),
+        "{all:?}"
+    );
+    assert_eq!(groups[1], some(&["Duplicate", "Reveal in sidebar"]));
     assert_eq!(groups[3], some(&["Pin tab"]));
     assert_eq!(row_keys(cx, s.win, "Close"), [shown("secondary-w")]);
 }

@@ -627,6 +627,7 @@ mod tab_close_right;
 mod tab_drag;
 mod tab_git;
 mod tab_keys;
+mod tab_menu_more;
 mod tab_overflow;
 mod tab_run_selection;
 mod tab_run_selection_extra;

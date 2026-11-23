@@ -854,6 +854,7 @@ impl Actor {
                 TreeOp::CreateDraftFromPresets { parent } => {
                     TreeOp::CreateDraftFromPresets { parent: p(parent) }
                 }
+                TreeOp::CreateDraftCopy { item } => TreeOp::CreateDraftCopy { item: p(item) },
                 TreeOp::CreateDraftFrom {
                     parent,
                     snapshot,
@@ -1103,6 +1104,7 @@ impl Actor {
             TreeOp::CreateDraftFromPresets { parent } => {
                 created(c.create_draft_from_presets(&parent))
             }
+            TreeOp::CreateDraftCopy { item } => created(c.create_draft_copy(&item)),
             TreeOp::CreateDraftFrom {
                 parent,
                 snapshot,

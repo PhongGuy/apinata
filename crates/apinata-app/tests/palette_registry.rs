@@ -74,7 +74,7 @@ const NOT_LISTED: &[&str] = &[
 const TREE_ONLY: &[&str] = &["sidebar::DeleteSelected", "sidebar::RunSelected"];
 
 // App actions with no key binding, which the bindings cannot reveal.
-const UNBOUND: [&str; 28] = [
+const UNBOUND: [&str; 30] = [
     "apinata::OpenAbout",
     "apinata::CopyCaretJsonValue",
     "apinata::CopyCaretJsonPath",
@@ -91,7 +91,9 @@ const UNBOUND: [&str; 28] = [
     "apinata::OpenVariablesOverview",
     "apinata::NewGraphqlRequest",
     "apinata::CloseOtherTabs",
+    "apinata::CloseTabsToTheLeft",
     "apinata::CloseTabsToTheRight",
+    "apinata::DuplicateTab",
     "apinata::RevealInSidebar",
     "apinata::CloseSavedTabs",
     "apinata::OpenGlobalEnvironments",

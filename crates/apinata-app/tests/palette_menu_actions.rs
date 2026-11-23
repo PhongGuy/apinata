@@ -142,9 +142,11 @@ fn menus_take_the_registry_names() {
         vec![
             "Close",
             named("tabs.close_others"),
+            named("tabs.close_to_left"),
             named("tabs.close_to_right"),
             named("tabs.close_saved"),
             named("tabs.close_all"),
+            "Duplicate",
             named("tabs.reveal_in_sidebar"),
         ]
     );

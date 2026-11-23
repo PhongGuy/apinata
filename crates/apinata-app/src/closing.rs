@@ -437,7 +437,7 @@ fn ask_to_close(
         confirm::save_ask(
             "Save changes before closing?".into(),
             Some(detail.into()),
-            "Discard",
+            "Don't save",
             "Save all",
         ),
         window,

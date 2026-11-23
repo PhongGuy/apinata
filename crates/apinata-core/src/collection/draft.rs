@@ -63,6 +63,27 @@ impl Collection {
         self.push_draft(parent, root)
     }
 
+    /// Start an unsaved copy of the request at `item`, a draft included, in the same folder.
+    /// It holds the request's current mapping, unsaved edits included, and is named
+    /// `"<name> (copy)"`, or `"<name> (copy <n>)"` with the lowest `n` from 2 no other draft
+    /// holds. Nothing is written; `NotFound` when `item` is not a request.
+    pub fn create_draft_copy(&mut self, item: &ItemPath) -> Result<ItemPath, TreeError> {
+        let not_found = || TreeError::NotFound { item: item.clone() };
+        let source = self.request(item).ok_or_else(not_found)?;
+        let mut root = source.document().mapping().clone();
+        let base = source.name().to_owned();
+        let parent = item.parent().ok_or_else(not_found)?;
+        let taken = |name: &str| self.drafts.iter().any(|d| d.name() == name);
+        let mut n = 1;
+        let mut name = super::paste::copy_name(&base, n);
+        while taken(&name) {
+            n += 1;
+            name = super::paste::copy_name(&base, n);
+        }
+        set_value(&mut root, &["info", "name"], Value::from(name), INFO_ORDER);
+        self.push_draft(&parent, root)
+    }
+
     // Place `root` as a new draft in the next `untitled-<n>.draft` slot of `parent`.
     fn push_draft(&mut self, parent: &ItemPath, root: Mapping) -> Result<ItemPath, TreeError> {
         let not_found = || TreeError::NotFound {

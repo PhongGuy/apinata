@@ -2196,6 +2196,21 @@ impl Workspace {
         Some(id)
     }
 
+    /// Asks the collection at `root` for an unsaved copy of the request `item` in its folder;
+    /// once created, the copy opens as a draft tab like `new_draft_of_kind`'s. `None` with
+    /// nothing sent when the root is not open.
+    pub fn new_draft_copy(
+        &mut self,
+        root: &Path,
+        item: ItemPath,
+        cx: &mut Context<Self>,
+    ) -> Option<u64> {
+        let root = absolute(root);
+        let id = self.send(&root, Command::Tree(TreeOp::CreateDraftCopy { item }), cx)?;
+        self.drafts.insert((root, id));
+        Some(id)
+    }
+
     /// Asks for a draft at the collection root from `snapshot`; once it opens, its tab holds
     /// `key` and `take_kept_view` yields `seq`. None when the root is not open.
     pub fn reopen_draft(
