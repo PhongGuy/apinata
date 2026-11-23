@@ -727,6 +727,30 @@ fn commit_with_nothing_staged_fails_with_exit_3() {
 }
 
 #[test]
+fn commit_without_identity_says_how_to_set_one() {
+    let sb = Sandbox::new();
+    let col = dirty(&sb);
+    let mut cmd = cli(&sb, &col);
+    for name in [
+        "GIT_AUTHOR_NAME",
+        "GIT_AUTHOR_EMAIL",
+        "GIT_COMMITTER_NAME",
+        "GIT_COMMITTER_EMAIL",
+    ] {
+        cmd.env_remove(name);
+    }
+    let out = cmd
+        .args(["git", "commit", "-m", "m", "--all"])
+        .assert()
+        .code(3);
+    let err = stderr(&out);
+    assert!(err.contains("needs your name and email"), "{err}");
+    assert!(err.contains("git config user.name"), "{err}");
+    assert!(err.contains("git config user.email"), "{err}");
+    assert_eq!(head_subject(&sb, &col), "base");
+}
+
+#[test]
 fn commit_with_an_empty_message_is_a_usage_error() {
     let sb = Sandbox::new();
     let col = dirty(&sb);
