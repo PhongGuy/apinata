@@ -35,8 +35,12 @@ pub use format::{
 };
 pub use place::{Placed, ensure_folder, place_items};
 pub use postman::{parse_postman, parse_postman_environment};
+pub use protect::{auth_secret_fields, replace_auth_secret, secret_name_base};
 pub use read::read_reason;
-pub use request::{add_request, claim_secret_names, store_request_secrets};
+pub use request::{
+    add_request, claim_secret_names, claim_secret_names_besides, secret_environment,
+    store_request_secrets,
+};
 pub use source::{ImportSource, SourceError, classify_source};
 pub use update::{
     ChangedField, FieldHashes, PrunedRequest, RecordedSpec, RequestChange, SpecBaseline,
@@ -211,6 +215,21 @@ pub struct ImportedSecret {
     pub value: String,
     /// The `source` of the note that asks the user to supply the value.
     pub source: String,
+}
+
+impl ImportedSecret {
+    /// The secret `value` a request refers to as `{{name}}`, noted under `source`.
+    pub fn new(
+        name: impl Into<String>,
+        value: impl Into<String>,
+        source: impl Into<String>,
+    ) -> ImportedSecret {
+        ImportedSecret {
+            name: name.into(),
+            value: value.into(),
+            source: source.into(),
+        }
+    }
 }
 
 impl std::fmt::Debug for ImportedSecret {

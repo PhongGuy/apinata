@@ -164,6 +164,12 @@ impl VariableSet {
         })
     }
 
+    /// Whether `name` is a secret of the selected environment that has no value yet, so
+    /// [`Self::get`] finds nothing although the environment declares it.
+    pub fn is_unstored_secret(&self, name: &str) -> bool {
+        self.ctx.unstored_env_secrets().contains(name)
+    }
+
     /// Every definition of every plain name, per name highest layer first: the effective row
     /// is exactly what [`Self::get`] (and so a send) resolves, and each lower layer that
     /// defines the name too follows as a shadowed row. Secrets carry no value in any row.

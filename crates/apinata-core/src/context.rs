@@ -433,6 +433,33 @@ impl VarContext {
         ctx
     }
 
+    /// A clone that reads `values` as secrets of the selected environment, over its own
+    /// variables: values the caller will keep in that environment but has not yet. Without a
+    /// selected environment the clone reads nothing new.
+    pub fn with_secret_overrides<I, K, V>(&self, values: I) -> VarContext
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<String>,
+    {
+        let mut ctx = self.clone();
+        let Some(env) = ctx.environment.clone() else {
+            return ctx;
+        };
+        for (name, value) in values {
+            let name = name.into();
+            ctx.env_layer
+                .insert(name.clone(), Value::String(value.into()));
+            ctx.env_unstored.remove(&name);
+            ctx.env_names
+                .entry(env.clone())
+                .or_default()
+                .insert(name.clone());
+            ctx.env_sensitive.insert(name);
+        }
+        ctx
+    }
+
     /// A clone whose requests that inherit their timeout use `timeout`; `None` means no limit.
     pub fn with_default_timeout(&self, timeout: Option<Duration>) -> VarContext {
         let mut ctx = self.clone();

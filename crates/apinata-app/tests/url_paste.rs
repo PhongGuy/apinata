@@ -2,6 +2,7 @@
 
 use crate::support;
 
+use apinata_app::command::{Command, Target};
 use apinata_app::request_editor::{Pasted, RequestEditor};
 use apinata_app::workspace::Workspace;
 use apinata_core::import::NoteKind;
@@ -353,17 +354,43 @@ fn aws_editor(cx: &mut TestAppContext, envs: &[(&str, &str)]) -> (Editor, Arc<Me
     (e, store)
 }
 
-#[gpui_kit::test]
-fn a_stored_aws_secret_shows_in_the_banner_as_stored(cx: &mut TestAppContext) {
-    let (e, store) = aws_editor(cx, &[("environments/dev.yml", "name: dev\n")]);
-    paste(cx, &e, AWS);
-    cx.run_until_parked();
-    let key = SecretKey::new(
+fn aws_key(e: &Editor) -> SecretKey {
+    SecretKey::new(
         std::fs::canonicalize(&e.root).unwrap(),
         "dev",
         "awsSecretAccessKey",
-    );
-    assert_eq!(store.get(&key).unwrap().as_deref(), Some("TOPSECRET"));
+    )
+}
+
+// The banner's sentences as their accessible labels read them.
+fn banner_lines(cx: &mut TestAppContext, e: &Editor) -> Vec<String> {
+    frame(cx, e.win);
+    cx.update_window(e.win, |_, w, cx| {
+        w.render_frame(cx);
+        (0usize..)
+            .map_while(|i| w.try_find(("paste-line", i)))
+            .filter_map(|el| el.label().map(str::to_owned))
+            .collect()
+    })
+    .unwrap()
+}
+
+fn save_a(cx: &mut TestAppContext, e: &Editor) {
+    let save = Command::Save(Target::Request(ip("a.yml")));
+    e.ws.update(cx, |w, cx| w.send(&e.root, save, cx));
+    cx.run_until_parked();
+    frame(cx, e.win);
+}
+
+#[gpui_kit::test]
+fn a_pasted_secret_is_kept_only_when_the_request_is_saved(cx: &mut TestAppContext) {
+    let (e, store) = aws_editor(cx, &[("environments/dev.yml", "name: dev\n")]);
+    paste(cx, &e, AWS);
+    cx.run_until_parked();
+    // A paste is an edit: nothing is written before Save.
+    assert_eq!(store.get(&aws_key(&e)).unwrap(), None);
+    let env = std::fs::read_to_string(e.root.join("environments/dev.yml")).unwrap();
+    assert!(!env.contains("awsSecretAccessKey"), "{env}");
     let Some(Pasted::Imported(notes)) = pasted(cx, &e) else {
         panic!("no banner")
     };
@@ -371,12 +398,75 @@ fn a_stored_aws_secret_shows_in_the_banner_as_stored(cx: &mut TestAppContext) {
         notes.iter().all(|n| n.kind != NoteKind::NeedsInput),
         "{notes:?}"
     );
+    let lines = banner_lines(cx, &e);
     assert!(
-        notes
-            .iter()
-            .any(|n| n.kind == NoteKind::Converted && n.detail.contains("dev")),
-        "{notes:?}"
+        lines.contains(
+            &"The AWS secret access key is kept as the secret awsSecretAccessKey in the dev \
+              environment when you save."
+                .to_owned()
+        ),
+        "{lines:?}"
     );
+    assert!(lines.iter().all(|l| !l.contains('`')), "{lines:?}");
+
+    save_a(cx, &e);
+    assert_eq!(
+        store.get(&aws_key(&e)).unwrap().as_deref(),
+        Some("TOPSECRET")
+    );
+    let env = std::fs::read_to_string(e.root.join("environments/dev.yml")).unwrap();
+    assert!(
+        env.contains("awsSecretAccessKey") && !env.contains("TOPSECRET"),
+        "{env}"
+    );
+    assert!(
+        pasted(cx, &e).is_none(),
+        "the banner goes once the request is saved"
+    );
+    assert!(!present(cx, e.win, "paste-banner"));
+}
+
+#[gpui_kit::test]
+fn a_reverted_paste_keeps_no_secret(cx: &mut TestAppContext) {
+    let (e, store) = aws_editor(cx, &[("environments/dev.yml", "name: dev\n")]);
+    paste(cx, &e, AWS);
+    cx.run_until_parked();
+    let revert = Command::Revert(Target::Request(ip("a.yml")));
+    e.ws.update(cx, |w, cx| w.send(&e.root, revert, cx));
+    cx.run_until_parked();
+    // The revert gave the name back, so the same paste claims it again.
+    paste(cx, &e, AWS);
+    cx.run_until_parked();
+    let aws = match &view_of(cx, &e.ws, &e.root, "a.yml").auth {
+        apinata_core::AuthSpec::AwsV4 {
+            secret_access_key, ..
+        } => secret_access_key.clone(),
+        other => panic!("not aws: {other:?}"),
+    };
+    assert_eq!(aws, "{{awsSecretAccessKey}}");
+    let revert = Command::Revert(Target::Request(ip("a.yml")));
+    e.ws.update(cx, |w, cx| w.send(&e.root, revert, cx));
+    cx.run_until_parked();
+    save_a(cx, &e);
+    assert_eq!(store.get(&aws_key(&e)).unwrap(), None);
+    let env = std::fs::read_to_string(e.root.join("environments/dev.yml")).unwrap();
+    assert!(!env.contains("awsSecretAccessKey"), "{env}");
+}
+
+#[gpui_kit::test]
+fn the_banner_stays_through_later_edits_until_dismissed(cx: &mut TestAppContext) {
+    let (e, _store) = aws_editor(cx, &[("environments/dev.yml", "name: dev\n")]);
+    paste(cx, &e, AWS);
+    cx.run_until_parked();
+    cx.update_window(e.win, |_, w, cx| {
+        w.click("url", cx);
+        w.press("end", cx);
+        w.press("x", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    frame(cx, e.win);
+    assert!(present(cx, e.win, "paste-banner"));
 }
 
 #[gpui_kit::test]

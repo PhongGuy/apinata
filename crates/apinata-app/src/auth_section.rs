@@ -1,6 +1,7 @@
 //! The Auth section: a mode picker over the inputs of the modes the editor models.
 
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use apinata_core::{
@@ -8,20 +9,24 @@ use apinata_core::{
     OAuth2Flow, OAuth2Spec, VariableSet,
 };
 use gpui_kit::component::IndexPath;
+use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
-use gpui_kit::component::{ActiveTheme as _, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Entity, EventEmitter, SharedString, Subscription, TestSupportExt, Window, div,
 };
 
-use crate::command::Edit;
+use crate::command::{Edit, MOVE_SLOT};
 use crate::kv_table::set_text;
-use crate::oauth1_editor::{OAuth1Edit, OAuth1Editor};
+use crate::oauth1_editor::{OAuth1Edit, OAuth1Editor, OAuth1MoveSecret};
 use crate::oauth2_editor::{OAuth2Edit, OAuth2Editor, OAuth2MoveSecrets};
+use crate::secret_storage::SecretStorage;
 use crate::section::SectionEdit;
+use crate::snapshot::DotenvNames;
+use crate::ui::SolidRing as _;
 use crate::ui::{IdItem, IdSelect};
 use crate::var_tokens::VarField;
 use crate::{style, ui};
@@ -217,6 +222,27 @@ const AWS_FIELDS: [(&str, &str, bool); 6] = [
     ("Profile name", "auth-aws-profile-name", false),
 ];
 
+// The `AuthField` of each `AWS_FIELDS` row.
+const AWS_AUTH_FIELDS: [AuthField; 6] = [
+    AuthField::AccessKeyId,
+    AuthField::SecretAccessKey,
+    AuthField::SessionToken,
+    AuthField::Service,
+    AuthField::Region,
+    AuthField::ProfileName,
+];
+
+// The `AuthField` of each `EDGEGRID_FIELDS` row.
+const EDGEGRID_AUTH_FIELDS: [AuthField; 7] = [
+    AuthField::AccessToken,
+    AuthField::ClientToken,
+    AuthField::ClientSecret,
+    AuthField::BaseUrl,
+    AuthField::Nonce,
+    AuthField::Timestamp,
+    AuthField::HeadersToSign,
+];
+
 // The EdgeGrid inputs in `AuthField` order: label, element id, and whether it is masked.
 const EDGEGRID_FIELDS: [(&str, &str, bool); 7] = [
     ("Access token", "auth-eg-access-token", true),
@@ -309,6 +335,8 @@ pub struct AuthSection {
     max_refused: bool,
     oauth1: Entity<OAuth1Editor>,
     oauth2: Entity<OAuth2Editor>,
+    // The `.env` names stored or held for the target, for the secret fields' hints.
+    dotenv: DotenvNames,
     // The API key placement last set or loaded; the base each API key edit builds on.
     placement: ApiKeyPlacement,
     memory: HashMap<AuthMode, AuthSpec>,
@@ -373,6 +401,12 @@ impl AuthSection {
             cx.subscribe(&oauth2, |this, _, OAuth2Edit(spec, stamp), cx| {
                 if this.mode == Some(AuthMode::OAuth2) {
                     this.emit_stamped(AuthSpec::OAuth2(spec.clone()), *stamp, cx);
+                }
+            }),
+            cx.subscribe(&oauth1, |this, _, OAuth1MoveSecret(spec), cx| {
+                if this.mode == Some(AuthMode::OAuth1) {
+                    let edit = Edit::MoveToSecret(Box::new(AuthSpec::OAuth1(spec.clone())));
+                    cx.emit(SectionEdit::new(edit).after_loads(this.loads));
                 }
             }),
             cx.subscribe(&oauth2, |this, _, _: &OAuth2MoveSecrets, cx| {
@@ -467,6 +501,7 @@ impl AuthSection {
             max_refused: false,
             oauth1,
             oauth2,
+            dotenv: DotenvNames::default(),
             placement: ApiKeyPlacement::Header,
             memory: HashMap::new(),
             loads: 0,
@@ -514,7 +549,42 @@ impl AuthSection {
     /// Sets the level whose auth this is; only the No Auth wording changes.
     pub fn set_scope(&mut self, scope: AuthScope, cx: &mut Context<Self>) {
         self.scope = scope;
+        self.share_place(cx);
         cx.notify();
+    }
+
+    // The secret fields' place, as this section and its OAuth editors show it.
+    fn place(&self) -> SecretPlace {
+        SecretPlace {
+            scope: self.scope,
+            dotenv: self.dotenv.clone(),
+        }
+    }
+
+    fn share_place(&mut self, cx: &mut Context<Self>) {
+        let place = self.place();
+        self.oauth1
+            .update(cx, |e, cx| e.set_place(place.clone(), cx));
+        self.oauth2.update(cx, |e, cx| e.set_place(place, cx));
+    }
+
+    // The action that moves `field`'s literal to a secret.
+    fn mover(&self, field: AuthField, cx: &Context<Self>) -> MoveToSecret {
+        let this = cx.entity().downgrade();
+        Rc::new(move |_, cx| {
+            this.update(cx, |s, cx| s.move_to_secret(field, cx)).ok();
+        })
+    }
+
+    /// Moves `field`'s literal value to a secret: the draft refers to it at once and the
+    /// value is kept when the target is saved.
+    pub fn move_to_secret(&mut self, field: AuthField, cx: &mut Context<Self>) {
+        let Some(mut auth) = self.current(cx) else {
+            return;
+        };
+        let text = self.input(field).read(cx).value().to_string();
+        apinata_core::import::replace_auth_secret(&mut auth, &text, MOVE_SLOT);
+        cx.emit(SectionEdit::new(Edit::MoveToSecret(Box::new(auth))).after_loads(self.loads));
     }
 
     /// Offers only `modes` in the picker, in the order given; a shown mode left out of
@@ -611,7 +681,12 @@ impl AuthSection {
     }
 
     /// Sets the `.env` names stored or held for the target, for the OAuth 2.0 secret badges.
-    pub fn set_dotenv(&mut self, names: crate::snapshot::DotenvNames, cx: &mut Context<Self>) {
+    pub fn set_dotenv(&mut self, names: DotenvNames, cx: &mut Context<Self>) {
+        if self.dotenv != names {
+            self.dotenv = names.clone();
+            self.share_place(cx);
+            cx.notify();
+        }
         self.oauth2.update(cx, |e, cx| e.set_dotenv(names, cx));
     }
 
@@ -893,25 +968,30 @@ impl AuthSection {
         cx.notify();
     }
 
-    // A table of inputs; plain ones tint placeholders, masked secrets tint a lone reference.
+    // A table of inputs, `fields` naming each; plain ones tint placeholders, masked secrets
+    // tint a lone reference.
     fn table_fields(
+        &self,
         table: &[(&'static str, &'static str, bool)],
         states: &[Entity<InputState>],
+        fields: &[AuthField],
         vars: Option<Arc<VariableSet>>,
-        cx: &App,
+        cx: &Context<Self>,
     ) -> impl IntoElement {
-        v_flex().gap_2().children(
-            table
-                .iter()
-                .zip(states)
-                .map(|(&(label, id, masked), state)| {
+        let place = self.place();
+        v_flex()
+            .gap_2()
+            .children(table.iter().zip(states).zip(fields).map(
+                |((&(label, id, masked), state), &f)| {
                     if masked {
-                        secret_field(label, id, state, vars.clone(), cx).into_any_element()
+                        let mover = Some(self.mover(f, cx));
+                        secret_field(label, id, state, vars.clone(), &place, mover, cx)
+                            .into_any_element()
                     } else {
                         field(label, id, state, vars.clone(), cx).into_any_element()
                     }
-                }),
-        )
+                },
+            ))
     }
 
     /// Whether `edit`, which this section sent, was built from a spec a load has since
@@ -1048,22 +1128,92 @@ pub(crate) fn checked_field(
     ui::form_row(SharedString::from(format!("{id}-row")), label, field)
 }
 
-/// A masked input's row: like `field`, but with variables (tint only) only while its text
-/// is one reference, so a literal is never tokenised.
+/// What a secret field needs to say where its value lives: the level whose file holds a
+/// literal, and the `.env` names known for the target.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SecretPlace {
+    /// The level whose file a literal is written in.
+    pub scope: AuthScope,
+    /// The `.env` names stored or held for the target.
+    pub dotenv: DotenvNames,
+}
+
+/// Moves a secret field's literal value to a secret.
+pub(crate) type MoveToSecret = Rc<dyn Fn(&mut Window, &mut App)>;
+
+/// The one secret field every auth secret uses: a masked input, with variables (tint only)
+/// only while its text is one reference, and under it where the value lives. A literal
+/// written in a file offers "Move to a secret" when `on_move` is given.
 pub(crate) fn secret_field(
     label: &'static str,
     id: &'static str,
     state: &Entity<InputState>,
     vars: Option<Arc<VariableSet>>,
+    place: &SecretPlace,
+    on_move: Option<MoveToSecret>,
     cx: &App,
 ) -> impl IntoElement {
-    let vars = vars.filter(|_| ui::is_variable_reference(&state.read(cx).value()));
+    let text = state.read(cx).value().to_string();
+    let storage = SecretStorage::of(&text, place.scope, vars.as_deref(), &place.dotenv);
+    let vars = vars.filter(|_| ui::is_variable_reference(&text));
+    let input = var_input(id, state, vars, true, cx).tint_only();
+    let hint = storage.map(|s| storage_line(id, s, on_move.filter(|_| s.movable(&text)), cx));
+    // The hint sits beside the input, which gives up width for it, so a form keeps its
+    // height; only a slot too narrow for both wraps the hint below.
     ui::form_row(
         SharedString::from(format!("{id}-row")),
         label,
-        var_input(id, state, vars, true, cx).tint_only(),
+        h_flex()
+            .w_full()
+            .flex_wrap()
+            .items_center()
+            .gap_x(style::SPACE_2)
+            .child(
+                div()
+                    .flex_1()
+                    .min_w(style::SECRET_INPUT_MIN_WIDTH)
+                    .max_w(style::WIDE_INPUT_WIDTH)
+                    .child(input),
+            )
+            .children(hint),
     )
 }
+
+// The small line under a secret field naming where its value lives, with the move action.
+fn storage_line(
+    id: &'static str,
+    storage: SecretStorage,
+    on_move: Option<MoveToSecret>,
+    cx: &App,
+) -> impl IntoElement {
+    h_flex()
+        .id(SharedString::from(format!("{id}-storage")))
+        .test_support()
+        .aria_label(storage.text())
+        .gap(style::SPACE_2)
+        .items_center()
+        .flex_none()
+        .whitespace_nowrap()
+        .text_size(style::TEXT_SMALL)
+        .text_color(cx.theme().muted_foreground)
+        .child(storage.text())
+        .when_some(on_move, |line, on_move| {
+            line.child(
+                Button::new(SharedString::from(format!("{id}-move")))
+                    .solid_ring(cx)
+                    .label("Move to a secret")
+                    .small()
+                    .flex_none()
+                    .tooltip(MOVE_TIP)
+                    .on_click(move |_, window, cx| on_move(window, cx)),
+            )
+        })
+}
+
+/// Where "Move to a secret" puts the value.
+const MOVE_TIP: &str = "When you save, the value is kept as a secret of the environment, in \
+     your keychain; with no environment to keep it, it goes to this collection's .env file, \
+     which is kept out of git.";
 
 // The wide input `id` wrapped in its `VarField`; a secret one has the eye that reveals it.
 fn var_input(
@@ -1134,6 +1284,7 @@ impl Render for AuthSection {
             self.masks.apply(&input, window, cx);
         }
         let vars = self.vars.clone();
+        let place = self.place();
         let content = match (self.mode, &self.unsupported) {
             (None, kind) => div()
                 .id("auth-unsupported")
@@ -1175,6 +1326,8 @@ impl Render for AuthSection {
                     "auth-password",
                     &self.password,
                     vars.clone(),
+                    &place,
+                    Some(self.mover(AuthField::Password, cx)),
                     cx,
                 ))
                 .into_any_element(),
@@ -1192,6 +1345,8 @@ impl Render for AuthSection {
                     "auth-password",
                     &self.password,
                     vars.clone(),
+                    &place,
+                    Some(self.mover(AuthField::Password, cx)),
                     cx,
                 ))
                 .child(field("Domain", "auth-domain", &self.domain, vars, cx))
@@ -1205,13 +1360,29 @@ impl Render for AuthSection {
                 .into_any_element(),
             (Some(AuthMode::Bearer), _) => v_flex()
                 .gap_2()
-                .child(secret_field("Token", "auth-token", &self.token, vars, cx))
+                .child(secret_field(
+                    "Token",
+                    "auth-token",
+                    &self.token,
+                    vars,
+                    &place,
+                    Some(self.mover(AuthField::Token, cx)),
+                    cx,
+                ))
                 .children(self.jwt.as_ref().map(|j| jwt_block(j, cx)))
                 .into_any_element(),
             (Some(AuthMode::ApiKey), _) => v_flex()
                 .gap_2()
                 .child(field("Key", "auth-key", &self.key, vars.clone(), cx))
-                .child(secret_field("Value", "auth-value", &self.value, vars, cx))
+                .child(secret_field(
+                    "Value",
+                    "auth-value",
+                    &self.value,
+                    vars,
+                    &place,
+                    Some(self.mover(AuthField::Value, cx)),
+                    cx,
+                ))
                 .child(ui::form_row(
                     "auth-placement-row",
                     "Add to",
@@ -1221,14 +1392,15 @@ impl Render for AuthSection {
                         .child(Select::new(&self.placement_select).id("auth-placement")),
                 ))
                 .into_any_element(),
-            (Some(AuthMode::AwsV4), _) => {
-                Self::table_fields(&AWS_FIELDS, &self.aws, vars, cx).into_any_element()
-            }
+            (Some(AuthMode::AwsV4), _) => self
+                .table_fields(&AWS_FIELDS, &self.aws, &AWS_AUTH_FIELDS, vars, cx)
+                .into_any_element(),
             (Some(AuthMode::EdgeGrid), _) => v_flex()
                 .gap_2()
-                .child(Self::table_fields(
+                .child(self.table_fields(
                     &EDGEGRID_FIELDS,
                     &self.edgegrid,
+                    &EDGEGRID_AUTH_FIELDS,
                     vars,
                     cx,
                 ))

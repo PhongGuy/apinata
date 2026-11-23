@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use apinata_core::import::{
-    ImportBundle, ImportNote, ImportReport, ImportedEnvironment, ImportedRequest, UpdateSummary,
+    ImportBundle, ImportReport, ImportedEnvironment, ImportedRequest, UpdateSummary,
 };
 use apinata_core::team::ConflictCopies;
 use apinata_core::{
@@ -101,7 +101,26 @@ pub enum Edit {
     MoveNetworkSecrets,
     /// Move the target's literal OAuth 2.0 client secret and password to `.env`.
     MoveAuthSecrets,
+    /// Move one literal credential of the target's auth to a secret: the auth as the draft
+    /// holds it, with [`MOVE_SLOT`] in place of the field to move. The value goes to a secret
+    /// variable of the environment, or to `.env` when no environment can hold it, once the
+    /// target is saved.
+    MoveToSecret(Box<AuthSpec>),
 }
+
+/// Where a held imported secret goes when its request is saved.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeldSecret {
+    /// The `source` of the import note about the secret, such as `curl auth.password`.
+    pub source: String,
+    /// The secret variable the request refers to.
+    pub name: String,
+    /// The environment that will keep it, or why none will.
+    pub environment: Result<String, String>,
+}
+
+/// Marks the auth field a [`Edit::MoveToSecret`] moves; never written to a file.
+pub const MOVE_SLOT: &str = "{{\u{1}move to a secret}}";
 
 impl Edit {
     /// The field this edit writes; the URL and its params share [`Field::UrlParams`], since
@@ -115,7 +134,7 @@ impl Edit {
             }
             Edit::Headers(_) => Field::Headers,
             Edit::Body(_) => Field::Body,
-            Edit::Auth(_) | Edit::MoveAuthSecrets => Field::Auth,
+            Edit::Auth(_) | Edit::MoveAuthSecrets | Edit::MoveToSecret(_) => Field::Auth,
             Edit::Vars(_) => Field::Vars,
             Edit::PostResponseVars(_) => Field::PostResponseVars,
             Edit::Assertions(_) => Field::Assertions,
@@ -334,6 +353,10 @@ pub type FilelessReply =
     async_channel::Sender<Result<Vec<crate::orphan_section::FilelessGroup>, String>>;
 
 /// One instruction to the collection actor.
+#[expect(
+    clippy::large_enum_variant,
+    reason = "an import is sent once per paste or drop; an imported request is carried unboxed"
+)]
 pub enum Command {
     /// Act on the collection's record of acknowledged network settings.
     Network(NetworkOp),
@@ -575,19 +598,15 @@ pub enum Command {
         /// The parsed request.
         request: ImportedRequest,
     },
-    /// Keep the secrets of an imported request as secret variables of the selected environment,
-    /// else the only one, through `store_request_secrets`. The notes come back to `reply` with
-    /// each stored secret's needs-input note turned into a converted one.
-    StoreImportSecrets {
-        /// The request whose draft took the import. Nothing is stored unless the
+    /// Hold the secrets of an imported request until the request is saved, then keep them as
+    /// secret variables of the selected environment, else the only one, through
+    /// `store_request_secrets`; a revert drops them. `reply` learns where each one will go.
+    HoldImportSecrets {
+        /// The request whose draft took the import. Nothing is held unless the
         /// `ApplyImport` just before it for this item landed.
         item: ItemPath,
-        /// The imported request whose `secrets` are kept.
-        request: ImportedRequest,
-        /// The import's notes so far.
-        notes: Vec<ImportNote>,
-        /// Receives the updated notes.
-        reply: async_channel::Sender<Vec<ImportNote>>,
+        /// Receives one entry per secret, under the name the import settled.
+        reply: async_channel::Sender<Vec<HeldSecret>>,
     },
     /// Write an imported environment through `add_environment` and store its secrets; the
     /// report, or the error's text, goes to `reply`.

@@ -1331,7 +1331,7 @@ impl Workspace {
             Command::Edit { .. }
                 | Command::Env(_)
                 | Command::ApplyImport { .. }
-                | Command::StoreImportSecrets { .. }
+                | Command::HoldImportSecrets { .. }
                 | Command::Save(_)
                 | Command::Overwrite(_)
                 | Command::Revert(_)
@@ -4267,8 +4267,8 @@ impl Workspace {
         }
         for (item, request) in imports {
             // No banner shows for a draft from the dialog or a drop, so the reply is dropped.
-            // The secrets follow only an import that was sent.
-            let secrets = request.secrets.clone();
+            // The secrets are held only for an import that was sent.
+            let has_secrets = !request.secrets.is_empty();
             let sent = self.send(
                 root,
                 Command::ApplyImport {
@@ -4277,16 +4277,9 @@ impl Workspace {
                 },
                 cx,
             );
-            if sent.is_some() && !secrets.is_empty() {
-                let mut stored = ImportedRequest::new("GET", "");
-                stored.secrets = secrets;
+            if sent.is_some() && has_secrets {
                 let (reply, _) = async_channel::bounded(1);
-                let command = Command::StoreImportSecrets {
-                    item,
-                    request: stored,
-                    notes: Vec::new(),
-                    reply,
-                };
+                let command = Command::HoldImportSecrets { item, reply };
                 self.send(root, command, cx);
             }
         }

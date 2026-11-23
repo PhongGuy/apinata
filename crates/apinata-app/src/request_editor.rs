@@ -7,9 +7,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::{Arc, Weak};
 
-use apinata_core::import::{
-    ImportNote, ImportedRequest, ParsedRequest, RequestFormat, parse_request,
-};
+use apinata_core::import::{ImportNote, ParsedRequest, RequestFormat, parse_request};
 use apinata_core::{
     AuthSpec, BodySpec, CollectionNetwork, EnvVariable, GlobalEnvironments, HeaderSource, ItemPath,
     KeyValue, Param, ParamKind, PostResponseVar, RequestKind, RequestResult, RequestSettings,
@@ -31,9 +29,9 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, AnyView, App, Bounds, ClickEvent, ClipboardItem, ElementId, Empty, Entity,
-    FocusHandle, Focusable, Global, Pixels, Point, Rems, Role, ScrollHandle, SharedString,
-    StyleRefinement, Subscription, Task, TestSupportExt, WeakFocusHandle, Window, actions, canvas,
-    div, relative, rems,
+    FocusHandle, Focusable, Global, HighlightStyle, Pixels, Point, Rems, Role, ScrollHandle,
+    SharedString, StyleRefinement, StyledText, Subscription, Task, TestSupportExt, WeakFocusHandle,
+    Window, actions, canvas, div, relative, rems,
 };
 
 use crate::app::AppState;
@@ -57,6 +55,7 @@ use crate::kv_table::{
     vars_heading,
 };
 use crate::last_response::ResponseStore;
+use crate::paste_notes;
 use crate::request_chrome::{Chrome, ChromePart};
 use crate::response_pane::{HistoryTarget, ResponsePane, response_strip};
 use crate::script_section::{ScriptSection, SideChosen, SnippetChosen};
@@ -1380,9 +1379,9 @@ impl RequestEditor {
         }
         // A header that only restates the body mode would outlive a later change of mode.
         parsed.request.drop_restated_content_type();
-        let secrets = parsed.request.secrets.clone();
-        let mut stored = ImportedRequest::new("GET", "");
-        stored.secrets = secrets.clone();
+        let has_secrets = !parsed.request.secrets.is_empty();
+        // The banner names each credential as the paste held it, so it keeps the request.
+        let pasted_request = has_secrets.then(|| parsed.request.clone());
         // Replies of earlier pastes must not touch this paste's banner.
         self.paste_generation += 1;
         let generation = self.paste_generation;
@@ -1402,19 +1401,16 @@ impl RequestEditor {
         }
         // The old response answered the old request.
         self.send_model.update(cx, |m, cx| m.clear_result(cx));
-        // A secret the command carried is kept by the actor once the import landed; it answers
-        // with the notes updated to say where it went or why it was not stored.
-        if let (Some(item), false) = (apply, secrets.is_empty()) {
+        // A secret the command carried is held by the actor until the request is saved; it
+        // answers with where each one will go, which the notes then say.
+        if let (Some(item), Some(request)) = (apply, pasted_request) {
             let (reply, answer) = async_channel::bounded(1);
-            let command = Command::StoreImportSecrets {
-                item,
-                request: stored,
-                notes: notes.clone(),
-                reply,
-            };
+            let command = Command::HoldImportSecrets { item, reply };
             if self.send_command(command, None, cx).is_some() {
+                let mut notes = notes.clone();
                 cx.spawn(async move |this, cx| {
-                    if let Ok(notes) = answer.recv().await {
+                    if let Ok(held) = answer.recv().await {
+                        crate::paste_notes::apply_held(&mut notes, &held, &request);
                         this.update(cx, |e, cx| {
                             if e.paste_generation == generation {
                                 e.pasted = Some(Pasted::Imported(notes));
@@ -1625,7 +1621,7 @@ impl RequestEditor {
         };
         match edit {
             // The secret move rewrites values the history cannot restore.
-            Edit::MoveAuthSecrets => {}
+            Edit::MoveAuthSecrets | Edit::MoveToSecret(_) => {}
             // Script keystrokes stay with the code editor's own undo, unless they follow a script
             // step: then they are a typing run of their own, so undo takes the typing and the
             // step apart instead of dropping the step as stale.
@@ -1898,6 +1894,10 @@ impl RequestEditor {
             |&(dirty, reloaded): &(bool, u64)| (dirty && !view.dirty) || reloaded != view.reloaded;
         if self.checkpoint.as_ref().is_some_and(saved) {
             self.end_typing(window, cx);
+            // The paste's notes are about the unsaved draft; once it is saved they are done.
+            if matches!(self.pasted, Some(Pasted::Imported(_))) {
+                self.dismiss_pasted(cx);
+            }
         }
         self.checkpoint = Some((view.dirty, view.reloaded));
         (self.graphql).update(cx, |s, cx| s.set_schema_url(view.url.clone(), cx));
@@ -3484,12 +3484,35 @@ impl RequestEditor {
 
     // One line per note of the last import paste, or its error, with a dismiss button.
     fn paste_banner(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let lines = match self.pasted.as_ref()? {
-            Pasted::Imported(notes) => notes
-                .iter()
-                .map(|n| format!("{}: {}", n.source, n.detail))
-                .collect(),
-            Pasted::Failed(message) => vec![format!("Not imported: {message}")],
+        let lines: Vec<Vec<paste_notes::Part>> = match self.pasted.as_ref()? {
+            Pasted::Imported(notes) => notes.iter().map(paste_notes::sentence).collect(),
+            Pasted::Failed(message) => vec![vec![paste_notes::Part {
+                text: format!("Not imported: {message}"),
+                code: false,
+            }]],
+        };
+        let code_fill = cx.theme().secondary;
+        let line = move |(i, parts): (usize, Vec<paste_notes::Part>)| {
+            let label = paste_notes::plain(&parts);
+            // Names read as code on a tinted run, never between backticks; the text wraps.
+            let style = HighlightStyle {
+                background_color: Some(code_fill),
+                ..Default::default()
+            };
+            let mut at = 0;
+            let mut code = Vec::new();
+            for p in &parts {
+                if p.code {
+                    code.push((at..at + p.text.len(), style));
+                }
+                at += p.text.len();
+            }
+            div()
+                .id(("paste-line", i))
+                .test_support()
+                .aria_label(label.clone())
+                .min_w_0()
+                .child(StyledText::new(label).with_highlights(code))
         };
         let (fill, border) = (cx.theme().muted, cx.theme().border);
         let dismiss = cx.listener(|this, _, _, cx| this.dismiss_pasted(cx));
@@ -3509,7 +3532,7 @@ impl RequestEditor {
                 v_flex()
                     .flex_1()
                     .min_w_0()
-                    .children(lines.into_iter().map(|l| div().child(l))),
+                    .children(lines.into_iter().enumerate().map(line)),
             )
             .child(
                 Button::new("dismiss-paste-banner")
