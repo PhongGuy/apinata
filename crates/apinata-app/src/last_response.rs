@@ -265,6 +265,9 @@ struct Entry {
     // A secret was scrubbed from `text`; a file written before this field had none marked.
     #[serde(default)]
     masked: bool,
+    // A post-response script replaced the body the assertions read; an older file marked none.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    body_edited: bool,
     // The places of the header values a secret or the mask changed; an older file marked none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     masked_headers: Vec<usize>,
@@ -1366,6 +1369,7 @@ impl Entry {
             text,
             has_body_file,
             masked,
+            body_edited: result.body_edited,
             masked_headers,
             digests,
             assertions: result
@@ -1449,6 +1453,8 @@ impl Entry {
         let mut result =
             RequestResult::from_parts(item.clone(), self.name, outcome, Some(response), assertions);
         result.tests = self.tests.into_iter().map(KeptTest::rebuild).collect();
+        result.body_edited = self.body_edited;
+        result.body_scrubbed = self.masked;
         Stored {
             result,
             saved_at: UNIX_EPOCH + Duration::from_millis(self.saved_at_ms),

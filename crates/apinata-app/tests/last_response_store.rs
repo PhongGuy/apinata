@@ -1023,3 +1023,33 @@ fn a_send_file_without_the_redirect_fields_still_loads() {
     assert_eq!(r.redirects_followed(), 0);
     assert!(!r.stopped_at_redirect_limit());
 }
+
+// A re-check needs to know the kept body is not what the assertions read, after a restart too.
+#[test]
+fn a_kept_send_remembers_why_its_body_cannot_be_rechecked() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = ResponseStore::new(dir.path().to_path_buf());
+    let root = Path::new("/col");
+    let mut edited = result("e.yml", Response::new(200).with_text_body("plain"));
+    edited.body_edited = true;
+    store.save(root, &ip("e.yml"), &edited, at(1)).unwrap();
+    let kept = store.load(root, &ip("e.yml")).unwrap().result;
+    assert!(kept.body_edited && !kept.body_scrubbed);
+    let secret = result("s.yml", Response::new(200).with_text_body("tok-123"));
+    store
+        .save_redacted(
+            root,
+            &ip("s.yml"),
+            &secret,
+            &["tok-123".to_owned()],
+            at(2),
+            Limits::default(),
+        )
+        .unwrap();
+    let kept = store.load(root, &ip("s.yml")).unwrap().result;
+    assert!(kept.body_scrubbed && !kept.body_edited);
+    let plain = result("p.yml", Response::new(200).with_text_body("plain"));
+    store.save(root, &ip("p.yml"), &plain, at(3)).unwrap();
+    let kept = store.load(root, &ip("p.yml")).unwrap().result;
+    assert_eq!(kept.recheck_refusal(), None);
+}

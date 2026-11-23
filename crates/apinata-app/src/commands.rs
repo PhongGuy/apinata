@@ -52,8 +52,8 @@ use crate::tab_area::{
     ActivateLastTab, ActivateNextTab, ActivatePrevTab, ActivateTab, BeautifyBody, BeautifyQuery,
     CloseAllTabs, CloseOtherTabs, CloseSavedTabs, CloseTab, CloseTabsToTheLeft,
     CloseTabsToTheRight, Compare, ConvertToGraphql, ConvertToHttp, CopyAsCurl, DuplicateTab,
-    ExportHar, GenerateCode, MinifyBody, PinTab, ReopenClosedTab, RevealInSidebar, SaveAll,
-    SaveAsExample, SendActive, StopActive, UnpinTab,
+    ExportHar, GenerateCode, MinifyBody, PinTab, RecheckAssertions, ReopenClosedTab,
+    RevealInSidebar, SaveAll, SaveAsExample, SendActive, StopActive, UnpinTab,
 };
 use crate::ui::{CODE_EDITOR_CONTEXT as CODE_EDITOR, FocusNextControl, FocusPreviousControl};
 use crate::updates::CheckForUpdates;
@@ -626,6 +626,13 @@ pub fn registry() -> Vec<Command> {
             "Compare response",
             Request,
             shell(Compare),
+            &[],
+        ),
+        command(
+            "request.recheck_assertions",
+            "Re-check assertions",
+            Request,
+            shell(RecheckAssertions),
             &[],
         ),
         command(

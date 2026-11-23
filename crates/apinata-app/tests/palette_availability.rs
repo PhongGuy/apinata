@@ -82,6 +82,7 @@ const FLAGS: [(&str, Clear, &[&str]); 31] = [
             "request.save_as_example",
             "request.export_har",
             "request.compare_response",
+            "request.recheck_assertions",
         ],
     ),
     (
@@ -760,10 +761,11 @@ fn the_demo_command_is_listed_with_or_without_a_collection() {
 }
 
 // The commands that act on the response a request tab shows.
-const RESPONSE_ONLY: [&str; 3] = [
+const RESPONSE_ONLY: [&str; 4] = [
     "request.save_as_example",
     "request.export_har",
     "request.compare_response",
+    "request.recheck_assertions",
 ];
 
 #[gpui_kit::test]

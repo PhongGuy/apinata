@@ -3465,6 +3465,7 @@ impl Render for Shell {
             .on_action(cx.listener(to_tabs(TabArea::save_as_example)))
             .on_action(cx.listener(to_tabs(TabArea::export_har)))
             .on_action(cx.listener(to_tabs(TabArea::compare_response)))
+            .on_action(cx.listener(to_tabs(TabArea::recheck_assertions)))
             .on_action(cx.listener(to_tabs(TabArea::save_all)))
             .on_action(cx.listener(to_tabs(TabArea::close_tab)))
             .on_action(cx.listener(to_tabs(TabArea::close_all_tabs)))
