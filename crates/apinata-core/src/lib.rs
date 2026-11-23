@@ -237,7 +237,7 @@ pub use graphql_variables::{
     variable_completions, variable_definitions, variable_hover,
 };
 pub use header_check::{HeaderNameProblem, invalid_header_name};
-pub use header_hints::{header_names, header_values};
+pub use header_hints::{header_description, header_names, header_values};
 pub use hidden_char::{is_hidden_char, is_variation_selector};
 pub use http_version::{HttpVersion, HttpVersionPolicy};
 pub use interpolate::{placeholders, unclosed_placeholder};

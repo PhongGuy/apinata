@@ -16,7 +16,8 @@ use apinata_core::{
     AssertionOutcome, BodyState, Comparison, ConnectCause, ConnectHint, ConsoleEntry, ConsoleLevel,
     CookieInfo, CookieOutcome, CookieRejection, ExecError, HOP_BODY_LIMIT, ItemPath, OAuth2Error,
     Outcome, RequestResult, ResolveError, Response, RunError, ScriptPhase, TestOutcome,
-    UndefinedHint, Verdict, is_credential_header, is_credential_name, mask_response_header,
+    UndefinedHint, Verdict, header_description, is_credential_header, is_credential_name,
+    mask_response_header,
 };
 use gpui_kit::base::{ObservedElement, SelectableText};
 use gpui_kit::component::WindowExt as _;
@@ -2222,8 +2223,12 @@ impl ResponsePane {
         let kept: Vec<(String, String)> = shown.into_iter().map(|(_, p)| p.clone()).collect();
         let none_kept = kept.is_empty();
         let pane = cx.entity();
+        let described = (kept.iter())
+            .map(|(name, _)| header_description(name).map(SharedString::from))
+            .collect();
         let table = header_table(["header", "header-name", "header-value"], &kept)
             .headed("headers-head")
+            .describe(0, described)
             .on_reveal(
                 ("header-eye", "header-reveal", "header-hide"),
                 flags,

@@ -3,7 +3,7 @@
 
 use std::ops::Range;
 
-use apinata_core::{header_names, header_values};
+use apinata_core::{header_description, header_names, header_values};
 
 /// What a header cell completes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,4 +52,13 @@ pub fn offers(hint: &Hint, typed: &str) -> Vec<String> {
 /// cursor lands after it.
 pub fn accept(text: &str, choice: &str) -> (Range<usize>, String, usize) {
     (0..text.len(), choice.to_owned(), choice.len())
+}
+
+/// The right-hand detail of the row offering `offered`: a name's one-line description, and
+/// nothing for a value or a name with no description.
+pub fn detail(hint: &Hint, offered: &str) -> &'static str {
+    match hint {
+        Hint::Name { .. } => header_description(offered).unwrap_or_default(),
+        Hint::Value { .. } => "",
+    }
 }

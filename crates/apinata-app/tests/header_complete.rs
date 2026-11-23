@@ -1,4 +1,5 @@
-use apinata_app::header_complete::{Hint, accept, offers};
+use apinata_app::header_complete::{Hint, accept, detail, offers};
+use apinata_core::header_description;
 
 fn names(present: &[&str]) -> Hint {
     Hint::Name {
@@ -64,4 +65,19 @@ fn accepting_replaces_the_whole_cell_with_the_canonical_text() {
     assert_eq!(range, 0..3);
     assert_eq!(text, "Content-Type");
     assert_eq!(cursor, "Content-Type".len());
+}
+
+#[test]
+fn a_name_row_is_detailed_with_its_description() {
+    let hint = names(&[]);
+    assert_eq!(
+        detail(&hint, "Content-Type"),
+        header_description("Content-Type").unwrap()
+    );
+    assert_eq!(detail(&hint, "X-Custom"), "");
+}
+
+#[test]
+fn a_value_row_has_no_detail() {
+    assert_eq!(detail(&value("Content-Type"), "application/json"), "");
 }

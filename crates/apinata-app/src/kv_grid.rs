@@ -517,6 +517,8 @@ pub struct KvView {
     follow: Option<FocusFollow>,
     // Rows whose eye stays masked and disabled, with the tooltip saying why.
     locked: Option<(Vec<bool>, &'static str)>,
+    // A description per row for the cells of one column, shown in a tooltip on hover.
+    described: Option<(usize, Vec<Option<SharedString>>)>,
 }
 
 // A per-row eye: `rows[ix]` is None for a row with no eye, else whether it is revealed.
@@ -540,6 +542,7 @@ pub fn kv_view(id: impl Into<ElementId>, columns: Vec<KvColumn>, rows: Vec<Vec<K
         reveal_column: None,
         follow: None,
         locked: None,
+        described: None,
     }
 }
 
@@ -601,6 +604,13 @@ impl KvView {
     /// value that cannot be revealed says why.
     pub fn lock_eyes(mut self, rows: Vec<bool>, tooltip: &'static str) -> Self {
         self.locked = Some((rows, tooltip));
+        self
+    }
+
+    /// Describes the cell of row `ix` in column `column` with `texts[ix]` in a tooltip
+    /// (`kv-cell-tip`) on hover; a row whose text is `None` keeps the plain cell.
+    pub fn describe(mut self, column: usize, texts: Vec<Option<SharedString>>) -> Self {
+        self.described = Some((column, texts));
         self
     }
 
@@ -674,6 +684,9 @@ impl RenderOnce for KvView {
                         }
                         _ => None,
                     };
+                    let described = (self.described.as_ref())
+                        .filter(|(column, _)| *column == c)
+                        .and_then(|(_, texts)| texts.get(ix).cloned().flatten());
                     let mono_tip = mono.clone();
                     let laid_out = !matches!(col.width, KvWidth::Fixed(_));
                     let measure = (col.tip_when_cut && laid_out).then(|| {
@@ -773,20 +786,29 @@ impl RenderOnce for KvView {
                             .test_support()
                             .py(KV_VIEW_PAD_Y)
                             .when(!col.width.flexible() || col.tip_when_cut, |d| d.truncate())
-                            .when_some(tip, |d, (text, flex)| {
+                            // A described cell always tips; a cut one also shows its whole text.
+                            .when(tip.is_some() || described.is_some(), |d| {
                                 d.tooltip(ui::tooltip(move |w, cx| {
-                                    let tip = cut_tip(&text, w, cx);
-                                    match &flex {
-                                        None => tip,
-                                        Some(widths) => cx
-                                            .new(|_| FlexTip {
+                                    let Some((text, flex)) = &tip else {
+                                        return describe_tip(described.clone(), w, cx);
+                                    };
+                                    let cut = cut_tip(text, described.clone(), w, cx);
+                                    match flex {
+                                        None => cut,
+                                        Some(widths) => {
+                                            let whole = described
+                                                .clone()
+                                                .map(|d| describe_tip(Some(d), w, cx));
+                                            cx.new(|_| FlexTip {
                                                 text: text.clone(),
                                                 mono: mono_tip.clone(),
                                                 widths: widths.clone(),
                                                 col: c,
-                                                tip,
+                                                tip: cut,
+                                                whole,
                                             })
-                                            .into(),
+                                            .into()
+                                        }
                                     }
                                 }))
                             })
@@ -860,6 +882,8 @@ struct FlexTip {
     widths: Entity<Vec<Option<Pixels>>>,
     col: usize,
     tip: AnyView,
+    // The tip shown while the cell fits, if any.
+    whole: Option<AnyView>,
 }
 
 impl Render for FlexTip {
@@ -867,23 +891,51 @@ impl Render for FlexTip {
         let room = self.widths.read(cx).get(self.col).copied().flatten();
         if room.is_some_and(|room| cut_text(&self.text, &self.mono, room, window)) {
             self.tip.clone().into_any_element()
+        } else if let Some(whole) = &self.whole {
+            whole.clone().into_any_element()
         } else {
             div().into_any_element()
         }
     }
 }
 
-// The tooltip of a cut cell: exactly the cell's text, so a masked value stays masked.
-fn cut_tip(text: &SharedString, window: &mut Window, cx: &mut App) -> AnyView {
+// The tooltip of a cut cell: exactly the cell's text, so a masked value stays masked, and
+// below it the cell's description when it has one.
+fn cut_tip(
+    text: &SharedString,
+    described: Option<SharedString>,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyView {
     let text = text.clone();
     Tooltip::element(move |_, _| {
-        div()
-            .id("kv-cut-tooltip")
-            .test_support()
-            .aria_label(text.clone())
-            .child(text.clone())
+        v_flex()
+            .child(
+                div()
+                    .id("kv-cut-tooltip")
+                    .test_support()
+                    .aria_label(text.clone())
+                    .child(text.clone()),
+            )
+            .when_some(described.clone(), |d, about| d.child(about_line(about)))
     })
     .build(window, cx)
+}
+
+// The tooltip of a described cell that is not cut: the description alone.
+fn describe_tip(described: Option<SharedString>, window: &mut Window, cx: &mut App) -> AnyView {
+    Tooltip::element(move |_, _| {
+        div().when_some(described.clone(), |d, about| d.child(about_line(about)))
+    })
+    .build(window, cx)
+}
+
+fn about_line(about: SharedString) -> impl IntoElement {
+    div()
+        .id("kv-cell-tip")
+        .test_support()
+        .aria_label(about.clone())
+        .child(about)
 }
 
 /// One line of `text` with id `id` that fills the rest of its row, ends in "…" where its room
@@ -915,13 +967,14 @@ pub fn cut_line(
         .min_w_0()
         .truncate()
         .tooltip(ui::tooltip(move |w, cx| {
-            let tip = cut_tip(&tip_text, w, cx);
+            let tip = cut_tip(&tip_text, None, w, cx);
             cx.new(|_| FlexTip {
                 text: tip_text.clone(),
                 mono: font.clone(),
                 widths: widths.clone(),
                 col: 0,
                 tip,
+                whole: None,
             })
             .into()
         }))
