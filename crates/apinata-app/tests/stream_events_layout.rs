@@ -1,6 +1,6 @@
 //! The live Events view in a short window with the console dock open.
 
-use crate::support::sse_server::{Script, event};
+use crate::support::sse_server::{Script, Step, event};
 use crate::support::*;
 use apinata_app::keymap::ToggleConsole;
 use apinata_app::response_pane::ResponseTab;
@@ -9,11 +9,13 @@ use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, Bounds, Pixels, TestAppContext, VisualTestContext, px, size};
 
 // Streams six events into a `height` px tall window with the dock open and shows the Events
-// tab. Returns the full rows inside the list, the list and dock bounds, the response pane's
-// height, and the request pane's height beside what its rows need.
+// tab, live or, with `finish`, once the stream has ended. Returns the full rows inside the
+// list, the list and dock bounds, the response pane's height, and the request pane's height
+// beside what its rows need.
 fn events_open(
     cx: &mut TestAppContext,
     height: f32,
+    finish: bool,
 ) -> (
     usize,
     Bounds<Pixels>,
@@ -22,7 +24,10 @@ fn events_open(
     (Pixels, Pixels),
 ) {
     http_ready(cx);
-    let events = (0..6).map(|i| event(&format!("event {i}"))).collect();
+    let mut events: Vec<Step> = (0..6).map(|i| event(&format!("event {i}"))).collect();
+    if finish {
+        events.push(Step::Finish);
+    }
     let server = sse(cx, Script::sse(events));
     let col = sse_collection(&server);
     let s = started(cx, &col);
@@ -37,7 +42,11 @@ fn events_open(
     let model = ed.read_with(cx, |e, _| e.send_model().clone());
     wait_real(cx, |cx| {
         model.read_with(cx, |m, _| m.live().is_some_and(|l| l.events().len() == 6))
+            || finish && !model.read_with(cx, |m, _| m.is_sending())
     });
+    if finish {
+        finished(cx, &model);
+    }
     let pane = ed.read_with(cx, |e, _| e.response().clone());
     pane.update(cx, |p, cx| p.set_tab(ResponseTab::Events, cx));
     frame(cx, s.win);
@@ -60,7 +69,7 @@ fn events_open(
 // row above the dock, and the response keeps its header floor.
 #[gpui_kit::test]
 fn events_rows_stay_usable_at_a_short_window_with_the_dock_open(cx: &mut TestAppContext) {
-    let (full, list, dock, response, (pane, need)) = events_open(cx, 500.);
+    let (full, list, dock, response, (pane, need)) = events_open(cx, 500., false);
     assert!(
         pane >= need - px(0.5),
         "request pane {pane:?}, rows need {need:?}"
@@ -76,7 +85,23 @@ fn events_rows_stay_usable_at_a_short_window_with_the_dock_open(cx: &mut TestApp
 // Once the window has room for both, two full Events rows show above the dock.
 #[gpui_kit::test]
 fn two_events_rows_show_in_a_taller_window_with_the_dock_open(cx: &mut TestAppContext) {
-    let (full, list, dock, _, _) = events_open(cx, 800.);
+    let (full, list, dock, _, _) = events_open(cx, 800., false);
     assert!(full >= 2, "{full} full rows in {list:?}");
+    assert!(list.bottom() <= dock.top(), "{list:?} {dock:?}");
+}
+
+// The finished Events view has the same header as the live one, so it keeps the same rows.
+#[gpui_kit::test]
+fn finished_events_rows_stay_usable_at_a_short_window_with_the_dock_open(cx: &mut TestAppContext) {
+    let (full, list, dock, response, (pane, need)) = events_open(cx, 500., true);
+    assert!(
+        pane >= need - px(0.5),
+        "request pane {pane:?}, rows need {need:?}"
+    );
+    assert!(
+        response >= RESPONSE_FLOOR - px(0.5),
+        "response {response:?}"
+    );
+    assert!(full >= 1, "{full} full rows in {list:?}");
     assert!(list.bottom() <= dock.top(), "{list:?} {dock:?}");
 }

@@ -179,8 +179,10 @@ pub fn list_gutter(window: &Window) -> Pixels {
 pub fn tab_content_inset(window: &Window) -> Pixels {
     resolve(PANE_INSET, window) + FOCUS_RING_ROOM
 }
-/// Room for a name line and three lines of data, so the Events rows are uniform.
-pub const EVENT_ROW_HEIGHT: Rems = ui(86.);
+/// One line per event, as tall as any list row, so the Events rows are uniform.
+pub const EVENT_ROW_HEIGHT: Rems = ROW_HEIGHT;
+/// The Events row's leading slot, kept for the event's arrival time.
+pub const EVENT_TIME_WIDTH: Rems = ui(64.);
 /// The kit editor's fold chevron button, at the fixed size the kit draws it.
 pub const FOLD_ICON: Pixels = px(14.);
 /// Right padding that keeps scrolled rows clear of the kit's vertical scrollbar, which is
