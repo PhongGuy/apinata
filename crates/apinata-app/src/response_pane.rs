@@ -49,7 +49,7 @@ use crate::executor;
 use crate::kv_grid::{ActionShow, KvColumn, action_slot};
 use crate::last_response::{self, KeptAs, KeptSend, ResponseStore, StoreOp, Stored};
 use crate::live_stream::{self, EventRow};
-use crate::request_editor::SendRequest;
+use crate::request_editor::{SendRequest, ShowRequestSettings};
 use crate::save_example;
 use crate::scroll_follow::{FocusFollow, Followed};
 use crate::send_model::{SendModel, SendState};
@@ -118,6 +118,8 @@ pub struct ErrorView {
     pub add_variable: Option<String>,
     /// The other environments defining the variable, each offered as a "Switch to" button.
     pub use_environments: Vec<String>,
+    /// Whether a "Timeout setting" link to the request's Settings section is offered.
+    pub settings_link: bool,
 }
 
 /// The block for a run's `error`; `details` is its redacted text and `env` the selected
@@ -132,6 +134,7 @@ pub fn describe_error(error: &RunError, details: &str, env: Option<&str>) -> Err
         retry,
         add_variable: None,
         use_environments: Vec::new(),
+        settings_link: false,
     };
     let undefined = match error {
         RunError::Resolve(ResolveError::UndefinedVariable { name, .. })
@@ -176,6 +179,7 @@ pub fn describe_error(error: &RunError, details: &str, env: Option<&str>) -> Err
             retry: true,
             add_variable: None,
             use_environments: Vec::new(),
+            settings_link: false,
         },
         RunError::Exec(ExecError::Connect { url, cause, .. }) => {
             let hint = ConnectHint::new(url, *cause);
@@ -190,12 +194,18 @@ pub fn describe_error(error: &RunError, details: &str, env: Option<&str>) -> Err
             };
             view(kind, hint.title(), hint.sentence().to_owned(), true)
         }
-        RunError::Exec(ExecError::Timeout { .. }) => view(
-            ErrorKind::Timeout,
-            "Timed out",
-            "No response within the request timeout.".into(),
-            true,
-        ),
+        // A run-wide cap is not the request's setting, so only the request's own limit links to it.
+        RunError::Exec(ExecError::Timeout {
+            limit, run_wide, ..
+        }) => ErrorView {
+            settings_link: run_wide.is_none(),
+            ..view(
+                ErrorKind::Timeout,
+                "Timed out",
+                timeout_sentence(*limit, *run_wide),
+                true,
+            )
+        },
         RunError::Exec(ExecError::Proxy { proxy, .. }) => view(
             ErrorKind::Proxy,
             "Proxy error",
@@ -264,6 +274,29 @@ pub fn transport_text(error: &ExecError) -> Option<String> {
     transport.then_some(format!("{}: {}", view.title, view.sentence?))
 }
 
+/// The timeout block's sentence: the limit that ran out, named as run-wide when the cap was it,
+/// or the plain sentence when the send did not know the limit.
+pub fn timeout_sentence(limit: Option<Duration>, run_wide: Option<Duration>) -> String {
+    match (run_wide, limit) {
+        (Some(cap), _) => format!(
+            "No response within the run-wide timeout of {}.",
+            limit_text(cap)
+        ),
+        (None, Some(limit)) => format!("No response within {}.", limit_text(limit)),
+        (None, None) => "No response within the request timeout.".into(),
+    }
+}
+
+// A limit as the Settings timeout row writes it: whole milliseconds under a second, else
+// seconds without trailing zeros, so 2000 ms reads "2 s".
+fn limit_text(d: Duration) -> String {
+    if d < Duration::from_secs(1) {
+        format!("{} ms", d.as_millis())
+    } else {
+        format!("{} s", d.as_secs_f64())
+    }
+}
+
 /// The block for a send stopped before any run (a plan error, a closed collection).
 pub fn describe_failure(message: &str) -> ErrorView {
     ErrorView {
@@ -275,6 +308,7 @@ pub fn describe_failure(message: &str) -> ErrorView {
         retry: false,
         add_variable: None,
         use_environments: Vec::new(),
+        settings_link: false,
     }
 }
 
@@ -643,6 +677,7 @@ pub struct ResponsePane {
     age_ticker: Option<(SystemTime, Task<()>)>,
     focus: FocusHandle,
     retry: bool,
+    settings_link: bool,
     save_example: bool,
     elapsed: bool,
     // The tabs on offer, a subset of `ResponseTab::BASE` in its order.
@@ -823,6 +858,7 @@ impl ResponsePane {
             age_ticker: None,
             focus: cx.focus_handle(),
             retry: true,
+            settings_link: true,
             save_example: true,
             elapsed: true,
             tabs: &ResponseTab::BASE,
@@ -887,6 +923,13 @@ impl ResponsePane {
     /// send again.
     pub fn without_retry(mut self) -> Self {
         self.retry = false;
+        self
+    }
+
+    /// The same pane without the timeout block's settings link, for a host with no request
+    /// editor to open.
+    pub fn without_settings_link(mut self) -> Self {
+        self.settings_link = false;
         self
     }
 
@@ -1448,6 +1491,7 @@ impl ResponsePane {
             retry: self.retry,
             add_variable: None,
             use_environments: Vec::new(),
+            settings_link: false,
         }
     }
 
@@ -1467,6 +1511,7 @@ impl ResponsePane {
             SendState::Done(r) => self.done_error(r, cx)?,
         };
         view.retry &= self.retry;
+        view.settings_link &= self.settings_link;
         Some(view)
     }
 
@@ -1479,6 +1524,7 @@ impl ResponsePane {
         };
         let mut view = self.done_error(r, cx)?;
         view.retry &= self.retry;
+        view.settings_link &= self.settings_link;
         Some(view)
     }
 
@@ -2570,16 +2616,38 @@ impl ResponsePane {
             ErrorTone::Danger => (IconName::CircleAlert, cx.theme().danger),
         };
         let open = self.details_open;
-        let toggle = view.message.as_ref().map(|_| {
-            Button::new("response-error-details-toggle")
-                .solid_ring(cx)
-                .ghost()
+        // The toggle reads as a button, and an open box offers its text for the clipboard.
+        let toggle = view.message.as_ref().map(|message| {
+            let toggle = error_action("response-error-details-toggle", cx)
                 .small()
                 .label(if open { "Hide details" } else { "Show details" })
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.details_open = !this.details_open;
                     cx.notify();
-                }))
+                }));
+            let text = message.clone();
+            let copy = error_action("response-error-details-copy", cx)
+                .small()
+                .icon(IconName::Copy)
+                .label("Copy")
+                .accessibility_label("Copy details")
+                .on_click(move |_, window, cx| {
+                    copy_with_toast(text.clone(), "Copied the details", window, cx)
+                });
+            h_flex()
+                .gap(style::SPACE_2)
+                .child(toggle)
+                .when(open, |row| row.child(copy))
+        });
+        let settings = view.settings_link.then(|| {
+            Button::new("response-timeout-settings")
+                .solid_ring(cx)
+                .link()
+                .small()
+                .label("Timeout setting")
+                .on_click(|_, window, cx| {
+                    window.dispatch_action(ShowRequestSettings.boxed_clone(), cx)
+                })
         });
         let details = view.message.clone().filter(|_| open).map(|text| {
             div()
@@ -2619,6 +2687,7 @@ impl ResponsePane {
                     .text_color(cx.theme().muted_foreground)
                     .child(sentence)
             }))
+            .children(settings)
             .children(toggle)
             .children(details)
             .child(

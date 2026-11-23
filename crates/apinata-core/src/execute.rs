@@ -329,6 +329,10 @@ pub enum ExecError {
         url: String,
         /// The run-wide cap, when it rather than the request's own timeout was the limit.
         run_wide: Option<Duration>,
+        /// The response deadline that ran out: the request's own timeout, or the run-wide cap
+        /// when that was lower. `None` when another timer ran out, such as a PAC lookup, an
+        /// NTLM leg or a saved body's idle window.
+        limit: Option<Duration>,
     },
     /// The connection to a hop's host failed, including its TLS handshake.
     #[error("{url}: could not connect: {message}")]
@@ -458,6 +462,7 @@ impl ExecError {
         Self::Timeout {
             url: url.into(),
             run_wide: None,
+            limit: None,
         }
     }
 
@@ -1040,9 +1045,10 @@ impl Executor {
         let own = req.timeout().filter(|t| !t.is_zero());
         let cap_bound = self.timeout_cap.filter(|cap| own.is_none_or(|t| t > *cap));
         match (result, cap_bound) {
-            (Err(ExecError::Timeout { url, .. }), Some(cap)) => Err(ExecError::Timeout {
+            (Err(ExecError::Timeout { url, limit, .. }), Some(cap)) => Err(ExecError::Timeout {
                 url,
                 run_wide: Some(cap),
+                limit,
             }),
             (result, _) => result,
         }
@@ -1416,7 +1422,12 @@ impl Executor {
             // One deadline per hop, over its PAC lookup, headers and body; it started with the
             // lookup. A digest retry is a fresh leg.
             let mut leg = hop_deadline;
-            let timed_out = || ExecError::timeout(redact_url(url.as_str()));
+            // The hop's deadline ran out, so the error names it; a saved body's idle window does not.
+            let timed_out = || ExecError::Timeout {
+                url: redact_url(url.as_str()),
+                run_wide: None,
+                limit: timeout,
+            };
             // A hop in NTLM mode runs its three legs on a pinned connection; negotiate pushes the
             // earlier legs onto the timeline and this loop records the last.
             let mut ntlm_sent = None;
@@ -1660,6 +1671,7 @@ impl Executor {
                     .await
                     .map_err(|e| match e {
                         ReadFail::Timeout => timed_out(),
+                        ReadFail::Idle => ExecError::timeout(redact_url(url.as_str())),
                         ReadFail::Body(e) => body_fail(e),
                         ReadFail::Stopped => ExecError::Transport {
                             url: redact_url(url.as_str()),
@@ -1974,7 +1986,10 @@ struct StreamHead {
 
 /// Why a streamed read failed rather than ended.
 enum ReadFail {
+    /// The hop's deadline ran out.
     Timeout,
+    /// A saved plain body sent nothing for the idle window.
+    Idle,
     Body(BodyError),
     /// Stop ended a plain body that was being saved, so there is no whole body to commit.
     Stopped,
@@ -2091,7 +2106,7 @@ async fn read_streaming(
                 if event_stream {
                     break Some(StreamEnd::IdleTimeout);
                 }
-                return Err(ReadFail::Timeout);
+                return Err(ReadFail::Idle);
             }
             () = async {
                 if event_stream || to_file {

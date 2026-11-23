@@ -204,7 +204,11 @@ async fn a_stalled_body_past_the_idle_window_errors_and_leaves_no_file() {
         opts,
     )
     .await;
-    assert!(matches!(res, Err(ExecError::Timeout { .. })), "{res:?}");
+    // The idle window is not a response deadline, so the error names no limit.
+    assert!(
+        matches!(res, Err(ExecError::Timeout { limit: None, .. })),
+        "{res:?}"
+    );
     assert!(names(dir.path()).is_empty());
 }
 
