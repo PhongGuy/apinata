@@ -290,6 +290,7 @@ mod git_watch_window;
 mod git_workspace;
 mod git_write;
 mod global_env_edit;
+mod global_env_list;
 mod global_env_rename;
 mod global_env_selector;
 mod global_env_workspace;
