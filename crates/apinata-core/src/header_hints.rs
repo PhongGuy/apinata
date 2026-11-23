@@ -2,7 +2,8 @@
 //!
 //! The names are the request-relevant subset of the IANA message header registry, in
 //! canonical casing; the values are the ones people type most for the headers that have a
-//! small vocabulary.
+//! small vocabulary. The descriptions are our own one-line wording, for request names and
+//! the response headers people most often look up.
 
 /// Request header names in the order they are offered: the ones used daily first.
 const NAMES: &[&str] = &[
@@ -188,6 +189,304 @@ const VALUES: &[(&str, &[&str])] = &[
     ),
 ];
 
+/// One-line descriptions, keyed by lowercase name: the offered request names, then the
+/// response headers people most often look up.
+const DESCRIPTIONS: &[(&str, &str)] = &[
+    (
+        "accept",
+        "The response formats the client can read, best first",
+    ),
+    (
+        "authorization",
+        "Credentials that prove who is making the request",
+    ),
+    (
+        "content-type",
+        "The format of the body, such as JSON or a form",
+    ),
+    ("content-length", "The size of the body in bytes"),
+    (
+        "cache-control",
+        "Rules for whether and how long the message may be cached",
+    ),
+    ("cookie", "Cookies the client sends back to the server"),
+    (
+        "user-agent",
+        "The name and version of the program making the request",
+    ),
+    (
+        "accept-encoding",
+        "The compression schemes the client can unpack",
+    ),
+    (
+        "accept-language",
+        "The human languages the client prefers, best first",
+    ),
+    ("accept-charset", "The text encodings the client can read"),
+    (
+        "connection",
+        "Whether to keep the connection open after this exchange",
+    ),
+    ("host", "The server name and port the request is meant for"),
+    ("origin", "The site a browser request comes from"),
+    ("referer", "The page that linked to or started this request"),
+    (
+        "if-match",
+        "Act only if the resource still has one of these ETags",
+    ),
+    (
+        "if-none-match",
+        "Act only if the resource has none of these ETags; used to reuse a cached copy",
+    ),
+    (
+        "if-modified-since",
+        "Send the resource only if it changed after this date",
+    ),
+    (
+        "if-unmodified-since",
+        "Act only if the resource has not changed since this date",
+    ),
+    (
+        "if-range",
+        "Send only the asked range if the resource is unchanged, else all of it",
+    ),
+    ("range", "Ask for only part of the resource, by byte range"),
+    (
+        "content-encoding",
+        "The compression applied to the body, such as gzip",
+    ),
+    (
+        "content-language",
+        "The human language the body is written for",
+    ),
+    (
+        "content-location",
+        "Where the body's content can be fetched on its own",
+    ),
+    (
+        "content-md5",
+        "An MD5 checksum of the body; outdated and rarely checked",
+    ),
+    (
+        "content-disposition",
+        "Whether the body shows inline or downloads, and its file name",
+    ),
+    ("date", "When the message was created"),
+    (
+        "etag",
+        "A version tag for the resource, changed whenever it changes",
+    ),
+    (
+        "expect",
+        "Asks the server to confirm before the body is sent",
+    ),
+    (
+        "forwarded",
+        "The client and proxies a request passed through",
+    ),
+    ("from", "An email address for the person behind the request"),
+    (
+        "max-forwards",
+        "How many more proxies may pass the request on",
+    ),
+    (
+        "pragma",
+        "An old way to say no-cache; Cache-Control replaces it",
+    ),
+    (
+        "prefer",
+        "Optional server behaviour the client would like, such as a short reply",
+    ),
+    (
+        "proxy-authorization",
+        "Credentials for the proxy between client and server",
+    ),
+    (
+        "te",
+        "The transfer codings the client accepts, and whether it takes trailers",
+    ),
+    (
+        "trailer",
+        "Headers that follow after the body instead of before it",
+    ),
+    (
+        "transfer-encoding",
+        "How the body is framed in transit, such as in chunks",
+    ),
+    (
+        "upgrade",
+        "Asks to switch to another protocol, such as WebSocket",
+    ),
+    ("via", "The proxies the message passed through"),
+    (
+        "warning",
+        "Extra notes about the message's state; now outdated",
+    ),
+    (
+        "access-control-request-method",
+        "In a preflight, the method the real request will use",
+    ),
+    (
+        "access-control-request-headers",
+        "In a preflight, the headers the real request will send",
+    ),
+    ("dnt", "Asks not to be tracked; widely ignored"),
+    (
+        "sec-fetch-dest",
+        "What a browser will use the response for, such as an image",
+    ),
+    (
+        "sec-fetch-mode",
+        "How a browser makes the request, such as cors or navigate",
+    ),
+    (
+        "sec-fetch-site",
+        "How the requesting site relates to the target site",
+    ),
+    (
+        "upgrade-insecure-requests",
+        "Says the client prefers to be sent to HTTPS",
+    ),
+    (
+        "x-api-key",
+        "An API key that identifies the caller; a common custom header",
+    ),
+    (
+        "x-forwarded-for",
+        "The client address a proxy received the request from",
+    ),
+    (
+        "x-forwarded-host",
+        "The host the client first asked a proxy for",
+    ),
+    (
+        "x-forwarded-proto",
+        "Whether the client reached the proxy over HTTP or HTTPS",
+    ),
+    (
+        "x-requested-with",
+        "Marks a request made by script, often XMLHttpRequest",
+    ),
+    (
+        "x-request-id",
+        "An id for this one request, to find it in logs",
+    ),
+    (
+        "x-correlation-id",
+        "An id shared by all requests in one operation, to trace it across services",
+    ),
+    (
+        "x-http-method-override",
+        "The method the server should use instead of the one sent",
+    ),
+    ("age", "How many seconds the response has sat in a cache"),
+    ("allow", "The methods the resource supports"),
+    ("expires", "When the response stops being fresh in a cache"),
+    ("last-modified", "When the resource last changed"),
+    (
+        "location",
+        "Where to go next: the redirect target or the new resource",
+    ),
+    ("retry-after", "How long to wait before trying again"),
+    ("server", "The software that handled the request"),
+    (
+        "set-cookie",
+        "A cookie for the client to store and send back later",
+    ),
+    (
+        "vary",
+        "The request headers that change which response comes back",
+    ),
+    (
+        "www-authenticate",
+        "How to authenticate, sent with a 401 response",
+    ),
+    (
+        "proxy-authenticate",
+        "How to authenticate with the proxy, sent with a 407 response",
+    ),
+    (
+        "accept-ranges",
+        "Whether the server can send part of the resource, and in what unit",
+    ),
+    (
+        "content-range",
+        "Which part of the resource this body holds",
+    ),
+    (
+        "content-security-policy",
+        "Which sources the page may load scripts, styles and more from",
+    ),
+    (
+        "strict-transport-security",
+        "Tells browsers to use only HTTPS for this site for a while",
+    ),
+    (
+        "x-content-type-options",
+        "With nosniff, browsers must trust Content-Type and not guess",
+    ),
+    (
+        "x-frame-options",
+        "Whether other sites may show this page in a frame",
+    ),
+    (
+        "referrer-policy",
+        "How much of the page address to send as Referer",
+    ),
+    (
+        "link",
+        "Links to related resources, such as the next page of results",
+    ),
+    (
+        "keep-alive",
+        "How long an open connection may idle, and how many requests it serves",
+    ),
+    (
+        "alt-svc",
+        "Other places or protocols where the same service can be reached",
+    ),
+    (
+        "access-control-allow-origin",
+        "Which sites a browser lets read this response",
+    ),
+    (
+        "access-control-allow-methods",
+        "In a preflight reply, the methods the real request may use",
+    ),
+    (
+        "access-control-allow-headers",
+        "In a preflight reply, the headers the real request may send",
+    ),
+    (
+        "access-control-allow-credentials",
+        "Whether a browser may share the response when cookies were sent",
+    ),
+    (
+        "access-control-expose-headers",
+        "Response headers a browser lets scripts read",
+    ),
+    (
+        "access-control-max-age",
+        "How many seconds a browser may reuse a preflight reply",
+    ),
+    (
+        "x-ratelimit-limit",
+        "How many requests are allowed in the current window",
+    ),
+    (
+        "x-ratelimit-remaining",
+        "How many requests are left in the current window",
+    ),
+    (
+        "x-ratelimit-reset",
+        "When the request limit window starts over",
+    ),
+    (
+        "x-powered-by",
+        "The framework or platform behind the server",
+    ),
+];
+
 /// The request header names offered, in canonical casing, most used first.
 pub fn header_names() -> &'static [&'static str] {
     NAMES
@@ -200,4 +499,13 @@ pub fn header_values(name: &str) -> &'static [&'static str] {
         .iter()
         .find(|(n, _)| n.eq_ignore_ascii_case(name))
         .map_or(&[], |(_, values)| values)
+}
+
+/// A one-line, plain description of the header `name` (compared without case), for a hint
+/// beside the name; `None` for a header this list does not describe.
+pub fn header_description(name: &str) -> Option<&'static str> {
+    DESCRIPTIONS
+        .iter()
+        .find(|(n, _)| n.eq_ignore_ascii_case(name))
+        .map(|(_, text)| *text)
 }
