@@ -112,6 +112,9 @@ fn the_count_is_reached_and_opened_from_the_keyboard(cx: &mut TestAppContext) {
         "settings:\n  maxRedirects: 2\n",
     );
     let (win, view) = pane(cx, &s.model);
+    // Keyboard travel starts from the body, as it does once a response arrives.
+    cx.update_window(win, |_, w, cx| view.update(cx, |p, cx| p.focus_body(w, cx)))
+        .unwrap();
     enter_on(cx, win, "response-redirects");
     frame(cx, win);
     assert_eq!(view.read_with(cx, |p, _| p.tab()), ResponseTab::Timeline);

@@ -416,9 +416,20 @@ fn no_two_shown_icon_controls_share_a_glyph(cx: &mut TestAppContext) {
         "response-history",
         "response-save-example",
     ];
-    const COMPACT: &[&str] = &["response-history", "response-more"];
+    // The live send followed a redirect, so its row also shows the redirect count; the kept
+    // older send has no timeline and shows none.
+    const LIVE: &[&str] = &[
+        "body-copy-button",
+        "body-save-button",
+        "response-compare",
+        "response-export-har",
+        "response-history",
+        "response-redirects",
+        "response-save-example",
+    ];
+    const COMPACT: &[&str] = &["response-history", "response-more", "response-redirects"];
     let (s, _server) = redirected(cx, 1280.);
-    let mut shapes = vec![("live", WIDE, recorded(cx, s.win))];
+    let mut shapes = vec![("live", LIVE, recorded(cx, s.win))];
     resize(cx, &s, 880.);
     assert!(present(cx, s.win, "response-more"), "880 px is compact");
     shapes.push(("compact", COMPACT, recorded(cx, s.win)));
