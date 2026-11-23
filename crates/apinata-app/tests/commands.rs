@@ -399,6 +399,7 @@ fn today() -> Vec<Triple> {
         ("menu".into(), "sidebar::OpenRowMenu", "Sidebar > Tree"),
         ("shift-f10".into(), "sidebar::OpenRowMenu", "Sidebar > Tree"),
         ("f2".into(), "sidebar::RenameSelected", "Sidebar > Tree"),
+        ("f2".into(), "apinata::RenameTitle", "RequestTitle"),
         (
             "f12".into(),
             "input::GoToDefinition",

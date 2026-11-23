@@ -31,7 +31,7 @@ use crate::preferences::{KEY_CONTEXT as PREFERENCES, OpenPreferences};
 use crate::renames_dialog::CheckSecretRenames;
 use crate::request_editor::{
     CancelRequest, KEY_CONTEXT as REQUEST_EDITOR, RUNNING_CONTEXT as RUNNING_REQUEST, RedoEdit,
-    SaveRequest, SendRequest, UndoEdit,
+    RenameTitle, SaveRequest, SendRequest, TITLE_KEY_CONTEXT as REQUEST_TITLE, UndoEdit,
 };
 use crate::row_move::{MoveRowDown, MoveRowUp};
 use crate::search_dialog::OpenCollectionSearch;
@@ -788,12 +788,16 @@ pub fn registry() -> Vec<Command> {
             &["secondary-r"],
         ),
         {
-            // F2 renames in the tree alone; anywhere else it would rename a row out of sight.
+            // F2 renames in the tree, where a row is in sight, and on the breadcrumb's focused
+            // name; the crumb target keeps one command, so one rebinding moves both.
             let mut c = command(
                 "request.rename_in_sidebar",
                 "Rename in sidebar",
                 Request,
-                vec![at(RenameSelected, SIDEBAR_TREE)],
+                vec![
+                    at(RenameSelected, SIDEBAR_TREE),
+                    at(RenameTitle, REQUEST_TITLE),
+                ],
                 &["f2"],
             );
             c.scope = Scope::Pane(SIDEBAR);
