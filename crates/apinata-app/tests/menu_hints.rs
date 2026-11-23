@@ -3,8 +3,9 @@
 
 use crate::support;
 
-use apinata_app::commands::{Scope, registry};
+use apinata_app::commands::{Command, Scope, registry};
 use apinata_app::shortcuts::HOST_OS;
+use apinata_app::shortcuts::{Overrides, conflicted};
 use apinata_app::sidebar::menu::{BulkEntry, MenuEntry};
 use apinata_app::sidebar::multi::Tally;
 use gpui_kit::component::kbd::Kbd;
@@ -177,11 +178,24 @@ fn f2_and_delete_are_sidebar_commands() {
     let mut chords = delete.default_chords.clone();
     chords.sort_unstable();
     assert_eq!(chords, ["backspace", "delete"]);
+    let contexts = |c: &Command| c.targets.iter().map(|t| t.context).collect::<Vec<_>>();
+    // The breadcrumb's name answers the same command, so one rebinding moves both.
+    assert_eq!(contexts(rename), ["Sidebar > Tree", "RequestTitle"]);
+    assert_eq!(contexts(delete), ["Sidebar > Tree"]);
     for c in [rename, delete] {
-        let contexts: Vec<&str> = c.targets.iter().map(|t| t.context).collect();
-        assert_eq!(contexts, ["Sidebar > Tree"], "{}", c.id);
         assert!(!c.in_palette, "{}", c.id);
     }
+}
+
+#[test]
+fn one_rename_command_binds_the_crumb_and_the_defaults_never_conflict() {
+    let cmds = registry();
+    let on_crumb: Vec<&str> = (cmds.iter())
+        .filter(|c| c.targets.iter().any(|t| t.context == "RequestTitle"))
+        .map(|c| c.id)
+        .collect();
+    assert_eq!(on_crumb, ["request.rename_in_sidebar"]);
+    assert!(conflicted(&cmds, &Overrides::new()).is_empty());
 }
 
 #[gpui_kit::test]
