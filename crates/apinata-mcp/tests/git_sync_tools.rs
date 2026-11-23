@@ -174,6 +174,8 @@ async fn git_switch_branch_refuses_uncommitted_changes_with_cores_message() {
     let sb = Sandbox::new();
     let (server, _) = tracking(&sb).await;
     let root = server.root();
+    write(root, "scratch.txt", "committed\n");
+    sb.commit_all(root, "scratch");
     sb.git(root, &["branch", "-q", "other"]);
     write(root, "scratch.txt", "not committed\n");
     let message = server

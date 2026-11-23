@@ -100,10 +100,14 @@ fn postman(items: &str) -> Vec<apinata_core::import::ImportNote> {
 
 #[test]
 fn a_script_note_names_the_request_and_not_the_event_index() {
-    let mut notes = postman(
+    let notes = postman(
         r#"{"name":"Get user","request":{"method":"GET","url":"https://x.test/u"},"event":[{"listen":"test","script":{"exec":["pm.test('ok')"]}}]}"#,
     );
-    let note = notes.remove(0);
+    // The collection's note on how imported scripts run comes first; this one is the script's.
+    let note = notes
+        .into_iter()
+        .find(|n| n.source.ends_with("event[0]"))
+        .unwrap();
     assert_eq!(note.source, "Get user / event[0]");
     assert_eq!(note.file.as_deref(), Some("Get user.yml"));
     assert_eq!(note.place(), "request `Get user`");
@@ -113,6 +117,27 @@ fn a_script_note_names_the_request_and_not_the_event_index() {
     let mut folder = note;
     folder.file = Some("Users/folder.yml".to_owned());
     assert_eq!(folder.place(), "folder `Get user`");
+}
+
+// How imported scripts run is said once per import, on the collection and no one file.
+#[test]
+fn the_script_trust_note_is_said_once_per_import() {
+    let script = |name: &str| {
+        format!(
+            r#"{{"name":"{name}","request":{{"method":"GET","url":"https://x.test/u"}},"event":[{{"listen":"test","script":{{"exec":["pm.test('ok')"]}}}}]}}"#
+        )
+    };
+    let notes = postman(&format!("{},{}", script("a"), script("b")));
+    let trust: Vec<_> = notes.iter().filter(|n| n.detail.contains("ask")).collect();
+    assert_eq!(trust.len(), 1, "{notes:?}");
+    assert_eq!(trust[0].source, "collection");
+    assert_eq!(trust[0].file, None);
+    assert_eq!(
+        trust[0].detail,
+        "imported scripts ask before they first run in the app or the MCP server, and apinata run runs them as your own command"
+    );
+    let plain = postman(r#"{"name":"c","request":{"method":"GET","url":"https://x.test/u"}}"#);
+    assert!(plain.iter().all(|n| !n.detail.contains("ask")), "{plain:?}");
 }
 
 #[test]

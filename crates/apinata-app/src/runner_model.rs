@@ -8,7 +8,8 @@ use std::time::Duration;
 
 use apinata_core::{
     CancelHandle, ItemPath, IterationData, RequestFile, RequestResult, ResultsReport, RunEvent,
-    RunOptions, StatusRule, StreamLimits, Summary, TagFilter, VarContext, rerun_slots,
+    RunOptions, StatusRule, StreamLimits, Summary, TagFilter, VarContext, iteration_total,
+    rerun_slots,
 };
 use gpui_kit::{App, AsyncApp, Context, Entity, Task, WeakEntity};
 
@@ -133,7 +134,10 @@ pub struct RunnerModel {
     planned: Vec<(PlannedRow, Vec<String>)>,
     preview: Vec<PlannedRow>,
     preview_loaded: bool,
-    preview_rounds: Option<usize>,
+    // The chosen data file as last read: its rows, or why it cannot be read.
+    data: Option<Result<IterationData, String>>,
+    // The rows the shown run iterated over, which name its iteration headers.
+    ran_data: Option<IterationData>,
     preview_task: Option<Task<()>>,
     // The parsed tags, exclude tags and data file the shown rows ran with.
     ran_with: RunChoice,
@@ -215,7 +219,8 @@ impl RunnerModel {
             planned: Vec::new(),
             preview: Vec::new(),
             preview_loaded: false,
-            preview_rounds: None,
+            data: None,
+            ran_data: None,
             preview_task: None,
             ran_with: Default::default(),
             run_files: HashMap::new(),
@@ -387,9 +392,7 @@ impl RunnerModel {
         self.fail_on_status = saved.fail_on_status;
         self.iteration_count = saved.iteration_count.map(|n| n.max(1));
         self.data_file = saved.data_file;
-        self.preview_rounds = (self.data_file.as_deref())
-            .and_then(|p| read_data(p).ok())
-            .map(|d| d.len());
+        self.data = self.data_file.as_deref().map(read_data);
         cx.notify();
     }
 
@@ -443,10 +446,8 @@ impl RunnerModel {
     /// Sets or clears the next run's data file.
     pub fn set_data_file(&mut self, path: Option<PathBuf>, cx: &mut Context<Self>) {
         self.data_file = path;
-        // An unreadable file shows no round count here and fails at Run as before.
-        self.preview_rounds = (self.data_file.as_deref())
-            .and_then(|p| read_data(p).ok())
-            .map(|d| d.len());
+        // Read at once so the view can show its rows or its error before any Run.
+        self.data = self.data_file.as_deref().map(read_data);
         self.save_options(cx);
         cx.notify();
     }
@@ -503,9 +504,37 @@ impl RunnerModel {
         &self.preview
     }
 
-    /// The data rows each request runs for, when a readable data file is set.
+    /// The data rows each request runs for, when a readable data file is set: its rows
+    /// capped by the iteration count.
     pub fn preview_rounds(&self) -> Option<usize> {
-        self.preview_rounds
+        match &self.data {
+            Some(Ok(data)) => Some(iteration_total(Some(data), self.iteration_count)),
+            _ => None,
+        }
+    }
+
+    /// The chosen data file's row count and its first row's column names, when it reads.
+    pub fn data_summary(&self) -> Option<(usize, Vec<&str>)> {
+        let Some(Ok(data)) = &self.data else {
+            return None;
+        };
+        let columns = (data.row(0).unwrap_or_default().iter())
+            .map(|(column, _)| column.as_str())
+            .collect();
+        Some((data.len(), columns))
+    }
+
+    /// Why the chosen data file cannot be read, as Run would report it.
+    pub fn data_error(&self) -> Option<&str> {
+        match &self.data {
+            Some(Err(why)) => Some(why),
+            _ => None,
+        }
+    }
+
+    /// The data row the shown run bound for iteration `index`, as (column, value) pairs.
+    pub fn iteration_row(&self, index: usize) -> Option<&[(String, String)]> {
+        self.ran_data.as_ref()?.row(index)
     }
 
     /// Whether the saved plan has arrived at least once, so the preview is not just empty.
@@ -705,13 +734,16 @@ impl RunnerModel {
         (self.template, self.slots, self.replaced) = (Vec::new(), Vec::new(), Vec::new());
         self.iteration = 0;
         self.unsaved = self.unsaved_names(cx);
-        let data = match self.data_file.as_deref().map(read_data).transpose() {
+        // Run reads the file afresh, and the field's preview follows what it found.
+        self.data = self.data_file.as_deref().map(read_data);
+        let data = match self.data.clone().transpose() {
             Ok(data) => data,
             Err(why) => {
                 self.finish(RunState::Failed(why), cx);
                 return true;
             }
         };
+        self.ran_data = data.clone();
         let filter = TagFilter::new(
             TagFilter::parse_list(&self.tags),
             TagFilter::parse_list(&self.exclude_tags),

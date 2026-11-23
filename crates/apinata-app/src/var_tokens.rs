@@ -1,11 +1,14 @@
 //! `{{name}}` placeholders in text fields: a tint per placeholder by what it resolves to,
-//! and a tooltip with its scope and value while the pointer is over it.
+//! and a tooltip with its scope and value, then each scope it shadows struck through,
+//! while the pointer is over it.
 
 use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use apinata_core::{VarScope, VariableInfo, VariableSet, placeholders, prompt_label};
+use apinata_core::{
+    ScopedVariable, VarScope, VariableInfo, VariableSet, placeholders, prompt_label,
+};
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::input::{EditorState, InputState};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -34,8 +37,46 @@ pub struct Token {
     pub range: Range<usize>,
     /// What it resolves to.
     pub kind: VarKind,
-    /// The tooltip text.
+    /// The tooltip's accessible text: its lines' labels, one per line.
     pub tip: String,
+    /// The tooltip's lines, the winning definition first.
+    pub lines: Vec<TipLine>,
+}
+
+/// One tooltip line: a scope and the value it shows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TipLine {
+    /// `{scope} · {value}`, or why the placeholder fails.
+    pub text: String,
+    /// Whether a higher scope defines the name too, so a send does not use this value.
+    pub shadowed: bool,
+}
+
+impl TipLine {
+    /// What a screen reader hears, since the strike-through is not read aloud.
+    pub fn label(&self) -> String {
+        if self.shadowed {
+            format!("{}, overridden", self.text)
+        } else {
+            self.text.clone()
+        }
+    }
+}
+
+impl Token {
+    fn new(range: Range<usize>, kind: VarKind, lines: Vec<TipLine>) -> Token {
+        let tip = lines
+            .iter()
+            .map(TipLine::label)
+            .collect::<Vec<_>>()
+            .join("\n");
+        Token {
+            range,
+            kind,
+            tip,
+            lines,
+        }
+    }
 }
 
 /// Every placeholder in `text`, classified against `vars`.
@@ -45,23 +86,33 @@ pub fn tokens(text: &str, vars: &VariableSet) -> Vec<Token> {
         .map(|(range, name)| {
             // A valid prompt is asked for on send, so no scope's value applies to it.
             if prompt_label(name).is_some() {
-                return Token {
-                    range,
-                    kind: VarKind::Prompt,
-                    tip: PROMPT_TIP.to_owned(),
+                let prompt = TipLine {
+                    text: PROMPT_TIP.to_owned(),
+                    shadowed: false,
                 };
+                return Token::new(range, VarKind::Prompt, vec![prompt]);
             }
-            let info = vars.get(name);
-            let kind = match &info {
+            // One lookup gives the winner and every scope it shadows, highest first.
+            let layers = vars.layers(name);
+            let kind = match layers.first().map(ScopedVariable::scope) {
                 None => VarKind::Undefined,
-                Some(i) if i.scope() == VarScope::Dynamic => VarKind::Dynamic,
+                Some(VarScope::Dynamic) => VarKind::Dynamic,
                 Some(_) => VarKind::Defined,
             };
-            Token {
-                range,
-                kind,
-                tip: tooltip(info.as_ref()),
+            let mut lines: Vec<TipLine> = layers
+                .iter()
+                .map(|v| TipLine {
+                    text: scope_line(v.scope(), v.value(), v.is_secret()),
+                    shadowed: v.is_shadowed(),
+                })
+                .collect();
+            if lines.is_empty() {
+                lines.push(TipLine {
+                    text: tooltip(None),
+                    shadowed: false,
+                });
             }
+            Token::new(range, kind, lines)
         })
         .collect()
 }
@@ -85,25 +136,30 @@ pub fn scope_label(scope: VarScope) -> &'static str {
 
 /// A placeholder's tooltip: scope and value, dots for a secret, or why it fails.
 pub fn tooltip(info: Option<&VariableInfo>) -> String {
-    let Some(info) = info else {
-        return "Undefined variable".to_owned();
-    };
-    let scope = scope_label(info.scope());
-    if info.scope() == VarScope::Dynamic {
-        return format!("{scope} · new value on each send");
+    match info {
+        None => "Undefined variable".to_owned(),
+        Some(i) => scope_line(i.scope(), i.value(), i.is_secret()),
     }
-    if info.is_secret() {
-        return format!("{scope} · {SECRET_DOTS}");
+}
+
+/// One definition's line: its scope and value, cut to [`TIP_VALUE_CHARS`], dots for a secret.
+fn scope_line(scope: VarScope, value: Option<&str>, secret: bool) -> String {
+    let label = scope_label(scope);
+    if scope == VarScope::Dynamic {
+        return format!("{label} · new value on each send");
     }
-    let value = info.value().unwrap_or_default();
+    if secret {
+        return format!("{label} · {SECRET_DOTS}");
+    }
+    let value = value.unwrap_or_default();
     if value.is_empty() {
-        return format!("{scope} · (empty)");
+        return format!("{label} · (empty)");
     }
     let mut shown: String = value.chars().take(TIP_VALUE_CHARS).collect();
     if value.chars().count() > TIP_VALUE_CHARS {
         shown.push('…');
     }
-    format!("{scope} · {shown}")
+    format!("{label} · {shown}")
 }
 
 /// Where a [`VarField`] reads its text and geometry.
@@ -344,7 +400,7 @@ impl RenderOnce for VarField {
             .hovered
             .clone()
             .filter(|t| !listing && !hinting && found.contains(t))
-            .and_then(|t| Some((self.source.bounds(&t.range, cx)?, t.tip)));
+            .and_then(|t| Some((self.source.bounds(&t.range, cx)?, t)));
         let source = self.source.clone();
         let hit_vars = Arc::clone(&vars);
         let on_move = {
@@ -383,8 +439,16 @@ impl RenderOnce for VarField {
             .on_hover(on_hover)
             .child(self.field)
             .children(fills)
-            .when_some(tip, |d, (bounds, tip)| {
-                let tip = SharedString::from(tip);
+            .when_some(tip, |d, (bounds, token)| {
+                let muted = cx.theme().muted_foreground;
+                let lines = token.lines.into_iter().enumerate().map(move |(i, line)| {
+                    div()
+                        .id(("var-tooltip-line", i))
+                        .test_support()
+                        .aria_label(line.label())
+                        .when(line.shadowed, |d| d.line_through().text_color(muted))
+                        .child(line.text)
+                });
                 d.child(deferred(
                     anchored()
                         .position(bounds.bottom_left())
@@ -393,7 +457,9 @@ impl RenderOnce for VarField {
                             div()
                                 .id("var-tooltip")
                                 .test_support()
-                                .aria_label(tip.clone())
+                                .aria_label(SharedString::from(token.tip))
+                                .flex()
+                                .flex_col()
                                 .max_w(style::VAR_TIP_MAX_WIDTH)
                                 .px(style::SPACE_2)
                                 .py(style::SPACE_1)
@@ -403,7 +469,7 @@ impl RenderOnce for VarField {
                                 .bg(cx.theme().popover)
                                 .text_color(cx.theme().popover_foreground)
                                 .text_size(style::TEXT_SMALL)
-                                .child(tip),
+                                .children(lines),
                         ),
                 ))
             })

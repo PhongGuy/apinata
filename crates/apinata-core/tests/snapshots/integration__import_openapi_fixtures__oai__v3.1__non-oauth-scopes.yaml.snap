@@ -56,7 +56,7 @@ extensions:
           file: get -users.yml
 
 note NeedsInput opencollection.yml | servers | no server gives an absolute URL; set `baseUrl` in an environment before sending
-note Converted opencollection.yml | collection | runs use the environment `Environment` by default, as the first environment imported
+note Converted opencollection.yml | collection | `Environment` is the default environment because it was imported first
 note NeedsInput environments/Environment.yml | components.securitySchemes | the secret `token` has no value; enter it before sending
 note NeedsInput - | collection | needs a value: `baseUrl`; nothing imported defines it, so add it to the collection's variables or an environment before sending
 secret Environment token

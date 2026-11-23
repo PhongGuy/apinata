@@ -72,6 +72,7 @@ pub fn failure(error: &SyncError, direction: Direction) -> String {
         SyncError::Failed { stderr } if AUTH_MARKERS.iter().any(|m| stderr.contains(m)) => {
             format!("{text}\nSet up a credential helper or ssh-agent, then try again.")
         }
+        SyncError::NoIdentity => format!("{text}. Commit once from Changes to set them."),
         SyncError::Cancelled if direction == Direction::Push => {
             "Cancelled; the push may already have reached the remote".to_owned()
         }
@@ -91,7 +92,8 @@ pub fn no_upstream(branch: &str, remotes: &[String]) -> String {
     }
 }
 
-fn capitalized(text: &str) -> String {
+/// `text` with its first letter in upper case.
+pub(crate) fn capitalized(text: &str) -> String {
     let mut chars = text.chars();
     match chars.next() {
         Some(first) => first.to_uppercase().chain(chars).collect(),

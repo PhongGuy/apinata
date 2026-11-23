@@ -1337,8 +1337,9 @@ impl ApinataServer {
     #[tool(
         description = "Switch the repository to `branch`: a local branch, or a remote branch \
                        as `<remote>/<name>`, which gets a local branch tracking it. Refused \
-                       while anything is uncommitted; nothing is carried over, stashed or \
-                       forced, so a switch can always be switched back.",
+                       while a tracked file has uncommitted changes. Untracked files are \
+                       carried over, and the switch is refused with their names when the \
+                       branch holds one of them; nothing is stashed or forced.",
         annotations(destructive_hint = false, open_world_hint = false)
     )]
     async fn git_switch_branch(

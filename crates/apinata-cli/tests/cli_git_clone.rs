@@ -274,7 +274,7 @@ fn switch_notes_an_upstream_it_set_or_left_alone() {
 fn switch_with_changes_refuses_and_an_unknown_branch_fails() {
     let sb = Sandbox::new();
     let col = cloned(&sb);
-    write(&col, "new.txt", "x\n");
+    write(&col, "a.txt", "x\n");
     cli(&sb, &col)
         .args(["git", "switch", "feature"])
         .assert()

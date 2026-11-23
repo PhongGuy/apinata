@@ -430,4 +430,4 @@ extensions:
           examples: 2be300571d21dc0b
           file: Update data.yml
 
-note Converted opencollection.yml | collection | runs use the environment `Public API server` by default, as the first environment imported
+note Converted opencollection.yml | collection | `Public API server` is the default environment because it was imported first

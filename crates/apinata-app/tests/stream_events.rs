@@ -10,9 +10,9 @@ use gpui_kit::{AppContext as _, TestAppContext, WindowOptions};
 use std::sync::Arc;
 
 #[test]
-fn preview_keeps_three_lines_and_marks_the_cut() {
-    assert_eq!(preview("a\nb"), "a\nb");
-    assert_eq!(preview("a\nb\nc\nd\ne"), "a\nb\nc\u{2026}");
+fn preview_keeps_the_first_line_and_marks_the_cut() {
+    assert_eq!(preview("a"), "a");
+    assert_eq!(preview("a\nb"), "a\u{2026}");
     let long = "x".repeat(PREVIEW_CHARS + 50);
     assert_eq!(
         preview(&long),
@@ -22,6 +22,38 @@ fn preview_keeps_three_lines_and_marks_the_cut() {
         preview(&"y".repeat(PREVIEW_CHARS)),
         "y".repeat(PREVIEW_CHARS)
     );
+}
+
+// A multi-line event reads as its first line, on one row no taller than a list row.
+#[gpui_kit::test]
+fn a_multi_line_event_shows_only_its_first_line(cx: &mut TestAppContext) {
+    let (win, pane, model, root, _server, _col) = open_pane(
+        cx,
+        Script::sse(vec![Step::Chunk("data: first\ndata: second\n\n".into())]),
+    );
+    model.update(cx, |m, cx| m.send(&root, ip("a.yml"), cx));
+    wait_real(cx, |cx| {
+        model.read_with(cx, |m, _| m.live().is_some_and(|l| l.events().len() == 1))
+    });
+    pane.update(cx, |p, cx| p.set_tab(ResponseTab::Events, cx));
+    let rows = pane.read_with(cx, |p, cx| p.event_rows(cx));
+    assert_eq!(rows[0].preview, "first\u{2026}");
+    let (row, line) = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            let row = w.find(("event-row", 0usize)).bounds();
+            (
+                row,
+                apinata_app::style::resolve(apinata_app::style::ROW_HEIGHT, w),
+            )
+        })
+        .unwrap();
+    assert!(
+        row.size.height <= line + gpui_kit::px(0.5),
+        "{row:?} beside {line:?}"
+    );
+    model.update(cx, |m, cx| m.cancel(cx));
+    finished(cx, &model);
 }
 
 #[test]

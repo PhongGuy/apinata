@@ -128,8 +128,8 @@ examples:
 
 docs: deletes a single pet based on the ID supplied
 
-=== environments/Environment 1.yml
-name: Environment 1
+=== environments/petstore.swagger.io.yml
+name: petstore.swagger.io
 variables:
   - name: baseUrl
     value: https://petstore.swagger.io/v2
@@ -318,7 +318,7 @@ extensions:
       - node_modules
       - .git
     presets:
-      defaultEnvironment: Environment 1
+      defaultEnvironment: petstore.swagger.io
   apinata:
     openapi:
       ops:
@@ -367,4 +367,4 @@ extensions:
           file: addPet.yml
           operationId: addPet
 
-note Converted opencollection.yml | collection | runs use the environment `Environment 1` by default, as the first environment imported
+note Converted opencollection.yml | collection | `petstore.swagger.io` is the default environment because it was imported first
