@@ -15,6 +15,7 @@ use h::*;
 use support::*;
 
 const ASK: &str = "Git needs your name and email before it can commit";
+const SAVE_FAILED: &str = "Git could not save your name and email. Check that its config file can be written, then try again.";
 
 fn global_file(sb: &Sandbox) -> PathBuf {
     sb.path().join("global.gitconfig")
@@ -170,4 +171,37 @@ fn the_form_and_the_footer_fit_a_1000_by_500_window(cx: &mut TestAppContext) {
         }
     })
     .unwrap();
+}
+
+/// A git that refuses any call naming `user.email` and runs the real git otherwise.
+#[cfg(unix)]
+fn email_refused(sb: &Sandbox) -> std::ffi::OsString {
+    let body = format!(
+        "#!/bin/sh\ncase \"$*\" in *user.email*) echo 'error: could not lock config file' >&2; exit 255 ;; esac\nexec '{}' \"$@\"\n",
+        git_support::real_git().display()
+    );
+    git_support::path_with(&sb.fake_git("no-email", &body))
+}
+
+#[cfg(unix)]
+#[gpui_kit::test]
+fn a_failed_save_says_so_plainly_and_writes_no_name(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let (s, col) = asked(cx, &sb);
+    let options = h::without_identity(&sb)
+        .env("GIT_CONFIG_GLOBAL", global_file(&sb))
+        .env("PATH", email_refused(&sb));
+    s.ws.update(cx, |w, cx| w.set_git(Some(options), cx));
+    frame(cx, s.win);
+    fill(cx, &s, "Ann Example", "ann@example.com");
+    click(cx, &s, "changes-identity-save");
+    idle(cx, &s);
+    match notice(cx) {
+        Some(Notice::NeedsIdentity { error: Some(text) }) => {
+            assert_eq!(text, SAVE_FAILED);
+        }
+        other => panic!("expected the form with an error, got {other:?}"),
+    }
+    assert!(!read(&col.path().join(".git/config")).contains("[user]"));
+    assert_eq!(commits(&sb, col.path()), "1");
 }

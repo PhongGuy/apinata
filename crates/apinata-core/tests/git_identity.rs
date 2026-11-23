@@ -3,15 +3,15 @@
 #![cfg_attr(not(unix), allow(dead_code, unused_imports))]
 
 use crate::git_branch::cloned;
-use crate::git_support::{Sandbox, assert_no_ambient_identity, write};
-use crate::git_sync::rev;
+use crate::git_support::{Sandbox, assert_no_ambient_identity, path_with, real_git, write};
+use crate::git_sync::{advance, rev};
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use apinata_core::{
     CancelFlag, CommitError, GitError, GitOptions, IdentityScope, SyncError, commit, rebase_pull,
-    set_identity, stage,
+    set_identity, squash_unpushed, stage,
 };
 
 /// The sandbox's options with no identity variables, so identity comes from config alone.
@@ -189,4 +189,73 @@ fn a_rebase_without_identity_is_no_identity_and_changes_nothing() {
     assert!(matches!(r, Err(SyncError::NoIdentity)), "{r:?}");
     assert_eq!(rev(&sb, &col, "HEAD"), head);
     assert!(!col.join(".git/rebase-merge").exists());
+}
+
+#[test]
+fn a_squash_without_identity_is_no_identity_and_keeps_the_branch() {
+    let sb = Sandbox::new();
+    let col = cloned(&sb);
+    write(&col, "local.txt", "l\n");
+    sb.commit_all(&col, "local");
+    advance(&sb, "remote.txt");
+    let head = rev(&sb, &col, "HEAD");
+    let copies = sb.path().join("copies");
+    let r = squash_unpushed(
+        &col,
+        "Save changes",
+        &copies,
+        &CancelFlag::new(),
+        &with_global(&sb),
+    );
+    assert!(matches!(r, Err(SyncError::NoIdentity)), "{r:?}");
+    assert_eq!(rev(&sb, &col, "HEAD"), head);
+}
+
+/// [`with_global`] on a git that refuses any call naming `user.email` and runs the real git
+/// for everything else.
+#[cfg(unix)]
+fn email_refused(sb: &Sandbox) -> GitOptions {
+    let body = format!(
+        "#!/bin/sh\ncase \"$*\" in *user.email*) echo 'error: could not lock config file' >&2; exit 255 ;; esac\nexec '{}' \"$@\"\n",
+        real_git().display()
+    );
+    let bin = sb.fake_git("no-email", &body);
+    with_global(sb).env("PATH", path_with(&bin))
+}
+
+#[cfg(unix)]
+#[test]
+fn a_refused_email_puts_the_earlier_name_back() {
+    let sb = Sandbox::new();
+    let (repo, col) = staged_without_identity(&sb);
+    sb.git(&repo, &["config", "user.name", "Old Name"]);
+    let r = set_identity(
+        &col,
+        "Ann Example",
+        "ann@example.com",
+        IdentityScope::Repository,
+        &email_refused(&sb),
+    );
+    assert!(matches!(r, Err(GitError::Failed { .. })), "{r:?}");
+    assert_eq!(sb.git(&repo, &["config", "user.name"]), "Old Name\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_refused_email_removes_a_name_that_was_not_there() {
+    let sb = Sandbox::new();
+    let (_repo, col) = staged_without_identity(&sb);
+    let r = set_identity(
+        &col,
+        "Ann Example",
+        "ann@example.com",
+        IdentityScope::AllRepositories,
+        &email_refused(&sb),
+    );
+    assert!(matches!(r, Err(GitError::Failed { .. })), "{r:?}");
+    assert!(
+        !read(&global_file(&sb)).contains("Ann"),
+        "{}",
+        read(&global_file(&sb))
+    );
 }

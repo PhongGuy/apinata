@@ -72,6 +72,7 @@ pub fn failure(error: &SyncError, direction: Direction) -> String {
         SyncError::Failed { stderr } if AUTH_MARKERS.iter().any(|m| stderr.contains(m)) => {
             format!("{text}\nSet up a credential helper or ssh-agent, then try again.")
         }
+        SyncError::NoIdentity => format!("{text}. Commit once from Changes to set them."),
         SyncError::Cancelled if direction == Direction::Push => {
             "Cancelled; the push may already have reached the remote".to_owned()
         }

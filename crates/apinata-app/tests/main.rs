@@ -626,6 +626,7 @@ mod subscription_errors;
 mod subscription_send;
 mod subscription_stop;
 mod subtab_focus;
+mod sync_failure_text;
 mod tab_area;
 mod tab_close_focus;
 mod tab_close_right;

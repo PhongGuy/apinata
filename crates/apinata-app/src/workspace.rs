@@ -2589,7 +2589,8 @@ impl Workspace {
                     message,
                 } => match set_identity(&dir, &name, &email, scope, &options) {
                     Ok(()) => commit_done(&dir, &message, &options),
-                    Err(e) => GitWriteDone::IdentityRefused(e.to_string()),
+                    Err(GitError::Malformed(why)) => GitWriteDone::IdentityRefused(why),
+                    Err(_) => GitWriteDone::IdentityRefused(IDENTITY_NOT_SAVED.to_owned()),
                 },
             }
         });
@@ -5152,6 +5153,9 @@ fn saved_tab_of(kind: &TabKind) -> Option<SavedTab> {
         other => SavedPanelKind::from_tab_kind(other).map(SavedTab::Panel),
     }
 }
+
+// Why the identity form's Save did not go through when git could not write its config.
+const IDENTITY_NOT_SAVED: &str = "git could not save your name and email. Check that its config file can be written, then try again.";
 
 // Commits what is staged in `dir`; a refusal becomes its dialog text, with a note first when a
 // hook that ran rewrote the index, and a missing identity asks for one instead.

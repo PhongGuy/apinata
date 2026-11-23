@@ -174,7 +174,8 @@ pub enum IdentityScope {
 /// Save `name` and `email` as git's `user.name` and `user.email` at `scope` for the repository
 /// holding the collection `root`. A value that is blank, starts with `-`, or holds a line break,
 /// NUL, `<` or `>` is `Malformed` and git does not run. `AllRepositories` writes the global
-/// config that `GIT_CONFIG_GLOBAL` names, else the user's own.
+/// config that `GIT_CONFIG_GLOBAL` names, else the user's own. When the email cannot be written
+/// the name at that scope is put back as it was, and the error is git's.
 pub fn set_identity(
     root: &Path,
     name: &str,
@@ -189,13 +190,30 @@ pub fn set_identity(
         IdentityScope::Repository => "--local",
         IdentityScope::AllRepositories => "--global",
     };
+    // The name at this scope from before, so a refused email leaves the config as it was.
+    let earlier = run::git(&["config", scope, "--get", "user.name"], root, options)?;
+    let earlier = earlier.status.success().then(|| {
+        let text = String::from_utf8_lossy(&earlier.stdout);
+        text.strip_suffix('\n').unwrap_or(&text).to_owned()
+    });
     // Each value is its own argument after `--`, so nothing in it reaches a shell or an option.
-    for (key, value) in [("user.name", name), ("user.email", email)] {
+    let set = |key: &str, value: &str| -> Result<(), GitError> {
         let args = ["config", scope, "--", key, value];
         let out = run::git(&args, root, options)?;
-        if !out.status.success() {
-            return Err(out.failed(&args));
+        if out.status.success() {
+            Ok(())
+        } else {
+            Err(out.failed(&args))
         }
+    };
+    set("user.name", name)?;
+    if let Err(e) = set("user.email", email) {
+        // Best effort: the email's own failure is what the caller needs to hear.
+        let _ = match &earlier {
+            Some(old) => set("user.name", old),
+            None => run::git(&["config", scope, "--unset", "user.name"], root, options).map(drop),
+        };
+        return Err(e);
     }
     Ok(())
 }
