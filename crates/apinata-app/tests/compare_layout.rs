@@ -94,11 +94,19 @@ fn the_compare_tab_scrolls_inside_a_short_window_with_the_dock_open(cx: &mut Tes
             "list {list:?} overlaps dock {dock:?}"
         );
         assert!(
-            list.size.height >= px(60.),
-            "starting a compare gave the list room: {list:?} response {response:?} summary {summary:?} dock {dock:?}"
+            list.size.height > px(0.),
+            "starting a compare left the list empty: {list:?} response {response:?} summary {summary:?} dock {dock:?}"
         );
     })
     .unwrap();
+    // The request keeps its rows ahead of the comparison's room.
+    let tab = open_tab(cx, &s.ws, &s.root, "a.yml");
+    let ed = editor_of(cx, &s, tab);
+    let (pane, need) = request_pane_and_rows(cx, s.win, &ed);
+    assert!(
+        pane >= need - px(0.5),
+        "request pane {pane:?}, rows need {need:?}"
+    );
     let before = cx
         .update_window(s.win, |_, w, _| w.find("compare-summary").bounds())
         .unwrap();
@@ -115,6 +123,24 @@ fn the_compare_tab_scrolls_inside_a_short_window_with_the_dock_open(cx: &mut Tes
         .update_window(s.win, |_, w, _| w.find("compare-summary").bounds())
         .unwrap();
     assert_eq!(before, after, "scrolling moves rows, not the summary line");
+}
+
+// With room for both the request's rows and a comparison, starting one gives the list a
+// usable height above the dock.
+#[gpui_kit::test]
+fn the_compare_list_gets_room_in_a_taller_window_with_the_dock_open(cx: &mut TestAppContext) {
+    let (s, _pane, _server) = compare_open(cx, 1000., 560.);
+    cx.update_window(s.win, |_, w, cx| {
+        w.render_frame(cx);
+        let list = w.find("compare-list").bounds();
+        let dock = w.find("console-dock").bounds();
+        assert!(list.size.height >= px(60.), "list {list:?}");
+        assert!(
+            list.bottom() <= dock.top() + px(1.),
+            "list {list:?} overlaps dock {dock:?}"
+        );
+    })
+    .unwrap();
 }
 
 #[gpui_kit::test]
