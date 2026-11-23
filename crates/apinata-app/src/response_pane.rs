@@ -374,7 +374,14 @@ fn as_sentence(text: &str) -> String {
 
 // A result, held weakly so it can be told apart, and its console lines redacted.
 type RedactedConsole = (Weak<RequestResult>, Rc<[ConsoleEntry]>);
-type GraphqlSummary = (Weak<RequestResult>, Option<SharedString>);
+type GraphqlSummary = (Weak<RequestResult>, Option<GraphqlBadge>);
+
+// The GraphQL errors badge's count text and the whole redacted summary behind it.
+#[derive(Clone)]
+struct GraphqlBadge {
+    count: SharedString,
+    summary: SharedString,
+}
 
 // A Timeline value as shown masked and as shown revealed; the eye exists when they differ.
 #[derive(Clone)]
@@ -696,6 +703,8 @@ pub struct ResponsePane {
     live_headers: HashMap<(PathBuf, ItemPath, u64), (KeptAs, Vec<HeaderValue>)>,
     // The Console tab's level filter; it belongs to the pane, so it outlives each send.
     console_filter: Option<ConsoleLevel>,
+    // The Tests tab's verdict filter, kept across sends like the Console's.
+    tests_filter: Option<TestFilter>,
     // The shown result's console lines redacted once per result, as renders repeat.
     console_redacted: RefCell<Option<RedactedConsole>>,
     // The shown result's GraphQL errors summary, read from its body once per result.
@@ -871,6 +880,7 @@ impl ResponsePane {
             compare_task: None,
             live_headers: HashMap::new(),
             console_filter: None,
+            tests_filter: None,
             console_redacted: RefCell::default(),
             graphql_summary: RefCell::default(),
             timeline_masks: RefCell::default(),
@@ -1304,6 +1314,17 @@ impl ResponsePane {
     /// Shows only entries of `filter`'s level in the Console tab, or all for `None`.
     pub fn set_console_filter(&mut self, filter: Option<ConsoleLevel>, cx: &mut Context<Self>) {
         self.console_filter = filter;
+        cx.notify();
+    }
+
+    /// The Tests tab's verdict filter; `None` shows every row.
+    pub fn tests_filter(&self) -> Option<TestFilter> {
+        self.tests_filter
+    }
+
+    /// Shows only the Tests tab's rows that `filter` keeps, or all for `None`.
+    pub fn set_tests_filter(&mut self, filter: Option<TestFilter>, cx: &mut Context<Self>) {
+        self.tests_filter = filter;
         cx.notify();
     }
 
@@ -2424,9 +2445,9 @@ impl ResponsePane {
                     .into_any_element(),
             );
         }
-        // A GraphQL failure answers 200, so its errors read beside the status as a warning,
-        // cut at a fixed width with the whole summary in the tooltip.
-        before.extend(self.graphql_summary(result, cx).map(|text| {
+        // A GraphQL failure answers 200, so its error count reads beside the status as a
+        // warning, the whole summary on hover; a click shows the errors themselves in the body.
+        before.extend(self.graphql_summary(result, cx).map(|badge| {
             div()
                 .id("response-graphql-errors")
                 .test_support()
@@ -2435,12 +2456,17 @@ impl ResponsePane {
                 .truncate()
                 .px(style::SPACE_2)
                 .rounded(cx.theme().radius)
+                .cursor_pointer()
                 .bg(crate::theme::status_fill(crate::theme::Status::Warning, cx))
                 .text_color(cx.theme().warning)
                 .text_size(style::TEXT_SMALL)
-                .aria_label(text.clone())
-                .child(text.clone())
-                .tooltip(ui::text_tooltip("response-graphql-errors-tooltip", text))
+                .aria_label(badge.count.clone())
+                .child(badge.count)
+                .tooltip(ui::text_tooltip(
+                    "response-graphql-errors-tooltip",
+                    badge.summary,
+                ))
+                .on_click(cx.listener(|p, _, window, cx| p.show_graphql_errors(window, cx)))
                 .into_any_element()
         }));
         if self.elapsed {
@@ -3394,6 +3420,7 @@ impl ResponsePane {
                 )
             }
             ResponseTab::Tests => {
+                let filter = self.tests_filter;
                 let none = shows_no_tests(result).then(|| {
                     div()
                         .id("tests-none")
@@ -3412,23 +3439,48 @@ impl ResponsePane {
                         .font_weight(FontWeight::SEMIBOLD)
                         .child(line)
                 });
-                let heading = assertion_summary(&result.assertions).map(|line| {
-                    group_heading(
-                        "assertions-heading",
-                        "Assertions",
-                        "assertions-summary",
-                        line,
-                        cx,
-                    )
-                });
+                let pick = (!shows_no_tests(result)).then(|| self.tests_filter_bar(cx));
+                let assertions: Vec<_> = (result.assertions.iter().enumerate())
+                    .map(|(ix, o)| (ix, o, redacted_assertion_line(o, result)))
+                    .filter(|(_, _, (verdict, _))| test_filter_keeps(filter, verdict))
+                    .collect();
+                let kept_tests = (result.tests.iter())
+                    .filter(|t| test_filter_keeps(filter, test_line(t).0))
+                    .count();
+                let filtered_out = (filter.is_some()
+                    && !shows_no_tests(result)
+                    && assertions.is_empty()
+                    && kept_tests == 0)
+                    .then(|| {
+                        let text = filter_none_text(filter);
+                        div()
+                            .id("tests-filter-none")
+                            .test_support()
+                            .aria_label(text)
+                            .text_color(cx.theme().muted_foreground)
+                            .child(text)
+                    });
+                let heading = (!assertions.is_empty())
+                    .then(|| assertion_summary(&result.assertions))
+                    .flatten()
+                    .map(|line| {
+                        group_heading(
+                            "assertions-heading",
+                            "Assertions",
+                            "assertions-summary",
+                            line,
+                            cx,
+                        )
+                    });
                 scroll_frame(
                     "response-assertions",
                     v_flex()
                         .children(none)
+                        .children(pick)
                         .children(total)
+                        .children(filtered_out)
                         .children(heading)
-                        .children(result.assertions.iter().enumerate().map(|(ix, o)| {
-                            let (verdict, text) = redacted_assertion_line(o, result);
+                        .children(assertions.into_iter().map(|(ix, o, (verdict, text))| {
                             // The engine's own words stay on offer behind the plain sentence.
                             let engine = assertion_engine_text(o).map(|raw| result.redact(raw));
                             h_flex()
@@ -3437,14 +3489,7 @@ impl ResponsePane {
                                 .aria_label(text.clone())
                                 .items_start()
                                 .gap(style::SPACE_2)
-                                .child(
-                                    div()
-                                        .id(("assertion-verdict", ix))
-                                        .test_support()
-                                        .flex_none()
-                                        .text_color(verdict_colour(verdict, cx))
-                                        .child(verdict),
-                                )
+                                .child(verdict_cell(("assertion-verdict", ix), verdict, cx))
                                 .child(wrapping_line(("assertion-text", ix), text).when_some(
                                     engine,
                                     |line, tip| {
@@ -3452,7 +3497,7 @@ impl ResponsePane {
                                     },
                                 ))
                         }))
-                        .children(tests_block(result, cx)),
+                        .children(tests_block(result, filter, cx)),
                 )
             }
             ResponseTab::Console => {
@@ -3466,7 +3511,7 @@ impl ResponsePane {
 
     /// The summary of `r`'s GraphQL errors, redacted, when this pane's request is GraphQL and
     /// the body carries a non-empty `errors` array.
-    fn graphql_summary(&self, r: &Arc<RequestResult>, cx: &App) -> Option<SharedString> {
+    fn graphql_summary(&self, r: &Arc<RequestResult>, cx: &App) -> Option<GraphqlBadge> {
         let (root, item) = self.target.as_ref().and_then(|target| target(cx))?;
         let workspace = self.send.read(cx).workspace().read(cx);
         let view = workspace.request(&root, &item, cx)?;
@@ -3481,9 +3526,19 @@ impl ResponsePane {
         }
         let text = (r.response.as_ref())
             .and_then(|response| apinata_core::graphql_errors(response.body()))
-            .map(|errors| SharedString::from(r.redact(&errors.summary())));
+            .map(|errors| GraphqlBadge {
+                count: graphql_count(errors.count).into(),
+                summary: r.redact(&errors.summary()).into(),
+            });
         *cache = Some((Arc::downgrade(r), text.clone()));
         text
+    }
+
+    // The Body tab, filtered down to the response's errors array.
+    fn show_graphql_errors(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.set_tab(ResponseTab::Body, cx);
+        self.body
+            .update(cx, |b, cx| b.set_filter("$.errors", window, cx));
     }
 
     /// The console lines of `r` with its secrets redacted, as the session log shows them.
@@ -3663,6 +3718,24 @@ impl ResponsePane {
             m.revealed.insert(key);
         }
         cx.notify();
+    }
+
+    // The Tests tab's All / Passed / Failed / Skipped segments.
+    fn tests_filter_bar(&self, cx: &mut Context<Self>) -> Div {
+        let selected = (TEST_FILTERS.iter())
+            .position(|f| *f == self.tests_filter)
+            .unwrap_or(0);
+        let this = cx.entity();
+        let pick = ui::segmented(
+            "tests-filter",
+            ["All", "Passed", "Failed", "Skipped"],
+            selected,
+            move |ix, _, cx| {
+                let f = TEST_FILTERS.get(*ix).copied().flatten();
+                this.update(cx, |p, cx| p.set_tests_filter(f, cx));
+            },
+        );
+        h_flex().pb(style::SPACE_2).child(pick)
     }
 
     // A filter and Copy header over the entries the filter keeps, each a coloured level
@@ -3980,40 +4053,53 @@ pub fn console_text(entries: &[ConsoleEntry], filter: Option<ConsoleLevel>) -> S
         .join("\n")
 }
 
-// The script tests under the assertions: a summary, then each entry's verdict, phase and line.
-fn tests_block(result: &RequestResult, cx: &App) -> Option<Div> {
+// The script tests under the assertions: a summary, then one heading per script in run order
+// over the rows `filter` keeps. A script left with no rows drops its heading, and the block
+// drops entirely when no row is left.
+fn tests_block(result: &RequestResult, filter: Option<TestFilter>, cx: &App) -> Option<Div> {
     let summary = test_summary(&result.tests)?;
-    let rows = result.tests.iter().enumerate().map(|(ix, t)| {
-        let (verdict, text) = test_line(t);
-        let text = result.redact(&text);
-        h_flex()
-            .id(("test", ix))
-            .test_support()
-            .aria_label(text.clone())
-            .items_start()
-            .gap(style::SPACE_2)
-            .child(
-                div()
-                    .id(("test-verdict", ix))
-                    .test_support()
-                    .flex_none()
-                    .text_color(verdict_colour(verdict, cx))
-                    .child(verdict),
-            )
-            // A script error's name already says which script failed.
-            .when(!t.script_error, |row| {
-                row.child(
-                    div()
-                        .id(("test-phase", ix))
+    let mut phases: Vec<ScriptPhase> = Vec::new();
+    for t in &result.tests {
+        if !phases.contains(&t.phase) {
+            phases.push(t.phase);
+        }
+    }
+    phases.sort_by_key(|p| phase_rank(*p));
+    let groups: Vec<_> = (phases.into_iter().enumerate())
+        .filter_map(|(gx, phase)| {
+            let rows: Vec<_> = (result.tests.iter().enumerate())
+                .filter(|(_, t)| t.phase == phase)
+                .map(|(ix, t)| (ix, test_line(t)))
+                .filter(|(_, (verdict, _))| test_filter_keeps(filter, verdict))
+                .map(|(ix, (verdict, text))| {
+                    let text = result.redact(&text);
+                    h_flex()
+                        .id(("test", ix))
                         .test_support()
-                        .flex_none()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(test_source(t.phase)),
-                )
+                        .aria_label(text.clone())
+                        .items_start()
+                        .gap(style::SPACE_2)
+                        .child(verdict_cell(("test-verdict", ix), verdict, cx))
+                        .child(wrapping_line(("test-text", ix), text))
+                })
+                .collect();
+            (!rows.is_empty()).then(|| {
+                let name = test_source(phase);
+                v_flex()
+                    .child(
+                        div()
+                            .id(("test-script", gx))
+                            .test_support()
+                            .aria_label(name)
+                            .py(style::SPACE_1)
+                            .text_color(cx.theme().muted_foreground)
+                            .child(name),
+                    )
+                    .children(rows)
             })
-            .child(wrapping_line(("test-text", ix), text))
-    });
-    Some(
+        })
+        .collect();
+    (!groups.is_empty()).then(|| {
         v_flex()
             .pt(style::SPACE_2)
             .child(group_heading(
@@ -4023,8 +4109,38 @@ fn tests_block(result: &RequestResult, cx: &App) -> Option<Div> {
                 summary,
                 cx,
             ))
-            .children(rows),
-    )
+            .children(groups)
+    })
+}
+
+// The order scripts run in, so the Tests tab lists them that way.
+fn phase_rank(phase: ScriptPhase) -> u8 {
+    match phase {
+        ScriptPhase::PreRequest => 0,
+        ScriptPhase::PostResponse => 1,
+        _ => 2,
+    }
+}
+
+// A row's verdict word in a fixed-width column, so every row's text starts at the same x.
+fn verdict_cell(id: (&'static str, usize), verdict: &'static str, cx: &App) -> impl IntoElement {
+    div()
+        .id(id)
+        .test_support()
+        .flex_none()
+        .w(style::VERDICT_COLUMN)
+        .text_color(verdict_colour(verdict, cx))
+        .child(verdict)
+}
+
+// What the Tests tab says when its filter leaves no row.
+fn filter_none_text(filter: Option<TestFilter>) -> &'static str {
+    match filter {
+        Some(TestFilter::Passed) => "No passed tests",
+        Some(TestFilter::Failed) => "No failed tests",
+        Some(TestFilter::Skipped) => "No skipped tests",
+        None => "No tests",
+    }
 }
 
 // A result line that takes the row's remaining width and wraps there, so a long value never
@@ -5691,6 +5807,44 @@ pub fn test_line(t: &TestOutcome) -> (&'static str, String) {
         None => t.name.clone(),
     };
     (word, text)
+}
+
+/// A Tests tab filter segment past All.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TestFilter {
+    /// Rows that passed.
+    Passed,
+    /// Rows that failed, and scripts that failed to run.
+    Failed,
+    /// Rows that were skipped.
+    Skipped,
+}
+
+/// The Tests filter's segments, in order: All, then each verdict.
+pub const TEST_FILTERS: [Option<TestFilter>; 4] = [
+    None,
+    Some(TestFilter::Passed),
+    Some(TestFilter::Failed),
+    Some(TestFilter::Skipped),
+];
+
+/// Whether `filter` keeps a row whose verdict word, from `test_line` or `assertion_line`, is
+/// `word`; a script error counts as failed.
+pub fn test_filter_keeps(filter: Option<TestFilter>, word: &str) -> bool {
+    match filter {
+        None => true,
+        Some(TestFilter::Passed) => word == "pass",
+        Some(TestFilter::Failed) => matches!(word, "fail" | "error"),
+        Some(TestFilter::Skipped) => word == "skipped",
+    }
+}
+
+// "1 GraphQL error", "N GraphQL errors".
+fn graphql_count(count: usize) -> String {
+    match count {
+        1 => "1 GraphQL error".to_owned(),
+        n => format!("{n} GraphQL errors"),
+    }
 }
 
 /// The script a test entry came from, as the Tests tab names it.
