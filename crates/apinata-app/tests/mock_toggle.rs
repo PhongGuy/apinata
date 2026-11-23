@@ -8,7 +8,7 @@ use apinata_app::command::{Command, Target, TreeOp};
 use apinata_app::mock_server::{MockServers, MockState};
 use apinata_app::session::{CollectionSession, Session};
 use apinata_app::snapshot::{CollectionSnapshot, SnapshotCache};
-use apinata_app::workspace::Workspace;
+use apinata_app::workspace::{Workspace, WorkspaceEvent};
 use apinata_core::mock::{self, MockOptions};
 use apinata_core::{Collection, ContextOptions, VarContext};
 use apinata_core::{ExampleBody, ExampleBodyKind, ExampleResponse};
@@ -19,6 +19,7 @@ use std::io::{Read as _, Write as _};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 use support::*;
 
@@ -88,13 +89,25 @@ fn pressed(cx: &mut TestAppContext, win: AnyWindowHandle) -> Option<bool> {
     .unwrap()
 }
 
-// A port free right now, so a start that binds it twice would fail with the port in use.
-fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
+// A free port below every common ephemeral range, so no other test's bind to port 0 can take
+// it while a server lets it go; each call starts its search somewhere new.
+fn quiet_port() -> u16 {
+    static NEXT: AtomicU32 = AtomicU32::new(0);
+    let offset = std::process::id() % 8000 + NEXT.fetch_add(97, Ordering::Relaxed) % 8000;
+    (0..8000u32)
+        .map(|i| 20000 + ((offset + i) % 8000) as u16)
+        .find(|&port| TcpListener::bind(("127.0.0.1", port)).is_ok())
+        .expect("a free port below the ephemeral range")
+}
+
+// The moves to a free port `seen` holds, as (wanted, bound) pairs in order.
+fn moves(seen: &std::rc::Rc<std::cell::RefCell<Vec<WorkspaceEvent>>>) -> Vec<(u16, u16)> {
+    (seen.borrow().iter())
+        .filter_map(|e| match e {
+            WorkspaceEvent::MockMoved { from, to, .. } => Some((*from, *to)),
+            _ => None,
+        })
+        .collect()
 }
 
 fn remembered(cx: &mut TestAppContext, ws: &gpui_kit::Entity<Workspace>, root: &Path) -> bool {
@@ -226,7 +239,7 @@ fn the_session_keeps_the_choice_only_when_on() {
 fn turning_off_during_a_start_leaves_no_server_and_no_toast(cx: &mut TestAppContext) {
     let col = mocked();
     let s = start(cx, &col);
-    let port = free_port();
+    let port = quiet_port();
     let root = s.root.clone();
     s.ws.update(cx, |w, cx| {
         w.set_mock_port(port);
@@ -249,7 +262,7 @@ fn turning_off_during_a_start_leaves_no_server_and_no_toast(cx: &mut TestAppCont
 fn on_off_on_in_quick_succession_leaves_exactly_one_server(cx: &mut TestAppContext) {
     let col = mocked();
     let s = start(cx, &col);
-    let port = free_port();
+    let port = quiet_port();
     let root = s.root.clone();
     // On a fixed port a second live server could not bind, so one success means one server.
     s.ws.update(cx, |w, cx| {
@@ -318,19 +331,47 @@ fn a_newly_saved_example_is_served_by_the_running_mock_on_the_same_address(
 #[gpui_kit::test]
 fn turning_the_mock_off_and_on_keeps_its_port(cx: &mut TestAppContext) {
     let col = mocked();
+    let port = quiet_port();
+    let (ws, _state) = reopened(cx, &col, port);
+    let seen = events(cx, &ws);
+    let first = running(cx, &ws, col.path());
+    assert_eq!(first.port(), port);
+    ws.update(cx, |w, cx| w.toggle_mock(col.path(), cx));
+    assert_eq!(state(cx, &ws, col.path()), MockState::Off);
+    ws.update(cx, |w, cx| w.toggle_mock(col.path(), cx));
+    let second = running(cx, &ws, col.path());
+    assert_eq!(second, first);
+    assert!(moves(&seen).is_empty());
+    let session = ws.read_with(cx, |w, _| w.session().clone());
+    let saved = session_value(cx, &session);
+    assert_eq!(saved.collections[col.path()].mock_port, Some(port));
+}
+
+#[gpui_kit::test]
+fn a_port_taken_while_the_mock_was_off_moves_it_and_says_so(cx: &mut TestAppContext) {
+    let col = mocked();
     let s = start(cx, &col);
+    let seen = events(cx, &s.ws);
     click(cx, s.win, "mock-toggle");
     let first = running(cx, &s.ws, &s.root);
     frame(cx, s.win);
     click(cx, s.win, "mock-toggle");
     frame(cx, s.win);
+    // Another program takes the port the moment the stopped server lets it go.
+    let mut taken = None;
+    wait_real(cx, |_| {
+        taken = TcpListener::bind(first).ok();
+        taken.is_some()
+    });
     click(cx, s.win, "mock-toggle");
     let second = running(cx, &s.ws, &s.root);
-    assert_eq!(second, first);
+    assert_ne!(second.port(), first.port());
+    assert_eq!(moves(&seen), [(first.port(), second.port())]);
+    assert!(present(cx, s.win, "toast-warning"));
     assert!(!present(cx, s.win, "toast-error"));
     let session = s.ws.read_with(cx, |w, _| w.session().clone());
     let saved = session_value(cx, &session);
-    assert_eq!(saved.collections[&s.root].mock_port, Some(first.port()));
+    assert_eq!(saved.collections[&s.root].mock_port, Some(second.port()));
 }
 
 // Opens `col` with a session that remembers the mock on `port`, as after an app restart.
@@ -361,7 +402,7 @@ fn reopened(
 #[gpui_kit::test]
 fn a_reopened_collection_binds_its_remembered_port(cx: &mut TestAppContext) {
     let col = mocked();
-    let port = free_port();
+    let port = quiet_port();
     let (ws, _state) = reopened(cx, &col, port);
     let addr = running(cx, &ws, col.path());
     assert_eq!(addr.port(), port);
@@ -373,8 +414,10 @@ fn a_remembered_port_in_use_falls_back_to_a_free_one(cx: &mut TestAppContext) {
     let taken = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = taken.local_addr().unwrap().port();
     let (ws, _state) = reopened(cx, &col, port);
+    let seen = events(cx, &ws);
     let addr = running(cx, &ws, col.path());
     assert_ne!(addr.port(), port);
+    assert_eq!(moves(&seen), [(port, addr.port())]);
     let session = ws.read_with(cx, |w, _| w.session().clone());
     let saved = session_value(cx, &session);
     assert_eq!(saved.collections[col.path()].mock_port, Some(addr.port()));
@@ -637,7 +680,11 @@ fn on_off_on_off_on_still_waits_for_the_old_listener_and_keeps_the_port(cx: &mut
     let col = mocked();
     let s = start(cx, &col);
     let root = s.root.clone();
-    s.ws.update(cx, |w, cx| w.set_mock(&root, true, cx));
+    // A fixed port with no fallback, so a start that did not wait could not bind at all.
+    s.ws.update(cx, |w, cx| {
+        w.set_mock_port(quiet_port());
+        w.set_mock(&root, true, cx);
+    });
     let first = running(cx, &s.ws, &s.root);
     // The second start is abandoned while it waits; the third must still wait for the first.
     s.ws.update(cx, |w, cx| {

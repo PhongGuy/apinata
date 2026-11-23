@@ -45,9 +45,9 @@ use crate::style;
 use crate::tab_area::{
     ActivateLastTab, ActivateNextTab, ActivatePrevTab, BeautifyBody, BeautifyQuery, CloseAllTabs,
     CloseOtherTabs, CloseSavedTabs, CloseTab, CloseTabsToTheLeft, CloseTabsToTheRight, Compare,
-    ConvertToGraphql, ConvertToHttp, CopyAsCurl, DuplicateTab, ExportHar, GenerateCode, MinifyBody,
-    PinTab, RecheckAssertions, ReopenClosedTab, RevealInSidebar, SaveAll, SaveAsExample,
-    SendActive, StopActive, TabArea, UnpinTab,
+    ConvertToGraphql, ConvertToHttp, CopyAsCurl, DuplicateTab, ExportHar, GenerateCode, GoBack,
+    GoForward, MinifyBody, PinTab, RecheckAssertions, ReopenClosedTab, RevealInSidebar, SaveAll,
+    SaveAsExample, SendActive, StopActive, TabArea, UnpinTab,
 };
 use crate::updates::CheckForUpdates;
 use crate::workspace::Workspace;
@@ -319,6 +319,10 @@ pub struct Availability {
     pub multi_tab: bool,
     /// "Last tab": the active tab is not already the last one.
     pub not_last: bool,
+    /// "Go back": an earlier visited tab is open or can reopen.
+    pub go_back: bool,
+    /// "Go forward": a later visited tab is open or can reopen.
+    pub go_forward: bool,
     /// "Undo in sidebar": the tree has a delete, move or rename to undo.
     pub undo_delete: bool,
     /// "Redo in sidebar": the tree has a step Ctrl+Z took back.
@@ -351,6 +355,8 @@ impl Availability {
             reveal: true,
             close_others: true,
             reopen_closed: true,
+            go_back: true,
+            go_forward: true,
             stop: true,
             cancel: true,
             discard: true,
@@ -441,6 +447,8 @@ pub fn palette_items_for(available: Availability) -> Vec<PaletteEntry> {
         (available.reveal, RevealInSidebar.name()),
         (available.close_others, CloseOtherTabs.name()),
         (available.reopen_closed, ReopenClosedTab.name()),
+        (available.go_back, GoBack.name()),
+        (available.go_forward, GoForward.name()),
         (available.stop, StopActive.name()),
         (available.cancel, CancelRequest.name()),
         (available.discard, DiscardChanges.name()),
@@ -751,6 +759,8 @@ fn availability_now(
         reveal: tab.is_none_or(|t| t.reveal),
         close_others: tabs.is_none_or(|t| t.close_others),
         reopen_closed: tabs.is_none_or(|t| t.reopen_closed),
+        go_back: tabs.is_none_or(|t| t.go_back),
+        go_forward: tabs.is_none_or(|t| t.go_forward),
         stop: tabs.is_none_or(|t| t.stop),
         cancel: tabs.is_none_or(|t| t.cancel),
         discard: tabs.is_none_or(|t| t.discard),

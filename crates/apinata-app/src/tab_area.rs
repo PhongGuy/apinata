@@ -81,6 +81,10 @@ actions!(
         UnpinTab,
         /// Reopens the most recently closed tab.
         ReopenClosedTab,
+        /// Goes back to the previously visited tab, reopening it when it was closed.
+        GoBack,
+        /// Goes forward again through the visited tabs.
+        GoForward,
         /// Activates the last tab.
         ActivateLastTab,
         /// Activates the tab to the left, wrapping around.
@@ -251,6 +255,8 @@ pub(crate) struct TabPaletteFlags {
     pub close_saved: bool,
     pub multi_tab: bool,
     pub not_last: bool,
+    pub go_back: bool,
+    pub go_forward: bool,
 }
 
 /// Which tab commands apply to the active tab, as the tab menu decides for its own tab.
@@ -1155,6 +1161,8 @@ impl TabArea {
                 .any(|e| !e.pinned && !self.is_dirty(e, cx)),
             multi_tab: tabs.entries().len() >= 2,
             not_last: active.is_some_and(|a| tabs.entries().last().is_some_and(|l| l.id != a.id)),
+            go_back: ws.can_step_visits(false, cx),
+            go_forward: ws.can_step_visits(true, cx),
         }
     }
 
@@ -1618,6 +1626,16 @@ impl TabArea {
         cx: &mut Context<Self>,
     ) {
         self.workspace.update(cx, |w, cx| w.reopen_tab(cx));
+    }
+
+    /// Goes back to the previously visited tab.
+    pub fn go_back(&mut self, _: &GoBack, _: &mut Window, cx: &mut Context<Self>) {
+        self.workspace.update(cx, |w, cx| w.step_visits(false, cx));
+    }
+
+    /// Goes forward to the next visited tab.
+    pub fn go_forward(&mut self, _: &GoForward, _: &mut Window, cx: &mut Context<Self>) {
+        self.workspace.update(cx, |w, cx| w.step_visits(true, cx));
     }
 
     /// Activates the tab at the action's position.
@@ -3136,6 +3154,8 @@ impl Render for TabArea {
             .on_action(cx.listener(Self::unpin_tab))
             .on_action(cx.listener(Self::save_all))
             .on_action(cx.listener(Self::reopen_closed_tab))
+            .on_action(cx.listener(Self::go_back))
+            .on_action(cx.listener(Self::go_forward))
             .on_action(cx.listener(Self::activate_tab))
             .on_action(cx.listener(Self::activate_last_tab))
             .on_action(cx.listener(Self::activate_prev_tab))

@@ -32,10 +32,10 @@ use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     Action, AnyElement, App, AppContext, AsyncWindowContext, ClickEvent, Context, Decorations, Div,
     DragMoveEvent, Entity, ExternalPaths, FocusHandle, Focusable, FontWeight, Hsla, Image,
-    ImageFormat, InteractiveElement, IntoElement, MouseButton, ParentElement, PathPromptOptions,
-    Pixels, Rems, Render, Role, SharedString, StatefulInteractiveElement, StyleRefinement, Styled,
-    Subscription, TestSupportExt, WeakEntity, Window, WindowControls, actions, canvas, div, img,
-    px,
+    ImageFormat, InteractiveElement, IntoElement, MouseButton, NavigationDirection, ParentElement,
+    PathPromptOptions, Pixels, Rems, Render, Role, SharedString, StatefulInteractiveElement,
+    StyleRefinement, Styled, Subscription, TestSupportExt, WeakEntity, Window, WindowControls,
+    actions, canvas, div, img, px,
 };
 
 use crate::app::{AppState, window_decorations};
@@ -77,7 +77,7 @@ use crate::settings::{LinuxTitleBar, Orientation, ThemeChoice};
 use crate::sidebar::{FocusFilter, Sidebar, SidebarEvent, UndoDelete};
 use crate::stand_in::StandIn;
 use crate::style;
-use crate::tab_area::TabArea;
+use crate::tab_area::{GoBack, GoForward, TabArea};
 use crate::tabs::{TabId, TabKind};
 use crate::team_sync_dialog;
 use crate::team_text::{self, SyncKind};
@@ -1612,6 +1612,14 @@ impl Shell {
                 let name = display_name(root);
                 let text = format!("The mock server of {name} did not start: {message}");
                 window.push_notification(ui::kind_toast(ui::ToastKind::Error, text), cx);
+                cx.notify();
+            }
+            WorkspaceEvent::MockMoved { root, from, to } => {
+                let name = display_name(root);
+                let text = format!(
+                    "Port {from} is in use, so the mock server of {name} now runs on port {to}"
+                );
+                window.push_notification(ui::kind_toast(ui::ToastKind::Warning, text), cx);
                 cx.notify();
             }
             WorkspaceEvent::WatchFailed { root, message }
@@ -3189,6 +3197,15 @@ impl Render for Shell {
                 let shell = self.focus.clone();
                 move |_, window, cx| stand_in.hold(&shell, window, cx)
             })
+            // The mouse's side buttons step through visited tabs anywhere in the window.
+            .on_mouse_down(
+                MouseButton::Navigate(NavigationDirection::Back),
+                |_, window, cx| window.dispatch_action(Box::new(GoBack), cx),
+            )
+            .on_mouse_down(
+                MouseButton::Navigate(NavigationDirection::Forward),
+                |_, window, cx| window.dispatch_action(Box::new(GoForward), cx),
+            )
             .on_action(cx.listener(Self::on_open_collection))
             .on_action(
                 cx.listener(|this, _: &ImportCollection, window, cx| {
@@ -3478,6 +3495,8 @@ impl Render for Shell {
             .on_action(cx.listener(to_tabs(TabArea::pin_tab)))
             .on_action(cx.listener(to_tabs(TabArea::unpin_tab)))
             .on_action(cx.listener(to_tabs(TabArea::reopen_closed_tab)))
+            .on_action(cx.listener(to_tabs(TabArea::go_back)))
+            .on_action(cx.listener(to_tabs(TabArea::go_forward)))
             .on_action(cx.listener(to_tabs(TabArea::activate_tab)))
             .on_action(cx.listener(to_tabs(TabArea::activate_last_tab)))
             .on_action(cx.listener(to_tabs(TabArea::activate_prev_tab)))

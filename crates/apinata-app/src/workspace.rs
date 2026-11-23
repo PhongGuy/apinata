@@ -144,6 +144,15 @@ pub enum WorkspaceEvent {
         /// Why, for display.
         message: String,
     },
+    /// The mock server of the collection at `root` found port `from` in use and runs on `to`.
+    MockMoved {
+        /// The collection's root.
+        root: PathBuf,
+        /// The remembered port it could not bind.
+        from: u16,
+        /// The port it runs on instead.
+        to: u16,
+    },
     /// The team sync loop of the collection at `root` reported a new status.
     TeamStatus {
         /// The collection's root.
@@ -2492,6 +2501,30 @@ impl Workspace {
         None
     }
 
+    /// Steps back, or with `forward` forward, through the visited tabs; a closed target
+    /// reopens while it still exists. `None` when there is nowhere to go.
+    pub fn step_visits(&mut self, forward: bool, cx: &mut Context<Self>) -> Option<TabId> {
+        let reachable: Vec<(PathBuf, TabKind)> = (self.tabs.visits().iter())
+            .filter(|(root, kind)| self.has_tab_target(root, kind, cx))
+            .cloned()
+            .collect();
+        let exists =
+            |root: &Path, kind: &TabKind| (reachable.iter()).any(|(r, k)| r == root && k == kind);
+        self.update_tabs(cx, |t| match forward {
+            true => t.go_forward(exists),
+            false => t.go_back(exists),
+        })
+    }
+
+    /// Whether [`Workspace::step_visits`] would go anywhere.
+    pub fn can_step_visits(&self, forward: bool, cx: &App) -> bool {
+        let reachable = |root: &Path, kind: &TabKind| self.has_tab_target(root, kind, cx);
+        match forward {
+            true => self.tabs.can_go_forward(reachable),
+            false => self.tabs.can_go_back(reachable),
+        }
+    }
+
     /// Asks the shell to rename `item` of the collection at `root` to `name`.
     pub fn rename_item(
         &mut self,
@@ -4745,7 +4778,8 @@ impl Workspace {
 
     /// Starts or stops the mock server of the open collection at `root` and remembers the
     /// choice. A start runs in the background; one that fails emits
-    /// [`WorkspaceEvent::MockFailed`] and leaves the server off.
+    /// [`WorkspaceEvent::MockFailed`] and leaves the server off, and one that found its
+    /// remembered port in use emits [`WorkspaceEvent::MockMoved`].
     pub fn set_mock(&mut self, root: &Path, on: bool, cx: &mut Context<Self>) {
         let root = absolute(root);
         if !on {
@@ -4766,7 +4800,7 @@ impl Workspace {
             return;
         }
         // The collection's port is kept so clients still reach a restarted server; a port
-        // someone else took gives way to a free one rather than failing.
+        // someone else took gives way to a free one, with a notice, rather than failing.
         let (port, fallback) = match self.mocks.port() {
             Some(port) => (port, false),
             None => (self.remembered_port(&root, cx).unwrap_or(0), true),
@@ -4799,19 +4833,22 @@ impl Workspace {
                     }
                     Err(e) => Err(e),
                 };
-                this.update(cx, |w, cx| w.mock_started(&key, id, started, cx))
+                let wanted = (fallback && port != 0).then_some(port);
+                this.update(cx, |w, cx| w.mock_started(&key, id, wanted, started, cx))
                     .ok();
             })
         });
         cx.notify();
     }
 
-    // Keeps a server whose start is still wanted, and reports a failed one; a start a later
-    // toggle or close replaced is dropped, which stops its server.
+    // Keeps a server whose start is still wanted, and reports a failed one or one that had to
+    // leave the `wanted` port for a free one; a start a later toggle or close replaced is
+    // dropped, which stops its server.
     fn mock_started(
         &mut self,
         root: &Path,
         id: u64,
+        wanted: Option<u16>,
         started: Result<apinata_core::mock::MockHandle, String>,
         cx: &mut Context<Self>,
     ) {
@@ -4820,6 +4857,14 @@ impl Workspace {
                 let port = handle.addr().port();
                 if self.mocks.finish(root, id, handle) {
                     self.save_mock(root, Some(port), cx);
+                    if let Some(from) = wanted.filter(|&from| from != port) {
+                        let root = root.to_path_buf();
+                        cx.emit(WorkspaceEvent::MockMoved {
+                            root,
+                            from,
+                            to: port,
+                        });
+                    }
                     // Files saved while it was starting are served too.
                     self.refresh_mock(root, cx);
                 }
