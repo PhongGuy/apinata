@@ -218,6 +218,8 @@ pub const TEXT_CONTROL: Rems = rems(0.875);
 pub const TEXT_TITLE: Rems = rems(16. / 13.);
 /// Width of the method tag column in the sidebar and tabs.
 pub const METHOD_COLUMN: Rems = ui(32.);
+/// Width of the Tests tab's verdict column, wide enough for "skipped".
+pub const VERDICT_COLUMN: Rems = ui(56.);
 /// Diameter of the unsaved-changes dot.
 pub const DOT: Rems = ui(6.);
 /// Height of the active environment's colour stripe along the window's top edge.
