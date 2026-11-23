@@ -170,7 +170,7 @@ fn the_buttons_sit_in_the_shared_footer_in_order(cx: &mut TestAppContext) {
 }
 
 #[test]
-fn the_extended_prompt_names_the_extenders_and_offers_only_cancel() {
+fn the_extended_prompt_names_the_extenders_and_offers_only_ok() {
     let by = ["a".to_string(), "b".to_string()];
     let spec = apinata_app::confirm::extended_ask("Environment", "dev", &by);
     assert_eq!(
@@ -181,8 +181,11 @@ fn the_extended_prompt_names_the_extenders_and_offers_only_cancel() {
         spec.detail.as_ref().map(|d| d.as_ref()),
         Some("Change their extends first.")
     );
-    let ids: Vec<&str> = spec.choices.iter().map(|c| c.id).collect();
-    assert_eq!(ids, ["confirm-cancel"]);
+    // It is information, not a choice, so its one button acknowledges it.
+    let choices: Vec<(&str, &str)> = (spec.choices.iter())
+        .map(|c| (c.id, c.label.as_ref()))
+        .collect();
+    assert_eq!(choices, [("confirm-ok", "OK")]);
     assert_eq!((spec.default, spec.cancel), (0, 0));
 }
 

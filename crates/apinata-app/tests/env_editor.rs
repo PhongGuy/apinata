@@ -2,8 +2,8 @@ use crate::support;
 
 use apinata_app::command::Command;
 use apinata_app::env_editor::{
-    ENV_MENU_DELETE, ENV_MENU_EXPORT, ENV_MENU_EXPORT_ALL, ENV_MENU_RENAME, ENV_SWATCH_NAMES,
-    ENV_SWATCHES, MORE_ACTIONS, RENAME_LOCKED_REASON,
+    ENV_MENU_DELETE, ENV_MENU_DUPLICATE, ENV_MENU_EXPORT, ENV_MENU_EXPORT_ALL, ENV_MENU_RENAME,
+    ENV_SWATCH_NAMES, ENV_SWATCHES, MORE_ACTIONS, RENAME_LOCKED_REASON,
 };
 use apinata_app::env_table::EnvTableEvent;
 use apinata_app::style::{ROW_HEIGHT, at_zoom};
@@ -1103,7 +1103,7 @@ fn save_filled(cx: &mut TestAppContext, win: AnyWindowHandle, primary: gpui_kit:
 }
 
 #[gpui_kit::test]
-fn the_menu_holds_rename_export_and_a_separated_delete(cx: &mut TestAppContext) {
+fn the_menu_holds_rename_duplicate_export_and_a_separated_delete(cx: &mut TestAppContext) {
     let col = tree();
     let (_state, ws, root) = open_dir(cx, &col);
     let (win, ed) = env_editor(cx, &ws, &root);
@@ -1113,6 +1113,7 @@ fn the_menu_holds_rename_export_and_a_separated_delete(cx: &mut TestAppContext) 
     cx.update_window(win, |_, w, _| {
         let menu = w.within("popup-menu");
         assert_eq!(menu.find(ENV_MENU_RENAME).label(), Some("Rename"));
+        assert_eq!(menu.find(ENV_MENU_DUPLICATE).label(), Some("Duplicate"));
         assert_eq!(
             menu.find(ENV_MENU_EXPORT).label(),
             Some("Export to Postman…")
@@ -1247,13 +1248,15 @@ fn the_list_shows_each_colour_and_keeps_the_names_in_line(cx: &mut TestAppContex
     let (win, _ed) = env_editor(cx, &ws, &root);
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
-        let mut dotted = |ix: usize| {
+        let bar = |w: &mut gpui_kit::Window, ix: usize| {
             w.within(("env-item", ix))
-                .try_find("env-item-dot")
-                .is_some()
+                .try_find("env-item-color")
+                .map(|e| e.bounds())
         };
-        assert!(dotted(0), "dev is coloured");
-        assert!(!dotted(1), "prod has no colour");
+        // A bar, taller than wide, so it never reads as the round unsaved mark.
+        let dev = bar(w, 0).expect("dev is coloured");
+        assert!(dev.size.height > dev.size.width * 2., "a bar, not a dot");
+        assert!(bar(w, 1).is_none(), "prod has no colour");
         let left = |ix: usize| w.find(("env-item-name", ix)).bounds().left();
         assert_eq!(left(0), left(1));
     })
@@ -1513,19 +1516,15 @@ fn a_long_unbroken_error_wraps_and_leaves_the_pane_width_alone(cx: &mut TestAppC
 }
 
 #[gpui_kit::test]
-fn the_duplicate_button_copies_the_selected_environment_and_selects_the_copy(
+fn the_menus_duplicate_copies_the_selected_environment_and_selects_the_copy(
     cx: &mut TestAppContext,
 ) {
     let col = tree();
     let (_state, ws, root) = open_dir(cx, &col);
     let (win, ed) = env_editor(cx, &ws, &root);
-    cx.update_window(win, |_, w, cx| {
-        w.render_frame(cx);
-        // A button of the header, not an entry of the "…" menu.
-        assert_eq!(w.find("env-duplicate").label(), Some("Duplicate"));
-        w.click("env-duplicate", cx)
-    })
-    .unwrap();
+    // The rarer action lives in the "…" menu, not the header.
+    assert!(!present(cx, win, "env-duplicate"));
+    env_menu(cx, win, ENV_MENU_DUPLICATE);
     wait_for(cx, "copy selected", |cx| {
         selected(cx, &ed).as_deref() == Some("dev copy")
     });
@@ -2442,4 +2441,154 @@ fn discard_changes_by_save_restores_the_saved_environment(cx: &mut TestAppContex
         std::fs::read_to_string(col.path().join("environments/dev.yml")).unwrap(),
         DEV
     );
+}
+
+// Right-clicks list row `ix` and draws the menu it opens.
+fn row_menu(cx: &mut TestAppContext, win: AnyWindowHandle, ix: usize) {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.right_click(("env-item", ix), cx)
+    })
+    .unwrap();
+    frame(cx, win);
+}
+
+#[gpui_kit::test]
+fn a_list_entry_offers_rename_duplicate_color_and_a_separated_delete(cx: &mut TestAppContext) {
+    let col = tree();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, _ed) = env_editor(cx, &ws, &root);
+    row_menu(cx, win, 1);
+    let labels = cx.update_window(win, |_, w, _| menu_labels(w)).unwrap();
+    let want = [
+        Some("Rename"),
+        Some("Duplicate"),
+        Some("Color"),
+        None,
+        Some("Delete"),
+    ];
+    assert_eq!(labels, want.map(|l| l.map(str::to_owned)));
+}
+
+// Each entry acts on the row it was opened on, which it selects first.
+#[gpui_kit::test]
+fn a_list_entrys_duplicate_copies_that_entry(cx: &mut TestAppContext) {
+    let col = tree();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, ed) = env_editor(cx, &ws, &root);
+    assert_eq!(selected(cx, &ed).as_deref(), Some("dev"));
+    row_menu(cx, win, 1);
+    click_menu(cx, win, "Duplicate");
+    wait_for(cx, "copy selected", |cx| {
+        selected(cx, &ed).as_deref() == Some("prod copy")
+    });
+    assert!(col.path().join("environments/prod copy.yml").is_file());
+}
+
+#[gpui_kit::test]
+fn a_list_entrys_rename_opens_the_field_on_that_entry(cx: &mut TestAppContext) {
+    let col = tree();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, ed) = env_editor(cx, &ws, &root);
+    row_menu(cx, win, 1);
+    click_menu(cx, win, "Rename");
+    assert_eq!(
+        ed.read_with(cx, |e, _| e.naming_label()).as_deref(),
+        Some("Rename \"prod\"")
+    );
+    // The field holds focus once the menu is gone, so typing goes into it.
+    cx.simulate_input(win, "qa");
+    cx.simulate_keystrokes(win, "enter");
+    wait_for(cx, "renamed", |cx| {
+        selected(cx, &ed).as_deref() == Some("qa")
+    });
+    assert!(col.path().join("environments/qa.yml").is_file());
+}
+
+#[gpui_kit::test]
+fn a_list_entrys_delete_asks_about_that_entry(cx: &mut TestAppContext) {
+    let col = tree();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, _ed) = env_editor(cx, &ws, &root);
+    row_menu(cx, win, 1);
+    click_menu(cx, win, "Delete");
+    assert!(confirm_open(cx));
+    answer_confirm(cx, "confirm-delete");
+    assert!(!col.path().join("environments/prod.yml").exists());
+    assert!(col.path().join("environments/dev.yml").is_file());
+}
+
+// Color opens the swatches as a submenu; a pick colours that entry's draft.
+#[gpui_kit::test]
+fn a_list_entrys_color_picks_a_preset_for_that_entry(cx: &mut TestAppContext) {
+    let col = tree();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, _ed) = env_editor(cx, &ws, &root);
+    row_menu(cx, win, 1);
+    click_menu(cx, win, "Color");
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let sub = w.within("submenu");
+        let names: Vec<_> = (0..8usize)
+            .filter_map(|ix| sub.try_find(ix).and_then(|e| e.label().map(str::to_owned)))
+            .collect();
+        let mut want = vec!["No color".to_owned()];
+        want.extend(ENV_SWATCH_NAMES.iter().map(|n| n.to_string()));
+        assert_eq!(names, want);
+        w.within("submenu").click(1usize, cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert_eq!(
+        env_view(cx, &ws, &root, "prod").color.as_deref(),
+        Some(ENV_SWATCHES[0])
+    );
+    assert_eq!(env_view(cx, &ws, &root, "dev").color, None);
+}
+
+// A dirty entry cannot be renamed or copied, as in the "…" menu.
+#[gpui_kit::test]
+fn a_dirty_list_entry_offers_rename_and_duplicate_disabled(cx: &mut TestAppContext) {
+    let col = tree();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, ed) = env_editor(cx, &ws, &root);
+    type_at_end(cx, win, None, ("env-value", 0usize), "y");
+    cx.run_until_parked();
+    row_menu(cx, win, 0);
+    cx.update_window(win, |_, w, cx| w.within("popup-menu").click(0usize, cx))
+        .unwrap();
+    cx.run_until_parked();
+    assert_eq!(ed.read_with(cx, |e, _| e.naming_label()), None);
+    assert!(present(cx, win, "env-rename-locked"), "the menu stays open");
+}
+
+#[gpui_kit::test]
+fn double_clicking_a_list_entry_renames_it(cx: &mut TestAppContext) {
+    let col = tree();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, ed) = env_editor(cx, &ws, &root);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.click(("env-item", 1usize), cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert_eq!(selected(cx, &ed).as_deref(), Some("prod"));
+    assert_eq!(
+        ed.read_with(cx, |e, _| e.naming_label()),
+        None,
+        "one click selects"
+    );
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.double_click(("env-item", 1usize), cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert_eq!(
+        ed.read_with(cx, |e, _| e.naming_label()).as_deref(),
+        Some("Rename \"prod\"")
+    );
+    assert!(present(cx, win, "env-name-input"));
 }

@@ -14,7 +14,7 @@ use apinata_core::{EnvVariable, InheritedState, VarValue};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Escape, Input, InputEvent, InputState};
-use gpui_kit::component::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
+use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenu, PopupMenuItem};
 use gpui_kit::component::select::{Select, SelectEvent, SelectItem, SelectState};
 use gpui_kit::component::{ActiveTheme as _, ThemeStyled as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
@@ -29,7 +29,7 @@ use crate::banner::{self, Banner, Choice};
 use crate::command::{Command, Edit, EnvOp, Field, Notice, NoticeKind, Target};
 use crate::edit_history::EditHistory;
 use crate::edit_track::{self, LoadStamps, same_value};
-use crate::env_color::{dot_or_space, env_fill};
+use crate::env_color::env_fill;
 use crate::env_table::{
     DUPLICATE_SECRET_NAMES, EnvTableEvent, EnvVarTable, SecretRecord, env_rows, env_vars_from,
     secret_records, secrets_collide,
@@ -52,14 +52,16 @@ actions!(
     ]
 );
 
-/// The "…" menu's entries by index; the separator sits at 3. Rename is first.
+/// The "…" menu's entries by index; the separator sits at 4. Rename is first.
 pub const ENV_MENU_RENAME: usize = 0;
+/// The "…" menu's Duplicate entry.
+pub const ENV_MENU_DUPLICATE: usize = 1;
 /// The "…" menu's Export entry.
-pub const ENV_MENU_EXPORT: usize = 1;
+pub const ENV_MENU_EXPORT: usize = 2;
 /// The "…" menu's entry exporting every environment to a folder.
-pub const ENV_MENU_EXPORT_ALL: usize = 2;
+pub const ENV_MENU_EXPORT_ALL: usize = 3;
 /// The "…" menu's Delete entry, after the separator.
-pub const ENV_MENU_DELETE: usize = 4;
+pub const ENV_MENU_DELETE: usize = 5;
 
 /// Tooltip and accessibility label of `env-more`; one const, so they agree.
 pub const MORE_ACTIONS: &str = "More actions";
@@ -1932,12 +1934,6 @@ impl EnvEditor {
             .children(offer)
             .child(Followed::new("env-more-follow", &self.follow, more))
             .child(followed(
-                "env-duplicate-follow",
-                duplicate_button("env-duplicate", locked, cx).on_click(cx.listener(
-                    |e, _, window, cx| e.after_held(window, cx, |e, _, cx| e.duplicate(cx)),
-                )),
-            ))
-            .child(followed(
                 "env-discard-follow",
                 discard_button("env-discard", locked, cx)
                     .on_click(cx.listener(|e, _, window, cx| e.discard_asking(window, cx))),
@@ -2116,33 +2112,77 @@ pub(crate) fn delete_entry(id: &'static str) -> PopupMenuItem {
 
 /// The content of the "…" menu's Rename entry while the environment is locked.
 pub fn locked_rename_label(cx: &App) -> impl IntoElement + gpui_kit::Styled + use<> {
-    ui::menu_label_cue(div(), cx)
-        .id("env-rename-locked")
-        .test_support()
-        .aria_label(RENAME_LOCKED_REASON)
-        .tooltip(ui::text_tooltip(
-            "env-rename-locked-tooltip",
-            RENAME_LOCKED_REASON,
-        ))
-        .child("Rename")
+    locked_label(
+        ("env-rename-locked", "env-rename-locked-tooltip"),
+        "Rename",
+        cx,
+    )
 }
 
-// The "…" menu's entries, in the order of the `ENV_MENU_*` indices. Locked, Rename is a
-// disabled entry whose content names why, since a kit tooltip has no test hook of its own.
+// A locked entry's content: `label`, muted, naming why it is off as its label and tooltip.
+fn locked_label(
+    (id, tip_id): (&'static str, &'static str),
+    label: &'static str,
+    cx: &App,
+) -> impl IntoElement + gpui_kit::Styled + use<> {
+    ui::menu_label_cue(div(), cx)
+        .id(id)
+        .test_support()
+        .aria_label(RENAME_LOCKED_REASON)
+        .tooltip(ui::text_tooltip(tip_id, RENAME_LOCKED_REASON))
+        .child(label)
+}
+
+// Rename and Duplicate, shared by the "…" menu and a list entry's menu. Each runs through
+// `run`, which picks the environment it acts on. Locked, both are disabled entries whose
+// content names why, since a kit tooltip has no test hook of its own.
+fn rename_and_duplicate(
+    menu: PopupMenu,
+    locked: bool,
+    run: impl Fn(Act, &mut Window, &mut App) + Clone + 'static,
+) -> PopupMenu {
+    if locked {
+        let ids = ("env-duplicate-locked", "env-duplicate-locked-tooltip");
+        return menu
+            .item(PopupMenuItem::element(|_, cx| locked_rename_label(cx)).disabled(true))
+            .item(
+                PopupMenuItem::element(move |_, cx| locked_label(ids, "Duplicate", cx))
+                    .disabled(true),
+            );
+    }
+    let duplicate = run.clone();
+    menu.item(
+        PopupMenuItem::new("Rename").on_click(move |_, window, cx| run(Act::Rename, window, cx)),
+    )
+    .item(
+        PopupMenuItem::new("Duplicate")
+            .on_click(move |_, window, cx| duplicate(Act::Duplicate, window, cx)),
+    )
+}
+
+/// What a menu entry asks of the environment it was opened on.
+#[derive(Clone, Copy)]
+enum Act {
+    Rename,
+    Duplicate,
+    Color(Option<&'static str>),
+    Delete,
+}
+
+// The "…" menu's entries, in the order of the `ENV_MENU_*` indices; they act on the
+// selected environment.
 fn env_menu(menu: PopupMenu, editor: Entity<EnvEditor>, locked: bool) -> PopupMenu {
-    let rename = if locked {
-        PopupMenuItem::element(|_, cx| locked_rename_label(cx)).disabled(true)
-    } else {
+    let run = {
         let editor = editor.clone();
-        PopupMenuItem::new("Rename").on_click(move |_, window, cx| {
-            editor.update(cx, |e, cx| e.start_naming(Naming::Rename, window, cx))
-        })
+        move |act, window: &mut Window, cx: &mut App| {
+            editor.update(cx, |e, cx| e.act(act, window, cx))
+        }
     };
     let export = editor.clone();
     let export_all = editor.clone();
     let delete = delete_entry("env-menu-delete")
         .on_click(move |_, window, cx| editor.update(cx, |e, cx| e.delete(window, cx)));
-    menu.item(rename)
+    rename_and_duplicate(menu, locked, run)
         .item(
             PopupMenuItem::new("Export to Postman…")
                 .on_click(move |_, window, cx| export.update(cx, |e, cx| e.export(window, cx))),
@@ -2156,7 +2196,74 @@ fn env_menu(menu: PopupMenu, editor: Entity<EnvEditor>, locked: bool) -> PopupMe
         .item(delete)
 }
 
+// A list entry's menu: Rename, Duplicate, the colour presets as a submenu, then Delete, each
+// acting on `name`, which it selects first.
+fn row_menu(
+    menu: PopupMenu,
+    (editor, name): (Entity<EnvEditor>, String),
+    locked: bool,
+    window: &mut Window,
+    cx: &mut Context<PopupMenu>,
+) -> PopupMenu {
+    let run = move |act, window: &mut Window, cx: &mut App| {
+        editor.update(cx, |e, cx| e.on_entry(&name, act, window, cx))
+    };
+    let (color, delete) = (run.clone(), run.clone());
+    rename_and_duplicate(menu, locked, run)
+        .submenu("Color", window, cx, move |sub, _, _| {
+            let presets = ENV_SWATCH_NAMES.into_iter().zip(ENV_SWATCHES.map(Some));
+            let picks = std::iter::once(("No color", None)).chain(presets);
+            picks.fold(sub, |sub, (label, hex)| {
+                let color = color.clone();
+                sub.item(
+                    PopupMenuItem::new(label)
+                        .on_click(move |_, window, cx| color(Act::Color(hex), window, cx)),
+                )
+            })
+        })
+        .separator()
+        .item(
+            delete_entry("env-row-delete")
+                .on_click(move |_, window, cx| delete(Act::Delete, window, cx)),
+        )
+}
+
 impl EnvEditor {
+    // Runs a menu's `act` on the selected environment; the "…" menu's Rename opens or closes
+    // the field, as a second press of a toggle would.
+    fn act(&mut self, act: Act, window: &mut Window, cx: &mut Context<Self>) {
+        match act {
+            Act::Rename => self.start_naming(Naming::Rename, window, cx),
+            Act::Duplicate => self.after_held(window, cx, |e, _, cx| e.duplicate(cx)),
+            Act::Color(hex) => self.pick(hex, window, cx),
+            Act::Delete => self.delete(window, cx),
+        }
+    }
+
+    // Runs `act` on the list entry `name`, choosing it first as a click on its row would.
+    fn on_entry(&mut self, name: &str, act: Act, window: &mut Window, cx: &mut Context<Self>) {
+        let run = move |e: &mut Self, window: &mut Window, cx: &mut Context<Self>| match act {
+            Act::Rename => e.rename_entry(window, cx),
+            act => e.act(act, window, cx),
+        };
+        if self.selected.as_deref() == Some(name) {
+            return run(self, window, cx);
+        }
+        let name = name.to_owned();
+        self.after_save_check(window, cx, move |e, window, cx| {
+            e.select_chosen(&name, window, cx);
+            run(e, window, cx)
+        });
+    }
+
+    // Opens the in-place rename of the selected entry; an open field or a locked environment
+    // is left as it is.
+    fn rename_entry(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.naming != Some(Naming::Rename) && !self.is_locked(cx) {
+            self.start_naming(Naming::Rename, window, cx);
+        }
+    }
+
     /// The selected row's mark: the accent while the editor root or the list holds focus,
     /// muted while focus is in the pane's inputs and buttons or outside the editor.
     pub fn mark_color(&self, window: &Window, cx: &App) -> Hsla {
@@ -2176,6 +2283,21 @@ fn view_edit(view: &EnvView, edit: &Edit) -> Option<Edit> {
     })
 }
 
+// A list entry's colour as a thin bar the height of a checkbox, or a bar's space without one.
+fn color_bar(fill: Option<Hsla>) -> AnyElement {
+    let bar = div()
+        .flex_none()
+        .w(style::ENV_STRIPE_HEIGHT)
+        .h(style::CHECKBOX_SIZE);
+    match fill {
+        Some(fill) => (bar.id("env-item-color").test_support())
+            .rounded(style::ENV_STRIPE_HEIGHT)
+            .bg(fill)
+            .into_any_element(),
+        None => bar.into_any_element(),
+    }
+}
+
 impl Focusable for EnvEditor {
     fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus.clone()
@@ -2193,7 +2315,8 @@ impl Render for EnvEditor {
         let mark_color = self.mark_color(window, cx);
         let mut naming = self.naming_field(window, cx);
         let renaming = self.naming == Some(Naming::Rename);
-        // Each name is led by its colour's dot; once any has one, the rest keep its space.
+        // Each name is led by a bar in its colour, unlike the round unsaved mark; once any has
+        // one, the rest keep its space.
         let fills: Vec<_> = {
             let workspace = self.workspace.read(cx);
             (names.iter())
@@ -2201,6 +2324,14 @@ impl Render for EnvEditor {
                 .collect()
         };
         let dotted = fills.iter().any(Option::is_some);
+        let locked = self.is_locked(cx);
+        let dirty: Vec<String> = self.snapshot(cx).map_or_else(Vec::new, |s| {
+            (s.content.environments.iter())
+                .filter(|e| e.dirty)
+                .map(|e| e.name.clone())
+                .collect()
+        });
+        let editor = cx.entity();
         let in_use = self.workspace.read(cx).selected_environment(&self.root, cx);
         let mut items = Vec::with_capacity(names.len() + 1);
         for (ix, (name, fill)) in names.iter().zip(fills).enumerate() {
@@ -2264,7 +2395,7 @@ impl Render for EnvEditor {
                         .min_w_0()
                         .pl(style::SPACE_2)
                         .gap(style::SPACE_1)
-                        .when(dotted, |row| row.child(dot_or_space("env-item-dot", fill)))
+                        .when(dotted, |row| row.child(color_bar(fill)))
                         .child(
                             div()
                                 .id(("env-item-name", ix))
@@ -2275,7 +2406,26 @@ impl Render for EnvEditor {
                         ),
                 )
                 .children(tag)
-                .on_click(cx.listener(move |e, _, window, cx| e.choose(&name, window, cx)));
+                // A second click of a double-click renames the entry the first one selected.
+                .on_click(cx.listener({
+                    let name = name.clone();
+                    move |e, event: &ClickEvent, window, cx| {
+                        if event.click_count() > 1 && e.selected.as_deref() == Some(&*name) {
+                            e.rename_entry(window, cx)
+                        } else {
+                            e.choose(&name, window, cx)
+                        }
+                    }
+                }))
+                .context_menu({
+                    let row_locked = if chosen {
+                        locked
+                    } else {
+                        dirty.contains(&name)
+                    };
+                    let entry = (editor.clone(), name);
+                    move |menu, window, cx| row_menu(menu, entry.clone(), row_locked, window, cx)
+                });
             items.push(
                 Followed::new(("env-item-follow", ix), &self.follow, item).into_any_element(),
             );
@@ -2520,16 +2670,35 @@ pub(crate) fn name_taken(name: &str, names: &[String]) -> Option<String> {
 }
 
 /// Why New refuses `name` among `names`, as Rename would: core would make a taken name a copy
-/// and fit an invalid one to a file name, so both are refused instead of changed unseen.
+/// and fit an invalid one to a file name, so both are refused instead of changed unseen. The
+/// refusal names the first character a file name cannot hold, when there is one.
 pub(crate) fn create_refusal(name: &str, names: &[String]) -> Option<String> {
-    let invalid = || apinata_core::EnvError::InvalidName {
-        name: name.to_owned(),
-    };
-    match apinata_core::check_environment_name(name) {
-        Err(err) => Some(err.to_string()),
-        Ok(fitted) if fitted != name => Some(invalid().to_string()),
-        Ok(_) => name_taken(name, names),
+    let result = apinata_core::check_environment_name(name);
+    if matches!(result.as_deref(), Ok(fitted) if fitted == name) {
+        return name_taken(name, names);
     }
+    // Core's own words stay for what is not one bad character: a reserved or trimmed name.
+    let general = || match result {
+        Err(err) => err.to_string(),
+        Ok(_) => apinata_core::EnvError::InvalidName {
+            name: name.to_owned(),
+        }
+        .to_string(),
+    };
+    Some(match replaced_char(name) {
+        Some(c) if c.is_control() => format!("Names cannot contain \"{}\"", c.escape_default()),
+        Some(c) => format!("Names cannot contain \"{c}\""),
+        None => general(),
+    })
+}
+
+// The first character of `name` that core's sanitising replaces. Core keeps its set private,
+// so each character is probed between two letters, where only a replacement changes the text.
+fn replaced_char(name: &str) -> Option<char> {
+    name.chars().find(|&c| {
+        let probe = format!("a{c}a");
+        !matches!(apinata_core::check_environment_name(&probe), Ok(fitted) if fitted == probe)
+    })
 }
 
 /// The name field's Cancel and confirm buttons, confirm reading Create for New and Rename

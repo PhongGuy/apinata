@@ -332,7 +332,7 @@ fn deleting_an_extended_environment_offers_only_cancel(cx: &mut TestAppContext) 
     })
     .unwrap();
     cx.run_until_parked();
-    assert!(shown(cx, win, "confirm-cancel"));
+    assert!(shown(cx, win, "confirm-ok"));
     assert!(!shown(cx, win, "confirm-delete"));
     assert!(shown(cx, win, "confirm-detail"));
     let title = cx
@@ -345,7 +345,7 @@ fn deleting_an_extended_environment_offers_only_cancel(cx: &mut TestAppContext) 
         title.as_deref(),
         Some("Environment \"dev\" is extended by \"qa\"")
     );
-    answer_confirm(cx, "confirm-cancel");
+    answer_confirm(cx, "confirm-ok");
     assert!(col.path().join("environments/dev.yml").is_file());
 }
 
