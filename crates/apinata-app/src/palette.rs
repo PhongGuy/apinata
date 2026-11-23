@@ -31,6 +31,7 @@ use crate::keymap::{
     ToggleOrientation, UndoActive,
 };
 use crate::mock_server::MockState;
+use crate::percent_codec::{PercentDecode, PercentEncode};
 use crate::request_editor::CancelRequest;
 use crate::shell::{
     PullBranch, PushBranch, ShowChanges, ShowTeamSync, SwitchBranch, ToggleMockServer,
@@ -204,16 +205,19 @@ pub enum PaletteGroup {
     View,
     /// Environments of the current collection.
     Environment,
+    /// Changing the focused field's selected text.
+    Edit,
 }
 
 impl PaletteGroup {
     /// Every group, in display order.
-    pub const ALL: [PaletteGroup; 5] = [
+    pub const ALL: [PaletteGroup; 6] = [
         PaletteGroup::Collection,
         PaletteGroup::Request,
         PaletteGroup::Tabs,
         PaletteGroup::View,
         PaletteGroup::Environment,
+        PaletteGroup::Edit,
     ];
 
     /// The group's heading.
@@ -224,6 +228,7 @@ impl PaletteGroup {
             PaletteGroup::Tabs => "Tabs",
             PaletteGroup::View => "View",
             PaletteGroup::Environment => "Environment",
+            PaletteGroup::Edit => "Edit",
         }
     }
 }
@@ -342,6 +347,8 @@ pub struct Availability {
     pub team_sync: bool,
     /// "Last export report": an export in this session left a report.
     pub last_export: bool,
+    /// Percent-encode and Percent-decode: a field that allows them holds focus and a selection.
+    pub selection_codec: bool,
 }
 
 impl Availability {
@@ -392,6 +399,7 @@ impl Availability {
             mock_on: false,
             team_sync: true,
             last_export: true,
+            selection_codec: true,
         }
     }
 }
@@ -499,6 +507,8 @@ pub fn palette_items_for(available: Availability) -> Vec<PaletteEntry> {
         (available.side_by_side, ToggleOrientation.name()),
         (available.team_sync, ShowTeamSync.name()),
         (available.last_export, ShowLastExportReport.name()),
+        (available.selection_codec, PercentEncode.name()),
+        (available.selection_codec, PercentDecode.name()),
     ]
     .into_iter()
     .filter(|(on, _)| !on)
@@ -650,6 +660,8 @@ fn show(
         git_repo: in_repo,
         updates,
         tree_request: (sidebar.as_ref()).and_then(|s| s.read(cx).tree_request_kind(window, cx)),
+        selection_codec: crate::percent_codec::focused_field(window, cx)
+            .is_some_and(|f| crate::percent_codec::offered(f.read(cx))),
     };
     let row_targets: Rc<[RowTarget]> = (sidebar.as_ref())
         .map(|s| row_targets(s.read(cx), opening, window, cx))
@@ -732,6 +744,7 @@ struct Opening {
     git_repo: bool,
     updates: bool,
     tree_request: Option<RequestKind>,
+    selection_codec: bool,
 }
 
 // Which commands have something to do right now; a missing sidebar or workspace means all of theirs.
@@ -747,6 +760,7 @@ fn availability_now(
         git_repo,
         updates,
         tree_request,
+        selection_codec,
     } = opening;
     let tab = workspace.map(|w| crate::tab_area::active_tab_commands(w.read(cx).tabs()));
     let tabs = tab_area.map(|t| t.read(cx).palette_flags(cx));
@@ -812,6 +826,7 @@ fn availability_now(
             (w.current_root()).is_some_and(|r| w.team_status(&r).is_some())
         }),
         last_export: crate::export::has_last_report(cx),
+        selection_codec,
     }
 }
 

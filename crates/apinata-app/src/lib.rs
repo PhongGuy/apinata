@@ -121,6 +121,7 @@ pub mod orphan_section;
 pub mod palette;
 pub mod paste_notes;
 pub mod path_display;
+pub mod percent_codec;
 pub mod persist;
 pub mod persisted;
 pub mod preferences;

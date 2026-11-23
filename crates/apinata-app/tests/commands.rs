@@ -150,6 +150,8 @@ const IDS: &[&str] = &[
     "environment.variables_overview",
     "environment.runtime_variables",
     "environment.manage_globals",
+    "edit.percent_encode",
+    "edit.percent_decode",
 ];
 
 type Triple = (String, String, String);
