@@ -93,11 +93,7 @@ pub fn body_kind(headers: &[(String, String)], body: &[u8]) -> BodyKind {
     if body.is_empty() {
         return BodyKind::Empty;
     }
-    let content_type = headers
-        .iter()
-        .find(|(name, _)| name.eq_ignore_ascii_case("content-type"))
-        .map(|(_, value)| value.to_ascii_lowercase())
-        .unwrap_or_default();
+    let content_type = content_type(headers);
     // Images go by the content type alone, so bytes that happen to decode
     // as UTF-8 never turn an image into text.
     let media = content_type.split(';').next().unwrap_or_default().trim();
@@ -114,11 +110,63 @@ pub fn body_kind(headers: &[(String, String)], body: &[u8]) -> BodyKind {
     let invalid = std::str::from_utf8(body).is_err_and(|e| e.error_len().is_some());
     if invalid && !content_type.contains("charset=") {
         BodyKind::Binary
+    } else if generic_media(media) {
+        detect_kind(body)
     } else if content_type.contains("json") {
         BodyKind::Json
     } else if content_type.contains("html") {
         BodyKind::Html
     } else if content_type.contains("xml") {
+        BodyKind::Xml
+    } else {
+        BodyKind::Text
+    }
+}
+
+/// The format label's tooltip when the format was detected from the body behind a missing or
+/// generic content type; `None` when the content type named it or nothing was detected.
+pub fn format_tooltip(headers: &[(String, String)], kind: BodyKind) -> Option<String> {
+    if !matches!(kind, BodyKind::Json | BodyKind::Xml) {
+        return None;
+    }
+    let content_type = content_type(headers);
+    let media = content_type.split(';').next().unwrap_or_default().trim();
+    match media {
+        "" => Some("Detected from the body: sent without a Content-Type".into()),
+        _ if generic_media(media) => Some(format!("Detected from the body: sent as {media}")),
+        _ => None,
+    }
+}
+
+// The `Content-Type` header lowercased, or empty when there is none.
+fn content_type(headers: &[(String, String)]) -> String {
+    headers
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+        .map(|(_, value)| value.to_ascii_lowercase())
+        .unwrap_or_default()
+}
+
+// Media types that say nothing about the format, so the bytes decide.
+fn generic_media(media: &str) -> bool {
+    matches!(media, "" | "text/plain" | "application/octet-stream")
+}
+
+// Only an object or array that parses is JSON, so a bare number or a cut body stays text; markup
+// is XML when it declares itself or opens with an element and lays out as well-formed XML.
+fn detect_kind(body: &[u8]) -> BodyKind {
+    let Ok(text) = std::str::from_utf8(body) else {
+        return BodyKind::Text;
+    };
+    let text = text.trim_start_matches('\u{feff}').trim_start();
+    if text.starts_with(['{', '[']) && serde_json::from_str::<serde::de::IgnoredAny>(text).is_ok() {
+        return BodyKind::Json;
+    }
+    let opens_element = text
+        .strip_prefix('<')
+        .and_then(|rest| rest.chars().next())
+        .is_some_and(|c| c.is_alphabetic() || c == '_' || c == ':');
+    if text.starts_with("<?xml") || (opens_element && reindent_xml(text).is_some()) {
         BodyKind::Xml
     } else {
         BodyKind::Text

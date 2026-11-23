@@ -53,8 +53,8 @@ use crate::tab_area::{
     ActivateLastTab, ActivateNextTab, ActivatePrevTab, ActivateTab, BeautifyBody, BeautifyQuery,
     CloseAllTabs, CloseOtherTabs, CloseSavedTabs, CloseTab, CloseTabsToTheLeft,
     CloseTabsToTheRight, Compare, ConvertToGraphql, ConvertToHttp, CopyAsCurl, DuplicateTab,
-    ExportHar, GenerateCode, MinifyBody, PinTab, ReopenClosedTab, RevealInSidebar, SaveAll,
-    SaveAsExample, SendActive, StopActive, UnpinTab,
+    ExportHar, GenerateCode, GoBack, GoForward, MinifyBody, PinTab, ReopenClosedTab,
+    RevealInSidebar, SaveAll, SaveAsExample, SendActive, StopActive, UnpinTab,
 };
 use crate::ui::{CODE_EDITOR_CONTEXT as CODE_EDITOR, FocusNextControl, FocusPreviousControl};
 use crate::updates::CheckForUpdates;
@@ -959,6 +959,30 @@ pub fn registry() -> Vec<Command> {
             shell(ActivatePrevTab),
             &["secondary-{", "ctrl-pageup", "ctrl-shift-tab"],
         ),
+        // No binding, kit key or platform convention takes Ctrl+Alt+minus, nor plain Ctrl on
+        // macOS where the primary key is Cmd. Forward adds Shift, which arrives as `_`.
+        command(
+            "tabs.go_back",
+            "Go back",
+            Tabs,
+            shell(GoBack),
+            if cfg!(target_os = "macos") {
+                &["ctrl--"]
+            } else {
+                &["ctrl-alt--"]
+            },
+        ),
+        command(
+            "tabs.go_forward",
+            "Go forward",
+            Tabs,
+            shell(GoForward),
+            if cfg!(target_os = "macos") {
+                &["ctrl-_"]
+            } else {
+                &["ctrl-alt-_"]
+            },
+        ),
         command(
             "tabs.last",
             "Last tab",
@@ -1292,7 +1316,7 @@ pub fn registry() -> Vec<Command> {
             &["environment"],
             asks(command(
                 "environment.runtime_variables",
-                "Edit variables set by requests…",
+                "Runtime variables…",
                 Environment,
                 shell(OpenRuntimeVariables),
                 &[],

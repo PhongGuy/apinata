@@ -104,6 +104,8 @@ const IDS: &[&str] = &[
     "tabs.reopen",
     "tabs.next",
     "tabs.previous",
+    "tabs.go_back",
+    "tabs.go_forward",
     "tabs.last",
     "tabs.go_to_1",
     "tabs.go_to_2",
@@ -171,6 +173,14 @@ fn triples(list: &[KeyBinding]) -> Vec<Triple> {
 }
 
 // Today's bindings (main after plan 5x merged), written out by hand.
+// Back and Forward take Ctrl+Alt, or plain Ctrl on macOS where Cmd is the primary key.
+fn go_chord(key: &str) -> String {
+    match cfg!(target_os = "macos") {
+        true => format!("ctrl-{key}"),
+        false => format!("ctrl-alt-{key}"),
+    }
+}
+
 fn today() -> Vec<Triple> {
     let s = "Shell";
     let mut e: Vec<(String, &str, &str)> = vec![
@@ -257,6 +267,8 @@ fn today() -> Vec<Triple> {
         ("ctrl-pagedown".into(), "apinata::ActivateNextTab", s),
         ("ctrl-shift-tab".into(), "apinata::ActivatePrevTab", s),
         ("ctrl-tab".into(), "apinata::ActivateNextTab", s),
+        (go_chord("-"), "apinata::GoBack", s),
+        (go_chord("_"), "apinata::GoForward", s),
         (secondary("l"), "apinata::FocusUrl", s),
         (secondary("alt-right"), "apinata::NextSection", s),
         (secondary("alt-left"), "apinata::PreviousSection", s),
@@ -662,10 +674,7 @@ fn the_two_variables_commands_say_what_each_does() {
         label("environment.variables_overview"),
         "Show all variables…"
     );
-    assert_eq!(
-        label("environment.runtime_variables"),
-        "Edit variables set by requests…"
-    );
+    assert_eq!(label("environment.runtime_variables"), "Runtime variables…");
 }
 
 #[test]
