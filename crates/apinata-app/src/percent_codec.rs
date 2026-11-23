@@ -1,12 +1,12 @@
 //! Percent-encode and Percent-decode of the focused text field's selection, from the palette
 //! and the field's right-click menu.
 
-use apinata_core::{percent_decode, percent_encode};
+use apinata_core::{percent_decode, percent_encode, widen_to_placeholders};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::input::{Copy, Cut, InputState, Paste, SelectAll};
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::prelude::*;
-use gpui_kit::{Action, AnyWindowHandle, App, Entity, Focusable as _, WeakEntity, Window, actions};
+use gpui_kit::{Action, App, Entity, Focusable as _, WeakEntity, Window, actions};
 
 use crate::ui::{self, ToastKind};
 
@@ -20,13 +20,16 @@ actions!(
     ]
 );
 
+/// Shown when decoding would put a line break or another control character in the field.
+pub const CONTROL: &str = "The decoded text holds a line break or another control character, which this field cannot hold, so it was left as it was.";
+
 /// Shown when the selection's escapes are not UTF-8 text.
 pub const NOT_UTF8: &str = "The selection does not decode to UTF-8 text, so it was left as it was.";
 
-// Every single-line field created since install, with its window. A field cannot be reached
-// from the focus handle the window reports, so the commands look it up here.
+// Every single-line field created since install. A field cannot be reached from the focus
+// handle the window reports, so the commands look it up here by its own focus.
 #[derive(Default)]
-struct Fields(Vec<(AnyWindowHandle, WeakEntity<InputState>)>);
+struct Fields(Vec<WeakEntity<InputState>>);
 
 impl gpui_kit::Global for Fields {}
 
@@ -43,18 +46,13 @@ pub fn install(cx: &mut App) {
         return;
     }
     cx.set_global(Fields::default());
-    cx.observe_new(
-        |_: &mut InputState, window: Option<&mut Window>, cx: &mut Context<InputState>| {
-            let Some(window) = window else {
-                return;
-            };
-            let entry = (window.window_handle(), cx.entity().downgrade());
-            cx.update_global::<Fields, _>(|fields, _| {
-                fields.0.retain(|(_, field)| field.upgrade().is_some());
-                fields.0.push(entry);
-            });
-        },
-    )
+    cx.observe_new(|_: &mut InputState, _, cx: &mut Context<InputState>| {
+        let field = cx.entity().downgrade();
+        cx.update_global::<Fields, _>(|fields, _| {
+            fields.0.retain(|field| field.upgrade().is_some());
+            fields.0.push(field);
+        });
+    })
     .detach();
     cx.on_action(|_: &PercentEncode, cx| run(Codec::Encode, cx));
     cx.on_action(|_: &PercentDecode, cx| run(Codec::Decode, cx));
@@ -70,14 +68,22 @@ pub fn offered(input: &InputState) -> bool {
     applies(input) && !input.selected_range().is_empty()
 }
 
-/// The recorded field that holds focus in `window`.
+/// The recorded field that holds focus in `window`, whichever window created it.
 pub fn focused_field(window: &Window, cx: &App) -> Option<Entity<InputState>> {
-    let handle = window.window_handle();
     let fields = cx.try_global::<Fields>()?;
     (fields.0.iter())
-        .filter(|(owner, _)| *owner == handle)
-        .filter_map(|(_, field)| field.upgrade())
+        .filter_map(WeakEntity::upgrade)
         .find(|field| field.read(cx).focus_handle(cx).is_focused(window))
+}
+
+/// The two commands' menu entries for `input`, each with whether it is disabled; none when
+/// the field does not allow them.
+pub fn codec_entries(input: &InputState) -> Vec<(&'static str, bool)> {
+    if !applies(input) {
+        return Vec::new();
+    }
+    let off = !offered(input);
+    vec![("Percent-encode", off), ("Percent-decode", off)]
 }
 
 /// The kit's own Cut, Copy, Paste and Select All, then the two commands when `input` applies,
@@ -110,9 +116,11 @@ pub fn input_menu(menu: NativeMenu, input: &InputState, cx: &App) -> NativeMenu 
     item(menu, "Percent-decode", off, Box::new(PercentDecode))
 }
 
-// The handler runs inside the window's dispatch, so the edit waits until that ends.
+// The handler runs inside the window's dispatch, so the edit waits until that ends. That
+// window is the one open window that cannot be updated now, since its update is running.
 fn run(codec: Codec, cx: &mut App) {
-    let Some(window) = cx.active_window() else {
+    let dispatching = (cx.windows().into_iter()).find(|w| w.update(cx, |_, _, _| ()).is_err());
+    let Some(window) = dispatching.or_else(|| cx.active_window()) else {
         return;
     };
     cx.defer(move |cx| {
@@ -122,27 +130,37 @@ fn run(codec: Codec, cx: &mut App) {
     });
 }
 
-// The selection is replaced in one undoable edit and stays selected; a decode that is not
-// UTF-8 changes nothing and says why.
+// The selection, grown to whole placeholders, is replaced in one undoable edit and stays
+// selected. A decode that is not UTF-8, or that would put a control character other than a
+// tab into the single-line field, changes nothing and says why.
 fn apply(codec: Codec, window: &mut Window, cx: &mut App) {
     let Some(field) = focused_field(window, cx).filter(|f| offered(f.read(cx))) else {
         return;
     };
     let (range, selected) = {
         let state = field.read(cx);
-        (state.selected_range(), state.selected_text().to_string())
+        let value = state.value();
+        let range = widen_to_placeholders(&value, state.selected_range());
+        let selected = value[range.clone()].to_owned();
+        (range, selected)
     };
     let changed = match codec {
         Codec::Encode => Ok(percent_encode(&selected)),
-        Codec::Decode => percent_decode(&selected),
+        Codec::Decode => percent_decode(&selected)
+            .map_err(|_| NOT_UTF8)
+            .and_then(|text| {
+                let control = text.chars().any(|c| c.is_control() && c != '\t');
+                if control { Err(CONTROL) } else { Ok(text) }
+            }),
     };
     match changed {
         Ok(text) if text != selected => field.update(cx, |s, cx| {
             let end = range.start + text.len();
+            s.set_selected_range(range.clone(), cx);
             s.replace(text, window, cx);
             s.set_selected_range(range.start..end, cx);
         }),
         Ok(_) => {}
-        Err(_) => window.push_notification(ui::kind_toast(ToastKind::Error, NOT_UTF8), cx),
+        Err(message) => window.push_notification(ui::kind_toast(ToastKind::Error, message), cx),
     }
 }
