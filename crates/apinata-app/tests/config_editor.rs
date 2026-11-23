@@ -196,7 +196,8 @@ fn settings_pages_are_inset_like_the_other_panes(cx: &mut TestAppContext) {
     let col = tree();
     let (_state, ws, root) = open_dir(cx, &col);
     for target in [ConfigTarget::Collection, ConfigTarget::Folder(ip("users"))] {
-        let (win, _ed) = editor(cx, &ws, &root, target);
+        let (win, ed) = editor(cx, &ws, &root, target);
+        ed.update(cx, |e, cx| e.set_section(ConfigSection::Headers, cx));
         cx.update_window(win, |_, w, cx| {
             w.render_frame(cx);
             let width = w.viewport_size().width;
@@ -1027,7 +1028,9 @@ fn inherited_headers_do_not_count(cx: &mut TestAppContext) {
         Some(0)
     );
     assert!(!present(cx, win, ("config-section-count", ix)));
-    let (win, _ed) = editor(cx, &ws, &root, ConfigTarget::Collection);
+    // The collection leads with Overview, so its Headers tab sits one further along.
+    let (win, ed) = editor(cx, &ws, &root, ConfigTarget::Collection);
+    let ix = tab_ix(cx, &ed, ConfigSection::Headers);
     assert!(present(cx, win, ("config-section-count", ix)));
 }
 

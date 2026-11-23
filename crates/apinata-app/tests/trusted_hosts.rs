@@ -155,7 +155,7 @@ fn collection_settings_offer_trusted_hosts_and_folder_settings_do_not(cx: &mut T
     assert_eq!(
         ed.read_with(cx, |e, _| e.sections()),
         [
-            Headers, Auth, Vars, Script, Tests, Docs, Hosts, Network, Presets, Scripts
+            Overview, Headers, Auth, Vars, Script, Tests, Docs, Hosts, Network, Presets, Scripts
         ]
     );
     let ix = ed.read_with(cx, |e, _| e.sections().iter().position(|x| *x == Hosts));
