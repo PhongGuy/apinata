@@ -1614,6 +1614,14 @@ impl Shell {
                 window.push_notification(ui::kind_toast(ui::ToastKind::Error, text), cx);
                 cx.notify();
             }
+            WorkspaceEvent::MockMoved { root, from, to } => {
+                let name = display_name(root);
+                let text = format!(
+                    "Port {from} is in use, so the mock server of {name} now runs on port {to}"
+                );
+                window.push_notification(ui::kind_toast(ui::ToastKind::Warning, text), cx);
+                cx.notify();
+            }
             WorkspaceEvent::WatchFailed { root, message }
                 if self.workspace.read(cx).global_dir() == Some(root.as_path()) =>
             {
