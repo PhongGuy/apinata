@@ -204,17 +204,14 @@ fn a_failing_pre_commit_hook_blocks_and_its_output_comes_back(cx: &mut TestAppCo
 }
 
 #[gpui_kit::test]
-fn a_missing_identity_fails_with_gits_text_and_a_hint(cx: &mut TestAppContext) {
+fn a_missing_identity_asks_for_one_and_commits_nothing(cx: &mut TestAppContext) {
     let sb = Sandbox::new();
     let col = simple(&sb);
     let ws = opened(cx, without_identity(&sb), col.path());
     run(cx, &ws, col.path(), GitWrite::Stage(vec![".".into()]));
     match run(cx, &ws, col.path(), GitWrite::Commit("Edit a".into())) {
-        GitWriteDone::Failed(text) => {
-            assert!(text.contains("identity"), "{text}");
-            assert!(text.contains("git config user.name"), "{text}");
-        }
-        other => panic!("expected a failure, got {other:?}"),
+        GitWriteDone::NeedsIdentity => {}
+        other => panic!("expected NeedsIdentity, got {other:?}"),
     }
     assert_eq!(
         sb.git(col.path(), &["rev-list", "--count", "HEAD"]).trim(),

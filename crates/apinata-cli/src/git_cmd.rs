@@ -639,6 +639,14 @@ fn commit(
             eprintln!("error: the commit message is empty");
             ExitCode::from(EXIT_USAGE)
         }
+        Err(e @ apinata_core::CommitError::NoIdentity) => {
+            eprintln!(
+                "error: {e}\nSet them with:\n  git config user.name \"Your Name\"\n  \
+                 git config user.email you@example.com\nAdd --global to use them in every \
+                 repository."
+            );
+            ExitCode::from(EXIT_USAGE)
+        }
         Err(e) => {
             eprintln!("error: {e}");
             ExitCode::from(EXIT_USAGE)

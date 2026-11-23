@@ -56,7 +56,7 @@ use std::time::Duration;
 
 use serde::Serialize;
 
-pub use write::{CommitError, CommitOutcome, commit, stage, unstage};
+pub use write::{CommitError, CommitOutcome, IdentityScope, commit, set_identity, stage, unstage};
 
 /// The most changed files [`collection_status`] reports before it sets `truncated`.
 pub const GIT_FILE_CAP: usize = 5_000;

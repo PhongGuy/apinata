@@ -61,6 +61,9 @@ pub enum CommitError {
     /// The commit outlived its time limit.
     #[error("git did not finish within the time limit; the commit may have completed")]
     Timeout,
+    /// Git has no author or committer name and email, so the commit did not run.
+    #[error("git needs your name and email before it can commit")]
+    NoIdentity,
     /// A preflight git call failed.
     #[error(transparent)]
     Git(#[from] GitError),
@@ -69,8 +72,8 @@ pub enum CommitError {
 /// Commit what is staged in the collection at `root`, using git's own identity, hooks and
 /// message cleanup. The author and committer are whatever git is configured with, and hooks run
 /// as git runs them, their output returned in `Failed`. Refused with `EmptyMessage`,
-/// `Conflicted`, `StagedOutside` or `NothingStaged` before git commits. A `Timeout` may still
-/// have produced the commit.
+/// `Conflicted`, `StagedOutside`, `NothingStaged` or `NoIdentity` before git commits. A
+/// `Timeout` may still have produced the commit.
 pub fn commit(
     root: &Path,
     message: &str,
@@ -116,6 +119,9 @@ pub fn commit(
     if staged.is_empty() {
         return Err(CommitError::NothingStaged);
     }
+    if !has_identity(root, options)? {
+        return Err(CommitError::NoIdentity);
+    }
 
     // `-m` and the message are separate entries so a leading dash stays data.
     let args: Vec<OsString> = vec![
@@ -153,6 +159,93 @@ pub fn commit(
             .trim()
             .to_owned(),
     })
+}
+
+/// Where [`set_identity`] saves the name and email.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum IdentityScope {
+    /// The repository's own config.
+    Repository,
+    /// The user's global git config, which every repository without its own reads.
+    AllRepositories,
+}
+
+/// Save `name` and `email` as git's `user.name` and `user.email` at `scope` for the repository
+/// holding the collection `root`. A value that is blank, starts with `-`, or holds a line break,
+/// NUL, `<` or `>` is `Malformed` and git does not run. `AllRepositories` writes the global
+/// config that `GIT_CONFIG_GLOBAL` names, else the user's own. When the email cannot be written
+/// the name at that scope is put back as it was, and the error is git's.
+pub fn set_identity(
+    root: &Path,
+    name: &str,
+    email: &str,
+    scope: IdentityScope,
+    options: &GitOptions,
+) -> Result<(), GitError> {
+    check_identity_value("name", name)?;
+    check_identity_value("email", email)?;
+    check_root(root)?;
+    let scope = match scope {
+        IdentityScope::Repository => "--local",
+        IdentityScope::AllRepositories => "--global",
+    };
+    // The name at this scope from before, so a refused email leaves the config as it was.
+    let earlier = run::git(&["config", scope, "--get", "user.name"], root, options)?;
+    let earlier = earlier.status.success().then(|| {
+        let text = String::from_utf8_lossy(&earlier.stdout);
+        text.strip_suffix('\n').unwrap_or(&text).to_owned()
+    });
+    // Each value is its own argument after `--`, so nothing in it reaches a shell or an option.
+    let set = |key: &str, value: &str| -> Result<(), GitError> {
+        let args = ["config", scope, "--", key, value];
+        let out = run::git(&args, root, options)?;
+        if out.status.success() {
+            Ok(())
+        } else {
+            Err(out.failed(&args))
+        }
+    };
+    set("user.name", name)?;
+    if let Err(e) = set("user.email", email) {
+        // Best effort: the email's own failure is what the caller needs to hear.
+        let _ = match &earlier {
+            Some(old) => set("user.name", old),
+            None => run::git(&["config", scope, "--unset", "user.name"], root, options).map(drop),
+        };
+        return Err(e);
+    }
+    Ok(())
+}
+
+/// Refuses a value git would mangle into an ident line or a reader would take for an option.
+fn check_identity_value(what: &str, value: &str) -> Result<(), GitError> {
+    let why = if value.trim().is_empty() {
+        "is empty"
+    } else if value.starts_with('-') {
+        "cannot start with -"
+    } else if value.contains(['\n', '\r', '\0', '<', '>']) {
+        "cannot contain a line break, NUL, < or >"
+    } else {
+        return Ok(());
+    };
+    Err(GitError::Malformed(format!("the {what} {why}")))
+}
+
+/// Whether git has an author and a committer identity from config or the environment, never a
+/// guess from the host. Any failure counts as none: the commit would fail the same way.
+pub(super) fn has_identity(root: &Path, options: &GitOptions) -> Result<bool, GitError> {
+    for var in ["GIT_AUTHOR_IDENT", "GIT_COMMITTER_IDENT"] {
+        let out = run::git(
+            &["-c", "user.useConfigOnly=true", "var", var],
+            root,
+            options,
+        )?;
+        if !out.status.success() {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 /// stdout, newline, stderr, lossy UTF-8, trimmed; the last 8192 bytes on a char boundary.
