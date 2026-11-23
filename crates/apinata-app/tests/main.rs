@@ -150,6 +150,7 @@ mod branch_dialog;
 mod branch_picker;
 mod branch_shell;
 mod breadcrumb;
+mod breadcrumb_rename;
 mod bridge;
 mod busy;
 mod button_focus_ring;
