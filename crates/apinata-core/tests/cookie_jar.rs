@@ -543,3 +543,40 @@ fn a_file_without_same_site_or_with_an_unknown_one_loads_it_unset() {
         .collect();
     assert_eq!(listed, [("odd".to_owned(), None), ("old".to_owned(), None)]);
 }
+
+#[test]
+fn restore_fills_an_empty_identity_with_every_field() {
+    let jar = CookieJar::default();
+    let mut c = CookieInfo::new("a.test", "sid", "old");
+    c.path = "/app".to_owned();
+    c.secure = true;
+    c.http_only = true;
+    c.same_site = Some(SameSite::Strict);
+    c.expires = Some(SystemTime::now() + Duration::from_secs(3600));
+    jar.insert(c.clone()).unwrap();
+    let kept = jar.list().remove(0);
+    assert!(jar.delete("a.test", "/app", "sid"));
+    assert!(jar.restore(&kept), "nothing holds the identity");
+    assert_eq!(jar.list(), [kept]);
+}
+
+#[test]
+fn restore_leaves_a_newer_cookie_with_the_same_identity() {
+    let jar = CookieJar::default();
+    jar.insert(CookieInfo::new("a.test", "sid", "old")).unwrap();
+    let old = jar.list().remove(0);
+    jar.delete("a.test", "/", "sid");
+    jar.insert(CookieInfo::new("a.test", "sid", "new")).unwrap();
+    assert!(!jar.restore(&old), "the newer cookie wins");
+    let values: Vec<String> = jar.list().into_iter().map(|c| c.value).collect();
+    assert_eq!(values, ["new"]);
+}
+
+#[test]
+fn restore_skips_a_cookie_that_has_expired_since() {
+    let jar = CookieJar::default();
+    let mut c = CookieInfo::new("a.test", "sid", "v");
+    c.expires = Some(SystemTime::now() - Duration::from_secs(1));
+    assert!(!jar.restore(&c));
+    assert!(jar.list().is_empty());
+}

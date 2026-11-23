@@ -592,6 +592,14 @@ fn dialog_over(
     cx: &mut TestAppContext,
     cookies: Vec<CookieInfo>,
 ) -> (AnyWindowHandle, Arc<Executor>) {
+    let (win, exec, _) = dialog_view_over(cx, cookies);
+    (win, exec)
+}
+
+fn dialog_view_over(
+    cx: &mut TestAppContext,
+    cookies: Vec<CookieInfo>,
+) -> (AnyWindowHandle, Arc<Executor>, Entity<CookieJarView>) {
     support::init(cx);
     let exec = Arc::new(Executor::new(ExecOptions::new()).unwrap());
     for c in cookies {
@@ -601,10 +609,11 @@ fn dialog_over(
     let (win, _) = cx
         .update(|cx| gpui_kit::open_window(WindowOptions::default(), cx, |_, cx| cx.new(|_| Blank)))
         .unwrap();
-    cx.update_window(win, |_, w, cx| open_cookie_jar(w, cx))
+    let view = cx
+        .update_window(win, |_, w, cx| open_cookie_jar(w, cx))
         .unwrap();
     frame(cx, win);
-    (win, exec)
+    (win, exec, view)
 }
 
 #[gpui_kit::test]
@@ -1120,4 +1129,131 @@ fn the_clear_confirm_leaves_the_cookies_title_in_view(cx: &mut TestAppContext) {
         "{question:?} clear of the dialog's top {add:?}"
     );
     answer_confirm(cx, "confirm-cancel");
+}
+
+fn pick_same_site(cx: &mut TestAppContext, win: AnyWindowHandle, ix: usize) {
+    cx.update_window(win, |_, w, cx| w.within("jar-form-same-site").click(ix, cx))
+        .unwrap();
+    frame(cx, win);
+}
+
+fn stored_same_site(exec: &Executor) -> Option<SameSite> {
+    exec.cookies().list().remove(0).same_site
+}
+
+// The form's SameSite choice opens on the cookie's own and saves what is picked, Not set
+// clearing it.
+#[gpui_kit::test]
+fn the_edit_form_sets_and_clears_same_site(cx: &mut TestAppContext) {
+    let mut c = CookieInfo::new("same.test", "sid", "1");
+    c.secure = true;
+    c.same_site = Some(SameSite::Strict);
+    let (win, exec, view) = dialog_view_over(cx, vec![c]);
+    for (ix, want) in [
+        (1, Some(SameSite::Lax)),
+        (0, None),
+        (3, Some(SameSite::None)),
+        (2, Some(SameSite::Strict)),
+    ] {
+        let before = stored_same_site(&exec);
+        click(cx, win, ("jar-edit", 0usize));
+        assert_eq!(
+            view.read_with(cx, |v, _| v.form_same_site()),
+            Some(before),
+            "the choice opens on the stored attribute"
+        );
+        pick_same_site(cx, win, ix);
+        click(cx, win, "jar-form-save");
+        cx.run_until_parked();
+        assert_eq!(stored_same_site(&exec), want);
+    }
+}
+
+fn deleted_label(cx: &mut TestAppContext, win: AnyWindowHandle) -> Option<String> {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.try_find("jar-deleted")
+            .and_then(|e| e.label().map(str::to_owned))
+    })
+    .unwrap()
+}
+
+fn row_top(cx: &mut TestAppContext, win: AnyWindowHandle, ix: usize) -> f32 {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.find(("jar-cookie", ix)).bounds().top().as_f32()
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn a_deleted_cookie_comes_back_masked_on_undo(cx: &mut TestAppContext) {
+    let (win, exec, _view) = dialog(cx, true);
+    let exec = exec.unwrap();
+    let before = exec.cookies().list();
+    click(cx, win, ("jar-eye", 0usize));
+    assert!(present(cx, win, ("jar-hide", 0usize)), "the value is shown");
+    click(cx, win, ("jar-delete", 0usize));
+    let names: Vec<String> = exec.cookies().list().into_iter().map(|c| c.name).collect();
+    assert_eq!(names, ["theme"]);
+    assert!(present(cx, win, "jar-deleted"));
+    click(cx, win, "jar-undo-delete");
+    cx.run_until_parked();
+    frame(cx, win);
+    assert_eq!(exec.cookies().list(), before);
+    assert!(present(cx, win, ("jar-cookie", 1usize)), "the card is back");
+    assert!(!present(cx, win, "jar-deleted"));
+    assert!(
+        present(cx, win, ("jar-reveal", 0usize)),
+        "a restored cookie comes back masked"
+    );
+}
+
+#[gpui_kit::test]
+fn the_deleted_slot_names_the_cookie_but_never_its_value(cx: &mut TestAppContext) {
+    let (win, _exec) = dialog_over(cx, vec![CookieInfo::new("a.test", "sid", "hunter2-secret")]);
+    click(cx, win, ("jar-delete", 0usize));
+    let label = deleted_label(cx, win).expect("a deleted slot");
+    assert!(
+        label.contains("sid") && !label.contains("hunter2-secret"),
+        "{label}"
+    );
+}
+
+// The deleted row keeps its place, so the row below stays under the pointer's old target
+// rather than sliding up into it.
+#[gpui_kit::test]
+fn the_rows_below_a_delete_keep_their_place(cx: &mut TestAppContext) {
+    let cookies = ["a", "b", "c"].map(|n| CookieInfo::new("a.test", n, "1"));
+    let (win, exec) = dialog_over(cx, cookies.to_vec());
+    let below = row_top(cx, win, 2);
+    click(cx, win, ("jar-delete", 1usize));
+    assert_eq!(exec.cookies().list().len(), 2);
+    let moved = row_top(cx, win, 1) - below;
+    assert!(moved.abs() < 4.0, "the next row moved {moved}px");
+}
+
+#[gpui_kit::test]
+fn an_undo_after_a_newer_cookie_keeps_the_newer_and_says_so(cx: &mut TestAppContext) {
+    let (win, exec) = dialog_over(cx, vec![CookieInfo::new("a.test", "sid", "old")]);
+    click(cx, win, ("jar-delete", 0usize));
+    exec.cookies()
+        .insert(CookieInfo::new("a.test", "sid", "new"))
+        .unwrap();
+    click(cx, win, "jar-undo-delete");
+    let values: Vec<String> = exec.cookies().list().into_iter().map(|c| c.value).collect();
+    assert_eq!(values, ["new"]);
+    let label = deleted_label(cx, win).expect("the slot stays to say why");
+    assert!(label.contains("newer one was kept"), "{label}");
+    assert!(!present(cx, win, "jar-undo-delete"));
+}
+
+#[gpui_kit::test]
+fn opening_the_form_clears_the_deleted_slot(cx: &mut TestAppContext) {
+    let (win, _exec) = dialog_over(cx, vec![CookieInfo::new("a.test", "sid", "1")]);
+    click(cx, win, ("jar-delete", 0usize));
+    assert!(present(cx, win, "jar-deleted"));
+    click(cx, win, "jar-add");
+    click(cx, win, "jar-form-cancel");
+    assert!(!present(cx, win, "jar-deleted"));
 }
