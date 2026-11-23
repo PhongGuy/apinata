@@ -377,8 +377,8 @@ info:
 request:
   auth: inherit
 
-=== environments/Environment.yml
-name: Environment
+=== environments/api.uber.com.yml
+name: api.uber.com
 variables:
   - name: baseUrl
     value: https://api.uber.com/v1
@@ -399,7 +399,7 @@ extensions:
       - node_modules
       - .git
     presets:
-      defaultEnvironment: Environment
+      defaultEnvironment: api.uber.com
   apinata:
     openapi:
       ops:
@@ -454,4 +454,4 @@ extensions:
           examples: 85d03a58a03ca4dc
           file: Products/Product Types.yml
 
-note Converted opencollection.yml | collection | runs use the environment `Environment` by default, as the first environment imported
+note Converted opencollection.yml | collection | `api.uber.com` is the default environment because it was imported first

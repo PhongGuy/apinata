@@ -50,6 +50,10 @@ fn place_items_puts_requests_directly_in_the_folder_and_records_the_baseline() {
     let b = bundle(&spec("update-v1.json"));
     let placed = place_items(&mut c, &folder, &b, &MemoryStore::new()).unwrap();
     assert_eq!(placed.requests, 3);
+    assert_eq!(
+        placed.report.requests, 3,
+        "the report counts the same requests"
+    );
     assert!(c.root().join("Shop/people/getUser.yml").is_file());
     assert!(!c.root().join("Shop/Shop").exists());
     assert!(c.request(&ip("Shop/people/getUser.yml")).is_some());

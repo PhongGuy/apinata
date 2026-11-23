@@ -361,11 +361,11 @@ fn run_options_are_wired_and_iterations_get_headers(cx: &mut TestAppContext) {
     });
     assert_eq!(
         label(cx, &s, ("run-iteration", 0usize)).as_deref(),
-        Some("Iteration 1")
+        Some("Iteration 1: id=1")
     );
     assert_eq!(
         label(cx, &s, ("run-iteration", 1usize)).as_deref(),
-        Some("Iteration 2")
+        Some("Iteration 2: id=2")
     );
     click(cx, &s, "run-data-clear");
     assert!(model.read_with(cx, |m, _| m.data_file().is_none()));

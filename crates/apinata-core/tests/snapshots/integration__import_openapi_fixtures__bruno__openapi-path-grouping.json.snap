@@ -149,4 +149,4 @@ extensions:
           examples: 7ace431cb61584cb
           file: Get user by ID.yml
 
-note Converted opencollection.yml | collection | runs use the environment `Test server` by default, as the first environment imported
+note Converted opencollection.yml | collection | `Test server` is the default environment because it was imported first

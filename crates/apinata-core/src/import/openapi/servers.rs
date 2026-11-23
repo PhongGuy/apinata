@@ -11,8 +11,9 @@ use crate::js;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
-/// The bytes of a resolved URL needed to tell whether it starts with `http://` or `https://`.
-const SCHEME_PREFIX: usize = "https://".len();
+/// The bytes of a resolved URL read for its scheme and host: `https://`, a full-length host name
+/// and a port, with room for user info.
+const RESOLVED_PREFIX: usize = 320;
 
 /// One server read as variables: `baseUrl` first, then each declared variable, every one with
 /// its document path. `resolved` is the start of the URL with the defaults substituted.
@@ -109,13 +110,11 @@ pub(crate) fn request_vars(
         .collect())
 }
 
-/// Each root server with a string `url`, named by its `name` or `description`, else by its
-/// position, with repeated names counted up.
+/// Each root server with a string `url`, named by its `name` or `description`, else as
+/// [`name_servers`] names it with its position as the fallback.
 fn openapi_servers(doc: &mut Doc<'_>) -> Result<Vec<(String, Server)>, DocumentError> {
     let root = doc.root;
-    let mut out = Vec::new();
-    let mut taken = HashSet::new();
-    let mut seen: HashMap<String, u64> = HashMap::new();
+    let mut found = Vec::new();
     let list = root.get("servers").and_then(Value::as_array);
     for (i, value) in list.into_iter().flatten().enumerate() {
         let Some(server) = server(doc, value, &format!("servers[{i}]"))? else {
@@ -126,10 +125,38 @@ fn openapi_servers(doc: &mut Doc<'_>) -> Result<Vec<(String, Server)>, DocumentE
             .filter_map(|k| value.get(k).and_then(Value::as_str))
             .find(|s| !s.is_empty());
         doc.budget.charge_text(label.unwrap_or_default())?;
-        let base = label
-            .map(normalize_name)
-            .filter(|n| !n.is_empty())
-            .unwrap_or_else(|| format!("Environment {}", i + 1));
+        let label = label.map(normalize_name).filter(|n| !n.is_empty());
+        found.push((label, format!("Environment {}", i + 1), server));
+    }
+    name_servers(doc, found)
+}
+
+/// Name each `(label, fallback, server)`: its label, else its server's host, else `fallback`.
+/// A host shared by two unlabelled servers adds its port; repeated names are counted up.
+fn name_servers(
+    doc: &mut Doc<'_>,
+    found: Vec<(Option<String>, String, Server)>,
+) -> Result<Vec<(String, Server)>, DocumentError> {
+    let hosts: Vec<Option<(String, Option<String>)>> = found
+        .iter()
+        .map(|(label, _, server)| label.is_none().then(|| host_of(&server.resolved)).flatten())
+        .collect();
+    let mut shared: HashMap<String, usize> = HashMap::new();
+    for (host, _) in hosts.iter().flatten() {
+        *shared.entry(host.to_ascii_lowercase()).or_default() += 1;
+    }
+    let mut out = Vec::with_capacity(found.len());
+    let mut taken = HashSet::new();
+    let mut seen: HashMap<String, u64> = HashMap::new();
+    for ((label, fallback, server), host) in found.into_iter().zip(hosts) {
+        let by_host = host.map(|(host, port)| match port {
+            Some(port) if shared[&host.to_ascii_lowercase()] > 1 => format!("{host}:{port}"),
+            _ => host,
+        });
+        // A host that makes no valid file name, such as a device name, keeps the fallback.
+        let by_host = by_host.filter(|n| crate::env_ops::check_environment_name(n).is_ok());
+        let base = label.or(by_host).unwrap_or(fallback);
+        doc.budget.charge_text(&base)?;
         // The first use keeps the name; each repeat takes the next free count from 2.
         let mut name = base.clone();
         if !taken.insert(name.clone()) {
@@ -145,6 +172,42 @@ fn openapi_servers(doc: &mut Doc<'_>) -> Result<Vec<(String, Server)>, DocumentE
         out.push((name, server));
     }
     Ok(out)
+}
+
+/// The host and any port of an absolute `http` or `https` URL's resolved start, without user
+/// info; `None` for a relative URL, an empty host, one still holding a `{variable}`, or one
+/// cut off by [`RESOLVED_PREFIX`].
+fn host_of(resolved: &str) -> Option<(String, Option<String>)> {
+    let after = |scheme: &str| {
+        resolved
+            .get(..scheme.len())
+            .filter(|p| p.eq_ignore_ascii_case(scheme))
+            .map(|_| &resolved[scheme.len()..])
+    };
+    let rest = after("http://").or_else(|| after("https://"))?;
+    let authority = match rest.find(['/', '?', '#']) {
+        Some(end) => &rest[..end],
+        None if resolved.len() < RESOLVED_PREFIX => rest,
+        None => return None,
+    };
+    let authority = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+    let (host, port) = match authority.strip_prefix('[') {
+        Some(v6) => {
+            let (inner, after) = v6.split_once(']')?;
+            (&authority[..inner.len() + 2], after.strip_prefix(':'))
+        }
+        None => match authority.rsplit_once(':') {
+            Some((host, port)) => (host, Some(port)),
+            None => (authority, None),
+        },
+    };
+    if host.is_empty() || host.contains(['{', '}']) {
+        return None;
+    }
+    let port = port.filter(|p| !p.is_empty()).map(str::to_owned);
+    Some((host.to_owned(), port))
 }
 
 /// One server per scheme from Swagger 2.0's `host` and `basePath`; `basePath` alone gives a
@@ -181,12 +244,12 @@ fn swagger_servers(doc: &mut Doc<'_>) -> Result<Vec<(String, Server)>, DocumentE
         None => return Ok(Vec::new()),
     };
     let single = urls.len() == 1;
-    Ok(urls
+    let found = urls
         .into_iter()
         .enumerate()
         .map(|(i, url)| {
             let url = trim_slash(url);
-            let name = if single {
+            let fallback = if single {
                 "Environment".to_owned()
             } else {
                 format!("Environment {}", i + 1)
@@ -197,9 +260,10 @@ fn swagger_servers(doc: &mut Doc<'_>) -> Result<Vec<(String, Server)>, DocumentE
                 vars: vec![("baseUrl".to_owned(), url, source.to_owned())],
                 resolved,
             };
-            (name, server)
+            (None, fallback, server)
         })
-        .collect())
+        .collect();
+    name_servers(doc, found)
 }
 
 /// A 3.x Server Object read as variables, or `None` when its `url` is not a string. Each
@@ -247,8 +311,8 @@ fn server(doc: &mut Doc<'_>, value: &Value, source: &str) -> Result<Option<Serve
 }
 
 /// `url` with each declared `{v}` written as `{{v}}`, and the first bytes of `url` with each
-/// replaced by its value, enough to read the scheme; spelling it out in full could multiply a
-/// large default by every use.
+/// replaced by its value, enough to read the scheme and host; spelling it out in full could
+/// multiply a large default by every use.
 fn substitute(url: &str, values: &HashMap<&str, String>) -> (String, String) {
     let mut base = String::with_capacity(url.len());
     let mut resolved = String::new();
@@ -278,10 +342,10 @@ fn substitute(url: &str, values: &HashMap<&str, String>) -> (String, String) {
     (base, resolved)
 }
 
-/// Append `text` to `prefix` until it holds `SCHEME_PREFIX` bytes.
+/// Append `text` to `prefix` until it holds `RESOLVED_PREFIX` bytes.
 fn push_prefix(prefix: &mut String, text: &str) {
     for c in text.chars() {
-        if prefix.len() >= SCHEME_PREFIX {
+        if prefix.len() >= RESOLVED_PREFIX {
             return;
         }
         prefix.push(c);
@@ -301,16 +365,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn substitution_reads_only_the_scheme_of_a_repeated_large_default() {
+    fn substitution_reads_only_a_bounded_start_of_a_repeated_large_default() {
         // Spelled out in full, this URL would be 10 MB from a 3 KB template.
         let url = "{a}".repeat(1000);
         let values = HashMap::from([("a", "x".repeat(10_000))]);
         let (base, resolved) = substitute(&url, &values);
         assert_eq!(base, "{{a}}".repeat(1000));
-        assert!(resolved.len() <= SCHEME_PREFIX, "{} bytes", resolved.len());
+        assert!(
+            resolved.len() <= RESOLVED_PREFIX,
+            "{} bytes",
+            resolved.len()
+        );
         let values = HashMap::from([("s", "https".to_owned()), ("h", "x.test".to_owned())]);
-        assert_eq!(substitute("{s}://{h}/v1", &values).1, "https://");
+        assert_eq!(substitute("{s}://{h}/v1", &values).1, "https://x.test/v1");
         assert_eq!(substitute("{s}:/", &values).1, "https:/");
         assert_eq!(substitute("ht{u}", &values).1, "ht{u}");
+    }
+
+    #[test]
+    fn a_host_is_read_from_an_absolute_url_only() {
+        let host = |url: &str| host_of(url).map(|(h, p)| (h, p.unwrap_or_default()));
+        let got = |h: &str, p: &str| Some((h.to_owned(), p.to_owned()));
+        assert_eq!(host("HTTP://a.test:81/x"), got("a.test", "81"));
+        assert_eq!(host("https://u:pw@[::1]:8443?q"), got("[::1]", "8443"));
+        assert_eq!(host("https://a.test"), got("a.test", ""));
+        assert_eq!(host("/v1"), None);
+        assert_eq!(host("ftp://a.test"), None);
+        assert_eq!(host("https://{h}.test"), None);
+        assert_eq!(
+            host(&format!("https://{}", "a".repeat(RESOLVED_PREFIX))),
+            None
+        );
     }
 }
