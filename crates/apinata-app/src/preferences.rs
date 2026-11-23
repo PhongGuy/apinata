@@ -1424,16 +1424,27 @@ impl PreferencesView {
                         cx.notify();
                     })),
             );
-        let general = PrefsSection::new("prefs-general", "General").row(
-            "pref-autosave",
-            "Save changes automatically",
-            ui::checkbox("autosave", current.autosave).on_click(cx.listener(
-                |this, on: &bool, _, cx| {
-                    let on = *on;
-                    this.edit(|s| s.autosave = on, cx)
-                },
-            )),
-        );
+        let general = PrefsSection::new("prefs-general", "General")
+            .row(
+                "pref-autosave",
+                "Save changes automatically",
+                ui::checkbox("autosave", current.autosave).on_click(cx.listener(
+                    |this, on: &bool, _, cx| {
+                        let on = *on;
+                        this.edit(|s| s.autosave = on, cx)
+                    },
+                )),
+            )
+            .row(
+                "pref-preview-tabs",
+                "Single clicks open preview tabs",
+                ui::checkbox("preview-tabs", current.preview_tabs).on_click(cx.listener(
+                    |this, on: &bool, _, cx| {
+                        let on = *on;
+                        this.edit(|s| s.preview_tabs = on, cx)
+                    },
+                )),
+            );
         let mcp = crate::mcp_prefs::section(self.shell.as_ref(), cx);
         let keyboard = self.keyboard.update(cx, |k, cx| k.section(window, cx));
         vec![

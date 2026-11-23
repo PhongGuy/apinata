@@ -28,6 +28,7 @@ fn mode(cx: &mut TestAppContext) -> ThemeMode {
 }
 
 fn enter(cx: &mut TestAppContext, s: &Started, id: &'static str, text: &str) {
+    prefs_reveal(cx, s, id);
     replace_input(cx, s.win, None, id, text);
     cx.update_window(s.win, |_, w, cx| w.press("enter", cx))
         .unwrap();
@@ -98,9 +99,9 @@ fn the_preferences_dialog_edits_the_settings(cx: &mut TestAppContext) {
     cx.update_window(s.win, |_, w, cx| {
         w.within("theme").click(2usize, cx);
         w.within("orientation").click(1usize, cx);
-        w.click("verify-tls", cx);
     })
     .unwrap();
+    prefs_click(cx, &s, "verify-tls");
     cx.run_until_parked();
     let got = settings(cx);
     assert_eq!(

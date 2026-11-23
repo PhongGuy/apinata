@@ -2152,6 +2152,8 @@ impl Workspace {
     ) -> Option<TabId> {
         let root = absolute(root);
         self.request(&root, &item, cx)?;
+        // With preview tabs turned off in Preferences, every open keeps its tab.
+        let preview = preview && crate::settings::preview_tabs(cx);
         Some(self.update_tabs(cx, |t| t.open(&root, TabKind::Request(item), preview)))
     }
 
@@ -2166,6 +2168,7 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> Option<TabId> {
         let root = absolute(root);
+        let preview = preview && crate::settings::preview_tabs(cx);
         let kind = TabKind::Example { item, index };
         if !self.has_tab_target(&root, &kind, cx) {
             return None;

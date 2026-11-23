@@ -167,7 +167,17 @@ pub fn lock_input(
     let input = input
         .readonly(locked)
         .when_some(text, |input, color| input.text_color(color));
-    with_lock_hint(input, state, locked, window, cx)
+    with_lock_hint(with_input_menu(input, state), state, locked, window, cx)
+}
+
+/// `input` with its right-click menu built at open time: the kit's editing entries plus
+/// Percent-encode and Percent-decode where the field allows them.
+pub fn with_input_menu(input: Input, state: &Entity<InputState>) -> Input {
+    let state = state.downgrade();
+    input.context_menu(move |menu, _, cx| match state.upgrade() {
+        Some(state) => crate::percent_codec::input_menu(menu, state.read(cx), cx),
+        None => menu,
+    })
 }
 
 /// Whether the active theme is a high-contrast one, where disabled controls cannot dim and

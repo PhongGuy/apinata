@@ -17,12 +17,14 @@ use support::secondary;
 // The kit's editor Redo only gains a second chord here, and its Go to Definition only an F12 key
 // in the query editor; neither is an app command.
 // Context-specific saves go through Save, positional tab keys through next, previous and
-// last, and the palette does not list itself. `NoAction` only masks a key, so it is no command.
+// last, the breadcrumb's rename through Rename, and the palette does not list itself.
+// `NoAction` only masks a key, so it is no command.
 const NOT_LISTED: &[&str] = &[
     "apinata::SaveRequest",
     "apinata::SendRequest",
     "apinata::UndoEdit",
     "apinata::RedoEdit",
+    "apinata::RenameTitle",
     "apinata::SaveEnvironment",
     "apinata::SaveConfig",
     "apinata::CommitChanges",
