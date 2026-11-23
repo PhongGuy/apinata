@@ -120,3 +120,175 @@ fn a_smaller_body_limit_applies_to_the_next_send(cx: &mut TestAppContext) {
     let resp = handle.block_on(exec.send(&req)).unwrap();
     assert!(resp.body().len() <= 16, "the 16-byte limit did not apply");
 }
+
+// A store whose proxy password reads each wait for their own answer, in call order, so a test
+// decides which read lands first. An unanswered read gives up after five seconds.
+struct OrderedStore {
+    gates: Vec<std::sync::Mutex<std::sync::mpsc::Receiver<String>>>,
+    calls: std::sync::atomic::AtomicUsize,
+    answered: std::sync::atomic::AtomicUsize,
+}
+
+impl OrderedStore {
+    fn new(reads: usize) -> (Arc<OrderedStore>, Vec<std::sync::mpsc::Sender<String>>) {
+        let (senders, gates) = (0..reads)
+            .map(|_| {
+                let (tx, rx) = std::sync::mpsc::channel();
+                (tx, std::sync::Mutex::new(rx))
+            })
+            .unzip();
+        let store = OrderedStore {
+            gates,
+            calls: Default::default(),
+            answered: Default::default(),
+        };
+        (Arc::new(store), senders)
+    }
+
+    fn calls(&self) -> usize {
+        self.calls.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    fn answered(&self) -> usize {
+        self.answered.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+impl SecretStore for OrderedStore {
+    fn get(
+        &self,
+        key: &apinata_core::SecretKey,
+    ) -> Result<Option<String>, apinata_core::SecretError> {
+        if *key != proxy_password_key() {
+            return Ok(None);
+        }
+        let ix = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let reply = self.gates[ix]
+            .lock()
+            .unwrap()
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .ok();
+        self.answered
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(reply)
+    }
+    fn set(&self, _: &apinata_core::SecretKey, _: &str) -> Result<(), apinata_core::SecretError> {
+        Ok(())
+    }
+    fn delete(&self, _: &apinata_core::SecretKey) -> Result<(), apinata_core::SecretError> {
+        Ok(())
+    }
+}
+
+// Polls the app until `done` holds, for at most three seconds.
+fn wait_until(cx: &mut TestAppContext, done: impl Fn(&mut TestAppContext) -> bool) -> bool {
+    let end = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    while std::time::Instant::now() < end {
+        cx.run_until_parked();
+        if done(cx) {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    false
+}
+
+// The Proxy-Authorization header `proxy` saw on the one send made through it.
+fn proxy_auth(cx: &mut TestAppContext, proxy: &wiremock::MockServer) -> Option<String> {
+    let got = requests_to(cx, proxy);
+    assert_eq!(got.len(), 1, "one send through the proxy");
+    got[0]
+        .headers
+        .get("proxy-authorization")
+        .map(|v| v.to_str().unwrap().to_owned())
+}
+
+// Two rebuilds wait on the keychain; the newer read lands first. The older read landing
+// afterwards must not install its password over the newer one.
+#[gpui_kit::test]
+fn an_older_password_read_landing_last_is_dropped(cx: &mut TestAppContext) {
+    ready(cx);
+    let col = two_requests();
+    let (store, answers) = OrderedStore::new(2);
+    let _s = started_with_store(cx, &col, store.clone());
+    let target = mock_server(cx, wiremock::ResponseTemplate::new(200));
+    let proxy = mock_server(cx, wiremock::ResponseTemplate::new(200));
+    let before = cx.update(|cx| executor::shared(cx)).unwrap();
+    edit_settings(cx, |s| s.proxy = manual_proxy(&proxy, "u"));
+    assert!(wait_until(cx, |_| store.calls() == 1));
+    edit_settings(cx, |s| s.proxy.bypass = "example.invalid".into());
+    assert!(wait_until(cx, |_| store.calls() == 2));
+    answers[1].send("new".into()).unwrap();
+    assert!(wait_until(cx, |cx| {
+        !Arc::ptr_eq(&cx.update(|cx| executor::shared(cx)).unwrap(), &before)
+    }));
+    answers[0].send("old".into()).unwrap();
+    assert!(wait_until(cx, |_| store.answered() == 2));
+    for _ in 0..5 {
+        cx.run_until_parked();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    send_now(cx, &target);
+    // Basic base64 of "u:new".
+    assert_eq!(proxy_auth(cx, &proxy).as_deref(), Some("Basic dTpuZXc="));
+}
+
+// The startup password read is slow; meanwhile a new password is saved and rebuilds the
+// executor. The startup read landing last must not bring the old password back.
+#[gpui_kit::test]
+fn a_slow_startup_password_read_does_not_undo_a_newer_one(cx: &mut TestAppContext) {
+    ready(cx);
+    let col = two_requests();
+    let (store, answers) = OrderedStore::new(2);
+    let target = mock_server(cx, wiremock::ResponseTemplate::new(200));
+    let proxy = mock_server(cx, wiremock::ResponseTemplate::new(200));
+    let mut settings = test_settings();
+    settings.proxy = manual_proxy(&proxy, "u");
+    let _s = started_on(
+        cx,
+        &col,
+        |paths| apinata_app::persist::save_json(&paths.settings, &settings).unwrap(),
+        store.clone(),
+    );
+    assert!(wait_until(cx, |_| store.calls() == 1));
+    let before = cx.update(|cx| executor::shared(cx)).unwrap();
+    // What saving a password in Preferences does once the store has it.
+    cx.update(|cx| {
+        let now = cx.global::<AppState>().settings.read(cx).get().clone();
+        executor::rebuild(now, store.clone(), cx);
+    });
+    assert!(wait_until(cx, |_| store.calls() == 2));
+    answers[1].send("new".into()).unwrap();
+    assert!(wait_until(cx, |cx| {
+        !Arc::ptr_eq(&cx.update(|cx| executor::shared(cx)).unwrap(), &before)
+    }));
+    answers[0].send("old".into()).unwrap();
+    assert!(wait_until(cx, |_| store.answered() == 2));
+    for _ in 0..5 {
+        cx.run_until_parked();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    send_now(cx, &target);
+    // Basic base64 of "u:new".
+    assert_eq!(proxy_auth(cx, &proxy).as_deref(), Some("Basic dTpuZXc="));
+}
+
+// While a rebuild waits on the keychain, a settings write that moves no network preference
+// starts no second read.
+#[gpui_kit::test]
+fn an_unrelated_write_during_a_password_read_reads_once(cx: &mut TestAppContext) {
+    ready(cx);
+    let col = two_requests();
+    let (store, answers) = OrderedStore::new(2);
+    let _s = started_with_store(cx, &col, store.clone());
+    let proxy = mock_server(cx, wiremock::ResponseTemplate::new(200));
+    edit_settings(cx, |s| s.proxy = manual_proxy(&proxy, "u"));
+    assert!(wait_until(cx, |_| store.calls() == 1));
+    edit_settings(cx, |s| s.wrap_editors = !s.wrap_editors);
+    assert!(
+        !wait_until(cx, |_| store.calls() > 1),
+        "a second read started"
+    );
+    answers[0].send("pw".into()).unwrap();
+    assert!(wait_until(cx, |_| store.answered() == 1));
+}
