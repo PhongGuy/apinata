@@ -88,6 +88,7 @@ mod oauth2;
 mod opaque;
 mod order;
 mod paging;
+mod percent_text;
 mod post_response;
 mod presets;
 mod prompt;
@@ -277,6 +278,7 @@ pub use oauth2::{
 };
 pub use opaque::OpaqueItem;
 pub use paging::{MAX_PAGE_LIMIT, PageError};
+pub use percent_text::{NotUtf8, percent_decode, percent_encode};
 pub use post_response::{
     PostResponseVar, VarOutcome, VarResult, apply_post_response_vars, variable_name_problem,
 };
