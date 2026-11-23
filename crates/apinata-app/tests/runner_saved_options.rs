@@ -125,6 +125,9 @@ fn every_saved_option_comes_back_after_a_restart(cx: &mut TestAppContext) {
         assert_eq!(m.iteration_count(), Some(4));
         assert_eq!(m.data_file(), Some(data.as_path()));
         assert!(!m.data_file_missing());
+        // The restored file is read again, so its rows show before any Run.
+        assert_eq!(m.data_summary(), Some((2, vec!["x"])));
+        assert_eq!(m.preview_rounds(), Some(2));
     });
     let numbers = second.view.read_with(cx, |v, cx| v.number_field_texts(cx));
     assert_eq!(numbers, Some(["120".into(), "4".into()]));

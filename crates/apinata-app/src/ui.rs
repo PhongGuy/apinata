@@ -694,8 +694,8 @@ pub fn field_error(
         .into_any_element()
 }
 
-// The 2px danger-coloured outline laid over an input's frame.
-fn danger_ring(id: ElementId, danger: Hsla) -> impl IntoElement {
+/// The 2px danger-coloured outline laid over an input's frame.
+pub fn danger_ring(id: ElementId, danger: Hsla) -> impl IntoElement {
     div()
         .id(id)
         .test_support()
