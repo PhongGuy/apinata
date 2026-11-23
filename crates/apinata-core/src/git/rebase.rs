@@ -13,6 +13,7 @@ use super::sync::{
     UpstreamRef, counts, current_branch, failed, fast_forward, from_fetch, from_git, from_switch,
     upstream_of, verify,
 };
+use super::write::has_identity;
 use super::{CommitError, GitOptions, SyncError, check_root, commit, redact_url, run};
 
 /// The ref that keeps the branch tip from before the last sync, so nothing local is unreachable.
@@ -128,6 +129,10 @@ pub(super) fn replay_onto(
     copies: &Path,
     opts: &GitOptions,
 ) -> Result<RebasePulled, SyncError> {
+    // Replayed commits need a committer, and the fallback commit an author too.
+    if !has_identity(root, opts).map_err(from_git)? {
+        return Err(SyncError::NoIdentity);
+    }
     let args = [
         "-c",
         "user.useConfigOnly=true",

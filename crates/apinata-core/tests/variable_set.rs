@@ -3,8 +3,8 @@
 use crate::common;
 
 use apinata_core::{
-    Collection, ContextOptions, RequestFile, RuntimeVars, VarContext, VarScope, VariableInfo,
-    VariableSet, dynamic_variables, placeholders, resolve,
+    Collection, ContextOptions, IterationData, RequestFile, RuntimeVars, VarContext, VarScope,
+    VariableInfo, VariableSet, dynamic_variables, placeholders, resolve,
 };
 use common::{request, write_tree};
 use tempfile::TempDir;
@@ -343,4 +343,121 @@ fn another_path_changes_the_request_inputs() {
     let here = set_holding(&dir, &ctx, "a/r.yml", BODY_A);
     let there = set_holding(&dir, &ctx, "s.yml", BODY_A);
     assert!(!here.same_request_inputs(&there));
+}
+
+const SHADOW_ROOT: &str = "opencollection: \"1.0.0\"\ninfo:\n  name: t\nrequest:\n  variables:\n    - name: userId\n      value: \"1\"\n    - name: user.id\n      value: \"1\"\n    - name: $guid\n      value: shadowed\n";
+
+/// A collection whose `userId` and literal `user.id` are 1, under global overrides of 7;
+/// `secret` makes the global `userId` a sensitive value.
+fn shadowing(secret: bool) -> (TempDir, Collection, VarContext, RuntimeVars) {
+    let dir = write_tree(&[("opencollection.yml", SHADOW_ROOT), ("s.yml", TOP)]);
+    let c = Collection::open(dir.path()).expect("opens");
+    let runtime = RuntimeVars::new();
+    let options = ContextOptions::new()
+        .process_env(Vec::<(String, String)>::new())
+        .runtime_vars(runtime.clone())
+        .global_env_var("user.id", "7");
+    let options = if secret {
+        options.sensitive_global_env_var("userId", "g-s3cret")
+    } else {
+        options.global_env_var("userId", "7")
+    };
+    let ctx = VarContext::new(&c, options).expect("context");
+    (dir, c, ctx, runtime)
+}
+
+type Row = (VarScope, Option<String>, bool, bool);
+
+fn layer_rows(set: &VariableSet, name: &str) -> Vec<Row> {
+    set.layers(name)
+        .iter()
+        .map(|v| {
+            (
+                v.scope(),
+                v.value().map(str::to_owned),
+                v.is_secret(),
+                v.is_shadowed(),
+            )
+        })
+        .collect()
+}
+
+fn row(scope: VarScope, value: &str, shadowed: bool) -> Row {
+    (scope, Some(value.to_owned()), false, shadowed)
+}
+
+#[test]
+fn layers_lists_the_winner_then_each_shadowed_definition() {
+    let (_dir, c, ctx, _) = shadowing(false);
+    let set = set_for(&c, &ctx, "s.yml");
+    assert_eq!(
+        layer_rows(&set, "userId"),
+        vec![
+            row(VarScope::Collection, "1", false),
+            row(VarScope::GlobalEnvironment, "7", true),
+        ]
+    );
+    assert_eq!(layer_rows(&set, "nope"), vec![]);
+    let overview: Vec<_> = set
+        .overview()
+        .into_iter()
+        .filter(|v| v.name() == "userId")
+        .collect();
+    assert_eq!(overview, set.layers("userId"));
+}
+
+#[test]
+fn layers_never_carry_a_shadowed_secret() {
+    let (_dir, c, ctx, _) = shadowing(true);
+    let set = set_for(&c, &ctx, "s.yml");
+    assert_eq!(
+        layer_rows(&set, "userId"),
+        vec![
+            row(VarScope::Collection, "1", false),
+            (VarScope::GlobalEnvironment, None, true, true),
+        ]
+    );
+    for v in set.layers("userId") {
+        assert!(!format!("{v:?}").contains("g-s3cret"), "{v:?}");
+    }
+}
+
+#[test]
+fn a_path_or_dynamic_name_has_only_its_winner() {
+    let (_dir, c, ctx, _) = shadowing(false);
+    let set = set_for(&c, &ctx, "s.yml");
+    assert_eq!(
+        layer_rows(&set, "user.id"),
+        vec![row(VarScope::Collection, "1", false)]
+    );
+    assert_eq!(
+        layer_rows(&set, "$guid"),
+        vec![(VarScope::Dynamic, None, false, false)]
+    );
+}
+
+#[test]
+fn iteration_data_or_a_runtime_value_shadows_every_layer() {
+    let (_dir, c, ctx, runtime) = shadowing(false);
+    let data = IterationData::from_csv("userId\n9\n").expect("rows");
+    let iterating = ctx.for_iteration(Some(&data), 0, 1);
+    let set = set_for(&c, &iterating, "s.yml");
+    assert_eq!(
+        layer_rows(&set, "userId"),
+        vec![
+            row(VarScope::IterationData, "9", false),
+            row(VarScope::Collection, "1", true),
+            row(VarScope::GlobalEnvironment, "7", true),
+        ]
+    );
+    runtime.set_text("userId", "5");
+    let set = set_for(&c, &ctx, "s.yml");
+    assert_eq!(
+        layer_rows(&set, "userId"),
+        vec![
+            row(VarScope::Runtime, "5", false),
+            row(VarScope::Collection, "1", true),
+            row(VarScope::GlobalEnvironment, "7", true),
+        ]
+    );
 }

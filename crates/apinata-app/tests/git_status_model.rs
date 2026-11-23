@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use apinata_app::git_status::{
     GitChange, GitChanges, GitStage, QUIET_NOTE, after_refresh, commit_failure_text, commit_label,
-    item_file, with_identity_hint,
+    item_file,
 };
 use apinata_core::{
     CommitError, FileStatus, GitError, GitState, StageState, collection_status_with,
@@ -178,20 +178,6 @@ fn a_staged_file_gone_from_disk_counts_as_staged() {
 fn the_commit_button_names_the_branch() {
     assert_eq!(commit_label(Some("main")), "Commit to main");
     assert_eq!(commit_label(None), "Commit");
-}
-
-#[test]
-fn an_unknown_identity_gets_a_hint_and_other_output_is_untouched() {
-    for text in [
-        "Author identity unknown\n*** Please tell me who you are.",
-        "fatal: empty ident name (for <x@y>) not allowed",
-    ] {
-        let out = with_identity_hint(text);
-        assert!(out.starts_with(text));
-        assert!(out.contains("git config user.name"));
-        assert!(out.contains("git config user.email"));
-    }
-    assert_eq!(with_identity_hint("hook says no"), "hook says no");
 }
 
 #[test]

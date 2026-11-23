@@ -94,6 +94,7 @@ pub fn squash_unpushed(
             write_step(&["reset", "-q", "--soft", &local], root, opts)?;
             return Err(match e {
                 CommitError::Git(e) => from_git(e),
+                CommitError::NoIdentity => SyncError::NoIdentity,
                 other => failed(other.to_string()),
             });
         }

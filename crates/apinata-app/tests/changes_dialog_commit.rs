@@ -1,5 +1,5 @@
-//! The Changes dialog's commit flow: the Commit button's rules, success, a failing hook, a
-//! missing identity and the outside-staged refusal.
+//! The Changes dialog's commit flow: the Commit button's rules, success, a failing hook and
+//! the outside-staged refusal.
 
 use crate::git_support;
 use crate::h;
@@ -212,29 +212,6 @@ fn a_hook_that_leaves_the_index_alone_adds_no_staged_note(cx: &mut TestAppContex
         Some(Notice::Failed(text)) => {
             assert!(text.contains("hook says no"), "{text}");
             assert!(!text.contains("changed what is staged"), "{text}");
-        }
-        other => panic!("expected a failure, got {other:?}"),
-    }
-}
-
-#[gpui_kit::test]
-fn a_missing_identity_shows_gits_text_with_the_hint(cx: &mut TestAppContext) {
-    let sb = Sandbox::new();
-    let col = changed(&sb);
-    let s = started(cx, &col);
-    let options = h::without_identity(&sb);
-    s.ws.update(cx, |w, cx| w.set_git(Some(options), cx));
-    frame(cx, s.win);
-    open_on(cx, &s, col.path());
-    click(cx, &s, "changes-toggle-all");
-    idle(cx, &s);
-    set_message(cx, &s, "Edit a");
-    click(cx, &s, "changes-commit");
-    idle(cx, &s);
-    match notice(cx) {
-        Some(Notice::Failed(text)) => {
-            assert!(text.contains("identity"), "{text}");
-            assert!(text.contains("git config user.name"), "{text}");
         }
         other => panic!("expected a failure, got {other:?}"),
     }

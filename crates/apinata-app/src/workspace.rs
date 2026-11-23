@@ -13,9 +13,10 @@ use apinata_core::team::{
 };
 use apinata_core::{
     CommitError, DotenvGit, DraftSnapshot, EnvOverlay, EnvVariable, GIT_TIMEOUT, GitError,
-    GitOptions, GitState, GlobalEnvironments, ItemPath, OpenError, PullRange, RequestKind,
-    RuntimeVars, ScriptPhase, SecretName, SecretRenames, SecretStore, StageState, WorkspaceFile,
-    collection_status_with, commit, ignore_dotenv, is_workspace_dir, stage, unstage,
+    GitOptions, GitState, GlobalEnvironments, IdentityScope, ItemPath, OpenError, PullRange,
+    RequestKind, RuntimeVars, ScriptPhase, SecretName, SecretRenames, SecretStore, StageState,
+    WorkspaceFile, collection_status_with, commit, ignore_dotenv, is_workspace_dir, set_identity,
+    stage, unstage,
 };
 use gpui_kit::{App, AppContext, Context, Entity, EventEmitter, SharedString, Subscription, Task};
 
@@ -557,6 +558,17 @@ pub enum GitWrite {
     StageAllBut(Vec<PathBuf>),
     /// Commit what is staged with this message.
     Commit(String),
+    /// Save git's name and email at `scope`, then commit what is staged with `message`.
+    CommitAs {
+        /// The author and committer name.
+        name: String,
+        /// The author and committer email.
+        email: String,
+        /// Where git keeps them.
+        scope: IdentityScope,
+        /// The commit message.
+        message: String,
+    },
 }
 
 /// How a git write ended.
@@ -573,6 +585,10 @@ pub enum GitWriteDone {
     },
     /// The write was refused or failed; the text is shown to the user as is.
     Failed(String),
+    /// Git has no name and email to commit with; nothing ran.
+    NeedsIdentity,
+    /// The name or email was not saved, so nothing was committed; the reason, in plain words.
+    IdentityRefused(String),
 }
 
 // A workspace folder opened read-only: the collections it listed, its environments, and the
@@ -2565,28 +2581,17 @@ impl Workspace {
                     .and_then(|()| unstage(&dir, &kept, &options))
                     .map(|()| GitWriteDone::Done)
                     .unwrap_or_else(|e| GitWriteDone::Failed(e.to_string())),
-                GitWrite::Commit(message) => {
-                    let before = staged_paths(&dir, &options);
-                    match commit(&dir, &message, &options) {
-                        Ok(o) => GitWriteDone::Committed {
-                            short_id: o.short_id,
-                            subject: o.subject,
-                        },
-                        Err(e) => {
-                            let text = commit_failure_text(&e);
-                            // A hook that ran may have rewritten the index; say so first.
-                            let note = matches!(e, CommitError::Failed { .. })
-                                .then(|| {
-                                    staged_change_note(&before?, &staged_paths(&dir, &options)?)
-                                })
-                                .flatten();
-                            GitWriteDone::Failed(match note {
-                                Some(note) => format!("{note}\n{text}"),
-                                None => text,
-                            })
-                        }
-                    }
-                }
+                GitWrite::Commit(message) => commit_done(&dir, &message, &options),
+                GitWrite::CommitAs {
+                    name,
+                    email,
+                    scope,
+                    message,
+                } => match set_identity(&dir, &name, &email, scope, &options) {
+                    Ok(()) => commit_done(&dir, &message, &options),
+                    Err(GitError::Malformed(why)) => GitWriteDone::IdentityRefused(why),
+                    Err(_) => GitWriteDone::IdentityRefused(IDENTITY_NOT_SAVED.to_owned()),
+                },
             }
         });
         // The refresh is requested before the result is handed back, so a view following the
@@ -5146,6 +5151,32 @@ fn saved_tab_of(kind: &TabKind) -> Option<SavedTab> {
             }))
         }
         other => SavedPanelKind::from_tab_kind(other).map(SavedTab::Panel),
+    }
+}
+
+// Why the identity form's Save did not go through when git could not write its config.
+const IDENTITY_NOT_SAVED: &str = "git could not save your name and email. Check that its config file can be written, then try again.";
+
+// Commits what is staged in `dir`; a refusal becomes its dialog text, with a note first when a
+// hook that ran rewrote the index, and a missing identity asks for one instead.
+fn commit_done(dir: &Path, message: &str, options: &GitOptions) -> GitWriteDone {
+    let before = staged_paths(dir, options);
+    match commit(dir, message, options) {
+        Ok(o) => GitWriteDone::Committed {
+            short_id: o.short_id,
+            subject: o.subject,
+        },
+        Err(CommitError::NoIdentity) => GitWriteDone::NeedsIdentity,
+        Err(e) => {
+            let text = commit_failure_text(&e);
+            let note = matches!(e, CommitError::Failed { .. })
+                .then(|| staged_change_note(&before?, &staged_paths(dir, options)?))
+                .flatten();
+            GitWriteDone::Failed(match note {
+                Some(note) => format!("{note}\n{text}"),
+                None => text,
+            })
+        }
     }
 }
 
