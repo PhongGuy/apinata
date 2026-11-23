@@ -16,7 +16,7 @@ use apinata_core::{
     AssertionOutcome, BodyState, Comparison, ConnectCause, ConnectHint, ConsoleEntry, ConsoleLevel,
     CookieInfo, CookieOutcome, CookieRejection, ExecError, HOP_BODY_LIMIT, ItemPath, OAuth2Error,
     Outcome, RequestResult, ResolveError, Response, RunError, ScriptPhase, TestOutcome,
-    UndefinedHint, Verdict, is_credential_header, is_credential_name,
+    UndefinedHint, Verdict, is_credential_header, is_credential_name, mask_response_header,
 };
 use gpui_kit::base::{ObservedElement, SelectableText};
 use gpui_kit::component::WindowExt as _;
@@ -656,7 +656,7 @@ pub struct ResponsePane {
     events_scroll: UniformListScrollHandle,
     // Scrolls the Timeline to whichever of its eyes Tab lands on.
     timeline_follow: FocusFollow,
-    // Whether the send is streaming, which narrows the strip to the tabs a live body has.
+    // Whether the send is streaming, so a stream that just ended seeds its Events list.
     streaming: bool,
     // Whether the Events tab is on offer: the live or shown response is an event-stream.
     events_tab: bool,
@@ -1735,9 +1735,6 @@ impl ResponsePane {
     // The tabs the strip lists: the pane's own, then Compare while a source is set.
     fn strip_tabs(&self) -> Rc<[ResponseTab]> {
         let events = self.events_tab.then_some(ResponseTab::Events);
-        if self.streaming {
-            return [ResponseTab::Body].into_iter().chain(events).collect();
-        }
         let extra = self.compare.is_some().then_some(ResponseTab::Compare);
         let mut tabs: Vec<ResponseTab> = self.tabs.iter().copied().chain(extra).collect();
         // Events sits right after Body, where a reader of a stream looks first.
@@ -2395,16 +2392,8 @@ impl ResponsePane {
             .children(self.history_button(cx))
             .children(self.compare_button(cx))
             .when(compact, |row| row.child(self.more_menu(r, cx)));
-        let mut before: Vec<AnyElement> = vec![
-            div()
-                .id("response-status")
-                .test_support()
-                .relative()
-                .flex_none()
-                .child(ui::status_pill(r.status(), r.status_text()))
-                .child(width_probe(&self.min.status))
-                .into_any_element(),
-        ];
+        let mut before: Vec<AnyElement> =
+            vec![status_cell(r.status(), r.status_text(), &self.min.status)];
         // Followed hops show as a redirect arrow and count that opens the Timeline; a kept
         // response has no timeline to open, so no count. Wide, it sits outside the fixed facts
         // and gives way with the address, so the row's floor is unchanged.
@@ -2458,9 +2447,12 @@ impl ResponsePane {
             before.push(muted("response-time", format_time(r.response_time())).into_any_element());
         }
         let kept = self.send.read(cx).restored().is_some();
+        // An ended stream keeps the slot its live line reserved, timed or not.
+        let streamed = r.stream_end().is_some();
         before.extend(
             self.timing_bar(r, cx)
-                .or_else(|| kept.then(|| untimed_slot(cx))),
+                .or_else(|| kept.then(|| untimed_slot(cx)))
+                .or_else(|| streamed.then(|| timing_slot("response-timing-pending"))),
         );
         // A cut body's size turns amber and names the cut on hover and in its accessible label,
         // so colour is not the only sign; a compressed body names its wire size on hover.
@@ -2482,9 +2474,8 @@ impl ResponsePane {
         before.push(size.into_any_element());
         let mut after: Vec<AnyElement> = r
             .stream_end()
-            .map(|e| muted("response-stream-end", live_stream::end_label(e).to_owned()))
+            .map(|e| stream_chip("response-stream-end", live_stream::end_label(e), cx))
             .into_iter()
-            .map(IntoElement::into_any_element)
             .collect();
         after.extend(saved.map(IntoElement::into_any_element));
         after.push(actions.into_any_element());
@@ -2513,6 +2504,8 @@ impl ResponsePane {
         Some(
             // Wide, one line whose address truncates; compact, it wraps on a row of its own.
             h_flex()
+                .id("response-status-line")
+                .test_support()
                 .when(compact, |row| row.flex_wrap().w_full())
                 .when(!compact, |row| row.min_w(self.min.facts(window)))
                 .justify_end()
@@ -3033,6 +3026,22 @@ impl ResponsePane {
             send.viewing(),
             self.history.is_empty(),
             self.compare_menu_choices(cx).is_empty(),
+            self.save_example,
+            self.elapsed,
+        )
+            .hash(&mut h);
+        h.finish()
+    }
+
+    // What the live status line's width depends on, as `facts_key` is for a result.
+    fn live_facts_key(&self, cx: &Context<Self>) -> u64 {
+        let send = self.send.read(cx);
+        let mut h = std::hash::DefaultHasher::new();
+        (
+            "live",
+            self.key.is_some(),
+            send.viewing(),
+            self.history.is_empty(),
             self.save_example,
             self.elapsed,
         )
@@ -4715,6 +4724,34 @@ impl ResponsePane {
         self.compare_menu("response-compare", "Compare", Some(COMPARE_ICON), cx)
     }
 
+    // A first send's History button, locked until the run it will list has ended; a pane
+    // that keeps no history shows none.
+    fn live_history_button(&self, cx: &Context<Self>) -> Option<AnyElement> {
+        self.key.as_ref()?;
+        let id = "response-history";
+        let button =
+            icon_dropdown(id, AssetIcon::RotateCcwClock, "Previous runs", cx).lock(true, cx);
+        Some(tipped(
+            id,
+            "Previous runs: Available when the stream ends".into(),
+            button,
+        ))
+    }
+
+    // The Compare dropdown as the finished line will offer it, locked until the result exists.
+    fn live_compare_button(&self, cx: &Context<Self>) -> Option<AnyElement> {
+        if self.compact.get() || !self.compare_offered || self.compare_choices(cx).is_empty() {
+            return None;
+        }
+        let id = "response-compare";
+        let button = icon_dropdown(id, COMPARE_ICON, "Compare", cx).lock(true, cx);
+        Some(tipped(
+            id,
+            "Compare: Available when the stream ends".into(),
+            button,
+        ))
+    }
+
     // Reveals or masks both sides of one header row of the comparison.
     fn toggle_compare_reveal(&mut self, name: &str, cx: &mut Context<Self>) {
         if let Some(state) = self.compare.as_mut() {
@@ -4905,43 +4942,49 @@ impl ResponsePane {
                         let first = row.preview.lines().next().unwrap_or_default();
                         let name = format!("{}: {first}", row.name);
                         // A ghost button, so Tab reaches the row and Enter copies it as a
-                        // click does; its lines start at the left like any list row.
-                        let lines = v_flex()
+                        // click does. One line: a time slot, the name, id and retry, then the
+                        // data's first line, which gives way with an ellipsis.
+                        let line = h_flex()
                             .size_full()
                             .min_w_0()
-                            .items_start()
-                            .justify_start()
+                            .items_center()
+                            .gap_2()
+                            .text_size(style::TEXT_SMALL)
+                            .child(div().flex_none().w(style::EVENT_TIME_WIDTH))
                             .child(
-                                h_flex()
-                                    .gap_2()
-                                    .text_size(style::TEXT_SMALL)
-                                    .child(div().font_weight(FontWeight::MEDIUM).child(row.name))
-                                    .children(row.id.map(|id| div().text_color(muted).child(id)))
-                                    .children(
-                                        live_stream::retry_label(row.retry)
-                                            .map(|t| div().text_color(muted).child(t)),
-                                    ),
-                            )
-                            .children(row.preview.split('\n').map(|line| {
                                 div()
+                                    .flex_none()
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .child(row.name),
+                            )
+                            .children(
+                                row.id
+                                    .map(|id| div().flex_none().text_color(muted).child(id)),
+                            )
+                            .children(
+                                live_stream::retry_label(row.retry)
+                                    .map(|t| div().flex_none().text_color(muted).child(t)),
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .truncate()
                                     .font_family(mono.clone())
-                                    .text_size(style::TEXT_SMALL)
-                                    .whitespace_nowrap()
-                                    .child(line.to_owned())
-                            }));
+                                    .child(row.preview),
+                            );
                         let button = Button::new(("event-row", ix))
                             .solid_ring(cx)
                             .ghost()
                             .size_full()
                             .rounded_none()
                             .px_2()
-                            .py_1()
                             .accessibility_label(name)
                             .tooltip("Copy event data")
                             .on_click(move |_, window, cx| {
                                 pane.update(cx, |p, cx| p.copy_event(ix, window, cx));
                             })
-                            .child(lines);
+                            .child(line);
                         // Each list item lays out on its own and would shrink to its text,
                         // cutting the separator short; it spans the list instead. The last
                         // row ends the list, so it paints no edge at the dock.
@@ -4999,61 +5042,181 @@ impl ResponsePane {
             .into_any_element()
     }
 
-    // The streaming status row: bare status code, "streaming", the clock and bytes so far.
-    fn streaming_facts(&self, cx: &Context<Self>) -> Option<AnyElement> {
+    // One header row that never wraps: the tabs on the left, the status facts right-aligned.
+    // A short row cuts the address; once the whole tabs and the facts no longer fit, the pane
+    // is compact, the tabs on a whole row over folded facts. Live and done share it.
+    fn header_row(
+        &self,
+        facts: Option<AnyElement>,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let compact = self.compact.get();
+        let header = match compact {
+            true => v_flex(),
+            false => h_flex().justify_end().items_center().overflow_hidden(),
+        };
+        header
+            .w_full()
+            .gap(style::SPACE_2)
+            .child(
+                div()
+                    .id("response-tab-strip")
+                    .test_support()
+                    .relative()
+                    .when(compact, |strip| strip.w_full())
+                    // Wide, the floor guarantees room for every tab, so the strip never
+                    // shrinks; the address gives way instead.
+                    .when(!compact, |strip| {
+                        strip.flex_grow(1.).max_w_full().flex_shrink_0()
+                    })
+                    .on_scroll(ui::wheel_sideways(&self.tab_scroll))
+                    .child(self.tab_bar(cx))
+                    .child(self.tabs_probe())
+                    .children(self.tab_fades.render(
+                        "response-tab-strip",
+                        &self.tab_scroll,
+                        self.strip_tabs().len(),
+                        cx,
+                    ))
+                    .child(ui::overflow_watch(
+                        &self.tab_scroll,
+                        ui::strip_overflows(&self.tab_scroll),
+                    ))
+                    .child(
+                        self.tab_reveal
+                            .watch(&self.tab_scroll, self.tab_position(self.tab)),
+                    )
+                    .children(
+                        self.tab_focus_reveal
+                            .watch_focused(&self.tab_scroll, self.focused_tab_position(window, cx)),
+                    ),
+            )
+            .children(facts)
+            .into_any_element()
+    }
+
+    // The live status line, laid out as the finished one will be: the status from the first
+    // byte, the clock, an empty slot where the timing bar lands, the size, the "streaming"
+    // chip, then the actions, locked until the result exists, so the end changes no shape.
+    fn live_status_line(&self, window: &Window, cx: &Context<Self>) -> Option<AnyElement> {
         let send = self.send.read(cx);
         let live = send.live()?;
         let muted = |id: &'static str, text: String| {
             div()
                 .id(id)
                 .test_support()
+                .flex_none()
                 .text_size(style::TEXT_SMALL)
                 .text_color(cx.theme().muted_foreground)
+                .aria_label(text.clone())
                 .child(text)
+        };
+        let reason = http::StatusCode::from_u16(live.status())
+            .ok()
+            .and_then(|s| s.canonical_reason())
+            .unwrap_or("");
+        let mut before = vec![status_cell(live.status(), reason, &self.min.status)];
+        if self.elapsed {
+            before.extend(
+                send.elapsed()
+                    .map(|t| muted("response-elapsed", format_time(t)).into_any_element()),
+            );
+        }
+        before.push(timing_slot("response-timing-pending"));
+        before.push(muted("response-size", format_size(live.bytes())).into_any_element());
+        let compact = self.compact.get();
+        let pending = "Available when the stream ends";
+        let actions = h_flex()
+            .flex_none()
+            .gap(style::SPACE_1)
+            .items_center()
+            .when(!compact, |row| row.children(self.latest_button(cx)))
+            .when(self.save_example && !compact, |row| {
+                let id = "response-save-example";
+                row.child(
+                    ui::icon_button(id, ui::glyph(id, AssetIcon::Bookmark), pending, None, cx)
+                        .lock(true, cx),
+                )
+                .child(har_button(Some(pending), cx))
+            })
+            .children(
+                self.history_button(cx)
+                    .or_else(|| self.live_history_button(cx)),
+            )
+            .children(self.live_compare_button(cx));
+        let after = vec![
+            stream_chip("response-stream-state", "streaming", cx),
+            actions.into_any_element(),
+        ];
+        // The same probed groups as the finished line, so the compact switch sees this width.
+        self.min.facts_shown(self.live_facts_key(cx));
+        let (before, after) = match compact {
+            true => (before, after),
+            false => {
+                self.min.addressed.set(false);
+                let group = |items: Vec<AnyElement>, cell: &Rc<Cell<f32>>| {
+                    h_flex()
+                        .relative()
+                        .flex_none()
+                        .gap(style::SPACE_2)
+                        .items_center()
+                        .children(items)
+                        .child(rem_probe(cell))
+                        .into_any_element()
+                };
+                (
+                    vec![group(before, &self.min.facts_before)],
+                    vec![group(after, &self.min.facts_after)],
+                )
+            }
         };
         Some(
             h_flex()
+                .id("response-status-line")
+                .test_support()
+                .when(compact, |row| row.flex_wrap().w_full())
+                .when(!compact, |row| row.min_w(self.min.facts(window)))
+                .justify_end()
                 .gap(style::SPACE_2)
                 .items_center()
-                .child(
-                    div()
-                        .id("response-status")
-                        .test_support()
-                        .relative()
-                        .flex_none()
-                        .child(ui::status_pill(live.status(), ""))
-                        .child(width_probe(&self.min.status)),
-                )
-                .child(muted("response-stream-state", "streaming".to_owned()))
-                .children(
-                    send.elapsed()
-                        .map(|t| muted("response-elapsed", format_time(t))),
-                )
-                .child(muted("response-size", format_size(live.bytes())))
+                .children(before)
+                .children(after)
                 .into_any_element(),
         )
     }
 
+    // A live tab other than Body and Events: the headers as they arrived, masked as the
+    // finished list masks them by default, or a note for what only the result can fill.
+    fn live_tab_body(&self, cx: &mut Context<Self>) -> AnyElement {
+        if self.tab != ResponseTab::Headers {
+            let note = "Fills in when the stream ends";
+            return div()
+                .id("response-stream-pending")
+                .test_support()
+                .aria_label(note)
+                .p(style::SPACE_2)
+                .text_size(style::TEXT_SMALL)
+                .text_color(cx.theme().muted_foreground)
+                .child(note)
+                .into_any_element();
+        }
+        let pairs: Vec<(String, String)> = (self.send.read(cx).live())
+            .map(|l| {
+                (l.headers().iter())
+                    .map(|(name, value)| (name.clone(), mask_response_header(name, value)))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let table =
+            header_table(["header", "header-name", "header-value"], &pairs).headed("headers-head");
+        scroll_frame("response-headers", v_flex().child(table))
+    }
+
     // The streaming view: the tab strip over the tail of the body, one row per line.
-    fn live_view(&self, cx: &mut Context<Self>) -> AnyElement {
-        let strip = div()
-            .id("response-tab-strip")
-            .test_support()
-            .relative()
-            // The strip keeps its tabs' width; facts that do not fit beside it wrap below.
-            .flex_grow(1.)
-            .flex_shrink_0()
-            .max_w_full()
-            .child(self.tab_bar(cx))
-            .child(self.tabs_probe());
-        let header = h_flex()
-            .w_full()
-            .flex_wrap()
-            .justify_end()
-            .items_center()
-            .gap(style::SPACE_2)
-            .child(strip)
-            .children(self.streaming_facts(cx));
+    fn live_view(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+        let facts = self.live_status_line(window, cx);
+        let header = self.header_row(facts, window, cx);
         let waiting = self.waiting_row(cx);
         if self.tab == ResponseTab::Events && self.events_tab {
             return v_flex()
@@ -5064,6 +5227,18 @@ impl ResponsePane {
                 .child(header)
                 .children(waiting)
                 .child(self.events_body(cx))
+                .into_any_element();
+        }
+        // Events on a plain body reads as Body, as it does once the response is done.
+        if !matches!(self.tab, ResponseTab::Body | ResponseTab::Events) {
+            return v_flex()
+                .id("response-streaming")
+                .test_support()
+                .size_full()
+                .gap_2()
+                .child(header)
+                .children(waiting)
+                .child(self.live_tab_body(cx))
                 .into_any_element();
         }
         let (count, skipped) = self
@@ -5313,7 +5488,7 @@ impl Render for ResponsePane {
                     .key_context(crate::request_editor::KEY_CONTEXT),
                 )
                 .into_any_element(),
-            (SendState::Streaming, _) => self.live_view(cx),
+            (SendState::Streaming, _) => self.live_view(window, cx),
             (SendState::Sending, _) => {
                 let (waiting, elapsed) = {
                     let m = self.send.read(cx);
@@ -5376,50 +5551,8 @@ impl Render for ResponsePane {
             }
             (SendState::Done(result), _) => {
                 let result = Arc::clone(result);
-                // One header row that never wraps: the tabs on the left, the status facts
-                // right-aligned. A short row cuts the address; once the whole tabs and the facts
-                // no longer fit, the pane is compact, the tabs on a whole row over folded facts.
-                let header = match compact {
-                    true => v_flex(),
-                    false => h_flex().justify_end().items_center().overflow_hidden(),
-                };
-                let header = header
-                    .w_full()
-                    .gap(style::SPACE_2)
-                    .child(
-                        div()
-                            .id("response-tab-strip")
-                            .test_support()
-                            .relative()
-                            .when(compact, |strip| strip.w_full())
-                            // Wide, the floor guarantees room for every tab, so the strip never
-                            // shrinks; the address gives way instead.
-                            .when(!compact, |strip| {
-                                strip.flex_grow(1.).max_w_full().flex_shrink_0()
-                            })
-                            .on_scroll(ui::wheel_sideways(&self.tab_scroll))
-                            .child(self.tab_bar(cx))
-                            .child(self.tabs_probe())
-                            .children(self.tab_fades.render(
-                                "response-tab-strip",
-                                &self.tab_scroll,
-                                self.strip_tabs().len(),
-                                cx,
-                            ))
-                            .child(ui::overflow_watch(
-                                &self.tab_scroll,
-                                ui::strip_overflows(&self.tab_scroll),
-                            ))
-                            .child(
-                                self.tab_reveal
-                                    .watch(&self.tab_scroll, self.tab_position(self.tab)),
-                            )
-                            .children(self.tab_focus_reveal.watch_focused(
-                                &self.tab_scroll,
-                                self.focused_tab_position(window, cx),
-                            )),
-                    )
-                    .children(self.status_line(&result, window, cx));
+                let facts = self.status_line(&result, window, cx);
+                let header = self.header_row(facts, window, cx);
                 // Below the full-width strip the content takes the ring room the strip's spacer
                 // gives the first tab, so it lines up with the request column's content.
                 let below = v_flex()
@@ -5947,6 +6080,15 @@ pub const COMPARE_ICON: AssetIcon = AssetIcon::FileDiff;
 // The tooltip sits on a wrapper, which shows it whether or not the button is locked; a
 // locked one names the action before the reason, since the icon carries no text.
 fn export_har_button(response: &Response, cx: &App) -> AnyElement {
+    let blocked = response
+        .timeline()
+        .is_empty()
+        .then_some(crate::har_export::NO_REQUEST);
+    har_button(blocked, cx)
+}
+
+// Export as HAR, locked with `blocked` as its reason when there is nothing to export yet.
+fn har_button(blocked: Option<&str>, cx: &App) -> AnyElement {
     // Square like an icon button: a locked one carries a child, which would size it by padding.
     let button = Button::new("response-export-har")
         .solid_ring(cx)
@@ -5955,17 +6097,17 @@ fn export_har_button(response: &Response, cx: &App) -> AnyElement {
         .aspect_ratio(1.)
         .icon(ui::glyph("response-export-har", EXPORT_HAR_ICON))
         .accessibility_label(crate::commands::label("request.export_har"));
-    let (button, tip) = match response.timeline().is_empty() {
-        true => (
+    let (button, tip) = match blocked {
+        Some(why) => (
             button.lock(true, cx),
             // A locked button names the action before its reason, without the ellipsis.
             format!(
                 "{}: {}",
                 crate::commands::label("request.export_har").trim_end_matches('…'),
-                crate::har_export::NO_REQUEST
+                why
             ),
         ),
-        false => (
+        None => (
             button.on_click(|_, window, cx| window.dispatch_action(Box::new(ExportHar), cx)),
             crate::commands::label("request.export_har").to_owned(),
         ),
@@ -6098,6 +6240,64 @@ const UNTIMED_TIP: &str = "Timing is not kept with a saved run";
 
 // A kept run has no timing, so its header shows the bar's empty track in the bar's place and
 // the facts beside it stay where the latest run has them.
+// The status pill in its probed cell, named by its words for assistive tech and tests.
+fn status_cell(status: u16, reason: &str, probe: &Rc<Cell<Pixels>>) -> AnyElement {
+    let words = match reason {
+        "" => status.to_string(),
+        reason => format!("{status} {reason}"),
+    };
+    div()
+        .id("response-status")
+        .test_support()
+        .relative()
+        .flex_none()
+        .aria_label(words)
+        .child(ui::status_pill(status, reason))
+        .child(width_probe(probe))
+        .into_any_element()
+}
+
+// The timing bar's room with nothing in it, so a bar that lands later moves nothing.
+fn timing_slot(id: &'static str) -> AnyElement {
+    div()
+        .id(id)
+        .test_support()
+        .flex_none()
+        .w(style::TIMING_BAR_WIDTH)
+        .h(style::TIMING_BAR_HEIGHT)
+        .into_any_element()
+}
+
+// A stream's state word in a box as wide as the widest such word, so "streaming" turning
+// into its end label never reflows the row.
+fn stream_chip(id: &'static str, text: &'static str, cx: &App) -> AnyElement {
+    let widest = [
+        "streaming",
+        "closed",
+        "stopped",
+        "limit",
+        "idle timeout",
+        "size limit",
+        "error",
+        "ended",
+    ];
+    v_flex()
+        .id(id)
+        .test_support()
+        .flex_none()
+        .text_size(style::TEXT_SMALL)
+        .text_color(cx.theme().muted_foreground)
+        .aria_label(text)
+        .child(div().flex_none().child(text))
+        .child(
+            v_flex()
+                .h_0()
+                .invisible()
+                .children(widest.map(|w| div().flex_none().child(w))),
+        )
+        .into_any_element()
+}
+
 fn untimed_slot(cx: &App) -> AnyElement {
     div()
         .id("response-timing-untimed")

@@ -169,9 +169,7 @@ impl LiveStream {
     }
 }
 
-/// Lines of an event's data shown in its row.
-pub const PREVIEW_LINES: usize = 3;
-/// Characters kept of each previewed line.
+/// Characters kept of the data's first line in an event's row.
 pub const PREVIEW_CHARS: usize = 240;
 
 /// One row of the Events tab.
@@ -183,28 +181,19 @@ pub struct EventRow {
     pub id: Option<String>,
     /// The reconnect delay in milliseconds, when the event sent one.
     pub retry: Option<u64>,
-    /// The first lines of the data, cut short with an ellipsis.
+    /// The data's first line, cut short with an ellipsis.
     pub preview: String,
 }
 
-/// The first `PREVIEW_LINES` lines of `data`, each cut at `PREVIEW_CHARS`; an ellipsis marks
-/// that anything was left out.
+/// The first line of `data`, cut at `PREVIEW_CHARS`; an ellipsis marks that anything was
+/// left out, a later line included.
 pub fn preview(data: &str) -> String {
-    let mut cut = false;
-    let mut lines = data.split('\n');
-    let mut kept: Vec<String> = Vec::new();
-    for line in lines.by_ref().take(PREVIEW_LINES) {
-        match line.char_indices().nth(PREVIEW_CHARS) {
-            Some((at, _)) => {
-                kept.push(line[..at].to_owned());
-                cut = true;
-            }
-            None => kept.push(line.to_owned()),
-        }
-    }
-    cut |= lines.next().is_some();
-    let mut text = kept.join("\n");
-    if cut {
+    let line = data.split('\n').next().unwrap_or_default();
+    let mut text = match line.char_indices().nth(PREVIEW_CHARS) {
+        Some((at, _)) => line[..at].to_owned(),
+        None => line.to_owned(),
+    };
+    if text.len() < data.len() {
         text.push('\u{2026}');
     }
     text
