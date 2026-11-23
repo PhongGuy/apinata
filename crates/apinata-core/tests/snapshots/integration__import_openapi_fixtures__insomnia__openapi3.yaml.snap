@@ -163,8 +163,8 @@ info:
 request:
   auth: inherit
 
-=== environments/Environment 1.yml
-name: Environment 1
+=== environments/localhost.yml
+name: localhost
 variables:
   - name: baseUrl
     value: http://localhost:4010
@@ -189,7 +189,7 @@ extensions:
       - node_modules
       - .git
     presets:
-      defaultEnvironment: Environment 1
+      defaultEnvironment: localhost
   apinata:
     openapi:
       ops:
@@ -249,8 +249,8 @@ extensions:
           file: Misc/Echo id.yml
           operationId: echoId
 
-note Converted opencollection.yml | collection | runs use the environment `Environment 1` by default, as the first environment imported
-note NeedsInput environments/Environment 1.yml | components.securitySchemes | the secret `username` has no value; enter it before sending
-note NeedsInput environments/Environment 1.yml | components.securitySchemes | the secret `password` has no value; enter it before sending
-secret Environment 1 username
-secret Environment 1 password
+note Converted opencollection.yml | collection | `localhost` is the default environment because it was imported first
+note NeedsInput environments/localhost.yml | components.securitySchemes | the secret `username` has no value; enter it before sending
+note NeedsInput environments/localhost.yml | components.securitySchemes | the secret `password` has no value; enter it before sending
+secret localhost username
+secret localhost password

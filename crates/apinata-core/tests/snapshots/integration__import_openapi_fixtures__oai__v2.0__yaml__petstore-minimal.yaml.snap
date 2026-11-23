@@ -45,8 +45,8 @@ examples:
 
 docs: Returns all pets from the system that the user has access to
 
-=== environments/Environment.yml
-name: Environment
+=== environments/petstore.swagger.io.yml
+name: petstore.swagger.io
 variables:
   - name: baseUrl
     value: http://petstore.swagger.io/api
@@ -67,7 +67,7 @@ extensions:
       - node_modules
       - .git
     presets:
-      defaultEnvironment: Environment
+      defaultEnvironment: petstore.swagger.io
   apinata:
     openapi:
       ops:
@@ -82,4 +82,4 @@ extensions:
           examples: 028ade31caadb4eb
           file: Returns all pets from the system that the user has access to.yml
 
-note Converted opencollection.yml | collection | runs use the environment `Environment` by default, as the first environment imported
+note Converted opencollection.yml | collection | `petstore.swagger.io` is the default environment because it was imported first

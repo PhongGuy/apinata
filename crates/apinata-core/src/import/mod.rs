@@ -124,6 +124,8 @@ pub struct ImportReport {
     pub notes: Vec<ImportNote>,
     /// The requests and folders written.
     pub items: Vec<ItemPath>,
+    /// How many of `items` are requests, at any depth; the rest are folders.
+    pub requests: usize,
     /// The environments written, by name.
     pub environments: Vec<String>,
     /// Secret variables left without a value, as `(environment, variable)`.
@@ -131,12 +133,13 @@ pub struct ImportReport {
 }
 
 impl ImportReport {
-    /// Append `other`'s notes, items, environments and secrets to enter to this report, keeping
+    /// Append `other`'s notes, items and their request count, environments and secrets to enter to this report, keeping
     /// one note for every secret a failing store left without a value.
     pub fn merge(&mut self, other: ImportReport) {
         self.notes.extend(other.notes);
         unstored::fold(&mut self.notes);
         self.items.extend(other.items);
+        self.requests += other.requests;
         self.environments.extend(other.environments);
         self.secrets_to_enter.extend(other.secrets_to_enter);
     }

@@ -301,8 +301,14 @@ fn a_script_note_reads_as_its_owner_and_script() {
     let lines = all_lines(&report_of(&text));
     assert!(
         lines.iter().any(|l| l.starts_with(
-            "1 Postman call translated; the app and the MCP server ask before it first runs, and apinata run runs it as your own command\nCollection pre-request script, in "
+            "1 Postman call was converted to Apinata's script API\nCollection pre-request script, in "
         )),
+        "{lines:?}"
+    );
+    let trust = "Imported scripts ask before they first run in the app or the MCP server, and apinata run runs them as your own command\n";
+    assert_eq!(
+        lines.iter().filter(|l| l.starts_with(trust)).count(),
+        1,
         "{lines:?}"
     );
     assert!(
@@ -325,17 +331,45 @@ fn failure_text_starts_with_a_capital() {
 }
 
 #[test]
-fn the_summary_counts_items_environments_and_notes() {
-    let report = report_of(&shop_with_oauth());
-    let n = report.notes.len();
-    let notes = if n == 1 {
-        "1 note".to_string()
-    } else {
-        format!("{n} notes")
-    };
+fn the_summary_counts_requests_folders_and_environments() {
+    assert_eq!(
+        import_report::summary(&report_of(&shop_with_oauth())),
+        "Imported 1 request."
+    );
+    let mut report = apinata_core::import::ImportReport::default();
+    report.items = ["Users", "Users/a.yml", "Users/b.yml", "Users/c.yml"]
+        .map(|p| apinata_core::ItemPath::new(p).unwrap())
+        .to_vec();
+    report.requests = 3;
     assert_eq!(
         import_report::summary(&report),
-        format!("1 item, 0 environments imported; {notes}.")
+        "Imported 3 requests in 1 folder."
+    );
+    report.environments = vec!["Live".to_owned()];
+    assert_eq!(
+        import_report::summary(&report),
+        "Imported 3 requests in 1 folder and 1 environment."
+    );
+    let mut envs = apinata_core::import::ImportReport::default();
+    envs.environments = vec!["a".to_owned(), "b".to_owned()];
+    assert_eq!(import_report::summary(&envs), "Imported 2 environments.");
+}
+
+#[test]
+fn a_kind_that_repeats_its_heading_is_left_out() {
+    let text = format!(
+        r#"{{"info":{{"name":"Shop","schema":"{V21}"}},"item":[{{"name":"Get user","request":{{"method":"GET","url":"{{{{host}}}}/users/1"}}}}]}}"#
+    );
+    let groups = import_report::groups(&report_of(&text));
+    let (_, lines) = groups
+        .iter()
+        .find(|(heading, _)| *heading == "Needs a value")
+        .expect("a Needs a value group");
+    let rows: Vec<&str> = lines[0].lines().collect();
+    assert_eq!(rows[0], "", "no kind row: {lines:?}");
+    assert!(
+        rows[1].starts_with("collection: host; nothing imported defines it"),
+        "{lines:?}"
     );
 }
 
@@ -570,7 +604,7 @@ fn import_selection(text: &str, cx: &mut TestAppContext) -> Option<String> {
 #[gpui_kit::test]
 fn an_import_with_one_environment_selects_it(cx: &mut TestAppContext) {
     let selected = import_selection(&pets(&[("", "https://pets.test")]), cx);
-    assert_eq!(selected.as_deref(), Some("Environment 1"));
+    assert_eq!(selected.as_deref(), Some("pets.test"));
 }
 
 #[gpui_kit::test]
@@ -584,10 +618,9 @@ fn an_import_without_environments_selects_none(cx: &mut TestAppContext) {
     assert_eq!(import_selection(&pets(&[]), cx), None);
 }
 
-// A note's file stays on one line however deep it sits, cut to fit rather than wrapped
-// inside its name.
+// A note's file is shown in full however deep it sits, wrapping inside its place's width.
 #[gpui_kit::test]
-fn a_long_file_in_the_report_stays_on_one_line_cut_to_fit(cx: &mut TestAppContext) {
+fn a_long_file_in_the_report_wraps_in_full(cx: &mut TestAppContext) {
     let request = r#"{"name":"Get user","request":{"method":"GET","url":"https://x.test/u","auth":{"type":"hawk"}}}"#;
     let mut item = request.to_owned();
     for i in 0..8 {
@@ -599,7 +632,7 @@ fn a_long_file_in_the_report_stays_on_one_line_cut_to_fit(cx: &mut TestAppContex
     click_import(cx, win);
     answer(cx, input(files.path(), &text), into.path().to_path_buf());
     assert!(dialog(cx, win));
-    let (file, kind, place, name, full) = cx
+    let (file, kind, place, name) = cx
         .update_window(win, |_, w, cx| {
             w.render_frame(cx);
             let note = w.within(("import-note", 0usize));
@@ -608,15 +641,15 @@ fn a_long_file_in_the_report_stays_on_one_line_cut_to_fit(cx: &mut TestAppContex
             let file = file.bounds();
             let kind = note.find("report-kind").bounds();
             let place = note.find(("report-place", 0usize)).bounds();
-            let size = w.text_style().font_size.to_pixels(w.rem_size());
-            let full = apinata_app::path_display::measurer(w, size)(&name);
-            (file, kind, place, name, full)
+            (file, kind, place, name)
         })
         .unwrap();
     assert!(name.ends_with("/Get user.yml"), "{name}");
-    assert_eq!(file.size.height, kind.size.height, "{name} takes one line");
+    assert!(
+        file.size.height > kind.size.height,
+        "{name} wraps onto more lines"
+    );
     assert!(file.right() <= place.right(), "{file:?} stays in {place:?}");
-    assert!(full > f32::from(file.size.width), "{name} is cut to fit");
 }
 
 /// The first note's first place row and its file, laid out after importing `text`.
@@ -635,7 +668,16 @@ fn place_and_file(
     assert!(dialog(cx, win));
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
-        let note = w.within(("import-note", 0usize));
+        // The first note about a request's own file, past the collection's.
+        let ix = (0usize..20)
+            .find(|&i| {
+                w.try_find(("import-note", i)).is_some_and(|n| {
+                    let label = n.label().unwrap_or_default();
+                    label.contains(".yml") && !label.contains("opencollection.yml")
+                })
+            })
+            .expect("a note about a request");
+        let note = w.within(("import-note", ix));
         let place = note.find(("report-place", 0usize));
         let label = place.label().unwrap_or_default().to_owned();
         (

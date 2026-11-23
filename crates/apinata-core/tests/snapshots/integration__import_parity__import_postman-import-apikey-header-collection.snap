@@ -3,7 +3,7 @@ source: crates/apinata-core/tests/import_parity.rs
 expression: snapshot
 ---
 Converted Headers with API Key / request.auth.api_key [Headers with API Key.yml]: the value is kept as the secret variable `headers_with_api_key_api_key`, not in the file
-Converted collection [opencollection.yml]: runs use the environment `Environment` by default, since it holds the imported credentials
+Converted collection [opencollection.yml]: `Environment` is the default environment because it holds the imported credentials
 Converted imported credentials [environments/Environment.yml]: the imported credentials are the secret variables `headers_with_api_key_api_key`; their values are kept in the secret store, not in the file
 == Headers with API Key.yml
 info:

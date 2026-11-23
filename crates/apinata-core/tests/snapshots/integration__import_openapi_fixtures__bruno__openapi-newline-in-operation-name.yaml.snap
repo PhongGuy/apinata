@@ -123,4 +123,4 @@ extensions:
           file: Create user with multiple newlines.yml
           operationId: createUserWithNewlines
 
-note Converted opencollection.yml | collection | runs use the environment `Example server` by default, as the first environment imported
+note Converted opencollection.yml | collection | `Example server` is the default environment because it was imported first
