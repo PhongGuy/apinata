@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use apinata_app::runtime_vars::overlay_note;
 use apinata_app::theme::VarKind;
-use apinata_app::var_tokens::{SECRET_DOTS, VarField, scope_label, tokens, tooltip};
+use apinata_app::var_tokens::{SECRET_DOTS, TipLine, VarField, scope_label, tokens, tooltip};
 use apinata_core::{Collection, ContextOptions, OverlayLayer, VarContext, VarScope, VariableSet};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::test::TestWindowExt as _;
@@ -111,11 +111,19 @@ fn host(
     cx: &mut TestAppContext,
     vars: Option<Arc<VariableSet>>,
 ) -> (AnyWindowHandle, Entity<InputState>) {
+    host_with(cx, vars, TEXT)
+}
+
+fn host_with(
+    cx: &mut TestAppContext,
+    vars: Option<Arc<VariableSet>>,
+    text: &'static str,
+) -> (AnyWindowHandle, Entity<InputState>) {
     support::init(cx);
     let (win, view) = cx
         .update(|cx| {
             open_window(WindowOptions::default(), cx, |w, cx| {
-                let input = cx.new(|cx| InputState::new(w, cx).default_value(TEXT));
+                let input = cx.new(|cx| InputState::new(w, cx).default_value(text));
                 cx.new(|_| Host { input, vars })
             })
         })
@@ -236,5 +244,93 @@ fn global_scopes_and_script_edits_are_labelled() {
     assert_eq!(
         overlay_note(OverlayLayer::Collection),
         "Collection, set by a script"
+    );
+}
+
+const SHADOW_ROOT: &str = "opencollection: 1.0.0\ninfo:\n  name: c\nrequest:\n  variables:\n    - name: userId\n      value: \"1\"\n";
+const USER: &str = "{{userId}}";
+
+/// The collection's `userId` 1 over a global `userId` 7, the global one secret when asked.
+fn shadowing(secret: bool) -> (tempfile::TempDir, Arc<VariableSet>) {
+    let dir = write_tree(&[
+        ("opencollection.yml", SHADOW_ROOT),
+        ("a.yml", &request("a", USER)),
+    ]);
+    let c = Collection::open(dir.path()).unwrap();
+    let options = ContextOptions::new().process_env(Vec::<(String, String)>::new());
+    let options = if secret {
+        options.sensitive_global_env_var("userId", "g-s3cret")
+    } else {
+        options.global_env_var("userId", "7")
+    };
+    let ctx = VarContext::new(&c, options).unwrap();
+    let set = ctx.variables(c.request(&ip("a.yml")).unwrap());
+    (dir, Arc::new(set))
+}
+
+fn line(text: &str, shadowed: bool) -> TipLine {
+    TipLine {
+        text: text.to_owned(),
+        shadowed,
+    }
+}
+
+#[test]
+fn a_shadowed_definition_follows_the_winner() {
+    let (_dir, vars) = shadowing(false);
+    let found = tokens(USER, &vars);
+    assert_eq!(
+        found[0].lines,
+        [
+            line("Collection · 1", false),
+            line("Global environment · 7", true)
+        ]
+    );
+    assert_eq!(
+        found[0].tip,
+        "Collection · 1\nGlobal environment · 7, overridden"
+    );
+}
+
+#[test]
+fn a_shadowed_secret_shows_dots() {
+    let (_dir, vars) = shadowing(true);
+    let found = tokens(USER, &vars);
+    assert_eq!(
+        found[0].lines,
+        [
+            line("Collection · 1", false),
+            line(&format!("Global environment · {SECRET_DOTS}"), true)
+        ]
+    );
+    assert!(!found[0].tip.contains("g-s3cret"), "{}", found[0].tip);
+}
+
+#[gpui_kit::test]
+fn hovering_lists_each_shadowed_line(cx: &mut TestAppContext) {
+    let (_dir, vars) = shadowing(false);
+    let (win, input) = host_with(cx, Some(vars), USER);
+    let at = token_bounds(cx, &input, 0..USER.len()).center();
+    move_to(cx, win, at);
+    assert_eq!(
+        tip(cx, win).as_deref(),
+        Some("Collection · 1\nGlobal environment · 7, overridden")
+    );
+    let lines = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            (0..2usize)
+                .map(|i| {
+                    w.find(("var-tooltip-line", i))
+                        .label()
+                        .unwrap_or_default()
+                        .to_owned()
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap();
+    assert_eq!(
+        lines,
+        ["Collection · 1", "Global environment · 7, overridden"]
     );
 }
