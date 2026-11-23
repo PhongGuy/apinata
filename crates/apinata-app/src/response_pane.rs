@@ -2331,31 +2331,27 @@ impl ResponsePane {
         let hops = r.redirects_followed();
         let mut redirects = None;
         if hops > 0 && !r.timeline().is_empty() {
-            let (muted, strong) = (cx.theme().muted_foreground, cx.theme().foreground);
             let text = match hops {
                 1 => "1 redirect".to_owned(),
                 n => format!("{n} redirects"),
             };
+            // A ghost button like the row's other actions, so Tab reaches it; the slot around it
+            // is what shrinks.
+            let button = Button::new("response-redirects")
+                .solid_ring(cx)
+                .ghost()
+                .compact()
+                .icon(ui::glyph("response-redirects", AssetIcon::CornerDownRight))
+                .label(hops.to_string())
+                .accessibility_label(text.clone())
+                .tooltip(format!("{text} followed. Open the Timeline."))
+                .on_click(cx.listener(|p, _, _, cx| p.set_tab(ResponseTab::Timeline, cx)));
             redirects = Some(
                 h_flex()
-                    .id("response-redirects")
-                    .test_support()
                     .min_w_0()
                     .flex_shrink(0.1)
                     .overflow_hidden()
-                    .gap_0p5()
-                    .cursor_pointer()
-                    .text_size(style::TEXT_SMALL)
-                    .text_color(muted)
-                    .hover(|s| s.text_color(strong))
-                    .aria_label(text.clone())
-                    .child(Icon::new(gpui_kit::assets::IconName::CornerDownRight).xsmall())
-                    .child(hops.to_string())
-                    .tooltip(ui::text_tooltip(
-                        "response-redirects-tooltip",
-                        format!("{text} followed. Open the Timeline."),
-                    ))
-                    .on_click(cx.listener(|p, _, _, cx| p.set_tab(ResponseTab::Timeline, cx)))
+                    .child(button)
                     .into_any_element(),
             );
         }
@@ -2994,13 +2990,18 @@ impl ResponsePane {
                     .restored()
                     .is_some_and(|r| r.body_dropped) =>
                 {
-                    div()
-                        .id("response-body-dropped")
-                        .test_support()
-                        .p(style::SPACE_2)
-                        .text_size(style::TEXT_SMALL)
-                        .text_color(cx.theme().muted_foreground)
-                        .child("Body too large to keep")
+                    v_flex()
+                        .w_full()
+                        .children(redirect_stop_note(result, cx))
+                        .child(
+                            div()
+                                .id("response-body-dropped")
+                                .test_support()
+                                .p(style::SPACE_2)
+                                .text_size(style::TEXT_SMALL)
+                                .text_color(cx.theme().muted_foreground)
+                                .child("Body too large to keep"),
+                        )
                         .into_any_element()
                 }
                 None => v_flex()
@@ -6042,7 +6043,7 @@ fn redirect_stop_note(result: &RequestResult, cx: &App) -> Option<AnyElement> {
         return None;
     }
     let mut text = format!(
-        "Stopped after {} redirects (this request's limit).",
+        "Stopped after {} redirects (the redirect limit).",
         r.redirects_followed()
     );
     if let Some((name, value)) = r.headers().iter().find(|(n, _)| n == "location") {

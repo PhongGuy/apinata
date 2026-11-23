@@ -48,7 +48,7 @@ fn a_loop_stopped_by_the_limit_says_so_in_the_body_area(cx: &mut TestAppContext)
     let (win, view) = pane(cx, &s.model);
     assert_eq!(
         label(cx, win, "response-redirect-stop").as_deref(),
-        Some("Stopped after 5 redirects (this request's limit). The last Location was /ok.")
+        Some("Stopped after 5 redirects (the redirect limit). The last Location was /ok.")
     );
     assert_eq!(
         label(cx, win, "response-redirects").as_deref(),
@@ -96,10 +96,55 @@ fn a_kept_stop_shows_the_masked_location_and_no_count_without_a_timeline(cx: &mu
     let (win, _view) = pane(cx, &model);
     let note = label(cx, win, "response-redirect-stop").expect("the note is shown");
     assert!(
-        note.starts_with("Stopped after 5 redirects (this request's limit)."),
+        note.starts_with("Stopped after 5 redirects (the redirect limit)."),
         "{note}"
     );
     assert!(note.contains("127.0.0.1:9/loop"), "{note}");
     assert!(!note.contains("pw-S3cret"), "{note}");
     assert!(!present(cx, win, "response-redirects"));
+}
+
+#[gpui_kit::test]
+fn the_count_is_reached_and_opened_from_the_keyboard(cx: &mut TestAppContext) {
+    let s = send_once(
+        cx,
+        ResponseTemplate::new(302).insert_header("location", "/ok"),
+        "settings:\n  maxRedirects: 2\n",
+    );
+    let (win, view) = pane(cx, &s.model);
+    enter_on(cx, win, "response-redirects");
+    frame(cx, win);
+    assert_eq!(view.read_with(cx, |p, _| p.tab()), ResponseTab::Timeline);
+}
+
+#[gpui_kit::test]
+fn a_kept_stop_whose_body_was_dropped_still_shows_the_note(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let (_state, ws, _root) = open_dir(cx, &col);
+    let model = sender(cx, &ws);
+    let response = Response::new(302)
+        .with_status_text("Found")
+        .with_header("location", "/loop")
+        .with_redirects(5, true);
+    let result = RequestResult::from_parts(
+        ip("a.yml"),
+        "a",
+        Outcome::Passed,
+        Some(response),
+        Vec::new(),
+    );
+    let restored = Restored {
+        saved_at: SystemTime::now(),
+        body_dropped: true,
+        body_masked: false,
+        masked_headers: Vec::new(),
+        header_digests: None,
+    };
+    model.update(cx, |m, cx| m.restore(Arc::new(result), restored, cx));
+    let (win, _view) = pane(cx, &model);
+    assert!(present(cx, win, "response-body-dropped"));
+    assert_eq!(
+        label(cx, win, "response-redirect-stop").as_deref(),
+        Some("Stopped after 5 redirects (the redirect limit). The last Location was /loop.")
+    );
 }
