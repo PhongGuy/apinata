@@ -166,7 +166,7 @@ fn every_response_tab_shows_whole_with_compare_chosen_at_1280(cx: &mut TestAppCo
 }
 
 // While a response streams, the tab strip keeps its tabs' width beside the streaming facts:
-// with the last tab chosen, every tab shows whole wherever the tabs alone fit the pane.
+// with Events chosen, every tab shows whole wherever the tabs alone fit the pane.
 #[gpui_kit::test]
 fn every_response_tab_shows_whole_while_streaming(cx: &mut TestAppContext) {
     use apinata_app::response_pane::ResponseTab;
@@ -206,7 +206,13 @@ fn every_response_tab_shows_whole_while_streaming(cx: &mut TestAppContext) {
             let tabs: Vec<_> = (0..16usize)
                 .filter_map(|ix| w.try_find(("response-tab", ix)).map(|t| t.bounds()))
                 .collect();
-            let span = tabs.last().unwrap().right() - tabs[0].left();
+            // The strip lists tabs in its own order, so the span runs edge to edge.
+            let left = tabs
+                .iter()
+                .map(|t| t.left())
+                .fold(px(f32::MAX), |a, b| a.min(b));
+            let right = tabs.iter().map(|t| t.right()).fold(px(0.), |a, b| a.max(b));
+            let span = right - left;
             if span > response.size.width {
                 return;
             }

@@ -615,6 +615,7 @@ mod stream_events_empty;
 mod stream_events_layout;
 mod stream_large_fast;
 mod stream_pane;
+mod stream_stable;
 mod stream_status;
 mod stream_stop;
 mod strip_overflow;
