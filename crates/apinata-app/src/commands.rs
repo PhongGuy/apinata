@@ -25,7 +25,7 @@ use crate::keymap::{
     PreviousSection, RedoActive, ResetZoom, RunCollection, RunFolder, SHELL_CONTEXT, SaveActive,
     ToggleConsole, ToggleOrientation, ToggleSidebar, ToggleTheme, UndoActive, ZoomIn, ZoomOut,
 };
-use crate::palette::{GoToRequest, OpenCommandPalette, PaletteGroup};
+use crate::palette::{GoToRequest, OpenCommandPalette, PaletteGroup, SwitchTab};
 use crate::preferences::{KEY_CONTEXT as PREFERENCES, OpenPreferences};
 use crate::renames_dialog::CheckSecretRenames;
 use crate::request_editor::{
@@ -942,6 +942,13 @@ pub fn registry() -> Vec<Command> {
             shell(ReopenClosedTab),
             &["secondary-shift-t"],
         ),
+        asks(command(
+            "tabs.switch",
+            "Switch tab…",
+            Tabs,
+            shell(SwitchTab),
+            &[],
+        )),
         command(
             "tabs.next",
             "Next tab",

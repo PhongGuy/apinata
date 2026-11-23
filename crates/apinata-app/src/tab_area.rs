@@ -37,7 +37,7 @@ use crate::keymap::{
     PreviousSection, RedoActive, SHELL_CONTEXT, SaveActive, UndoActive,
 };
 use crate::menu_focus::{self, Before};
-use crate::palette::OpenCommandPalette;
+use crate::palette::{OpenCommandPalette, TabSwitchEntry, TabTarget};
 use crate::request_editor::{CancelRequest, RequestEditor, SendRequest};
 use crate::runner_view::RunnerView;
 use crate::save_draft;
@@ -2114,6 +2114,36 @@ impl TabArea {
                 .map(|r| r.method.clone()),
             _ => None,
         }
+    }
+
+    /// The tab switcher's rows: the open tabs by visit, then the closed tabs worth reopening,
+    /// each named as its tab is and followed by its collection's name.
+    pub fn switcher_entries(&self, cx: &App) -> (Vec<TabSwitchEntry>, Vec<TabSwitchEntry>) {
+        let ws = self.workspace.read(cx);
+        let row = |entry: &TabEntry, target: TabTarget| TabSwitchEntry {
+            label: self.tab_label(entry, cx),
+            collection: ws.collection_name(&entry.root, cx).to_string(),
+            target,
+        };
+        let tabs = ws.tabs();
+        let open = (tabs.by_visit().into_iter())
+            .filter_map(|id| tabs.get(id))
+            .map(|e| row(e, TabTarget::Open(e.id)))
+            .collect();
+        // A closed tab has no id of its own; a stand-in entry lends it its tab's name.
+        let closed = (ws.closed_tabs(cx).into_iter())
+            .map(|(root, kind)| {
+                let entry = TabEntry {
+                    id: TabId(u64::MAX),
+                    root: root.clone(),
+                    kind: kind.clone(),
+                    preview: false,
+                    pinned: false,
+                };
+                row(&entry, TabTarget::Closed(root, kind))
+            })
+            .collect();
+        (open, closed)
     }
 
     /// The title `entry`'s tab shows: a request's name, "<name> settings" for a folder or the

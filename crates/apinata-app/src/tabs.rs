@@ -523,6 +523,36 @@ impl Tabs {
         !self.closed.is_empty()
     }
 
+    /// The closed tabs waiting to be reopened, oldest first.
+    pub fn closed(&self) -> &[(PathBuf, TabKind)] {
+        &self.closed
+    }
+
+    /// Drops every closed-stack entry for the target `kind` of `root`; `false` when none was there.
+    pub fn take_closed(&mut self, root: &Path, kind: &TabKind) -> bool {
+        let before = self.closed.len();
+        self.closed.retain(|(r, k)| r != root || k != kind);
+        self.closed.len() != before
+    }
+
+    /// The open tabs, the active one first, then the rest by their latest visit, newest
+    /// first; tabs never visited follow in strip order.
+    pub fn by_visit(&self) -> Vec<TabId> {
+        let mut order: Vec<TabId> = self.active.into_iter().collect();
+        let visited = (self.visits.iter().rev()).filter_map(|(root, kind)| {
+            (self.entries.iter()).find(|e| e.root == *root && e.kind == *kind)
+        });
+        for id in visited
+            .map(|e| e.id)
+            .chain(self.entries.iter().map(|e| e.id))
+        {
+            if !order.contains(&id) {
+                order.push(id);
+            }
+        }
+        order
+    }
+
     /// The most recently closed tab that has not been reopened yet.
     pub fn pop_closed(&mut self) -> Option<(PathBuf, TabKind)> {
         self.closed.pop()
