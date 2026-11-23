@@ -129,12 +129,130 @@ pub struct Tabs {
     // A collection with no request shown by hand; it is current only while no tab is active,
     // and the next explicit activation forgets it.
     chosen_root: Option<PathBuf>,
+    // Activated targets, oldest first, and the one back and forward step from. Stepping
+    // sets `replaying` so the activation it makes is not recorded as a new visit.
+    visits: Vec<(PathBuf, TabKind)>,
+    cursor: usize,
+    replaying: bool,
 }
 
 impl Tabs {
     /// An empty tab list.
     pub fn new() -> Tabs {
         Tabs::default()
+    }
+
+    /// How many visits back and forward remember; the oldest is dropped past it.
+    pub const VISITS_KEPT: usize = 50;
+
+    /// The visited tab targets, oldest first; a target appears again each time it is
+    /// returned to, but never twice in a row.
+    pub fn visits(&self) -> &[(PathBuf, TabKind)] {
+        &self.visits
+    }
+
+    /// The position in [`Tabs::visits`] that back and forward move from; `None` before the
+    /// first visit.
+    pub fn visit_cursor(&self) -> Option<usize> {
+        (!self.visits.is_empty()).then_some(self.cursor)
+    }
+
+    /// Activates the nearest earlier visit that is open or can reopen, without recording a
+    /// visit. A closed target reopens as a permanent tab when `reachable` says it still
+    /// exists; closed drafts and runners are skipped. `None`, changing nothing, at the start.
+    pub fn go_back(&mut self, reachable: impl Fn(&Path, &TabKind) -> bool) -> Option<TabId> {
+        let ix = self.back_index(&reachable)?;
+        Some(self.replay(ix))
+    }
+
+    /// Activates the nearest later visit, as [`Tabs::go_back`] does the other way.
+    pub fn go_forward(&mut self, reachable: impl Fn(&Path, &TabKind) -> bool) -> Option<TabId> {
+        let ix = self.forward_index(&reachable)?;
+        Some(self.replay(ix))
+    }
+
+    /// Whether [`Tabs::go_back`] would go anywhere.
+    pub fn can_go_back(&self, reachable: impl Fn(&Path, &TabKind) -> bool) -> bool {
+        self.back_index(&reachable).is_some()
+    }
+
+    /// Whether [`Tabs::go_forward`] would go anywhere.
+    pub fn can_go_forward(&self, reachable: impl Fn(&Path, &TabKind) -> bool) -> bool {
+        self.forward_index(&reachable).is_some()
+    }
+
+    fn back_index(&self, reachable: &impl Fn(&Path, &TabKind) -> bool) -> Option<usize> {
+        (0..self.cursor)
+            .rev()
+            .find(|&ix| self.can_visit(ix, reachable))
+    }
+
+    fn forward_index(&self, reachable: &impl Fn(&Path, &TabKind) -> bool) -> Option<usize> {
+        (self.cursor + 1..self.visits.len()).find(|&ix| self.can_visit(ix, reachable))
+    }
+
+    // An open target is always visitable; a closed one only if it reopens, which a draft or
+    // runner never does since its content went with the tab.
+    fn can_visit(&self, ix: usize, reachable: &impl Fn(&Path, &TabKind) -> bool) -> bool {
+        let (root, kind) = &self.visits[ix];
+        let open = (self.entries.iter()).any(|e| e.root == *root && e.kind == *kind);
+        let gone_with_tab = match kind {
+            TabKind::Request(path) => path.is_draft(),
+            TabKind::Runner(_) | TabKind::RunSelection(_) => true,
+            _ => false,
+        };
+        open || (!gone_with_tab && reachable(root, kind))
+    }
+
+    // An open target keeps its preview state; a closed one comes back permanent, as a
+    // reopened tab does.
+    fn replay(&mut self, ix: usize) -> TabId {
+        self.cursor = ix;
+        let (root, kind) = self.visits[ix].clone();
+        self.replaying = true;
+        let open = (self.entries.iter()).find(|e| e.root == root && e.kind == kind);
+        let id = match open.map(|e| e.id) {
+            Some(id) => {
+                self.set_active(id);
+                id
+            }
+            None => self.open(&root, kind, false),
+        };
+        self.replaying = false;
+        id
+    }
+
+    // A new visit cuts off the forward visits, as in a browser; the oldest falls off past
+    // the cap.
+    fn record_visit(&mut self, id: TabId) {
+        let Some(entry) = self.get(id) else {
+            return;
+        };
+        let target = (entry.root.clone(), entry.kind.clone());
+        if self.visits.get(self.cursor) == Some(&target) {
+            return;
+        }
+        self.visits.truncate(self.cursor + 1);
+        self.visits.push(target);
+        if self.visits.len() > Self::VISITS_KEPT {
+            self.visits.remove(0);
+        }
+        self.cursor = self.visits.len() - 1;
+    }
+
+    // Drops the visits `gone` matches, keeping the cursor on the same visit or the one
+    // before it.
+    fn forget_visits(&mut self, gone: impl Fn(&Path, &TabKind) -> bool) {
+        let before = self.visits[..self.cursor.min(self.visits.len())]
+            .iter()
+            .filter(|(r, k)| gone(r, k))
+            .count();
+        let at_cursor = self
+            .visits
+            .get(self.cursor)
+            .is_some_and(|(r, k)| gone(r, k));
+        self.visits.retain(|(r, k)| !gone(r, k));
+        self.cursor = (self.cursor - before).saturating_sub(usize::from(at_cursor));
     }
 
     /// The open tabs, in display order.
@@ -163,9 +281,13 @@ impl Tabs {
     }
 
     // An explicit activation, even of the tab already active, ends a hand-made choice.
+    // Every activation but a back or forward step is a visit.
     fn set_active(&mut self, id: TabId) {
         self.active = Some(id);
         self.chosen_root = None;
+        if !self.replaying {
+            self.record_visit(id);
+        }
     }
 
     /// Open `kind` in `root` and activate it. An already open item is reused (and pinned by a
@@ -415,6 +537,7 @@ impl Tabs {
         };
         self.retain(|e| e.root != root || e.kind != gone);
         self.closed.retain(|(r, k)| r != root || *k != gone);
+        self.forget_visits(|r, k| r == root && *k == gone);
         for kind in self.kinds_of(root) {
             if let TabKind::Example { item: of, index: n } = kind
                 && of == item
@@ -474,7 +597,7 @@ impl Tabs {
         gone.into_iter().map(|(_, e)| e).collect()
     }
 
-    // The kinds of `root`'s open and remembered tabs, for edits that rewrite both alike.
+    // The kinds of `root`'s open, closed and visited tabs, for edits that rewrite them all alike.
     fn kinds_of<'a>(&'a mut self, root: &'a Path) -> impl Iterator<Item = &'a mut TabKind> {
         self.entries
             .iter_mut()
@@ -483,6 +606,7 @@ impl Tabs {
             .chain(
                 self.closed
                     .iter_mut()
+                    .chain(self.visits.iter_mut())
                     .filter(move |(r, _)| r == root)
                     .map(|(_, k)| k),
             )
