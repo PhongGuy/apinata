@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use super::branch::{self, lines};
+use super::branch::{self, Untracked, lines};
 use super::rebase::{PRE_SYNC, head, replay_onto, write_step};
 use super::stream::CancelFlag;
 use super::sync::{
@@ -57,7 +57,7 @@ pub fn squash_unpushed(
         name: upstream,
         ..
     } = upstream_of(root, &branch, opts)?;
-    branch::ready(root, opts).map_err(from_switch)?;
+    branch::ready(root, opts, Untracked::Refuse).map_err(from_switch)?;
     branch::fetch(root, &remote, cancel, opts).map_err(from_fetch)?;
     if cancel.is_cancelled() {
         return Err(SyncError::Cancelled);
