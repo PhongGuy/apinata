@@ -558,19 +558,14 @@ fn the_author_is_the_repo_config_identity() {
 }
 
 #[test]
-fn no_identity_fails_with_gits_text_and_commits_nothing() {
+fn no_identity_is_refused_and_commits_nothing() {
     let sb = Sandbox::without_identity();
     assert_no_ambient_identity();
     let (repo, col) = committed_without_env_identity(&sb);
     write(&col, "a.yml", "changed\n");
     stage(&col, &["a.yml"], &sb.options()).unwrap();
     match commit_err(commit(&col, "msg", &sb.options())) {
-        CommitError::Failed { output } => {
-            assert!(
-                output.contains("Author identity unknown") || output.contains("empty ident"),
-                "{output}"
-            );
-        }
+        CommitError::NoIdentity => {}
         other => panic!("{other:?}"),
     }
     assert_eq!(sb.git(&repo, &["rev-list", "--count", "HEAD"]), "1\n");

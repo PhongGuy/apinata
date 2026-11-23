@@ -108,7 +108,7 @@ fn label_of(cx: &mut TestAppContext, r: &Rig, id: impl Into<gpui_kit::ElementId>
 
 /// Writes an untracked file into the clone and waits for the status to count it.
 fn dirty(cx: &mut TestAppContext, r: &Rig) {
-    write(r.dir.path(), "scratch.txt", "mine\n");
+    write(r.dir.path(), "a.txt", "mine\n");
     let root = r.dir.path().to_path_buf();
     r.ws.update(cx, |w, cx| w.refresh_all_git(cx));
     wait_for(cx, "the status to see the file", |cx| {
@@ -159,7 +159,7 @@ fn a_dirty_tree_shows_the_refusal_and_a_button_to_the_changes_dialog(cx: &mut Te
     click(cx, &r, "branch-open-changes");
     assert!(cx.update(|cx| changes_dialog::current(cx).is_some()));
     assert_eq!(
-        std::fs::read_to_string(r.dir.path().join("scratch.txt")).unwrap(),
+        std::fs::read_to_string(r.dir.path().join("a.txt")).unwrap(),
         "mine\n"
     );
     assert_eq!(

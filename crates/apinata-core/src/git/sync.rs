@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use super::branch::{self, SwitchError, lines};
+use super::branch::{self, SwitchError, Untracked, lines};
 use super::stream::{CancelFlag, StreamError, git_stream, git_stream_capture};
 use super::{FetchError, GitError, GitOptions, busy_message, check_root, redact_url, run};
 
@@ -102,6 +102,9 @@ pub enum SyncError {
         /// Git's error output.
         stderr: String,
     },
+    /// Git has no name and email to record the replayed commits with; nothing changed.
+    #[error("git needs your name and email before it can replay local commits")]
+    NoIdentity,
     /// Git could not be started or read.
     #[error(transparent)]
     Io(#[from] io::Error),
@@ -141,7 +144,7 @@ pub fn pull_reporting(
         name: upstream,
         ..
     } = upstream_of(root, &branch, opts)?;
-    branch::ready(root, opts).map_err(from_switch)?;
+    branch::ready(root, opts, Untracked::Refuse).map_err(from_switch)?;
     branch::fetch(root, &remote, cancel, opts).map_err(from_fetch)?;
     if cancel.is_cancelled() {
         return Err(SyncError::Cancelled);
@@ -654,6 +657,9 @@ pub(super) fn from_switch(e: SwitchError) -> SyncError {
         SwitchError::Dirty => SyncError::Dirty,
         SwitchError::Busy { lock } => SyncError::Busy { lock },
         SwitchError::Failed { stderr } => SyncError::Failed { stderr },
+        e @ SwitchError::WouldOverwrite { .. } => SyncError::Failed {
+            stderr: e.to_string(),
+        },
         SwitchError::Io(e) => SyncError::Io(e),
     }
 }
