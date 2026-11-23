@@ -288,8 +288,9 @@ pub fn branches(root: &Path, opts: &GitOptions) -> Result<Vec<Branch>, GitError>
 }
 
 /// Switch to `row`: a local branch is checked out as it is, its upstream untouched; a remote
-/// branch nothing tracks goes through [`switch_to_remote`]. Changes, a held lock or a branch
-/// gone since the listing refuse the switch before git writes anything.
+/// branch nothing tracks goes through [`switch_to_remote`]. Changes to tracked files, a held lock
+/// or a branch gone since the listing refuse the switch before git writes anything; an untracked
+/// file the branch holds makes git refuse with [`SwitchError::WouldOverwrite`].
 pub fn switch_branch(
     root: &Path,
     row: &Branch,
@@ -308,7 +309,7 @@ pub fn switch_branch(
             stderr: "invalid branch name".to_owned(),
         });
     }
-    ready(root, opts)?;
+    ready(root, opts, Untracked::Allow)?;
     let full = format!("refs/heads/{local}");
     let text =
         lines(root, &["for-each-ref", "--format=%(refname)", &full], opts).map_err(from_git)?;
@@ -328,12 +329,25 @@ pub fn switch_branch(
     run_steps(root, opts, &Mode::Existing, None, vec![switch], done)
 }
 
-/// The checks every switch makes first: `root` is in a repository and nothing in it changed.
-/// Porcelain v1 reports the whole repository, so a change outside `root` also counts. An `add -N`
-/// path gone from disk and missing from `HEAD` is no change: git switches over it, and refuses
-/// in its own words if the target holds that path. A staged new file gone from disk (`AD`) is a
-/// change with a row in the status, so it counts.
-pub(super) fn ready(root: &Path, opts: &GitOptions) -> Result<(), SwitchError> {
+/// Whether [`ready`] lets untracked files through. A switch does, since git carries them over
+/// and refuses one it would overwrite; a pull, rebase or squash does not.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Untracked {
+    Allow,
+    Refuse,
+}
+
+/// The checks every switch, pull, rebase and squash makes first: `root` is in a repository and
+/// nothing in it changed, untracked files aside when `untracked` allows them. Porcelain v1
+/// reports the whole repository, so a change outside `root` also counts. An `add -N` path gone
+/// from disk and missing from `HEAD` is no change: git switches over it, and refuses in its own
+/// words if the target holds that path. A staged new file gone from disk (`AD`) is a change with
+/// a row in the status, so it counts.
+pub(super) fn ready(
+    root: &Path,
+    opts: &GitOptions,
+    untracked: Untracked,
+) -> Result<(), SwitchError> {
     check_root(root).map_err(from_git)?;
     let args = ["status", "--porcelain=v1", "-z"];
     let status = run::git(&args, root, opts).map_err(from_git)?;
@@ -343,6 +357,9 @@ pub(super) fn ready(root: &Path, opts: &GitOptions) -> Result<(), SwitchError> {
     // Only ` D` can be excused, so any other entry ends the scan before a rename's second field.
     let mut gone: Vec<&[u8]> = Vec::new();
     for entry in status.stdout.split(|&b| b == 0).filter(|e| !e.is_empty()) {
+        if untracked == Untracked::Allow && entry.starts_with(b"?? ") {
+            continue;
+        }
         gone.push(entry.strip_prefix(b" D ").ok_or(SwitchError::Dirty)?);
     }
     if gone.is_empty() {
@@ -363,9 +380,16 @@ pub(super) fn ready(root: &Path, opts: &GitOptions) -> Result<(), SwitchError> {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum SwitchError {
-    /// The working tree has staged, unstaged or untracked changes.
+    /// The working tree has staged or unstaged changes (untracked files do not block a switch).
     #[error("commit or discard your changes before switching branches")]
     Dirty,
+    /// Git refused because the switch would overwrite these untracked files, named relative to
+    /// the repository's top folder. Nothing was changed.
+    #[error("{}", overwrite_message(paths))]
+    WouldOverwrite {
+        /// The untracked files in the way, as git lists them.
+        paths: Vec<String>,
+    },
     /// Another git process holds the repository's lock file at `lock`.
     #[error("{}", busy_message(lock))]
     Busy {
@@ -381,6 +405,35 @@ pub enum SwitchError {
     /// Git could not be started or read.
     #[error(transparent)]
     Io(#[from] io::Error),
+}
+
+/// A plain sentence naming the untracked files in a switch's way, the first few of a long list.
+fn overwrite_message(paths: &[String]) -> String {
+    const SHOWN: usize = 5;
+    if let [one] = paths {
+        return format!(
+            "Switching would overwrite the untracked file {one}. Move or remove it, then switch again."
+        );
+    }
+    let mut list = paths[..paths.len().min(SHOWN)].join(", ");
+    if paths.len() > SHOWN {
+        list.push_str(&format!(" and {} more", paths.len() - SHOWN));
+    }
+    format!(
+        "Switching would overwrite these untracked files: {list}. Move or remove them, then switch again."
+    )
+}
+
+/// The paths git lists when it refuses a switch over untracked files, `None` for any other
+/// refusal. Its wording is fixed because every git call runs under `LC_ALL=C`.
+fn overwritten(stderr: &str) -> Option<Vec<String>> {
+    let mut lines = stderr.lines();
+    lines.find(|l| l.contains("untracked working tree files would be overwritten by"))?;
+    let paths: Vec<String> = lines
+        .map_while(|l| l.strip_prefix('\t'))
+        .map(str::to_owned)
+        .collect();
+    (!paths.is_empty()).then_some(paths)
 }
 
 /// The local branch a switch landed on and what became of its upstream.
@@ -414,8 +467,9 @@ pub enum Upstream {
 
 /// Switch to `branch`: its tracking local branch if one exists, else a same-named local branch
 /// (given the upstream when it has none, left as is when it tracks another), else a new local
-/// branch that tracks it. Any change anywhere in the repository refuses the switch, and so does a
-/// held lock before git writes anything. A step that fails undoes what this call made, so a
+/// branch that tracks it. Any staged or unstaged change anywhere in the repository refuses the
+/// switch, and so does a held lock before git writes anything; untracked files are carried over
+/// unless the branch holds one of them. A step that fails undoes what this call made, so a
 /// refused switch leaves no branch or upstream behind; nothing is stashed, forced or reset.
 pub fn switch_to_remote(
     root: &Path,
@@ -429,7 +483,7 @@ pub fn switch_to_remote(
     if branch.name.starts_with('-') || branch.remote.starts_with('-') || local_dash {
         return Err(failed("invalid branch name"));
     }
-    ready(root, opts)?;
+    ready(root, opts, Untracked::Allow)?;
     let (local, mode) = plan(root, branch, opts)?;
     // Git rewrites the tree before it notices a held HEAD.lock, so locks are checked up front.
     if let Some(lock) = held_lock(root, opts, &local, &mode) {
@@ -595,7 +649,10 @@ fn write_step(root: &Path, args: &[String], opts: &GitOptions) -> Result<(), Swi
     if args.first().is_some_and(|a| a == "switch") {
         return match git_stream(args, root, opts, &CancelFlag::new(), &mut |_| {}) {
             Ok(done) if done.success => Ok(()),
-            Ok(done) => Err(refused(&done.stderr)),
+            Ok(done) => Err(match overwritten(&done.stderr) {
+                Some(paths) => SwitchError::WouldOverwrite { paths },
+                None => refused(&done.stderr),
+            }),
             Err(StreamError::Io(e)) => Err(SwitchError::Io(e)),
             // The flag is never set, so a cancel cannot happen; report it as a failure anyway.
             Err(StreamError::Cancelled { .. }) => Err(SwitchError::Failed {
@@ -650,6 +707,33 @@ fn from_git(e: GitError) -> SwitchError {
         other => SwitchError::Failed {
             stderr: redact_url(&other.to_string()),
         },
+    }
+}
+
+#[cfg(test)]
+mod overwrite_tests {
+    use super::*;
+
+    #[test]
+    fn a_long_list_names_the_first_five_and_counts_the_rest() {
+        let paths: Vec<String> = (1..=7).map(|i| format!("f{i}.yml")).collect();
+        assert_eq!(
+            overwrite_message(&paths),
+            "Switching would overwrite these untracked files: f1.yml, f2.yml, f3.yml, f4.yml, \
+             f5.yml and 2 more. Move or remove them, then switch again."
+        );
+    }
+
+    #[test]
+    fn only_gits_untracked_overwrite_refusal_is_read_as_one() {
+        let refusal = "error: The following untracked working tree files would be overwritten \
+                       by checkout:\n\tb.txt\n\td/\u{fc} x.txt\nPlease move or remove them \
+                       before you switch branches.\nAborting\n";
+        assert_eq!(
+            overwritten(refusal),
+            Some(vec!["b.txt".to_owned(), "d/\u{fc} x.txt".to_owned()])
+        );
+        assert_eq!(overwritten("fatal: invalid reference: x\n"), None);
     }
 }
 
