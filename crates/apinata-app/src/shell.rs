@@ -2726,6 +2726,7 @@ impl Shell {
         let (root, state) = self.current_mock(cx)?;
         let examples = self.workspace.read(cx).mock_examples(&root);
         let served_root = root.clone();
+        let name = self.workspace.read(cx).collection_name(&root, cx);
         use crate::ui::ChooseButton as _;
         let toggle = Button::new("mock-toggle")
             .solid_ring(cx)
@@ -2741,7 +2742,7 @@ impl Shell {
             _ => None,
         };
         let tip = match address {
-            Some(addr) => crate::mock_server::running_tip(addr.port()),
+            Some(addr) => crate::mock_server::running_tip(&name, addr.port()),
             None => MOCK_TIP.to_owned(),
         };
         let shown = address.map(|addr| {
@@ -2783,9 +2784,9 @@ impl Shell {
         )
     }
 
-    // The example count opens what the running mock serves: one line per route, then what a
-    // miss gets and which of several examples answers, then the calls it received. Read on
-    // every draw, so it stays current.
+    // The example count opens what the running mock serves: the collection's name, one line
+    // per route (or how to save a first example), what a miss gets, which of several examples
+    // answers, then the calls it received. Read on every draw, so it stays current.
     fn mock_served_popover(&self, root: &Path, status: String, cx: &App) -> impl IntoElement {
         let (workspace, root) = (self.workspace.clone(), root.to_path_buf());
         let trigger = Button::new("mock-status")
@@ -2809,10 +2810,23 @@ impl Shell {
             .content(move |_, _, cx| {
                 let routes = workspace.read(cx).mock_served(&root).unwrap_or_default();
                 let lines = crate::mock_server::served_lines(&routes);
+                // The heading names the collection; with nothing saved, a how-to stands where
+                // the routes would be.
+                let heading = format!("Mocking {}", workspace.read(cx).collection_name(&root, cx));
+                let how_to = (routes.is_empty())
+                    .then(|| note("mock-served-empty", crate::mock_server::EMPTY_HOW_TO, cx));
                 v_flex()
                     .id("mock-served")
                     .gap(style::SPACE_1)
                     .max_w(style::MOCK_SERVED_WIDTH)
+                    .child(
+                        div()
+                            .id("mock-served-heading")
+                            .test_support()
+                            .aria_label(heading.clone())
+                            .child(heading),
+                    )
+                    .children(how_to)
                     .children(lines.into_iter().enumerate().map(|(ix, line)| {
                         div()
                             .id(SharedString::from(format!("mock-served-{ix}")))
