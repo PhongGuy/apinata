@@ -159,6 +159,7 @@ fn collection_settings_offer_trusted_hosts_and_folder_settings_do_not(cx: &mut T
         ]
     );
     let ix = ed.read_with(cx, |e, _| e.sections().iter().position(|x| *x == Hosts));
+    assert_eq!(Hosts.label(), "AI access");
     click(cx, s.win, ("config-section", ix.unwrap()));
     assert!(present(cx, s.win, "config-hosts"));
     let hosts = ed
@@ -207,7 +208,7 @@ fn input_that_is_not_a_bare_host_is_refused_without_writing(cx: &mut TestAppCont
         "evil.example#.good.example",
         "evil.example/.good",
         "ex\tample.com",
-        "http://good.example",
+        "http://good.example@evil.example",
     ] {
         add(cx, win, input);
         assert!(v.read_with(cx, |v, _| v.error().is_some()), "{input:?}");
@@ -342,4 +343,65 @@ fn trust_host_sits_left_of_its_input(cx: &mut TestAppContext) {
         );
     })
     .unwrap();
+}
+
+fn label(cx: &mut TestAppContext, win: AnyWindowHandle, id: &'static str) -> String {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.find(id).label().map(str::to_owned)
+    })
+    .unwrap()
+    .unwrap_or_default()
+}
+
+#[gpui_kit::test]
+fn the_tab_sums_up_ai_access_and_says_changes_apply_at_once(cx: &mut TestAppContext) {
+    let fx = Fx::new();
+    let (win, _v) = view(cx, &fx);
+    assert_eq!(
+        label(cx, win, "hosts-summary"),
+        "Hosts an AI assistant may call without asking."
+    );
+    assert!(label(cx, win, "hosts-saved-note").contains("apply at once"));
+}
+
+#[gpui_kit::test]
+fn a_pasted_url_is_trusted_as_its_host(cx: &mut TestAppContext) {
+    let fx = Fx::new();
+    let (win, v) = view(cx, &fx);
+    add(cx, win, "https://api.example.com:8443/v1/users?page=2");
+    assert_eq!(lists(cx, &v).0, ["api.example.com"]);
+    assert!(fx.store().is_trusted(fx.coll.path(), "api.example.com"));
+    assert!(v.read_with(cx, |v, _| v.error().is_none()));
+}
+
+#[gpui_kit::test]
+fn a_refusal_starts_with_a_capital(cx: &mut TestAppContext) {
+    let fx = Fx::new();
+    let (win, v) = view(cx, &fx);
+    add(cx, win, "exa mple");
+    let error = v
+        .read_with(cx, |v, _| v.error().map(str::to_owned))
+        .unwrap();
+    assert!(error.starts_with(char::is_uppercase), "{error}");
+}
+
+#[gpui_kit::test]
+fn add_to_denied_writes_a_denied_host(cx: &mut TestAppContext) {
+    let fx = Fx::new();
+    let (win, v) = view(cx, &fx);
+    replace_input(cx, win, None, "hosts-add", "http://evil.example/x");
+    click(cx, win, "hosts-deny-button");
+    assert_eq!(
+        lists(cx, &v),
+        (Vec::<String>::new(), vec!["evil.example".to_string()])
+    );
+    assert!(fx.store().is_denied(fx.coll.path(), "evil.example"));
+    let typed = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.find("hosts-add").value().map(str::to_owned)
+        })
+        .unwrap();
+    assert_eq!(typed.as_deref().unwrap_or_default(), "");
 }

@@ -25,7 +25,7 @@ use crate::changes_dialog::open_changes;
 use crate::closing;
 use crate::command::{Command, Target, TreeOp};
 use crate::commands::label;
-use crate::config_editor::{ConfigEditor, ConfigTarget, target_name};
+use crate::config_editor::{ConfigEditor, ConfigSection, ConfigTarget, target_name};
 use crate::confirm;
 use crate::draft_store;
 use crate::env_editor::EnvEditor;
@@ -446,12 +446,33 @@ impl TabArea {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<&Entity<RequestEditor>> {
-        if !self.editors.contains_key(&tab) {
-            let entry = self.workspace.read(cx).tabs().get(tab).cloned()?;
+        self.ensure_view(tab, window, cx);
+        self.editor(tab)
+    }
+
+    // Builds tab `tab`'s view now when the tab has not been shown yet.
+    fn ensure_view(&mut self, tab: TabId, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.editors.contains_key(&tab)
+            && let Some(entry) = self.workspace.read(cx).tabs().get(tab).cloned()
+        {
             let view = self.view_for(&entry, window, cx);
             self.editors.insert(tab, (entry.kind, view));
         }
-        self.editor(tab)
+    }
+
+    /// Shows `section` in settings tab `tab`'s editor, building it now when the tab has not
+    /// been shown yet; does nothing for a tab that is not a folder or collection's settings.
+    pub fn show_config_section(
+        &mut self,
+        tab: TabId,
+        section: ConfigSection,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.ensure_view(tab, window, cx);
+        if let Some(editor) = self.config_editor(tab).cloned() {
+            editor.update(cx, |e, cx| e.set_section(section, cx));
+        }
     }
 
     /// Shows `section` in request tab `tab`'s editor, building it now when the tab has not

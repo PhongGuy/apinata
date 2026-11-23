@@ -1435,6 +1435,17 @@ impl Shell {
             .update(cx, |w, cx| w.open_settings(&root, TabKind::Collection, cx));
     }
 
+    /// Opens the settings of the open collection at `root` on its AI access tab.
+    pub fn open_ai_access(&mut self, root: &Path, window: &mut Window, cx: &mut Context<Self>) {
+        let tab =
+            (self.workspace).update(cx, |w, cx| w.open_settings(root, TabKind::Collection, cx));
+        if let Some(tab) = tab {
+            self.tab_area.update(cx, |t, cx| {
+                t.show_config_section(tab, crate::config_editor::ConfigSection::Hosts, window, cx)
+            });
+        }
+    }
+
     // Opens a runner tab without starting it. With `folder`, an active request or example
     // runs its own folder; anything else runs the whole current collection.
     fn run_current(&mut self, folder: bool, window: &mut Window, cx: &mut Context<Self>) {

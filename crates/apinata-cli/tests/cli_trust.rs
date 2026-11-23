@@ -114,7 +114,7 @@ fn errors_exit_3_and_write_nothing() {
     let fx = Fx::new();
     fx.trust(&["add", "exa mple"])
         .code(3)
-        .stderr(contains("not a host"));
+        .stderr(contains("Not a host"));
     assert!(!fx.file().exists());
     let bare = TempDir::new().unwrap();
     apinata()

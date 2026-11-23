@@ -222,6 +222,8 @@ pub struct PreferencesView {
     // The section a list click jumped to and the offset it left; it stays current until the
     // rows move, since a short section at the end may not fill the view.
     jumped: Option<(SharedString, Pixels)>,
+    // The window's shell, whose open collections the AI agents section links to.
+    shell: Option<gpui_kit::WeakEntity<crate::shell::Shell>>,
     focus: FocusHandle,
     _subs: Vec<Subscription>,
 }
@@ -403,6 +405,7 @@ impl PreferencesView {
             scroll,
             shown_sections: Vec::new(),
             jumped: None,
+            shell: None,
             focus: cx.focus_handle(),
             _subs: subs,
         }
@@ -1430,9 +1433,10 @@ impl PreferencesView {
                 },
             )),
         );
+        let mcp = crate::mcp_prefs::section(self.shell.as_ref(), cx);
         let keyboard = self.keyboard.update(cx, |k, cx| k.section(window, cx));
         vec![
-            general, appearance, network, scripts, updates, history, keyboard,
+            general, appearance, network, scripts, updates, history, mcp, keyboard,
         ]
     }
 
@@ -1723,7 +1727,12 @@ fn with_keys<E: InteractiveElement>(el: E, view: &Entity<PreferencesView>) -> E 
 pub fn open(window: &mut Window, cx: &mut App) -> Option<Entity<PreferencesView>> {
     let state = cx.try_global::<AppState>()?;
     let settings = state.settings.clone();
-    let view = cx.new(|cx| PreferencesView::new(settings, window, cx));
+    let shell = crate::mcp_prefs::shell_of(window, cx);
+    let view = cx.new(|cx| {
+        let mut view = PreferencesView::new(settings, window, cx);
+        view.shell = shell;
+        view
+    });
     let dialog_view = view.clone();
     let search = view.read(cx).search.clone();
     // Enter commits the focused input; the dialog's own Enter confirm must not close it.
