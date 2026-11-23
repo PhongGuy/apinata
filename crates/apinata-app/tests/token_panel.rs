@@ -144,7 +144,7 @@ fn get_token_fetches_and_clear_forgets(cx: &mut TestAppContext) {
     assert_eq!(status(cx, &panel), "No token");
     assert_eq!(
         panel.read_with(cx, |p, _| p.notice()).as_deref(),
-        Some("tokens are kept in memory only")
+        Some("Tokens are kept in memory only")
     );
 
     cx.update_window(win, |_, w, cx| {
@@ -165,6 +165,65 @@ fn get_token_fetches_and_clear_forgets(cx: &mut TestAppContext) {
 
     panel.update(cx, |p, cx| p.clear(cx));
     wait_real(cx, |cx| status(cx, &panel) == "No token");
+}
+
+// The shown token value: the panel's text and the element's accessible label.
+fn shown_token(cx: &mut TestAppContext, win: AnyWindowHandle) -> Option<String> {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.try_find("oauth2-token-value")
+            .and_then(|e| e.label().map(str::to_owned))
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn the_token_shows_masked_until_revealed_and_copies_its_value(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let token = "tok-789-SECRET";
+    let server = provider(
+        cx,
+        &format!(r#"{{"access_token":"{token}","expires_in":3600}}"#),
+        None,
+    );
+    let file = format!(
+        "{}  auth:\n{}",
+        request("a", "http://x.test/r"),
+        cc(&server.uri())
+    );
+    let col = write_tree(&[("opencollection.yml", ROOT), ("a.yml", &file)]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, view) = editor_for(cx, &ws, &root, "a.yml", false);
+    let panel = request_panel(cx, &view);
+    cx.update_window(win, |_, w, cx| {
+        w.click(("section", Section::Auth as usize), cx);
+        w.render_frame(cx)
+    })
+    .unwrap();
+    settle_panel(cx, &panel);
+    assert_eq!(shown_token(cx, win), None, "no token, no value row");
+
+    panel.update(cx, |p, cx| p.get_token(cx));
+    wait_real(cx, |cx| status(cx, &panel).starts_with("Valid"));
+    frame(cx, win);
+    let masked = shown_token(cx, win).expect("a value row");
+    assert!(!masked.contains(token), "{masked}");
+    assert_eq!(masked, panel.read_with(cx, |p, _| p.token_text()).unwrap());
+
+    cx.update_window(win, |_, w, cx| w.click("oauth2-token-reveal", cx))
+        .unwrap();
+    frame(cx, win);
+    assert_eq!(shown_token(cx, win).as_deref(), Some(token));
+    cx.update_window(win, |_, w, cx| w.click("oauth2-token-hide", cx))
+        .unwrap();
+    frame(cx, win);
+    assert_eq!(shown_token(cx, win), Some(masked));
+
+    // Copy takes the real token even while it is masked.
+    cx.update_window(win, |_, w, cx| w.click("oauth2-token-copy", cx))
+        .unwrap();
+    let copied = cx.update(|cx| cx.read_from_clipboard().and_then(|c| c.text()));
+    assert_eq!(copied.as_deref(), Some(token));
 }
 
 #[gpui_kit::test]
@@ -563,7 +622,7 @@ fn a_successful_send_or_fetch_clears_the_last_error(cx: &mut TestAppContext) {
     let (_win, view) = editor_for(cx, &ws, &root, "a.yml", false);
     let panel = request_panel(cx, &view);
     let failed = Some("The token endpoint answered 401: invalid_client");
-    let memory = Some("tokens are kept in memory only");
+    let memory = Some("Tokens are kept in memory only");
 
     panel.update(cx, |p, cx| p.get_token(cx));
     settle_panel(cx, &panel);

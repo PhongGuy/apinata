@@ -21,7 +21,8 @@ use std::sync::{Arc, Mutex};
 pub use authorize::check_redirect;
 pub use cache::TokenCache;
 pub use target::{
-    OAuth2Target, TokenStatus, clear_oauth2_token, is_oauth2, oauth2_name_hidden, oauth2_status,
+    OAuth2Target, TokenStatus, clear_oauth2_token, is_oauth2, oauth2_access_token,
+    oauth2_name_hidden, oauth2_status,
 };
 
 /// How [`Executor::prepare_auth`](crate::Executor::prepare_auth) may obtain a token.

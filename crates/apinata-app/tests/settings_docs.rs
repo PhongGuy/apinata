@@ -69,6 +69,22 @@ fn toggles_send_the_settings(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn the_authorization_redirect_label_names_another_origin(cx: &mut TestAppContext) {
+    let (win, _host, _s) = settings(cx, RequestSettings::new());
+    let label = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            let row = w.within("set-row-forward-auth").find("form-label");
+            row.label().map(str::to_owned)
+        })
+        .unwrap();
+    assert_eq!(
+        label.as_deref(),
+        Some("Keep Authorization header on redirect to another origin")
+    );
+}
+
+#[gpui_kit::test]
 fn max_redirects_take_digits_only(cx: &mut TestAppContext) {
     let (win, host, _s) = settings(cx, RequestSettings::new());
     replace_input(cx, win, None, "set-max-redirects", "2");

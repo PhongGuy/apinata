@@ -519,7 +519,7 @@ impl Render for SettingsSection {
             )))
             .child(followed(ui::form_row(
                 "set-row-forward-auth",
-                "Keep Authorization header on redirect",
+                "Keep Authorization header on redirect to another origin",
                 ui::checkbox("set-forward-auth", s.forward_authorization_header).on_click(
                     cx.listener(|t, on: &bool, _, cx| {
                         t.toggle(|s| s.forward_authorization_header = *on, cx)

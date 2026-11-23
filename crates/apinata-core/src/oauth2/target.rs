@@ -127,14 +127,27 @@ pub fn oauth2_status(
     target: OAuth2Target<'_>,
     ctx: &VarContext,
 ) -> Result<Option<TokenStatus>, OAuth2Error> {
+    Ok(cached_entry(target, ctx)?.as_ref().map(TokenStatus::of))
+}
+
+/// The cached access token for the target's auth, for a user who asked to see or copy it;
+/// `Ok(None)` when none is cached or the auth is not oauth2.
+pub fn oauth2_access_token(
+    target: OAuth2Target<'_>,
+    ctx: &VarContext,
+) -> Result<Option<String>, OAuth2Error> {
+    let entry = cached_entry(target, ctx)?;
+    Ok(entry.and_then(|e| e.field("access_token").map(str::to_owned)))
+}
+
+fn cached_entry(target: OAuth2Target<'_>, ctx: &VarContext) -> Result<Option<Entry>, OAuth2Error> {
     let cfg = match Probe::new(target, ctx).config(ctx) {
         Err(OAuth2Error::NotOAuth2) => return Ok(None),
         cfg => cfg?,
     };
-    let entry = ctx
+    Ok(ctx
         .oauth2_tokens()
-        .lookup(&cfg.key(ctx), &cfg.fingerprint());
-    Ok(entry.as_ref().map(TokenStatus::of))
+        .lookup(&cfg.key(ctx), &cfg.fingerprint()))
 }
 
 /// Removes the target's credentials id entries (all token URLs); the count removed.
