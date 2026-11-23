@@ -149,7 +149,6 @@ pub fn start_with_trash(
     } else {
         crate::executor::install_with_jar(&settings.value, store.as_ref(), Arc::clone(&jar), cx)
     };
-    let installed_proxy = settings.value.proxy.clone();
     let (store_for_password, jar_for_password) = (Arc::clone(&store), Arc::clone(&jar));
     match installed {
         Ok(install_notes) => notes.extend(install_notes),
@@ -167,6 +166,7 @@ pub fn start_with_trash(
         ..window_options(&session.value, &displays(cx))
     };
     let settings = cx.new(|_| Persisted::new(settings.value, paths.settings.clone()));
+    crate::executor::follow(&settings, Arc::clone(&store), cx);
     let session = cx.new(|_| Persisted::new(session.value, paths.session.clone()));
     let keymap = cx.new(|_| Persisted::new(keymap.value, paths.keymap.clone()));
     let (trust_file, inbox) = (paths.trusted_hosts.clone(), paths.approvals.clone());
@@ -274,7 +274,6 @@ pub fn start_with_trash(
             store: store_for_password,
             jar: jar_for_password,
             settings: late_settings,
-            installed_proxy,
             window,
         };
         late.spawn(cx);
@@ -293,29 +292,20 @@ struct LatePassword {
     store: Arc<dyn SecretStore>,
     jar: Arc<CookieJar>,
     settings: Entity<Persisted<Settings>>,
-    installed_proxy: crate::settings::ProxyPrefs,
     window: AnyWindowHandle,
 }
 
 impl LatePassword {
-    // Reads off the UI thread, then reinstalls the executor with the password unless the
-    // proxy settings changed meanwhile. A failed read warns once and keeps the executor.
+    // Reads off the UI thread, then reinstalls the executor with the password unless a
+    // rebuild started meanwhile, which reads its own. A failed read warns once and keeps the
+    // executor.
     fn spawn(self, cx: &mut App) {
         let store = Arc::clone(&self.store);
-        let read =
-            cx.background_spawn(async move { store.get(&crate::executor::proxy_password_key()) });
-        cx.spawn(async move |cx| {
-            let result = read.await;
-            cx.update(|cx| self.finish(result, cx));
-        })
-        .detach();
+        crate::executor::read_password_then(store, None, |result, cx| self.finish(result, cx), cx);
     }
 
     fn finish(self, result: Result<Option<String>, apinata_core::SecretError>, cx: &mut App) {
         let now = self.settings.read(cx).get().clone();
-        if now.proxy != self.installed_proxy {
-            return;
-        }
         let warning = match result {
             Ok(None) => return,
             Ok(Some(password)) => {

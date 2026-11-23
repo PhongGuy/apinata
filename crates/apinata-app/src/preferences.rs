@@ -1,5 +1,5 @@
 //! The preferences dialog: edits the user's settings in place. Theme, orientation, zoom and
-//! the response font size apply at once; the network settings apply at the next start. The
+//! the response font size apply at once; the network settings apply from the next send. The
 //! global proxy password goes to the secret store, never to the settings file.
 
 use crate::ui::SolidRing as _;
@@ -680,16 +680,22 @@ impl PreferencesView {
         let Some(store) = self.secrets.clone() else {
             return;
         };
+        let saving = Arc::clone(&store);
         let task = cx.background_spawn(async move {
             let key = proxy_password_key();
             match password {
-                Some(p) => store.set(&key, &p),
-                None => store.delete(&key),
+                Some(p) => saving.set(&key, &p),
+                None => saving.delete(&key),
             }
         });
         cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
+                // A saved password reaches the next send through a proxy that names a user.
+                let now = this.settings.read(cx).get().clone();
+                if result.is_ok() && crate::executor::wants_password(&now) {
+                    crate::executor::rebuild(now, store, cx);
+                }
                 this.error = result
                     .err()
                     .map(|e| format!("The proxy password was not saved: {e}"));
@@ -723,7 +729,7 @@ impl PreferencesView {
     }
 
     // The PAC source input with its Refetch button, and the hint under them. Refetch drops
-    // the process-wide PAC cache at once, unlike the settings, which apply at restart.
+    // the process-wide PAC cache, so even an unchanged PAC source is fetched again.
     fn pac_row(&self, window: &Window, cx: &mut Context<Self>) -> Div {
         // Each Preferences button takes Enter as its press; the inputs beside them keep theirs.
         let refetch = Button::new("global-proxy-pac-refetch")
@@ -778,7 +784,7 @@ impl PreferencesView {
                 }
             },
         );
-        // The System help shows only in System; the restart note is the section's.
+        // The System help shows only in System; the section's own note follows the rows.
         match current.mode {
             ProxyMode::Off => {
                 return section.row("pref-proxy-mode", "Proxy", mode);
@@ -1020,9 +1026,8 @@ fn with_reset(
     )
 }
 
-/// The Network section's one note naming the settings read only at start.
-pub const NETWORK_RESTART: &str = "TLS verification, the response size limit, the HTTP version, \
-     the proxy and the certificate settings take effect after restart.";
+/// The Network section's one note on when its settings apply.
+pub const NETWORK_NOTE: &str = "Network and cookie settings apply from the next send.";
 
 impl Focusable for PreferencesView {
     fn focus_handle(&self, _: &App) -> FocusHandle {
@@ -1300,7 +1305,7 @@ impl PreferencesView {
                     },
                 )),
             )
-            // Unlike the settings above, the cookie switches reach the live executor at once.
+            // The cookie switches reach the live executor directly; the settings above rebuild it.
             .row(
                 "pref-store-cookies",
                 "Store cookies automatically",
@@ -1327,11 +1332,7 @@ impl PreferencesView {
                     },
                 )),
             )
-            .note(ui::form_note("prefs-network-restart", NETWORK_RESTART))
-            .note(ui::form_note(
-                "prefs-cookies-note",
-                "Cookie settings apply at once.",
-            ));
+            .note(ui::form_note("prefs-network-note", NETWORK_NOTE));
         let scripts = PrefsSection::new("prefs-scripts", "Scripts")
             .row("pref-run-scripts", "Run scripts", run_scripts)
             .row_with_terms(

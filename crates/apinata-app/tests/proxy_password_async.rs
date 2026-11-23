@@ -158,19 +158,35 @@ fn an_unreadable_password_warns_and_keeps_the_executor(cx: &mut TestAppContext) 
     assert!(shared(cx).is_some());
 }
 
+// The startup read landing after a proxy change must not install the old proxy; the change's
+// own rebuild wins whichever read the store answers first.
 #[gpui_kit::test]
 fn a_proxy_changed_meanwhile_skips_the_reinstall(cx: &mut TestAppContext) {
     let (store, release) = GatedStore::new();
     let s = start_gated(cx, store.clone());
     let first = shared(cx).expect("an executor at once");
+    let target = support::mock_server(cx, wiremock::ResponseTemplate::new(200));
+    let proxy = support::mock_server(cx, wiremock::ResponseTemplate::new(200));
+    let port = proxy.address().port().to_string();
     cx.update(|cx| {
         let settings = cx.global::<AppState>().settings.clone();
-        settings.update(cx, |p, cx| p.update(cx, |v| v.proxy.port = "3129".into()));
+        settings.update(cx, |p, cx| p.update(cx, |v| v.proxy.port = port));
     });
-    release.send(Reply::Value(Some("pw".into()))).unwrap();
-    // Once the read has landed and been handled, the executor must still be the first one.
-    assert!(wait_for(cx, |_| store.answered.load(Ordering::SeqCst)));
-    wait_for(cx, |_| false);
-    assert!(Arc::ptr_eq(&shared(cx).unwrap(), &first));
+    for _ in 0..2 {
+        release.send(Reply::Value(Some("pw".into()))).unwrap();
+    }
+    assert!(wait_for(cx, |cx| !Arc::ptr_eq(
+        &shared(cx).unwrap(),
+        &first
+    )));
+    for _ in 0..5 {
+        cx.run_until_parked();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let exec = shared(cx).unwrap();
+    support::send_direct(cx, &exec, &target.uri());
+    let handle = cx.update(|cx| apinata_app::tokio_bridge::handle(cx));
+    let got = handle.block_on(proxy.received_requests()).unwrap();
+    assert_eq!(got.len(), 1, "the send did not use the changed proxy");
     assert_eq!(notices(cx, &s), 0);
 }

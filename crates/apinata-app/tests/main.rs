@@ -395,6 +395,7 @@ mod network_certificates;
 mod network_changed;
 mod network_edits;
 mod network_hosts;
+mod network_live;
 mod network_prefs;
 mod network_secrets;
 mod network_secrets_git_env;

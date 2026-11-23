@@ -7,9 +7,10 @@ use apinata_core::{
     CookieJar, ExecOptions, Executor, GlobalProxy, HttpVersionPolicy, NetworkSettings, PacSource,
     ResolvedProxy, SCHEMA_BODY_LIMIT, SecretKey, SecretStore,
 };
-use gpui_kit::{App, Global};
+use gpui_kit::{App, Entity, Global};
 
-use crate::settings::{HttpVersionPref, ProxyMode, Settings};
+use crate::persisted::Persisted;
+use crate::settings::{HttpVersionPref, ProxyMode, ProxyPrefs, Settings};
 
 /// The session-wide executor every send and run uses.
 pub struct SharedExecutor(pub Arc<Executor>);
@@ -25,6 +26,51 @@ impl Global for UnloggedExecutor {}
 pub struct SchemaExecutor(pub Arc<Executor>);
 
 impl Global for SchemaExecutor {}
+
+/// The jar and network preferences the installed executors were built from, so a settings
+/// change rebuilds them over the same jar only when a network preference moved.
+struct Installed {
+    jar: Arc<CookieJar>,
+    /// `None` until an install succeeds, so a failed one is retried on the next change.
+    built_from: Option<NetworkPrefs>,
+}
+
+impl Global for Installed {}
+
+/// Counts installs that wait on a password read, so a read that lands after a newer install
+/// started is dropped. `pending` is what the newest waiting rebuild will build.
+#[derive(Default)]
+struct Rebuilds {
+    generation: u64,
+    pending: Option<NetworkPrefs>,
+}
+
+impl Global for Rebuilds {}
+
+/// The settings an executor is built from. The cookie switches are left out: they reach the
+/// live executor directly.
+#[derive(Clone, PartialEq)]
+struct NetworkPrefs {
+    insecure: bool,
+    max_body_bytes: Option<u64>,
+    http_version: HttpVersionPref,
+    proxy: ProxyPrefs,
+    ca_file: Option<std::path::PathBuf>,
+    keep_default_cas: bool,
+}
+
+impl NetworkPrefs {
+    fn of(settings: &Settings) -> NetworkPrefs {
+        NetworkPrefs {
+            insecure: settings.insecure,
+            max_body_bytes: settings.max_body_bytes,
+            http_version: settings.http_version,
+            proxy: settings.proxy.clone(),
+            ca_file: settings.ca_file.clone(),
+            keep_default_cas: settings.keep_default_cas,
+        }
+    }
+}
 
 /// The executor options `settings` asks for: TLS verification, the response body cap, the
 /// cookie switches and the HTTP version policy.
@@ -150,6 +196,13 @@ pub fn install_with_password(
     jar: Arc<CookieJar>,
     cx: &mut App,
 ) -> Result<Vec<String>, String> {
+    let built_from = cx
+        .try_global::<Installed>()
+        .and_then(|i| i.built_from.clone());
+    cx.set_global(Installed {
+        jar: Arc::clone(&jar),
+        built_from,
+    });
     let mut notes = Vec::new();
     let network = network_settings(settings, password).or_else(|reason| {
         let what = match settings.proxy.mode {
@@ -177,7 +230,114 @@ pub fn install_with_password(
     cx.set_global(SharedExecutor(Arc::new(exec)));
     cx.set_global(SchemaExecutor(Arc::new(schema)));
     cx.set_global(UnloggedExecutor(Arc::new(unlogged)));
+    cx.global_mut::<Installed>().built_from = Some(NetworkPrefs::of(settings));
     Ok(notes)
+}
+
+/// Rebuilds the executors whenever `settings` move a network preference, so the next send
+/// uses it. A send already running keeps the executor it holds and finishes on the old client.
+pub fn follow(settings: &Entity<Persisted<Settings>>, store: Arc<dyn SecretStore>, cx: &mut App) {
+    cx.observe(settings, move |settings, cx| {
+        let now = settings.read(cx).get().clone();
+        // A rebuild still waiting on its password read already heads for these settings.
+        let pending = cx.try_global::<Rebuilds>().and_then(|r| r.pending.clone());
+        let target = pending.or_else(|| cx.try_global::<Installed>()?.built_from.clone());
+        let installed = cx.has_global::<Installed>();
+        if installed && target != Some(NetworkPrefs::of(&now)) {
+            rebuild(now, Arc::clone(&store), cx);
+        }
+    })
+    .detach();
+}
+
+/// Starts a new install generation, making every password read still in flight stale.
+/// `pending` names what the caller's read will build, if it waits on one.
+fn claim(pending: Option<NetworkPrefs>, cx: &mut App) -> u64 {
+    let rebuilds = cx.default_global::<Rebuilds>();
+    rebuilds.generation += 1;
+    rebuilds.pending = pending;
+    rebuilds.generation
+}
+
+/// Whether `generation` is still the newest install, so its password read may install.
+fn is_newest(generation: u64, cx: &App) -> bool {
+    cx.try_global::<Rebuilds>()
+        .is_some_and(|r| r.generation == generation)
+}
+
+/// Reads the proxy password on a thread of its own, so a hung secret service holds no
+/// executor worker, and hands the result to `then` on the UI thread unless a newer install
+/// started meanwhile. Startup reads through this as well.
+pub fn read_password_then(
+    store: Arc<dyn SecretStore>,
+    pending: Option<&Settings>,
+    then: impl FnOnce(Result<Option<String>, apinata_core::SecretError>, &mut App) + 'static,
+    cx: &mut App,
+) {
+    let generation = claim(pending.map(NetworkPrefs::of), cx);
+    let read = crate::blocking::off_thread(move || store.get(&proxy_password_key()));
+    cx.spawn(async move |cx| {
+        let Ok(result) = read.recv().await else {
+            return;
+        };
+        cx.update(|cx| {
+            if !is_newest(generation, cx) {
+                return;
+            }
+            cx.default_global::<Rebuilds>().pending = None;
+            then(result, cx);
+        });
+    })
+    .detach();
+}
+
+/// Rebuilds the executors from `settings` over the installed jar. A proxy that needs the
+/// password reads it first and keeps the old executors until it lands; problems go to the
+/// Console, since the Preferences dialog is where the change was made.
+pub fn rebuild(settings: Settings, store: Arc<dyn SecretStore>, cx: &mut App) {
+    let Some(jar) = cx.try_global::<Installed>().map(|i| Arc::clone(&i.jar)) else {
+        return;
+    };
+    if !wants_password(&settings) {
+        claim(None, cx);
+        reinstall(&settings, None, Vec::new(), jar, cx);
+        return;
+    }
+    let target = settings.clone();
+    read_password_then(
+        store,
+        Some(&target),
+        move |result, cx| {
+            let (password, notes) = match result {
+                Ok(password) => (password, Vec::new()),
+                Err(e) => (None, vec![password_note(&e)]),
+            };
+            reinstall(&settings, password, notes, jar, cx);
+        },
+        cx,
+    );
+}
+
+// Installs the executors and notes on the Console what the install noted, or that it failed
+// and which executors sends use instead.
+fn reinstall(
+    settings: &Settings,
+    password: Option<String>,
+    mut notes: Vec<String>,
+    jar: Arc<CookieJar>,
+    cx: &mut App,
+) {
+    match install_with_password(settings, password, jar, cx) {
+        Ok(more) => notes.extend(more),
+        Err(e) if shared(cx).is_some() => notes.push(format!(
+            "The network settings were not applied ({e}); sends keep the previous ones."
+        )),
+        Err(e) => notes.push(format!("Requests cannot be sent: {e}")),
+    }
+    let log = crate::log_feed::ensure(cx);
+    for note in notes {
+        log.note("Network", apinata_core::ConsoleLevel::Warn, &note);
+    }
 }
 
 /// Saves `jar`, printing a failure to stderr; the next save retries it.
