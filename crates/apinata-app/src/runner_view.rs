@@ -617,6 +617,72 @@ pub fn plan_count_text(checked: usize, requests: usize, rounds: Option<usize>) -
     }
 }
 
+/// What a readable data file holds, for under its field: "3 rows: id, name".
+pub fn data_summary_text(rows: usize, columns: &[&str]) -> String {
+    let count = rows_text(rows);
+    if columns.is_empty() {
+        return count;
+    }
+    format!("{count}: {}", columns.join(", "))
+}
+
+/// The Iterations placeholder while a data file decides the count: "All 3 rows".
+pub fn all_rows_text(rows: usize) -> String {
+    if rows == 1 {
+        "1 row".to_owned()
+    } else {
+        format!("All {rows} rows")
+    }
+}
+
+/// How a typed iteration count caps a data file's rows, for under the Iterations field.
+pub fn iterations_hint_text(count: usize, rows: usize) -> String {
+    if count < rows {
+        format!("Runs the first {count} of {rows} rows")
+    } else if rows == 1 {
+        "Runs the only row".to_owned()
+    } else {
+        format!("Runs all {rows} rows")
+    }
+}
+
+// Column values are cut to this many characters in an iteration header; a row may hold tokens.
+const HEADER_VALUE_CHARS: usize = 24;
+const HEADER_COLUMNS: usize = 3;
+
+/// An iteration's header, naming its data row's first values when the row is known:
+/// "Iteration 2: id=2, name=beta".
+pub fn iteration_header(index: usize, row: Option<&[(String, String)]>) -> String {
+    let head = format!("Iteration {}", index + 1);
+    let Some(row) = row.filter(|r| !r.is_empty()) else {
+        return head;
+    };
+    let pairs: Vec<String> = (row.iter().take(HEADER_COLUMNS))
+        .map(|(column, value)| {
+            let value = if value.chars().count() > HEADER_VALUE_CHARS {
+                let cut: String = value.chars().take(HEADER_VALUE_CHARS - 1).collect();
+                format!("{cut}\u{2026}")
+            } else {
+                value.clone()
+            };
+            format!("{column}={value}")
+        })
+        .collect();
+    format!("{head}: {}", pairs.join(", "))
+}
+
+fn rows_text(rows: usize) -> String {
+    format!("{rows} row{}", if rows == 1 { "" } else { "s" })
+}
+
+// A data file's error as a sentence, for under its field.
+fn sentence(text: &str) -> String {
+    let mut chars = text.chars();
+    chars.next().map_or_else(String::new, |first| {
+        first.to_uppercase().chain(chars).collect()
+    })
+}
+
 /// The Run button's text: "Run", or with the checked count once it is known.
 pub fn run_label(chosen: Option<usize>) -> String {
     match chosen {
@@ -768,6 +834,39 @@ fn option_slot(label: Option<impl IntoElement>, control: impl IntoElement) -> Di
         )
 }
 
+// An option slot with an optional note under its control. With a note the label stays
+// centred on the control's line, so a row of top-aligned slots keeps its controls level.
+fn noted_slot(label: impl IntoElement, control: impl IntoElement, note: Option<AnyElement>) -> Div {
+    let Some(note) = note else {
+        return option_slot(Some(label), control);
+    };
+    h_flex()
+        .flex_none()
+        .gap_2()
+        .items_start()
+        .child(
+            h_flex()
+                .flex_none()
+                .w(style::RUN_OPTION_LABEL_WIDTH)
+                .h(style::INPUT_HEIGHT)
+                .items_center()
+                .child(label),
+        )
+        .child(
+            v_flex()
+                .flex_none()
+                .min_w(style::FORM_INPUT_WIDTH)
+                .gap_1()
+                .child(
+                    h_flex()
+                        .min_h(style::INPUT_HEIGHT)
+                        .items_center()
+                        .child(control),
+                )
+                .child(note),
+        )
+}
+
 // A cell when the row has a value, else an empty one that keeps the columns aligned.
 fn cell_or_gap(cell_el: Option<impl IntoElement>, width: Rems) -> AnyElement {
     match cell_el {
@@ -826,6 +925,12 @@ impl Render for RunnerView {
             inputs.retry_delay.clone(),
         );
         let fail_select = inputs.fail_select.clone();
+        // While a data file decides the count, the empty Iterations field says how many rows.
+        let rows = self.model.read(cx).data_summary().map(|(rows, _)| rows);
+        let hint = rows.map_or_else(|| "1".to_owned(), all_rows_text);
+        if iterations.read(cx).presentation().placeholder() != hint.as_str() {
+            iterations.update(cx, |s, cx| s.set_placeholder(hint, window, cx));
+        }
         let model = self.model.read(cx);
         let data_name = model.data_file().map(|path| {
             let name = (path.file_name().unwrap_or(path.as_os_str()))
@@ -858,15 +963,26 @@ impl Render for RunnerView {
         let bail = ui::checkbox("run-bail", model.bail())
             .label("Stop after the first failure")
             .on_click(move |on: &bool, _, cx| m1.update(cx, |m, cx| m.set_bail(*on, cx)));
+        let data_error = model.data_error().map(sentence);
+        let danger = cx.theme().danger;
         let data = h_flex()
             .min_w_0()
             .gap_2()
             .items_center()
             .child(
-                Button::new("run-data-file")
-                    .solid_ring(cx)
-                    .label("Choose file…")
-                    .on_click(cx.listener(|this, _, window, cx| this.pick_data(window, cx))),
+                div()
+                    .relative()
+                    .child(
+                        Button::new("run-data-file")
+                            .solid_ring(cx)
+                            .label("Choose file…")
+                            .on_click(
+                                cx.listener(|this, _, window, cx| this.pick_data(window, cx)),
+                            ),
+                    )
+                    .when(data_error.is_some(), |d| {
+                        d.child(ui::danger_ring("run-data-ring".into(), danger))
+                    }),
             )
             .children(data_name.map(|name| {
                 // A long file name is cut short so Clear stays inside the pane.
@@ -916,6 +1032,42 @@ impl Render for RunnerView {
                     .text_color(cx.theme().muted_foreground)
                     .child(RETRY_UNSAFE_NOTE),
             );
+        // The file's rows or its error sit under the Data file field, and a typed count's
+        // effect on those rows under Iterations. A missing file already says so in its name.
+        let note = |id: &'static str, text: String, color| {
+            div()
+                .id(id)
+                .test_support()
+                .aria_label(text.clone())
+                .max_w(style::FORM_INPUT_WIDTH)
+                .whitespace_normal()
+                .text_size(style::TEXT_SMALL)
+                .text_color(color)
+                .child(text)
+                .into_any_element()
+        };
+        let muted = cx.theme().muted_foreground;
+        let data_note = match (model.data_summary(), data_error) {
+            (Some((rows, columns)), _) => Some(note(
+                "run-data-summary",
+                data_summary_text(rows, &columns),
+                muted,
+            )),
+            (None, Some(why)) if !model.data_file_missing() => {
+                Some(note("run-data-error", why, danger))
+            }
+            _ => None,
+        };
+        let iterations_note = (model.iteration_count())
+            .zip(model.data_summary().map(|(rows, _)| rows))
+            .map(|(count, rows)| {
+                note(
+                    "run-iterations-hint",
+                    iterations_hint_text(count, rows),
+                    muted,
+                )
+            });
+        let noted = data_note.is_some() || iterations_note.is_some();
         let options = v_flex()
             .id("run-options")
             .test_support()
@@ -939,18 +1091,21 @@ impl Render for RunnerView {
             )
             .child(
                 option_row()
-                    .child(option_slot(
-                        Some(option_label("run-iterations-label", "Iterations", cx)),
+                    .when(noted, |row| row.items_start())
+                    .child(noted_slot(
+                        option_label("run-iterations-label", "Iterations", cx),
                         field(&iterations, "run-iterations"),
+                        iterations_note,
                     ))
                     .child(option_slot(
                         Some(option_label("run-delay-label", "Delay (ms)", cx)),
                         field(&delay, "run-delay"),
                     ))
                     // Last in its row: a chosen file's name widens it.
-                    .child(option_slot(
-                        Some(option_label("run-data-label", "Data file", cx)),
+                    .child(noted_slot(
+                        option_label("run-data-label", "Data file", cx),
                         data,
+                        data_note,
                     )),
             )
             .child(
@@ -1294,7 +1449,7 @@ impl Render for RunnerView {
             if let Some(i) = row.iteration
                 && (ix == 0 || model.rows()[ix - 1].iteration != row.iteration)
             {
-                let text = format!("Iteration {}", i + 1);
+                let text = iteration_header(i, model.iteration_row(i));
                 rows.push(
                     div()
                         .id(("run-iteration", i))
@@ -1490,7 +1645,8 @@ impl Render for RunnerView {
 #[cfg(test)]
 mod tests {
     use super::{
-        ItemPath, Outcome, RequestResult, RowState, RunRow, Tally, failure_reason, plan_count_text,
+        ItemPath, Outcome, RequestResult, RowState, RunRow, Tally, all_rows_text,
+        data_summary_text, failure_reason, iteration_header, iterations_hint_text, plan_count_text,
         result_word, row_checks, row_tone, summary_line, summary_tone, tally,
     };
     use crate::ui::Tone;
@@ -1580,6 +1736,14 @@ mod tests {
             reason.starts_with("Cancelled") && reason.contains("not confirmed"),
             "{reason}"
         );
+    }
+
+    #[test]
+    fn the_data_texts_read_naturally_for_one_row() {
+        assert_eq!(data_summary_text(1, &["id"]), "1 row: id");
+        assert_eq!(all_rows_text(1), "1 row");
+        assert_eq!(iterations_hint_text(3, 1), "Runs the only row");
+        assert_eq!(iteration_header(0, None), "Iteration 1");
     }
 
     #[test]
