@@ -693,24 +693,26 @@ fn the_palettes_rename_starts_renaming_a_selected_collection_row(cx: &mut TestAp
     cx.update_window(s.win, |_, w, cx| w.input(rename, cx))
         .unwrap();
     frame(cx, s.win);
-    // "Check for renamed secrets" also matches, in an order the palette's ranking decides, so
-    // the keys step down to wherever Rename lists.
-    let labels: Vec<String> = cx
-        .update_window(s.win, |_, w, _| {
+    // "Check for renamed secrets" also matches, so Down steps until Rename is the highlighted
+    // row. Snapshots come back unordered, so the highlight is read, never a list position.
+    let highlighted = |cx: &mut TestAppContext| {
+        cx.update_window(s.win, |_, w, _| {
             gpui_kit::base::test_support::snapshots(w)
                 .iter()
                 .filter(|n| n.role() == Some(gpui_kit::Role::ListBoxOption))
-                .filter_map(|n| n.label().map(str::to_owned))
-                .collect()
+                .find(|n| n.selected() == Some(true))
+                .and_then(|n| n.label().map(str::to_owned))
         })
-        .unwrap();
-    let at = labels
-        .iter()
-        .position(|l| l == rename)
-        .expect("Rename lists");
-    for _ in 0..at {
+        .unwrap()
+    };
+    for _ in 0..4 {
+        if highlighted(cx).as_deref() == Some(rename) {
+            break;
+        }
         cx.simulate_keystrokes(s.win, "down");
+        frame(cx, s.win);
     }
+    assert_eq!(highlighted(cx).as_deref(), Some(rename));
     cx.simulate_keystrokes(s.win, "enter");
     frame(cx, s.win);
     let sidebar = s.shell.read_with(cx, |sh, _| sh.sidebar().clone());
