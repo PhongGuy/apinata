@@ -439,6 +439,7 @@ mod preferences_search;
 mod preferences_zoom;
 mod prefs_section;
 mod presets;
+mod preview_tabs;
 mod profile;
 mod prompt_dialog;
 mod prompt_runner;

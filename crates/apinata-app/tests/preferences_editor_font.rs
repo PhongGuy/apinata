@@ -21,6 +21,7 @@ fn open_prefs(cx: &mut TestAppContext, s: &Started) {
 }
 
 fn enter(cx: &mut TestAppContext, s: &Started, id: &'static str, text: &str) {
+    prefs_reveal(cx, s, id);
     replace_input(cx, s.win, None, id, text);
     cx.update_window(s.win, |_, w, cx| w.press("enter", cx))
         .unwrap();
