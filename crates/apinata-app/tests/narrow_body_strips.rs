@@ -204,7 +204,7 @@ fn a_body_over_the_editor_limit_says_it_is_plain_text(cx: &mut TestAppContext) {
     let note = cx
         .update_window(s.win, |_, w, cx| {
             w.render_frame(cx);
-            w.try_find("body-large-note")
+            w.try_find("body-banner")
                 .and_then(|e| e.label().map(str::to_owned))
         })
         .unwrap();
@@ -221,5 +221,5 @@ fn a_body_at_the_editor_limit_has_no_note(cx: &mut TestAppContext) {
         present(cx, s.win, "body-editor"),
         "the body is in the editor"
     );
-    assert!(!present(cx, s.win, "body-large-note"));
+    assert!(!present(cx, s.win, "body-banner"));
 }
