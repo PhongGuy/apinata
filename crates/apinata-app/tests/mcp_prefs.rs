@@ -108,3 +108,23 @@ fn a_collection_link_opens_its_ai_access_tab(cx: &mut TestAppContext) {
     assert_eq!(ed.read_with(cx, |e, _| e.section()), ConfigSection::Hosts);
     assert!(present(cx, s.win, "config-hosts"));
 }
+
+#[gpui_kit::test]
+fn a_collection_shows_how_many_requests_wait_for_approval(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    let store = apinata_core::TrustStore::empty(s.files.path().join("trusted-hosts.json"));
+    let inbox = apinata_core::ApprovalInbox::new(s.files.path().join("approvals"));
+    for host in ["a.example", "b.example"] {
+        inbox.request(&store, &s.root, host, "a.yml").unwrap();
+    }
+    let approvals = cx.update(|cx| cx.global::<apinata_app::app::AppState>().approvals.clone());
+    approvals.update(cx, |a, cx| a.refresh(cx));
+    frame(cx, s.win);
+    open_prefs(cx, &s);
+    search(cx, &s, "mcp");
+    assert_eq!(
+        drawn_text(cx, &s, ("prefs-mcp-pending", 0usize)),
+        "2 requests waiting for approval"
+    );
+}

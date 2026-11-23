@@ -21,7 +21,7 @@ use crate::ui;
 pub const CONNECT_COMMAND: &str = "apinata mcp --collection <collection folder>";
 
 /// What a connected agent may do without asking, and what waits for approval.
-pub const APPROVAL_NOTE: &str = "Add the command to your AI assistant's MCP settings; it serves one collection over stdin and stdout. The assistant may read and edit the collection's files, which git tracks. A request it sends to a host other than localhost waits for your approval in this app, unless the collection's AI access lists the host.";
+pub const APPROVAL_NOTE: &str = "Add the command to your AI assistant's MCP settings; it serves one collection over stdin and stdout. The assistant may read and edit the collection's files, which git tracks. A request it sends to a host other than localhost waits for your approval in this app, unless the collection's AI access lists the host as trusted.";
 
 // Search words for rows whose labels are collection names.
 const TERMS: [&str; 5] = ["ai", "agent", "mcp", "trust", "trusted hosts"];
@@ -64,15 +64,17 @@ pub fn section(
                 }
             });
         let waiting = (pending > 0).then(|| {
+            let text = match pending {
+                1 => "1 request waiting for approval".to_owned(),
+                n => format!("{n} requests waiting for approval"),
+            };
             div()
                 .id(("prefs-mcp-pending", ix))
                 .test_support()
                 .text_size(TEXT_SMALL)
                 .text_color(cx.theme().muted_foreground)
-                .child(match pending {
-                    1 => "1 request waiting for approval".to_owned(),
-                    n => format!("{n} requests waiting for approval"),
-                })
+                .child(text.clone())
+                .test_text(text)
         });
         let control = v_flex().child(h_flex().child(link)).children(waiting);
         let id = SharedString::from(format!("pref-mcp-collection-{ix}"));
