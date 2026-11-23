@@ -504,7 +504,7 @@ fn re_check_evaluates_the_shown_response_without_sending(cx: &mut TestAppContext
 fn a_refused_re_check_says_why_in_its_tooltip(cx: &mut TestAppContext) {
     let (s, win, _view) = shown_edited(cx, PASSES, |r| {
         stale_verdict(r);
-        r.body_scrubbed = true;
+        r.response_scrubbed = true;
     });
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
@@ -516,7 +516,7 @@ fn a_refused_re_check_says_why_in_its_tooltip(cx: &mut TestAppContext) {
     frame(cx, win);
     assert_eq!(
         label(cx, win, "tests-recheck-tooltip"),
-        Some(apinata_core::RecheckRefused::BodyScrubbed.to_string())
+        Some(apinata_core::RecheckRefused::ResponseScrubbed.to_string())
     );
     // A locked button does nothing when pressed.
     cx.update_window(win, |_, w, cx| w.click("tests-recheck", cx))

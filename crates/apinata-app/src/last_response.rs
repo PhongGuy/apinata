@@ -265,9 +265,13 @@ struct Entry {
     // A secret was scrubbed from `text`; a file written before this field had none marked.
     #[serde(default)]
     masked: bool,
-    // A post-response script replaced the body the assertions read; an older file marked none.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    body_edited: bool,
+    // A post-response script replaced the body the assertions read; `None` in a file written
+    // before re-checks, which therefore refuses one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    body_edited: Option<bool>,
+    // A secret was removed from the body, a header, the URL or the status text; `None` as above.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    scrubbed: Option<bool>,
     // The places of the header values a secret or the mask changed; an older file marked none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     masked_headers: Vec<usize>,
@@ -1349,6 +1353,13 @@ impl Entry {
             Outcome::Cancelled => OutcomeTag::Cancelled,
             _ => OutcomeTag::Errored,
         };
+        let status_text = forms.scrub(response.status_text());
+        let url = kept_url(response.url(), secrets);
+        // Anything an assertion can read that the kept copy changed makes a re-check refuse.
+        let scrubbed = masked
+            || !masked_headers.is_empty()
+            || url != response.url()
+            || status_text != response.status_text();
         Entry {
             version: ENTRY_VERSION,
             saved_at_ms: saved_at
@@ -1358,8 +1369,8 @@ impl Entry {
             name: result.name.clone(),
             outcome,
             status: response.status(),
-            status_text: forms.scrub(response.status_text()),
-            url: kept_url(response.url(), secrets),
+            status_text,
+            url,
             headers,
             time_ms: response.response_time().as_secs_f64() * 1000.0,
             size: response.size(),
@@ -1369,7 +1380,8 @@ impl Entry {
             text,
             has_body_file,
             masked,
-            body_edited: result.body_edited,
+            body_edited: Some(result.body_edited),
+            scrubbed: Some(scrubbed),
             masked_headers,
             digests,
             assertions: result
@@ -1453,8 +1465,11 @@ impl Entry {
         let mut result =
             RequestResult::from_parts(item.clone(), self.name, outcome, Some(response), assertions);
         result.tests = self.tests.into_iter().map(KeptTest::rebuild).collect();
-        result.body_edited = self.body_edited;
-        result.body_scrubbed = self.masked;
+        result.body_edited = self.body_edited.unwrap_or(false);
+        result.response_scrubbed =
+            self.scrubbed.unwrap_or(false) || self.masked || !self.masked_headers.is_empty();
+        result.body_dropped = self.body_dropped;
+        result.saved_unmarked = self.body_edited.is_none() || self.scrubbed.is_none();
         Stored {
             result,
             saved_at: UNIX_EPOCH + Duration::from_millis(self.saved_at_ms),

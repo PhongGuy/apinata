@@ -670,8 +670,14 @@ pub struct RequestResult {
     /// A post-response script replaced the body, so the assertions read a body the result does
     /// not keep.
     pub body_edited: bool,
-    /// The kept body had a secret scrubbed from it, so it is not the body the assertions read.
-    pub body_scrubbed: bool,
+    /// The kept response had a secret removed from its body, a header, the URL or the status
+    /// text, so it is not what the assertions read.
+    pub response_scrubbed: bool,
+    /// The body was too large to keep, so the kept response has none.
+    pub body_dropped: bool,
+    /// The kept response was saved before these marks were recorded, so none of them can be
+    /// trusted.
+    pub saved_unmarked: bool,
 }
 
 // The sensitive values a script read are secrets, so Debug shows their count only.
@@ -696,7 +702,9 @@ impl fmt::Debug for RequestResult {
             .field("iteration", &self.iteration)
             .field("status_failure", &self.status_failure)
             .field("body_edited", &self.body_edited)
-            .field("body_scrubbed", &self.body_scrubbed)
+            .field("response_scrubbed", &self.response_scrubbed)
+            .field("body_dropped", &self.body_dropped)
+            .field("saved_unmarked", &self.saved_unmarked)
             .finish()
     }
 }
@@ -1771,11 +1779,14 @@ pub enum RecheckRefused {
         "A post-response script changed the body, so the shown response is not what the assertions read. Send again to check."
     )]
     BodyEdited,
-    /// A secret was scrubbed from the kept body, so its text is not what the server sent.
+    /// The saved response had secrets removed, so it is not what the server sent.
     #[error(
-        "A secret was scrubbed from the kept body, so it cannot be checked. Send again to check."
+        "The saved response had secrets removed, so it cannot be checked. Send again to check."
     )]
-    BodyScrubbed,
+    ResponseScrubbed,
+    /// The response was saved before re-check marks were kept, so it may hide either of the above.
+    #[error("This response was saved by an older version. Send again to re-check this response.")]
+    SavedUnmarked,
 }
 
 /// Re-evaluates `request`'s enabled assertions against the response `result` kept, without
@@ -1791,6 +1802,11 @@ pub fn recheck_assertions(
     let response = result.response.as_ref().ok_or(RecheckRefused::NoResponse)?;
     // The send's script host is gone, so left sides that need JavaScript are skipped, and
     // script tests keep the verdicts the send gave them.
+    if result.body_dropped {
+        // With no body kept, it reads as truncated, so body checks skip rather than fail.
+        let cut = response.clone().with_truncated(response.size());
+        return Ok(evaluate(request, &cut, ctx));
+    }
     Ok(evaluate(request, response, ctx))
 }
 
@@ -1863,10 +1879,12 @@ impl RequestResult {
     pub fn recheck_refusal(&self) -> Option<RecheckRefused> {
         if self.response.is_none() {
             Some(RecheckRefused::NoResponse)
+        } else if self.saved_unmarked {
+            Some(RecheckRefused::SavedUnmarked)
         } else if self.body_edited {
             Some(RecheckRefused::BodyEdited)
-        } else if self.body_scrubbed {
-            Some(RecheckRefused::BodyScrubbed)
+        } else if self.response_scrubbed {
+            Some(RecheckRefused::ResponseScrubbed)
         } else {
             None
         }
@@ -1966,7 +1984,9 @@ impl RequestResult {
             control: RunnerControl::default(),
             network_declined: false,
             body_edited: false,
-            body_scrubbed: false,
+            response_scrubbed: false,
+            body_dropped: false,
+            saved_unmarked: false,
         }
     }
 
@@ -1995,7 +2015,9 @@ impl RequestResult {
             control: RunnerControl::default(),
             network_declined: false,
             body_edited: false,
-            body_scrubbed: false,
+            response_scrubbed: false,
+            body_dropped: false,
+            saved_unmarked: false,
         }
     }
 

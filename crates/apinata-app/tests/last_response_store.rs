@@ -1034,7 +1034,7 @@ fn a_kept_send_remembers_why_its_body_cannot_be_rechecked() {
     edited.body_edited = true;
     store.save(root, &ip("e.yml"), &edited, at(1)).unwrap();
     let kept = store.load(root, &ip("e.yml")).unwrap().result;
-    assert!(kept.body_edited && !kept.body_scrubbed);
+    assert!(kept.body_edited && !kept.response_scrubbed);
     let secret = result("s.yml", Response::new(200).with_text_body("tok-123"));
     store
         .save_redacted(
@@ -1047,9 +1047,108 @@ fn a_kept_send_remembers_why_its_body_cannot_be_rechecked() {
         )
         .unwrap();
     let kept = store.load(root, &ip("s.yml")).unwrap().result;
-    assert!(kept.body_scrubbed && !kept.body_edited);
+    assert!(kept.response_scrubbed && !kept.body_edited);
     let plain = result("p.yml", Response::new(200).with_text_body("plain"));
     store.save(root, &ip("p.yml"), &plain, at(3)).unwrap();
     let kept = store.load(root, &ip("p.yml")).unwrap().result;
     assert_eq!(kept.recheck_refusal(), None);
+}
+
+// Saves `response` with `secrets` removed and loads it back.
+fn kept_through_save(item: &str, response: Response, secrets: &[&str]) -> RequestResult {
+    let dir = tempfile::tempdir().unwrap();
+    let store = ResponseStore::new(dir.path().to_path_buf());
+    let root = Path::new("/col");
+    let secrets: Vec<String> = secrets.iter().map(|s| (*s).to_owned()).collect();
+    store
+        .save_redacted(
+            root,
+            &ip(item),
+            &result(item, response),
+            &secrets,
+            at(1),
+            Limits::default(),
+        )
+        .unwrap();
+    store.load(root, &ip(item)).unwrap().result
+}
+
+// `res.headers['x-api-key'] eq {{apiKey}}` passed on the send; the kept copy holds a mask.
+#[test]
+fn a_masked_header_refuses_a_recheck() {
+    let response = Response::new(200)
+        .with_header("x-api-key", "k-secret-1")
+        .with_text_body("plain");
+    let kept = kept_through_save("h.yml", response, &["k-secret-1"]);
+    assert_eq!(
+        kept.recheck_refusal(),
+        Some(apinata_core::RecheckRefused::ResponseScrubbed)
+    );
+}
+
+// `res.url contains {{token}}` passed on the send; the kept URL lost the token.
+#[test]
+fn a_masked_url_refuses_a_recheck() {
+    let response = Response::new(200)
+        .with_url("https://x.test/r?t=tok-9")
+        .with_text_body("plain");
+    let kept = kept_through_save("u.yml", response, &["tok-9"]);
+    assert_eq!(
+        kept.recheck_refusal(),
+        Some(apinata_core::RecheckRefused::ResponseScrubbed)
+    );
+}
+
+#[test]
+fn a_masked_status_text_refuses_a_recheck() {
+    let response = Response::new(200)
+        .with_status_text("OK tok-9")
+        .with_text_body("plain");
+    let kept = kept_through_save("t.yml", response, &["tok-9"]);
+    assert_eq!(
+        kept.recheck_refusal(),
+        Some(apinata_core::RecheckRefused::ResponseScrubbed)
+    );
+}
+
+#[test]
+fn a_dropped_body_reaches_core_as_dropped() {
+    let big = "x".repeat(BODY_LIMIT + 1);
+    let kept = kept_through_save("d.yml", Response::new(200).with_text_body(big), &[]);
+    assert!(kept.body_dropped);
+    assert_eq!(kept.recheck_refusal(), None);
+}
+
+// A send saved before re-check marks existed loads as before but cannot be re-checked.
+#[test]
+fn an_older_saved_send_loads_but_refuses_a_recheck() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = ResponseStore::new(dir.path().to_path_buf());
+    let root = Path::new("/col");
+    let plain = result("o.yml", Response::new(200).with_text_body("plain"));
+    store.save(root, &ip("o.yml"), &plain, at(1)).unwrap();
+    let mut stripped = 0;
+    for entry in std::fs::read_dir(dir.path()).unwrap() {
+        let path = entry.unwrap().path();
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(mut json) = serde_json::from_str::<serde_json::Value>(&text) else {
+            continue;
+        };
+        let Some(object) = json.as_object_mut() else {
+            continue;
+        };
+        if object.remove("body_edited").is_some() | object.remove("scrubbed").is_some() {
+            stripped += 1;
+            std::fs::write(&path, serde_json::to_string(&json).unwrap()).unwrap();
+        }
+    }
+    assert_eq!(stripped, 1);
+    let stored = store.load(root, &ip("o.yml")).unwrap();
+    assert_eq!(stored.result.response.as_ref().unwrap().text(), "plain");
+    assert_eq!(
+        stored.result.recheck_refusal(),
+        Some(apinata_core::RecheckRefused::SavedUnmarked)
+    );
 }

@@ -290,9 +290,9 @@ fn a_kept_body_with_a_secret_scrubbed_refuses_a_recheck() {
         recheck_assertions(request, &kept, &ctx).map(|v| v.len()),
         Ok(4)
     );
-    kept.body_scrubbed = true;
+    kept.response_scrubbed = true;
     let refused = recheck_assertions(request, &kept, &ctx).expect_err("refused");
-    assert_eq!(refused, RecheckRefused::BodyScrubbed);
+    assert_eq!(refused, RecheckRefused::ResponseScrubbed);
     assert!(refused.to_string().contains("secret"), "{refused}");
 }
 
@@ -361,4 +361,65 @@ fn a_result_without_a_response_refuses_a_recheck() {
     );
     let refused = recheck_assertions(request(&c, "r.yml"), &kept, &ctx).expect_err("refused");
     assert_eq!(refused, RecheckRefused::NoResponse);
+}
+
+const DROPPED_CHECKS: &str = concat!(
+    "    - expression: res.status\n      operator: eq\n      value: \"200\"\n",
+    "    - expression: res.body.n\n      operator: eq\n      value: \"2\"\n",
+);
+
+// A result rebuilt from a save of `response`, as a front end or the MCP server would hold it.
+fn kept(response: Response) -> RequestResult {
+    RequestResult::from_parts(
+        ItemPath::new("r.yml").expect("path"),
+        "r",
+        Outcome::Passed,
+        Some(response),
+        Vec::new(),
+    )
+}
+
+#[test]
+fn a_dropped_body_skips_body_assertions_on_recheck() {
+    let dir = write_tree(&[
+        (OPENING, ROOT_PLAIN),
+        (
+            "r.yml",
+            &rechecked("https://x.test/r", DROPPED_CHECKS, "    []\n"),
+        ),
+    ]);
+    let c = Collection::open(dir.path()).expect("opens");
+    let ctx = VarContext::new(&c, ContextOptions::new()).expect("context");
+    let mut result = kept(Response::new(200).with_text_body("").with_size(9_000_000));
+    result.body_dropped = true;
+    let again = recheck_assertions(request(&c, "r.yml"), &result, &ctx).expect("rechecks");
+    assert!(matches!(again[0].verdict(), Verdict::Pass), "{again:?}");
+    // Skipped as truncated, the reason that holds for any body that was never kept.
+    match again[1].verdict() {
+        Verdict::Skipped { reason, .. } => assert!(reason.contains("truncated"), "{reason}"),
+        other => panic!("expected a skip, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_response_saved_without_marks_refuses_a_recheck() {
+    let dir = write_tree(&[
+        (OPENING, ROOT_PLAIN),
+        (
+            "r.yml",
+            &rechecked("https://x.test/r", DROPPED_CHECKS, "    []\n"),
+        ),
+    ]);
+    let c = Collection::open(dir.path()).expect("opens");
+    let ctx = VarContext::new(&c, ContextOptions::new()).expect("context");
+    let mut result = kept(Response::new(200).with_text_body("{\"n\":2}"));
+    result.saved_unmarked = true;
+    let refused = recheck_assertions(request(&c, "r.yml"), &result, &ctx).expect_err("refused");
+    assert_eq!(refused, RecheckRefused::SavedUnmarked);
+    assert!(
+        refused
+            .to_string()
+            .contains("Send again to re-check this response"),
+        "{refused}"
+    );
 }

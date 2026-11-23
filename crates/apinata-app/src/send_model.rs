@@ -674,15 +674,7 @@ impl SendModel {
         if !std::ptr::eq(checked.as_ptr(), Arc::as_ptr(shown)) {
             return;
         }
-        // A kept body too large to keep reads as truncated, so body checks skip, not fail.
-        let mut probe = (**shown).clone();
-        if self.restored.as_ref().is_some_and(|r| r.body_dropped) {
-            probe.response = probe.response.take().map(|r| {
-                let size = r.size();
-                r.with_truncated(size)
-            });
-        }
-        let Ok(assertions) = recheck_assertions(file, &probe, ctx) else {
+        let Ok(assertions) = recheck_assertions(file, shown, ctx) else {
             return;
         };
         let mut result = (**shown).clone();
