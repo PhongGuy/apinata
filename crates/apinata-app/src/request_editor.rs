@@ -3717,45 +3717,17 @@ impl RequestEditor {
         let kind = self.kind(cx);
         let selected = self.section as usize;
         let tabs = Section::ALL.iter().enumerate().map(|(ix, &s)| {
-            let label = div()
-                .id(("section", ix))
-                .test_support()
-                .child(s.label_for(kind));
-            let badge = self.section_count(s, cx).and_then(ui::count_badge);
-            // The dot is too small to aim at, so the whole tab says what it marks.
-            let mark_words = badge.is_none().then(|| self.section_mark(s, cx)).flatten();
-            let mark = match badge {
-                Some(badge) => Some(
-                    div()
-                        .id(("section-count", ix))
-                        .test_support()
-                        .child(badge)
-                        .into_any_element(),
-                ),
-                None => mark_words.clone().map(|words| {
-                    ui::content_dot(("section-mode", ix), words)
-                        .test_support()
-                        .into_any_element()
-                }),
-            };
+            let tab = ui::section_tab(
+                &SECTION_TAB_IDS,
+                ix,
+                s.label_for(kind),
+                self.section_count(s, cx),
+                self.section_mark(s, cx),
+                Some(ui::tab_focus_marker(&self.section_markers[ix]).into_any_element()),
+            );
             // The kit's tab list owns keyboard focus: one tab stop on the chosen tab, arrows
             // that move focus, and Enter or Space that opens the focused tab as a click does.
-            Tab::new().child(
-                h_flex()
-                    .id(("section-tab", ix))
-                    .test_support()
-                    .relative()
-                    .when_some(mark_words, |d, words| {
-                        d.tooltip(ui::text_tooltip("section-mode-tooltip", words))
-                    })
-                    .line_height(relative(style::TAB_LINE_HEIGHT))
-                    .px(style::SPACE_0)
-                    .gap(style::SPACE_1)
-                    .items_center()
-                    .child(label)
-                    .children(mark)
-                    .child(ui::tab_focus_marker(&self.section_markers[ix])),
-            )
+            Tab::new().child(tab)
         });
         // The menu shows only while last frame's layout overflowed; the watch redraws once
         // when this frame's layout disagrees.
@@ -4019,3 +3991,11 @@ fn custom_settings(s: &RequestSettings) -> bool {
         || s.max_redirects != d.max_redirects
         || matches!(s.timeout, Timeout::Millis(_))
 }
+
+const SECTION_TAB_IDS: ui::SectionTabIds = ui::SectionTabIds {
+    tab: "section-tab",
+    label: "section",
+    count: "section-count",
+    mark: "section-mode",
+    tooltip: "section-mode-tooltip",
+};

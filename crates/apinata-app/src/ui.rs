@@ -48,8 +48,9 @@ pub use crate::kv_grid::{KvCell, KvView, kv_view};
 use crate::style::{
     CHECKBOX_SIZE, DIALOG_CLOSE_INSET, DIALOG_FOOTER_GAP, DIALOG_PADDING, DISABLED_OPACITY, DOT,
     FOCUS_RING_ROOM, FORM_LABEL_LINE_HEIGHT, FORM_LABEL_WIDTH, FORM_STACK_WIDTH, INPUT_HEIGHT,
-    METHOD_COLUMN, RADIUS, SELECT_CHEVRON, SELECT_MAX_WIDTH, SPACE_1, SPACE_2, SPACE_3, SPACE_5,
-    STRIP_FADE_WIDTH, TEXT_CONTROL, TEXT_SMALL, TEXT_UI, kit_size, resolve,
+    METHOD_COLUMN, RADIUS, SELECT_CHEVRON, SELECT_MAX_WIDTH, SPACE_0, SPACE_1, SPACE_2, SPACE_3,
+    SPACE_5, STRIP_FADE_WIDTH, TAB_LINE_HEIGHT, TEXT_CONTROL, TEXT_SMALL, TEXT_UI, kit_size,
+    resolve,
 };
 use crate::theme::{self, SelectedStyle, Status, selected_look};
 use crate::zoom;
@@ -1547,6 +1548,57 @@ pub fn content_dot(id: impl Into<ElementId>, words: impl Into<SharedString>) -> 
         )
         .size_full(),
     )
+}
+
+/// The element ids of a section tab's parts, each paired with the tab's index.
+#[allow(missing_docs)]
+pub struct SectionTabIds {
+    pub tab: &'static str,
+    pub label: &'static str,
+    pub count: &'static str,
+    pub mark: &'static str,
+    pub tooltip: &'static str,
+}
+
+/// The content of a section tab: its label, then a count badge for a nonzero `count`, else a
+/// [`content_dot`] when `mark` names what the section holds; `trailing` follows them.
+pub fn section_tab(
+    ids: &SectionTabIds,
+    ix: usize,
+    label: impl Into<SharedString>,
+    count: Option<usize>,
+    mark: Option<SharedString>,
+    trailing: Option<AnyElement>,
+) -> impl IntoElement {
+    let badge = count.and_then(count_badge);
+    let mark = if badge.is_some() { None } else { mark };
+    let marker = match badge {
+        Some(badge) => Some(
+            div()
+                .id((ids.count, ix))
+                .test_support()
+                .child(badge)
+                .into_any_element(),
+        ),
+        None => mark.clone().map(|words| {
+            content_dot((ids.mark, ix), words)
+                .test_support()
+                .into_any_element()
+        }),
+    };
+    // The dot is too small to aim at, so the whole tab says what it marks.
+    h_flex()
+        .id((ids.tab, ix))
+        .test_support()
+        .relative()
+        .when_some(mark, |d, words| d.tooltip(text_tooltip(ids.tooltip, words)))
+        .line_height(relative(TAB_LINE_HEIGHT))
+        .px(SPACE_0)
+        .gap(SPACE_1)
+        .items_center()
+        .child(div().id((ids.label, ix)).test_support().child(label.into()))
+        .children(marker)
+        .children(trailing)
 }
 
 /// The key context an [`icon_button`]'s tooltip finds its action's shortcut in. Each such

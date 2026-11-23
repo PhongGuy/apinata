@@ -103,6 +103,8 @@ pub struct BranchPicker {
     workspace: Entity<Workspace>,
     root: PathBuf,
     branches: Vec<Branch>,
+    // The configured remotes as of the last listing; None until one lands.
+    remotes: Option<Vec<String>>,
     current: Option<String>,
     activity: Activity,
     notice: Option<Notice>,
@@ -140,6 +142,7 @@ impl BranchPicker {
             current: git_head::branch_label(&root),
             root,
             branches: Vec::new(),
+            remotes: None,
             activity: Activity::Listing,
             notice: None,
             cancel: CancelFlag::new(),
@@ -176,6 +179,12 @@ impl BranchPicker {
         &self.branches
     }
 
+    /// Whether the last listing found no remote, so there is nothing to fetch, pull or push.
+    /// False until a listing lands, and when the remotes could not be read.
+    pub fn lacks_remote(&self) -> bool {
+        self.remotes.as_ref().is_some_and(Vec::is_empty)
+    }
+
     /// The checked-out branch, if HEAD is on one.
     pub fn current(&self) -> Option<&str> {
         self.current.as_deref()
@@ -199,8 +208,8 @@ impl BranchPicker {
             .unwrap_or_default()
     }
 
-    // Lists the branches and rereads HEAD in the background; an unreadable repository leaves the
-    // list empty. Only the newest listing lands, and it ends the listing or fetch that started
+    // Lists the branches and remotes and rereads HEAD in the background; an unreadable
+    // repository leaves the list empty and the remotes unknown. Only the newest listing lands, and it ends the listing or fetch that started
     // it, never a switch or a fetch begun after it.
     fn relist(&mut self, cx: &mut Context<Self>) {
         self.listing += 1;
@@ -210,10 +219,11 @@ impl BranchPicker {
         let (root, options) = (self.root.clone(), self.options(cx));
         let rx = off_thread(move || {
             let listed = apinata_core::branches(&root, &options);
-            (listed, git_head::branch_label(&root))
+            let remotes = apinata_core::remotes(&root, &options).ok();
+            (listed, remotes, git_head::branch_label(&root))
         });
         cx.spawn(async move |this, cx| {
-            let Ok((listed, current)) = rx.recv().await else {
+            let Ok((listed, remotes, current)) = rx.recv().await else {
                 return;
             };
             let _ = this.update(cx, |this, cx| {
@@ -221,6 +231,7 @@ impl BranchPicker {
                     return;
                 }
                 this.branches = listed.unwrap_or_default();
+                this.remotes = remotes;
                 this.current = current;
                 if ends == Some(this.activity) {
                     this.activity = Activity::Idle;
