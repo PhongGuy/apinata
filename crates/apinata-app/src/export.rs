@@ -157,14 +157,89 @@ fn count(notes: &[ExportNote], kind: ExportNoteKind) -> usize {
     notes.iter().filter(|n| n.kind == kind).count()
 }
 
+/// How long a toast for an export with a report shows, three times the kit's own timeout.
+pub const EXPORT_TOAST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// The id type of every export's toast; its key counts the session's exports.
+pub struct ExportToast;
+
+gpui_kit::actions!(
+    apinata,
+    [
+        /// Opens the report of this session's most recent export, if it left one.
+        ShowLastExportReport
+    ]
+);
+
+// A report's summary and its groups, as `import_report::open_report` takes them.
+type Report = (String, Vec<(Option<&'static str>, Vec<String>)>);
+
+// The session's most recent export: how many have toasted, and its report, None when it
+// carried everything over unchanged.
+#[derive(Default)]
+struct LastExport {
+    count: u64,
+    report: Option<Report>,
+}
+
+impl gpui_kit::Global for LastExport {}
+
+/// Whether this session's most recent export left a report to reopen.
+pub fn has_last_report(cx: &App) -> bool {
+    cx.try_global::<LastExport>()
+        .is_some_and(|l| l.report.is_some())
+}
+
+/// Opens the report of this session's most recent export; does nothing if it left none.
+pub fn open_last_report(window: &mut Window, cx: &mut App) {
+    let report = cx.try_global::<LastExport>().and_then(|l| l.report.clone());
+    if let Some((summary, groups)) = report {
+        crate::import_report::open_report("Export report", REPORT_IDS, summary, groups, window, cx);
+    }
+}
+
+// Toasts a finished export and keeps its report for the palette. A toast with a report stays
+// longer than the kit's fixed timeout allows, so it turns that off and a timer closes it.
+fn show_exported(path: &Path, notes: Vec<ExportNote>, window: &mut Window, cx: &mut App) {
+    let report = (!notes.is_empty()).then(|| (report_summary(path, &notes), report_groups(&notes)));
+    let last = cx.default_global::<LastExport>();
+    last.count += 1;
+    last.report = report.clone();
+    let key = gpui_kit::ElementId::from(last.count as usize);
+    window.push_notification(
+        exported_toast(
+            path,
+            exported_message(path, &notes),
+            report.clone(),
+            key.clone(),
+        ),
+        cx,
+    );
+    if report.is_none() {
+        return;
+    }
+    window
+        .spawn(cx, async move |cx| {
+            cx.background_executor().timer(EXPORT_TOAST_TIMEOUT).await;
+            cx.update(|window, cx| window.remove_notification1::<ExportToast>(key, cx))
+                .ok();
+        })
+        .detach();
+}
+
 // The toast after a collection export, with a button that shows the file in its folder. When
-// the report has anything, "Show details" opens it, so the reader can judge the file before
-// sharing it, and the toast stays until dismissed.
-fn exported_toast(path: &Path, notes: Vec<ExportNote>) -> Notification {
-    let toast = ui::info_toast(exported_message(path, &notes)).autohide(notes.is_empty());
+// the export left a report, "Show details" opens it, so the reader can judge the file before
+// sharing it.
+fn exported_toast(
+    path: &Path,
+    message: String,
+    details: Option<Report>,
+    key: gpui_kit::ElementId,
+) -> Notification {
+    let toast = ui::info_toast(message)
+        .id1::<ExportToast>(key)
+        .autohide(details.is_none());
     let folder = path.parent().map(Path::to_path_buf).unwrap_or_default();
-    let details =
-        (!notes.is_empty()).then(|| (report_summary(path, &notes), report_groups(&notes)));
     toast.content(move |_, _, cx| {
         let this = cx.entity();
         let details = details.clone().map(|(summary, groups)| {
@@ -282,12 +357,15 @@ pub fn export_collection(
                 write_export(&path, text.as_bytes())?;
                 Ok::<_, String>((path, notes))
             });
-            let note = match job.await {
-                Ok((path, notes)) => exported_toast(&path, notes),
-                Err(e) => Notification::error(format!("Could not export the collection: {e}")),
-            };
-            cx.update(|window, cx| window.push_notification(note, cx))
-                .ok();
+            let outcome = job.await;
+            cx.update(|window, cx| match outcome {
+                Ok((path, notes)) => show_exported(&path, notes, window, cx),
+                Err(e) => {
+                    let note = Notification::error(format!("Could not export the collection: {e}"));
+                    window.push_notification(note, cx);
+                }
+            })
+            .ok();
         })
         .detach();
 }

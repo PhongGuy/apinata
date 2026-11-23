@@ -3266,6 +3266,9 @@ impl Render for Shell {
             .on_action(|_: &OpenCookies, window, cx| {
                 open_cookie_jar(window, cx);
             })
+            .on_action(|_: &crate::export::ShowLastExportReport, window, cx| {
+                crate::export::open_last_report(window, cx)
+            })
             .on_action(|_: &crate::about::OpenAbout, window, cx| {
                 crate::about::open(window, cx);
             })

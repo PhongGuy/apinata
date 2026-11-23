@@ -25,6 +25,7 @@ use crate::body_node::{
     AssertCaretJsonValue, CopyCaretJsonPath, CopyCaretJsonValue, SetCaretJsonVariable,
 };
 use crate::commands::registry;
+use crate::export::ShowLastExportReport;
 use crate::keymap::{
     DiscardChanges, OpenCollectionSettings, RedoActive, RunCollection, RunFolder, SaveActive,
     ToggleOrientation, UndoActive,
@@ -335,6 +336,8 @@ pub struct Availability {
     pub mock_on: bool,
     /// "Team sync…": the current collection syncs with a team server.
     pub team_sync: bool,
+    /// "Last export report": an export in this session left a report.
+    pub last_export: bool,
 }
 
 impl Availability {
@@ -382,6 +385,7 @@ impl Availability {
             side_by_side: true,
             mock_on: false,
             team_sync: true,
+            last_export: true,
         }
     }
 }
@@ -485,6 +489,7 @@ pub fn palette_items_for(available: Availability) -> Vec<PaletteEntry> {
         (available.updates, CheckForUpdates.name()),
         (available.side_by_side, ToggleOrientation.name()),
         (available.team_sync, ShowTeamSync.name()),
+        (available.last_export, ShowLastExportReport.name()),
     ]
     .into_iter()
     .filter(|(on, _)| !on)
@@ -795,6 +800,7 @@ fn availability_now(
             let w = w.read(cx);
             (w.current_root()).is_some_and(|r| w.team_status(&r).is_some())
         }),
+        last_export: crate::export::has_last_report(cx),
     }
 }
 

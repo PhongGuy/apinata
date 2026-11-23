@@ -17,6 +17,7 @@ use crate::config_editor::SaveConfig;
 use crate::env_editor::SaveEnvironment;
 use crate::env_selector::{IMPORT_ENVIRONMENT, MANAGE_ENVIRONMENTS};
 use crate::env_table::ENV_TABLE_CONTEXT as ENV_TABLE;
+use crate::export::ShowLastExportReport;
 use crate::history_palette::OpenHistory;
 use crate::keymap::{
     DIALOG_CONTEXT, DiscardChanges, FocusResponse, FocusUrl, NewGraphqlRequest, NewRequest,
@@ -364,6 +365,13 @@ pub fn registry() -> Vec<Command> {
             shell(ExportCollectionHtml),
             &[],
         )),
+        command(
+            "collection.last_export_report",
+            "Last export report",
+            Collection,
+            shell(ShowLastExportReport),
+            &[],
+        ),
         asks(command(
             "collection.new",
             "New collection…",
