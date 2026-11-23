@@ -25,7 +25,12 @@ fn listed(a: Availability, id: &str) -> bool {
 
 // One row per flag: how to clear it in an Availability, and the commands it governs.
 type Clear = fn(&mut Availability);
-const FLAGS: [(&str, Clear, &[&str]); 33] = [
+const FLAGS: [(&str, Clear, &[&str]); 34] = [
+    (
+        "selection_codec",
+        |a| a.selection_codec = false,
+        &["edit.percent_encode", "edit.percent_decode"],
+    ),
     (
         "last_export",
         |a| a.last_export = false,
@@ -82,6 +87,7 @@ const FLAGS: [(&str, Clear, &[&str]); 33] = [
             "request.save_as_example",
             "request.export_har",
             "request.compare_response",
+            "request.recheck_assertions",
         ],
     ),
     (
@@ -764,10 +770,11 @@ fn the_demo_command_is_listed_with_or_without_a_collection() {
 }
 
 // The commands that act on the response a request tab shows.
-const RESPONSE_ONLY: [&str; 3] = [
+const RESPONSE_ONLY: [&str; 4] = [
     "request.save_as_example",
     "request.export_har",
     "request.compare_response",
+    "request.recheck_assertions",
 ];
 
 #[gpui_kit::test]

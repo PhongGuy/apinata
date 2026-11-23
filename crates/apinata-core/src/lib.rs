@@ -88,6 +88,7 @@ mod oauth2;
 mod opaque;
 mod order;
 mod paging;
+mod percent_text;
 mod post_response;
 mod presets;
 mod prompt;
@@ -277,6 +278,7 @@ pub use oauth2::{
 };
 pub use opaque::OpaqueItem;
 pub use paging::{MAX_PAGE_LIMIT, PageError};
+pub use percent_text::{NotUtf8, percent_decode, percent_encode, widen_to_placeholders};
 pub use post_response::{
     PostResponseVar, VarOutcome, VarResult, apply_post_response_vars, variable_name_problem,
 };
@@ -292,8 +294,8 @@ pub use resolve::{
 pub use response::{CookieOrigin, HOP_BODY_LIMIT, Hop, Response};
 pub use results_report::ResultsReport;
 pub use runner::{
-    Outcome, RequestResult, RunError, RunEvent, RunOptions, RunPlan, RunReport, SelectError,
-    StatusRule, Summary, rerun_slots, run, send_one,
+    Outcome, RecheckRefused, RequestResult, RunError, RunEvent, RunOptions, RunPlan, RunReport,
+    SelectError, StatusRule, Summary, recheck_assertions, rerun_slots, run, send_one,
 };
 pub use runtime_vars::{RuntimeVar, RuntimeVars};
 pub use schema_test::schema_test_script;

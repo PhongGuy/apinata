@@ -26,6 +26,7 @@ use crate::keymap::{
     ToggleConsole, ToggleOrientation, ToggleSidebar, ToggleTheme, UndoActive, ZoomIn, ZoomOut,
 };
 use crate::palette::{GoToRequest, OpenCommandPalette, PaletteGroup};
+use crate::percent_codec::{PercentDecode, PercentEncode};
 use crate::preferences::{KEY_CONTEXT as PREFERENCES, OpenPreferences};
 use crate::renames_dialog::CheckSecretRenames;
 use crate::request_editor::{
@@ -52,8 +53,8 @@ use crate::tab_area::{
     ActivateLastTab, ActivateNextTab, ActivatePrevTab, ActivateTab, BeautifyBody, BeautifyQuery,
     CloseAllTabs, CloseOtherTabs, CloseSavedTabs, CloseTab, CloseTabsToTheLeft,
     CloseTabsToTheRight, Compare, ConvertToGraphql, ConvertToHttp, CopyAsCurl, DuplicateTab,
-    ExportHar, GenerateCode, GoBack, GoForward, MinifyBody, PinTab, ReopenClosedTab,
-    RevealInSidebar, SaveAll, SaveAsExample, SendActive, StopActive, UnpinTab,
+    ExportHar, GenerateCode, GoBack, GoForward, MinifyBody, PinTab, RecheckAssertions,
+    ReopenClosedTab, RevealInSidebar, SaveAll, SaveAsExample, SendActive, StopActive, UnpinTab,
 };
 use crate::ui::{CODE_EDITOR_CONTEXT as CODE_EDITOR, FocusNextControl, FocusPreviousControl};
 use crate::updates::CheckForUpdates;
@@ -626,6 +627,13 @@ pub fn registry() -> Vec<Command> {
             "Compare response",
             Request,
             shell(Compare),
+            &[],
+        ),
+        command(
+            "request.recheck_assertions",
+            "Re-check assertions",
+            Request,
+            shell(RecheckAssertions),
             &[],
         ),
         command(
@@ -1334,6 +1342,26 @@ pub fn registry() -> Vec<Command> {
                 shell(OpenGlobalEnvironments),
                 &[],
             )),
+        ),
+        found_by(
+            &["url", "escape", "uri"],
+            command(
+                "edit.percent_encode",
+                "Percent-encode selection",
+                Edit,
+                shell(PercentEncode),
+                &[],
+            ),
+        ),
+        found_by(
+            &["url", "unescape", "uri"],
+            command(
+                "edit.percent_decode",
+                "Percent-decode selection",
+                Edit,
+                shell(PercentDecode),
+                &[],
+            ),
         ),
     ]);
     cmds

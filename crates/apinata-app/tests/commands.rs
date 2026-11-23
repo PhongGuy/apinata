@@ -65,6 +65,7 @@ const IDS: &[&str] = &[
     "request.save_as_example",
     "request.export_har",
     "request.compare_response",
+    "request.recheck_assertions",
     "request.copy_json_value",
     "request.copy_json_path",
     "request.set_json_variable",
@@ -149,6 +150,8 @@ const IDS: &[&str] = &[
     "environment.variables_overview",
     "environment.runtime_variables",
     "environment.manage_globals",
+    "edit.percent_encode",
+    "edit.percent_decode",
 ];
 
 type Triple = (String, String, String);

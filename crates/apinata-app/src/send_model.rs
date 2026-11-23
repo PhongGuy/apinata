@@ -7,8 +7,9 @@ use std::time::{Duration, Instant, SystemTime};
 
 use apinata_core::sse::SseEvent;
 use apinata_core::{
-    CancelHandle, DraftSnapshot, ExecutionMode, ItemPath, RequestFile, RequestResult, RunEvent,
-    RunOptions, StreamLimits, VarContext, known_secrets,
+    CancelHandle, DraftSnapshot, ExecutionMode, ItemPath, Outcome, RecheckRefused, RequestFile,
+    RequestResult, RunEvent, RunOptions, StreamLimits, VarContext, Verdict, known_secrets,
+    recheck_assertions,
 };
 use gpui_kit::{App, AsyncApp, Context, Entity, Global, Task, WeakEntity, WeakFocusHandle};
 
@@ -101,6 +102,9 @@ pub struct SendModel {
     kept_task: Option<Task<()>>,
     // The control the next send's sign-in dialog hands focus back to; each send takes it.
     sign_in_opener: Option<WeakFocusHandle>,
+    // The result a re-check produced, so its script tests can say they are the send's.
+    rechecked: Option<std::sync::Weak<RequestResult>>,
+    recheck_task: Option<Task<()>>,
 }
 
 impl SendModel {
@@ -134,6 +138,8 @@ impl SendModel {
             kept: None,
             kept_task: None,
             sign_in_opener: None,
+            rechecked: None,
+            recheck_task: None,
         }
     }
 
@@ -599,6 +605,111 @@ impl SendModel {
         };
         let note = self.json_note.as_ref()?;
         std::ptr::eq(note.result.as_ptr(), Arc::as_ptr(shown)).then_some(note.text.as_str())
+    }
+
+    /// Why the shown result's assertions cannot be re-checked; `None` when they can.
+    pub fn recheck_refusal(&self) -> Option<RecheckRefused> {
+        match &self.state {
+            SendState::Done(shown) => shown.recheck_refusal(),
+            _ => Some(RecheckRefused::NoResponse),
+        }
+    }
+
+    /// Whether the shown result's assertions came from a re-check, so its script tests are the
+    /// send's own.
+    pub fn is_rechecked(&self) -> bool {
+        match (&self.state, &self.rechecked) {
+            (SendState::Done(shown), Some(r)) => std::ptr::eq(r.as_ptr(), Arc::as_ptr(shown)),
+            _ => false,
+        }
+    }
+
+    /// Re-evaluates the shown result's assertions as `item` in `root` now stands, against the
+    /// response it kept; nothing is sent. Does nothing while sending or when refused.
+    pub fn recheck(&mut self, root: &Path, item: ItemPath, cx: &mut Context<Self>) {
+        let SendState::Done(shown) = &self.state else {
+            return;
+        };
+        if self.recheck_refusal().is_some() {
+            return;
+        }
+        let shown = Arc::downgrade(shown);
+        let (reply, answer) = async_channel::bounded(1);
+        let planned = self
+            .workspace
+            .update(cx, |w, cx| w.send(root, Command::Plan { item, reply }, cx));
+        if planned.is_none() {
+            return;
+        }
+        let memory = self.workspace.read(cx).prompt_memory(root, cx);
+        self.recheck_task = Some(cx.spawn(async move |this, cx| {
+            let Ok(planned) = await_plan(answer).await else {
+                return;
+            };
+            let Some(file) = planned.plan.requests().next().cloned() else {
+                return;
+            };
+            // Prompt variables read the answers last given, since a re-check asks nothing.
+            let answers: Vec<(String, String)> =
+                apinata_core::prompt_labels(&file, &planned.context)
+                    .into_iter()
+                    .filter_map(|label| Some((label.clone(), memory.as_ref()?.get(&label)?)))
+                    .collect();
+            let context = planned.context.with_prompt_values(answers);
+            let _ = this.update(cx, |m, cx| m.apply_recheck(&shown, &file, &context, cx));
+        }));
+    }
+
+    // Puts the re-checked verdicts on screen, unless another result replaced the one checked.
+    fn apply_recheck(
+        &mut self,
+        checked: &std::sync::Weak<RequestResult>,
+        file: &RequestFile,
+        ctx: &VarContext,
+        cx: &mut Context<Self>,
+    ) {
+        let SendState::Done(shown) = &self.state else {
+            return;
+        };
+        if !std::ptr::eq(checked.as_ptr(), Arc::as_ptr(shown)) {
+            return;
+        }
+        let Ok(assertions) = recheck_assertions(file, shown, ctx) else {
+            return;
+        };
+        let mut result = (**shown).clone();
+        result.assertions = assertions;
+        // Only a judged outcome follows the new verdicts; an errored or cancelled one stands.
+        if matches!(result.outcome, Outcome::Passed | Outcome::Failed) {
+            let failed = (result.assertions.iter())
+                .any(|a| matches!(a.verdict(), Verdict::Fail { .. }))
+                || result
+                    .tests
+                    .iter()
+                    .any(|t| matches!(t.verdict, Verdict::Fail { .. }))
+                || result.status_failure.is_some();
+            result.outcome = if failed {
+                Outcome::Failed
+            } else {
+                Outcome::Passed
+            };
+        }
+        let old = Arc::as_ptr(shown);
+        let result = Arc::new(result);
+        // Notes and the kept-send link tied to the checked result follow it to the new one.
+        if let Some((sent, _)) = &mut self.kept
+            && std::ptr::eq(sent.as_ptr(), old)
+        {
+            *sent = Arc::downgrade(&result);
+        }
+        if let Some(note) = &mut self.json_note
+            && std::ptr::eq(note.result.as_ptr(), old)
+        {
+            note.result = Arc::downgrade(&result);
+        }
+        self.rechecked = Some(Arc::downgrade(&result));
+        self.state = SendState::Done(result);
+        cx.notify();
     }
 
     /// [`SendModel::restored`] borrowed, for a caller that reads it on every render.

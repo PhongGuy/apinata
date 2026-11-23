@@ -106,6 +106,7 @@ pub fn start_with_trash(
     crate::keymap::init(cx);
     crate::zoom::install_dialog_zoom(cx);
     crate::input_rest::install(cx);
+    crate::percent_codec::install(cx);
     crate::generate_code::init();
     crate::graphql_highlight::init();
     let settings = load_json::<Settings>(&paths.settings);
