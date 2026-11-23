@@ -672,10 +672,7 @@ fn the_two_variables_commands_say_what_each_does() {
         label("environment.variables_overview"),
         "Show all variables…"
     );
-    assert_eq!(
-        label("environment.runtime_variables"),
-        "Edit variables set by requests…"
-    );
+    assert_eq!(label("environment.runtime_variables"), "Runtime variables…");
 }
 
 #[test]

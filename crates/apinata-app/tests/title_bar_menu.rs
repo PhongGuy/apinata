@@ -192,7 +192,7 @@ fn the_menu_is_five_groups_named_by_the_registry() {
                 "Manage globals…",
                 "Import environment…",
                 "Cookies…",
-                "Edit variables set by requests…",
+                "Runtime variables…",
                 "History…",
             ],
             vec![
