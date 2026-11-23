@@ -39,17 +39,20 @@ use gpui_kit::{
 
 use crate::app::AppState;
 use crate::body_text::{encoded_size_label, format_size, format_time, size_labels};
-use crate::body_view::{BodyView, MASKED, SCRUBBED_TIP, SetVariable, Shown};
+use crate::body_view::{BodyView, SCRUBBED_TIP, SetVariable, Shown};
 use crate::compare_rows::{ComparePalette, RevealHeader, RowActions, Toggle, compare_row};
 use crate::compare_source::{self, CompareSide, CompareSource, HeaderValue, SourceChoice};
 use crate::compare_view::{self, CompareRow};
+use crate::cookie_jar::{
+    HTTP_ONLY_LABEL, HTTP_ONLY_TIP, SECURE_LABEL, SECURE_TIP, host_search, open_cookie_jar,
+};
 use crate::diff_doc::DiffRow;
 use crate::download_model::DownloadModel;
 use crate::executor;
 use crate::kv_grid::{ActionShow, KvColumn, action_slot};
 use crate::last_response::{self, KeptAs, KeptSend, ResponseStore, StoreOp, Stored};
 use crate::live_stream::{self, EventRow};
-use crate::request_editor::SendRequest;
+use crate::request_editor::{SendRequest, ShowRequestSettings};
 use crate::save_example;
 use crate::scroll_follow::{FocusFollow, Followed};
 use crate::send_model::{SendModel, SendState};
@@ -118,6 +121,8 @@ pub struct ErrorView {
     pub add_variable: Option<String>,
     /// The other environments defining the variable, each offered as a "Switch to" button.
     pub use_environments: Vec<String>,
+    /// Whether a "Timeout setting" link to the request's Settings section is offered.
+    pub settings_link: bool,
 }
 
 /// The block for a run's `error`; `details` is its redacted text and `env` the selected
@@ -132,6 +137,7 @@ pub fn describe_error(error: &RunError, details: &str, env: Option<&str>) -> Err
         retry,
         add_variable: None,
         use_environments: Vec::new(),
+        settings_link: false,
     };
     let undefined = match error {
         RunError::Resolve(ResolveError::UndefinedVariable { name, .. })
@@ -176,6 +182,7 @@ pub fn describe_error(error: &RunError, details: &str, env: Option<&str>) -> Err
             retry: true,
             add_variable: None,
             use_environments: Vec::new(),
+            settings_link: false,
         },
         RunError::Exec(ExecError::Connect { url, cause, .. }) => {
             let hint = ConnectHint::new(url, *cause);
@@ -190,12 +197,18 @@ pub fn describe_error(error: &RunError, details: &str, env: Option<&str>) -> Err
             };
             view(kind, hint.title(), hint.sentence().to_owned(), true)
         }
-        RunError::Exec(ExecError::Timeout { .. }) => view(
-            ErrorKind::Timeout,
-            "Timed out",
-            "No response within the request timeout.".into(),
-            true,
-        ),
+        // A run-wide cap is not the request's setting, so only the request's own limit links to it.
+        RunError::Exec(ExecError::Timeout {
+            limit, run_wide, ..
+        }) => ErrorView {
+            settings_link: run_wide.is_none(),
+            ..view(
+                ErrorKind::Timeout,
+                "Timed out",
+                timeout_sentence(*limit, *run_wide),
+                true,
+            )
+        },
         RunError::Exec(ExecError::Proxy { proxy, .. }) => view(
             ErrorKind::Proxy,
             "Proxy error",
@@ -264,6 +277,29 @@ pub fn transport_text(error: &ExecError) -> Option<String> {
     transport.then_some(format!("{}: {}", view.title, view.sentence?))
 }
 
+/// The timeout block's sentence: the limit that ran out, named as run-wide when the cap was it,
+/// or the plain sentence when the send did not know the limit.
+pub fn timeout_sentence(limit: Option<Duration>, run_wide: Option<Duration>) -> String {
+    match (run_wide, limit) {
+        (Some(cap), _) => format!(
+            "No response within the run-wide timeout of {}.",
+            limit_text(cap)
+        ),
+        (None, Some(limit)) => format!("No response within {}.", limit_text(limit)),
+        (None, None) => "No response within the request timeout.".into(),
+    }
+}
+
+// A limit as the Settings timeout row writes it: whole milliseconds under a second, else
+// seconds without trailing zeros, so 2000 ms reads "2 s".
+fn limit_text(d: Duration) -> String {
+    if d < Duration::from_secs(1) {
+        format!("{} ms", d.as_millis())
+    } else {
+        format!("{} s", d.as_secs_f64())
+    }
+}
+
 /// The block for a send stopped before any run (a plan error, a closed collection).
 pub fn describe_failure(message: &str) -> ErrorView {
     ErrorView {
@@ -275,6 +311,7 @@ pub fn describe_failure(message: &str) -> ErrorView {
         retry: false,
         add_variable: None,
         use_environments: Vec::new(),
+        settings_link: false,
     }
 }
 
@@ -643,6 +680,7 @@ pub struct ResponsePane {
     age_ticker: Option<(SystemTime, Task<()>)>,
     focus: FocusHandle,
     retry: bool,
+    settings_link: bool,
     save_example: bool,
     elapsed: bool,
     // The tabs on offer, a subset of `ResponseTab::BASE` in its order.
@@ -823,6 +861,7 @@ impl ResponsePane {
             age_ticker: None,
             focus: cx.focus_handle(),
             retry: true,
+            settings_link: true,
             save_example: true,
             elapsed: true,
             tabs: &ResponseTab::BASE,
@@ -887,6 +926,13 @@ impl ResponsePane {
     /// send again.
     pub fn without_retry(mut self) -> Self {
         self.retry = false;
+        self
+    }
+
+    /// The same pane without the timeout block's settings link, for a host with no request
+    /// editor to open.
+    pub fn without_settings_link(mut self) -> Self {
+        self.settings_link = false;
         self
     }
 
@@ -1180,11 +1226,7 @@ impl ResponsePane {
     // Snapshot the jar's cookies for the final URL's host. Listing happens on a new result
     // or a delete, never per frame, so rendering never takes the jar's lock.
     fn list_cookies(&mut self, cx: &App) {
-        let host = done(self.send.read(cx)).and_then(|r| {
-            let url = url::Url::parse(r.response.as_ref()?.url()).ok()?;
-            url.host_str().map(str::to_owned)
-        });
-        self.cookies = match (host, executor::shared(cx)) {
+        self.cookies = match (self.jar_host(cx), executor::shared(cx)) {
             (Some(host), Some(exec)) => exec
                 .cookies()
                 .list()
@@ -1193,6 +1235,14 @@ impl ResponsePane {
                 .collect(),
             _ => Vec::new(),
         };
+    }
+
+    // The host of the shown result's final URL, whose cookies the Jar view lists.
+    fn jar_host(&self, cx: &App) -> Option<String> {
+        done(self.send.read(cx)).and_then(|r| {
+            let url = url::Url::parse(r.response.as_ref()?.url()).ok()?;
+            url.host_str().map(str::to_owned)
+        })
     }
 
     /// The selected tab.
@@ -1448,6 +1498,7 @@ impl ResponsePane {
             retry: self.retry,
             add_variable: None,
             use_environments: Vec::new(),
+            settings_link: false,
         }
     }
 
@@ -1467,6 +1518,7 @@ impl ResponsePane {
             SendState::Done(r) => self.done_error(r, cx)?,
         };
         view.retry &= self.retry;
+        view.settings_link &= self.settings_link;
         Some(view)
     }
 
@@ -1479,6 +1531,7 @@ impl ResponsePane {
         };
         let mut view = self.done_error(r, cx)?;
         view.retry &= self.retry;
+        view.settings_link &= self.settings_link;
         Some(view)
     }
 
@@ -1968,8 +2021,8 @@ impl ResponsePane {
             ("cookie-domain", "Domain"),
             ("cookie-path", "Path"),
             ("cookie-expires", "Expires"),
-            ("cookie-http-only", "HttpOnly"),
-            ("cookie-secure", "Secure"),
+            ("cookie-http-only", HTTP_ONLY_LABEL),
+            ("cookie-secure", SECURE_LABEL),
         ];
         let columns = COLUMNS
             .iter()
@@ -1981,7 +2034,17 @@ impl ResponsePane {
                     // Value is the flexible column, so the fixed widths skip index 1.
                     _ => {
                         let fixed = if i == 0 { 0 } else { i - 1 };
-                        KvColumn::fixed(head, cell, *heading, style::COOKIE_FIXED_WIDTHS[fixed])
+                        let column = KvColumn::fixed(
+                            head,
+                            cell,
+                            *heading,
+                            style::COOKIE_FIXED_WIDTHS[fixed],
+                        );
+                        match i {
+                            5 => column.tip(HTTP_ONLY_TIP),
+                            6 => column.tip(SECURE_TIP),
+                            _ => column,
+                        }
                     }
                 }
             })
@@ -2095,6 +2158,25 @@ impl ResponsePane {
             "Copied the cookies",
             cx,
         )
+        .child(self.manage_cookies(cx))
+    }
+
+    // Opens the Cookies dialog to edit or add, its search set to the response's host.
+    fn manage_cookies(&self, cx: &mut Context<Self>) -> Button {
+        let domains: Vec<&str> = self.cookies.iter().map(|c| c.domain.as_str()).collect();
+        let search = self.jar_host(cx).map(|host| host_search(&host, &domains));
+        Button::new("cookies-manage")
+            .solid_ring(cx)
+            .ghost()
+            .small()
+            .label("Manage cookies")
+            .tooltip("Edit or add cookies in the Cookies dialog")
+            .on_click(move |_, window, cx| {
+                let jar = open_cookie_jar(window, cx);
+                if let Some(search) = &search {
+                    jar.update(cx, |j, cx| j.search_for(search, window, cx));
+                }
+            })
     }
 
     // The Headers tab: the filter bar over the rows it keeps; each row has a copy button.
@@ -2323,6 +2405,36 @@ impl ResponsePane {
                 .child(width_probe(&self.min.status))
                 .into_any_element(),
         ];
+        // Followed hops show as a redirect arrow and count that opens the Timeline; a kept
+        // response has no timeline to open, so no count. Wide, it sits outside the fixed facts
+        // and gives way with the address, so the row's floor is unchanged.
+        let hops = r.redirects_followed();
+        let mut redirects = None;
+        if hops > 0 && !r.timeline().is_empty() {
+            let text = match hops {
+                1 => "1 redirect".to_owned(),
+                n => format!("{n} redirects"),
+            };
+            // A ghost button like the row's other actions, so Tab reaches it; the slot around it
+            // is what shrinks.
+            let button = Button::new("response-redirects")
+                .solid_ring(cx)
+                .ghost()
+                .compact()
+                .icon(ui::glyph("response-redirects", AssetIcon::CornerDownRight))
+                .label(hops.to_string())
+                .accessibility_label(text.clone())
+                .tooltip(format!("{text} followed. Open the Timeline."))
+                .on_click(cx.listener(|p, _, _, cx| p.set_tab(ResponseTab::Timeline, cx)));
+            redirects = Some(
+                h_flex()
+                    .min_w_0()
+                    .flex_shrink(0.1)
+                    .overflow_hidden()
+                    .child(button)
+                    .into_any_element(),
+            );
+        }
         // A GraphQL failure answers 200, so its errors read beside the status as a warning,
         // cut at a fixed width with the whole summary in the tooltip.
         before.extend(self.graphql_summary(result, cx).map(|text| {
@@ -2407,6 +2519,7 @@ impl ResponsePane {
                 .gap(style::SPACE_2)
                 .items_center()
                 .children(before)
+                .children(redirects)
                 // Nothing when the peer is unknown; a narrow pane leaves it to the Timeline.
                 .children(address)
                 .children(after)
@@ -2570,16 +2683,38 @@ impl ResponsePane {
             ErrorTone::Danger => (IconName::CircleAlert, cx.theme().danger),
         };
         let open = self.details_open;
-        let toggle = view.message.as_ref().map(|_| {
-            Button::new("response-error-details-toggle")
-                .solid_ring(cx)
-                .ghost()
+        // The toggle reads as a button, and an open box offers its text for the clipboard.
+        let toggle = view.message.as_ref().map(|message| {
+            let toggle = error_action("response-error-details-toggle", cx)
                 .small()
                 .label(if open { "Hide details" } else { "Show details" })
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.details_open = !this.details_open;
                     cx.notify();
-                }))
+                }));
+            let text = message.clone();
+            let copy = error_action("response-error-details-copy", cx)
+                .small()
+                .icon(IconName::Copy)
+                .label("Copy")
+                .accessibility_label("Copy details")
+                .on_click(move |_, window, cx| {
+                    copy_with_toast(text.clone(), "Copied the details", window, cx)
+                });
+            h_flex()
+                .gap(style::SPACE_2)
+                .child(toggle)
+                .when(open, |row| row.child(copy))
+        });
+        let settings = view.settings_link.then(|| {
+            Button::new("response-timeout-settings")
+                .solid_ring(cx)
+                .link()
+                .small()
+                .label("Timeout setting")
+                .on_click(|_, window, cx| {
+                    window.dispatch_action(ShowRequestSettings.boxed_clone(), cx)
+                })
         });
         let details = view.message.clone().filter(|_| open).map(|text| {
             div()
@@ -2619,6 +2754,7 @@ impl ResponsePane {
                     .text_color(cx.theme().muted_foreground)
                     .child(sentence)
             }))
+            .children(settings)
             .children(toggle)
             .children(details)
             .child(
@@ -2964,22 +3100,34 @@ impl ResponsePane {
                     .restored()
                     .is_some_and(|r| r.body_dropped) =>
                 {
-                    div()
-                        .id("response-body-dropped")
-                        .test_support()
-                        .p(style::SPACE_2)
-                        .text_size(style::TEXT_SMALL)
-                        .text_color(cx.theme().muted_foreground)
-                        .child("Body too large to keep")
+                    v_flex()
+                        .w_full()
+                        .children(redirect_stop_note(result, cx))
+                        .child(
+                            div()
+                                .id("response-body-dropped")
+                                .test_support()
+                                .p(style::SPACE_2)
+                                .text_size(style::TEXT_SMALL)
+                                .text_color(cx.theme().muted_foreground)
+                                .child("Body too large to keep"),
+                        )
                         .into_any_element()
                 }
-                None => div()
-                    .id("response-body")
-                    .test_support()
+                None => v_flex()
                     .flex_1()
                     .min_h_0()
                     .w_full()
-                    .child(self.body.clone())
+                    .children(redirect_stop_note(result, cx))
+                    .child(
+                        div()
+                            .id("response-body")
+                            .test_support()
+                            .flex_1()
+                            .min_h_0()
+                            .w_full()
+                            .child(self.body.clone()),
+                    )
                     .into_any_element(),
             },
             ResponseTab::Headers => self.headers_list(result, cx),
@@ -3424,12 +3572,13 @@ impl ResponsePane {
         self.cookie_table(now)
             .into_iter()
             .map(|mut c| {
-                // Every value is hidden, as the console hides the whole Set-Cookie header.
+                // Every value hides behind the Cookies dialog's dots, since cookie values are
+                // often session tokens; "[redacted]" stays reserved for scrubbed secrets.
                 let mask = (m.cookies.entry(c.value.clone())).or_insert_with(|| Masked {
                     hidden: if c.value.is_empty() {
                         String::new()
                     } else {
-                        MASKED.to_owned()
+                        NAME_MASK.to_owned()
                     },
                     revealed: c.value.clone(),
                 });
@@ -3459,7 +3608,7 @@ impl ResponsePane {
                 }
                 let on = m.revealed_set.contains(&c.key);
                 if !on {
-                    c.value = MASKED.to_owned();
+                    c.value = NAME_MASK.to_owned();
                 }
                 (c, Some(on))
             })
@@ -4126,8 +4275,8 @@ pub fn header_lines(pairs: &[(String, String)], filter: &str) -> String {
         .join("\n")
 }
 
-/// The `(index, cookie)` of each cookie whose name, value or domain contains `filter`,
-/// ignoring case.
+/// The `(index, cookie)` of each cookie whose name, domain, path or shown value contains
+/// `filter`, ignoring case; a value shown as [`NAME_MASK`] is hidden and never matches.
 pub fn cookie_shown<'a>(cookies: &'a [CookieCells], filter: &str) -> Vec<(usize, &'a CookieCells)> {
     let f = filter.to_lowercase();
     cookies
@@ -4135,11 +4284,16 @@ pub fn cookie_shown<'a>(cookies: &'a [CookieCells], filter: &str) -> Vec<(usize,
         .enumerate()
         .filter(|(_, c)| {
             f.is_empty()
-                || [&c.name, &c.value, &c.domain]
+                || [&c.name, &c.domain, &c.path, shown_value(&c.value)]
                     .iter()
                     .any(|t| t.to_lowercase().contains(&f))
         })
         .collect()
+}
+
+// A cookie value as the filter reads it: nothing while it is hidden behind the mask.
+fn shown_value(value: &str) -> &str {
+    if value == NAME_MASK { "" } else { value }
 }
 
 /// One cookie as a `Set-Cookie`-style line: `name=value; Domain=..; Path=..` and the
@@ -5650,8 +5804,8 @@ fn set_cookie_cells(r: &RequestResult) -> Vec<SetCookieCells> {
         .collect()
 }
 
-/// The `(index, row)` of each Set-Cookie row whose name, hop or result contains `filter`,
-/// ignoring case.
+/// The `(index, row)` of each Set-Cookie row whose name, hop, result or shown value contains
+/// `filter`, ignoring case; a value shown as [`NAME_MASK`] is hidden and never matches.
 pub fn set_cookie_shown<'a>(
     rows: &'a [SetCookieCells],
     filter: &str,
@@ -5660,7 +5814,7 @@ pub fn set_cookie_shown<'a>(
     (rows.iter().enumerate())
         .filter(|(_, c)| {
             f.is_empty()
-                || [&c.name, &c.hop, &c.result]
+                || [&c.name, &c.hop, &c.result, shown_value(&c.value)]
                     .iter()
                     .any(|t| t.to_lowercase().contains(&f))
         })
@@ -5995,4 +6149,37 @@ fn width_probe_plus(cell: &Rc<Cell<Pixels>>, extra: Rems) -> impl IntoElement {
     )
     .absolute()
     .size_full()
+}
+
+// When the redirect limit ended the chain, a note over the body saying so, naming the last
+// Location masked as the Headers tab masks it.
+fn redirect_stop_note(result: &RequestResult, cx: &App) -> Option<AnyElement> {
+    let r = result.response.as_ref()?;
+    if !r.stopped_at_redirect_limit() {
+        return None;
+    }
+    let mut text = format!(
+        "Stopped after {} redirects (the redirect limit).",
+        r.redirects_followed()
+    );
+    if let Some((name, value)) = r.headers().iter().find(|(n, _)| n == "location") {
+        text.push_str(&format!(
+            " The last Location was {}.",
+            result.redact_header(name, value)
+        ));
+    }
+    Some(
+        div()
+            .id("response-redirect-stop")
+            .test_support()
+            .flex_none()
+            .px(style::SPACE_2)
+            .py(style::SPACE_1)
+            .text_size(style::TEXT_SMALL)
+            .text_color(cx.theme().warning)
+            .bg(crate::theme::status_fill(crate::theme::Status::Warning, cx))
+            .aria_label(text.clone())
+            .child(text)
+            .into_any_element(),
+    )
 }

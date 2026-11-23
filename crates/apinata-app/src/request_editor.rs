@@ -89,7 +89,9 @@ actions!(
         /// Undoes the last edit to a table: params, headers, variables, assertions or form body.
         UndoEdit,
         /// Redoes the table edit [`UndoEdit`] took back.
-        RedoEdit
+        RedoEdit,
+        /// Shows the request's Settings section, as the timeout error's link does.
+        ShowRequestSettings
     ]
 );
 
@@ -2433,6 +2435,7 @@ impl Render for RequestEditor {
             .on_action(cx.listener(|this, _: &UndoEdit, window, cx| this.undo_edit(window, cx)))
             .on_action(cx.listener(|this, _: &RedoEdit, window, cx| this.redo_edit(window, cx)))
             .on_action(cx.listener(Self::send))
+            .on_action(cx.listener(Self::show_settings))
             .on_action(cx.listener(|this, _: &CancelRequest, _, cx| {
                 if !this.cancel_running(cx) {
                     cx.propagate();
@@ -3894,6 +3897,10 @@ impl RequestEditor {
         if inside {
             window.focus(&self.section_body_focus, cx);
         }
+    }
+
+    fn show_settings(&mut self, _: &ShowRequestSettings, _: &mut Window, cx: &mut Context<Self>) {
+        self.show(Section::Settings, cx);
     }
 
     /// Shows `section` under the URL bar.

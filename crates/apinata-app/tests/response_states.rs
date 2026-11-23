@@ -117,6 +117,7 @@ fn a_cancel_mid_flight_is_neutral_and_has_no_tabs(cx: &mut TestAppContext) {
             retry: true,
             add_variable: None,
             use_environments: Vec::new(),
+            settings_link: false,
         })
     );
     assert!(present(cx, win, "response-error"));

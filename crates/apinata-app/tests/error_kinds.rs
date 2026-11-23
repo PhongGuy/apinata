@@ -1,7 +1,7 @@
 //! The friendly error block's classification, one row of the table per case.
 
 use apinata_app::response_pane::{
-    ErrorKind, ErrorTone, ErrorView, describe_error, describe_failure,
+    ErrorKind, ErrorTone, ErrorView, describe_error, describe_failure, timeout_sentence,
 };
 use apinata_core::{ConnectCause, ExecError, OAuth2Error, ResolveError, RunError, UndefinedHint};
 
@@ -392,4 +392,33 @@ fn an_undefined_variable_hint_is_worded_for_the_app() {
             .unwrap()
             .contains("set it in the environment editor")
     );
+}
+
+#[test]
+fn a_timeout_names_the_limit_that_ran_out() {
+    use std::time::Duration;
+    let ms = Duration::from_millis;
+    assert_eq!(
+        timeout_sentence(Some(ms(2000)), None),
+        "No response within 2 s."
+    );
+    assert_eq!(
+        timeout_sentence(Some(ms(1500)), None),
+        "No response within 1.5 s."
+    );
+    assert_eq!(
+        timeout_sentence(Some(ms(300)), None),
+        "No response within 300 ms."
+    );
+    assert_eq!(
+        timeout_sentence(Some(ms(2000)), Some(ms(2000))),
+        "No response within the run-wide timeout of 2 s."
+    );
+    assert_eq!(
+        timeout_sentence(None, None),
+        "No response within the request timeout."
+    );
+    // An unknown limit is still most likely the request's own, so the link stays.
+    let plain = describe_error(&exec(ExecError::timeout("http://h.test/")), "d", None);
+    assert!(plain.settings_link);
 }

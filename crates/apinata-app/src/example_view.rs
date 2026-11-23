@@ -49,6 +49,7 @@ impl ExampleView {
         let pane = cx.new(|cx| {
             ResponsePane::new(send.clone(), window, cx)
                 .without_retry()
+                .without_settings_link()
                 .without_save_example()
                 .without_elapsed()
                 .without_exchange_tabs()

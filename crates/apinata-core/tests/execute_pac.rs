@@ -325,3 +325,35 @@ async fn a_pac_chosen_proxy_is_judged_by_the_host_policy() {
         "{err:?}"
     );
 }
+
+#[tokio::test]
+async fn a_pac_lookup_past_the_deadline_names_no_limit() {
+    let origin = origin().await;
+    // The PAC file arrives long after the run-wide cap, so the lookup spends the deadline.
+    let pac = MockServer::start().await;
+    Mock::given(path("/proxy.pac"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(find("return \"DIRECT\";"))
+                .set_delay(Duration::from_secs(4)),
+        )
+        .mount(&pac)
+        .await;
+    let source = PacSource::parse(&format!("{}/proxy.pac", pac.uri()), None).expect("source");
+    let exec = Executor::new(
+        ExecOptions::new()
+            .network(settings(source))
+            .timeout_cap(Some(Duration::from_millis(300))),
+    )
+    .expect("executor");
+    let r = resolve_in(
+        PLAIN,
+        &format!("{}/ping", origin.uri()),
+        ContextOptions::new(),
+    );
+    let err = exec.send(r.request()).await.expect_err("times out");
+    assert!(
+        matches!(err, ExecError::Timeout { limit: None, .. }),
+        "{err:?}"
+    );
+}
