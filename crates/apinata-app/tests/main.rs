@@ -470,6 +470,7 @@ mod response_header_row;
 mod response_header_tools;
 mod response_pane;
 mod response_redaction;
+mod response_redirects;
 mod response_secret_redaction;
 mod response_states;
 mod response_tab_keys;

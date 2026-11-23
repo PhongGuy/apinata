@@ -2369,6 +2369,36 @@ impl ResponsePane {
                 .child(width_probe(&self.min.status))
                 .into_any_element(),
         ];
+        // Followed hops show as a redirect arrow and count that opens the Timeline; a kept
+        // response has no timeline to open, so no count. Wide, it sits outside the fixed facts
+        // and gives way with the address, so the row's floor is unchanged.
+        let hops = r.redirects_followed();
+        let mut redirects = None;
+        if hops > 0 && !r.timeline().is_empty() {
+            let text = match hops {
+                1 => "1 redirect".to_owned(),
+                n => format!("{n} redirects"),
+            };
+            // A ghost button like the row's other actions, so Tab reaches it; the slot around it
+            // is what shrinks.
+            let button = Button::new("response-redirects")
+                .solid_ring(cx)
+                .ghost()
+                .compact()
+                .icon(ui::glyph("response-redirects", AssetIcon::CornerDownRight))
+                .label(hops.to_string())
+                .accessibility_label(text.clone())
+                .tooltip(format!("{text} followed. Open the Timeline."))
+                .on_click(cx.listener(|p, _, _, cx| p.set_tab(ResponseTab::Timeline, cx)));
+            redirects = Some(
+                h_flex()
+                    .min_w_0()
+                    .flex_shrink(0.1)
+                    .overflow_hidden()
+                    .child(button)
+                    .into_any_element(),
+            );
+        }
         // A GraphQL failure answers 200, so its errors read beside the status as a warning,
         // cut at a fixed width with the whole summary in the tooltip.
         before.extend(self.graphql_summary(result, cx).map(|text| {
@@ -2453,6 +2483,7 @@ impl ResponsePane {
                 .gap(style::SPACE_2)
                 .items_center()
                 .children(before)
+                .children(redirects)
                 // Nothing when the peer is unknown; a narrow pane leaves it to the Timeline.
                 .children(address)
                 .children(after)
@@ -3033,22 +3064,34 @@ impl ResponsePane {
                     .restored()
                     .is_some_and(|r| r.body_dropped) =>
                 {
-                    div()
-                        .id("response-body-dropped")
-                        .test_support()
-                        .p(style::SPACE_2)
-                        .text_size(style::TEXT_SMALL)
-                        .text_color(cx.theme().muted_foreground)
-                        .child("Body too large to keep")
+                    v_flex()
+                        .w_full()
+                        .children(redirect_stop_note(result, cx))
+                        .child(
+                            div()
+                                .id("response-body-dropped")
+                                .test_support()
+                                .p(style::SPACE_2)
+                                .text_size(style::TEXT_SMALL)
+                                .text_color(cx.theme().muted_foreground)
+                                .child("Body too large to keep"),
+                        )
                         .into_any_element()
                 }
-                None => div()
-                    .id("response-body")
-                    .test_support()
+                None => v_flex()
                     .flex_1()
                     .min_h_0()
                     .w_full()
-                    .child(self.body.clone())
+                    .children(redirect_stop_note(result, cx))
+                    .child(
+                        div()
+                            .id("response-body")
+                            .test_support()
+                            .flex_1()
+                            .min_h_0()
+                            .w_full()
+                            .child(self.body.clone()),
+                    )
                     .into_any_element(),
             },
             ResponseTab::Headers => self.headers_list(result, cx),
@@ -6064,4 +6107,37 @@ fn width_probe_plus(cell: &Rc<Cell<Pixels>>, extra: Rems) -> impl IntoElement {
     )
     .absolute()
     .size_full()
+}
+
+// When the redirect limit ended the chain, a note over the body saying so, naming the last
+// Location masked as the Headers tab masks it.
+fn redirect_stop_note(result: &RequestResult, cx: &App) -> Option<AnyElement> {
+    let r = result.response.as_ref()?;
+    if !r.stopped_at_redirect_limit() {
+        return None;
+    }
+    let mut text = format!(
+        "Stopped after {} redirects (the redirect limit).",
+        r.redirects_followed()
+    );
+    if let Some((name, value)) = r.headers().iter().find(|(n, _)| n == "location") {
+        text.push_str(&format!(
+            " The last Location was {}.",
+            result.redact_header(name, value)
+        ));
+    }
+    Some(
+        div()
+            .id("response-redirect-stop")
+            .test_support()
+            .flex_none()
+            .px(style::SPACE_2)
+            .py(style::SPACE_1)
+            .text_size(style::TEXT_SMALL)
+            .text_color(cx.theme().warning)
+            .bg(crate::theme::status_fill(crate::theme::Status::Warning, cx))
+            .aria_label(text.clone())
+            .child(text)
+            .into_any_element(),
+    )
 }
