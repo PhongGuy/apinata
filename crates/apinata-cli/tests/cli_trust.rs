@@ -114,7 +114,7 @@ fn errors_exit_3_and_write_nothing() {
     let fx = Fx::new();
     fx.trust(&["add", "exa mple"])
         .code(3)
-        .stderr(contains("not a host"));
+        .stderr(contains("Not a host"));
     assert!(!fx.file().exists());
     let bare = TempDir::new().unwrap();
     apinata()
@@ -147,7 +147,7 @@ fn usage_errors_exit_3_and_help_hides_the_test_seam() {
 fn a_url_or_authority_never_trusts_a_different_host() {
     let fx = Fx::new();
     for input in [
-        "http://good.example",
+        "http://good.example@evil.example",
         "good.example@evil.example",
         "evil.example#.good.example",
         "evil.example/.good",
@@ -188,4 +188,20 @@ fn tag_characters_never_reach_the_terminal() {
     let out = fx.trust(&["add", "a.example\u{e0041}"]).code(3);
     let stderr = String::from_utf8(out.get_output().stderr.clone()).unwrap();
     assert!(!stderr.contains('\u{e0041}'), "{stderr:?}");
+}
+
+#[test]
+fn a_pasted_url_is_stored_as_its_host() {
+    let fx = Fx::new();
+    fx.trust(&["add", "https://api.example.com:8443/v1?page=2"])
+        .code(0)
+        .stdout(contains("trusted api.example.com"));
+    fx.trust(&["deny", "http://evil.example/x"])
+        .code(0)
+        .stdout(contains("denied evil.example"));
+    assert!(fx.store().is_trusted(fx.coll.path(), "api.example.com"));
+    assert!(fx.store().is_denied(fx.coll.path(), "evil.example"));
+    fx.trust(&["remove", "https://api.example.com/"])
+        .code(0)
+        .stdout(contains("removed api.example.com"));
 }

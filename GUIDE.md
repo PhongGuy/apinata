@@ -1252,7 +1252,10 @@ apinata trust list --collection ./my-api
 ```
 
 `apinata trust list` prints the trusted hosts, then the denied ones;
-`apinata trust deny` and `apinata trust remove` change the lists.
+`apinata trust deny` and `apinata trust remove` change the lists. Each takes a host or a
+pasted `http` or `https` URL, which keeps only its host. In the desktop app the same lists
+are on a collection's AI access settings tab, and Preferences has an AI agents (MCP) section
+with the connect command.
 
 The desktop app and the MCP server run a collection's scripts only once you approve them.
 `apinata trust scripts` prints every script text in the collection not yet approved (scripts,

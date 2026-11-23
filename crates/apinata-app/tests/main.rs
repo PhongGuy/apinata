@@ -384,6 +384,7 @@ mod locked_eyes;
 mod locked_hint;
 mod log_feed;
 mod mask_template;
+mod mcp_prefs;
 mod menu_focus;
 mod menu_hints;
 mod mock_toggle;

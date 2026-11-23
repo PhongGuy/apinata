@@ -328,7 +328,7 @@ pub use trash::{Trash, TrashError, TrashHandle};
 pub use trash_log::TrashLog;
 pub use trust::{
     TrustError, TrustStore, bare_host_refusal, display_host, is_loopback, normalize_bare_host,
-    normalize_host,
+    normalize_host, typed_host,
 };
 pub use url_password::{text_without_password, url_without_password};
 pub use variable_set::{ScopedVariable, VarScope, VariableInfo, VariableSet};

@@ -1,10 +1,10 @@
-//! The "Trusted hosts" settings of a collection: its trusted and denied hosts from the
-//! per-user trust file, which this view edits in place.
+//! The "AI access" settings of a collection: its trusted and denied hosts from the per-user
+//! trust file, which this view edits in place.
 
 use crate::ui::SolidRing as _;
 use std::path::{Path, PathBuf};
 
-use apinata_core::{TrustError, TrustStore, bare_host_refusal, normalize_bare_host};
+use apinata_core::{TrustError, TrustStore, typed_host};
 use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme, h_flex, v_flex};
@@ -21,8 +21,14 @@ use crate::{style, ui};
 /// What the lists govern, so trusting nothing never looks like a broken send.
 pub const HOSTS_NOTE: &str = "These lists only apply to requests an AI assistant sends through the MCP server: a trusted host goes through, a denied one is refused, and any other remote host is refused until you approve it in the app. Requests you send from the app are not checked against these lists.";
 
-/// Shows one collection's lists from the trust file; typing a host and pressing Enter or Add
-/// trusts it, and each listed host has a remove button.
+/// The one-line summary at the top of the tab.
+pub const HOSTS_SUMMARY: &str = "Hosts an AI assistant may call without asking.";
+
+/// Why the tab has no Save: the lists live in the per-user trust file, not the collection.
+pub const HOSTS_SAVED_NOTE: &str = "Changes apply at once. The lists are kept for you on this computer, not in the collection's files.";
+
+/// Shows one collection's lists from the trust file; typing a host or URL and pressing Enter
+/// or Add trusts its host, Add to denied denies it, and each listed host has a remove button.
 pub struct TrustedHostsView {
     trust_file: PathBuf,
     root: PathBuf,
@@ -42,12 +48,12 @@ impl TrustedHostsView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let input = cx.new(|cx| InputState::new(window, cx).placeholder("Host to trust"));
+        let input = cx.new(|cx| InputState::new(window, cx).placeholder("Host or URL"));
         let mut subs =
             vec![
                 cx.subscribe_in(&input, window, |this, _, e: &InputEvent, window, cx| {
                     if matches!(e, InputEvent::PressEnter { .. }) {
-                        this.trust_typed(window, cx);
+                        this.add_typed(false, window, cx);
                     }
                 }),
             ];
@@ -100,10 +106,11 @@ impl TrustedHostsView {
         cx.notify();
     }
 
-    // Trusts the typed host and clears the input; a host that is not bare shows why instead.
-    fn trust_typed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    // Trusts or denies the typed host, or a pasted URL's host, and clears the input; anything
+    // else shows why instead.
+    fn add_typed(&mut self, deny: bool, window: &mut Window, cx: &mut Context<Self>) {
         let typed = self.input.read(cx).value().to_string();
-        let host = match bare_host(&typed) {
+        let host = match typed_host(&typed) {
             Ok(host) => host,
             Err(message) => {
                 self.error = Some(message);
@@ -111,7 +118,14 @@ impl TrustedHostsView {
                 return;
             }
         };
-        if self.write(|store, root| store.trust(root, &host), cx) {
+        let edit = |store: &mut TrustStore, root: &Path| {
+            if deny {
+                store.deny(root, &host)
+            } else {
+                store.trust(root, &host)
+            }
+        };
+        if self.write(edit, cx) {
             (self.input).update(cx, |s, cx| s.set_value("", window, cx));
         }
     }
@@ -139,12 +153,6 @@ impl TrustedHostsView {
             }
         }
     }
-}
-
-/// The host to trust for `typed`, only when it is a bare host (see [`normalize_bare_host`]);
-/// otherwise the error says why.
-fn bare_host(typed: &str) -> Result<String, String> {
-    normalize_bare_host(typed).ok_or_else(|| bare_host_refusal(typed))
 }
 
 // One list's rows: each host, shown through `untrusted_text` since the trust file can be
@@ -220,7 +228,13 @@ impl Render for TrustedHostsView {
                 Button::new("hosts-add-button")
                     .solid_ring(cx)
                     .label("Add")
-                    .on_click(cx.listener(|this, _, window, cx| this.trust_typed(window, cx))),
+                    .on_click(cx.listener(|this, _, window, cx| this.add_typed(false, window, cx))),
+            )
+            .child(
+                Button::new("hosts-deny-button")
+                    .solid_ring(cx)
+                    .label("Add to denied")
+                    .on_click(cx.listener(|this, _, window, cx| this.add_typed(true, window, cx))),
             );
         // Each list is a labelled row like every other settings tab, its hosts in the control
         // column.
@@ -237,11 +251,13 @@ impl Render for TrustedHostsView {
             .id("trusted-hosts")
             .w_full()
             .gap_2()
-            .child(ui::form_row("hosts-add-row", "Trust host", add))
+            .child(ui::form_note("hosts-summary", HOSTS_SUMMARY))
+            .child(ui::form_row("hosts-add-row", "Host", add))
             .when_some(self.error.clone(), |el, error| {
                 el.child(ui::form_note("hosts-error", untrusted_text(&error)).danger())
             })
             .child(ui::form_note("hosts-note", HOSTS_NOTE))
+            .child(ui::form_note("hosts-saved-note", HOSTS_SAVED_NOTE))
             .child(ui::form_row(
                 "trusted-row",
                 "Trusted",
