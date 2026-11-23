@@ -103,6 +103,7 @@ const IDS: &[&str] = &[
     "tabs.pin",
     "tabs.unpin",
     "tabs.reopen",
+    "tabs.switch",
     "tabs.next",
     "tabs.previous",
     "tabs.go_back",
