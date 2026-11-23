@@ -1017,7 +1017,7 @@ fn a_cookies_same_site_shows_in_its_flags_and_an_edit_keeps_it(cx: &mut TestAppC
     let strict = row(cx, "a-strict");
     assert_eq!(
         flags(cx, strict).as_deref(),
-        Some("HTTPS only, This host only, Same site: Strict")
+        Some("Secure, This host only, Same site: Strict")
     );
     let none = row(cx, "b-none");
     assert_eq!(

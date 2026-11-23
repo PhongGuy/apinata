@@ -249,12 +249,12 @@ fn the_cookie_tab_filters_copies_and_copies_a_value(cx: &mut TestAppContext) {
         .unwrap();
     assert_eq!(
         clipboard(cx).as_deref(),
-        Some("b=[redacted]; Domain=127.0.0.1; Path=/")
+        Some("b=2; Domain=127.0.0.1; Path=/")
     );
+    // A masked value still copies as the real one, before and after the eye reveals it.
     cx.update_window(win, |_, w, cx| w.click(("cookie-copy", 0usize), cx))
         .unwrap();
-    assert_eq!(clipboard(cx).as_deref(), Some("[redacted]"));
-    // The eye reveals the value, and the copies follow it.
+    assert_eq!(clipboard(cx).as_deref(), Some("2"));
     cx.update_window(win, |_, w, cx| w.click(("cookie-reveal", 0usize), cx))
         .unwrap();
     frame(cx, win);

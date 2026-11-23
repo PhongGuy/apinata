@@ -202,6 +202,7 @@ mod cookie_jar_form_focus;
 mod cookie_jar_form_layout;
 mod cookie_jar_search;
 mod cookie_prefs;
+mod cookie_views_shared;
 mod copy_curl;
 mod current_collection;
 mod default_headers_section;

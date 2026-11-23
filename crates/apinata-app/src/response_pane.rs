@@ -43,6 +43,9 @@ use crate::body_view::{BodyView, MASKED, SCRUBBED_TIP, SetVariable, Shown};
 use crate::compare_rows::{ComparePalette, RevealHeader, RowActions, Toggle, compare_row};
 use crate::compare_source::{self, CompareSide, CompareSource, HeaderValue, SourceChoice};
 use crate::compare_view::{self, CompareRow};
+use crate::cookie_jar::{
+    HTTP_ONLY_LABEL, HTTP_ONLY_TIP, SECURE_LABEL, SECURE_TIP, host_search, open_cookie_jar,
+};
 use crate::diff_doc::DiffRow;
 use crate::download_model::DownloadModel;
 use crate::executor;
@@ -1180,11 +1183,7 @@ impl ResponsePane {
     // Snapshot the jar's cookies for the final URL's host. Listing happens on a new result
     // or a delete, never per frame, so rendering never takes the jar's lock.
     fn list_cookies(&mut self, cx: &App) {
-        let host = done(self.send.read(cx)).and_then(|r| {
-            let url = url::Url::parse(r.response.as_ref()?.url()).ok()?;
-            url.host_str().map(str::to_owned)
-        });
-        self.cookies = match (host, executor::shared(cx)) {
+        self.cookies = match (self.jar_host(cx), executor::shared(cx)) {
             (Some(host), Some(exec)) => exec
                 .cookies()
                 .list()
@@ -1193,6 +1192,14 @@ impl ResponsePane {
                 .collect(),
             _ => Vec::new(),
         };
+    }
+
+    // The host of the shown result's final URL, whose cookies the Jar view lists.
+    fn jar_host(&self, cx: &App) -> Option<String> {
+        done(self.send.read(cx)).and_then(|r| {
+            let url = url::Url::parse(r.response.as_ref()?.url()).ok()?;
+            url.host_str().map(str::to_owned)
+        })
     }
 
     /// The selected tab.
@@ -1968,8 +1975,8 @@ impl ResponsePane {
             ("cookie-domain", "Domain"),
             ("cookie-path", "Path"),
             ("cookie-expires", "Expires"),
-            ("cookie-http-only", "HttpOnly"),
-            ("cookie-secure", "Secure"),
+            ("cookie-http-only", HTTP_ONLY_LABEL),
+            ("cookie-secure", SECURE_LABEL),
         ];
         let columns = COLUMNS
             .iter()
@@ -1981,18 +1988,29 @@ impl ResponsePane {
                     // Value is the flexible column, so the fixed widths skip index 1.
                     _ => {
                         let fixed = if i == 0 { 0 } else { i - 1 };
-                        KvColumn::fixed(head, cell, *heading, style::COOKIE_FIXED_WIDTHS[fixed])
+                        let column = KvColumn::fixed(
+                            head,
+                            cell,
+                            *heading,
+                            style::COOKIE_FIXED_WIDTHS[fixed],
+                        );
+                        match i {
+                            5 => column.tip(HTTP_ONLY_TIP),
+                            6 => column.tip(SECURE_TIP),
+                            _ => column,
+                        }
                     }
                 }
             })
             .collect();
         let query = self.cookies_filter.read(cx).value().to_string();
-        // Values show masked unless revealed, and the filter and the copies read what is shown.
-        let (table, eyes): (Vec<CookieCells>, Vec<Option<bool>>) = self
-            .shown_cookies(result, SystemTime::now())
-            .into_iter()
-            .unzip();
-        let shown = cookie_shown(&table, &query);
+        // Values show masked unless revealed, but the filter and the copies read the real
+        // value, so a search or a paste never meets the mask's dots.
+        let now = SystemTime::now();
+        let real = self.cookie_table(now);
+        let (masked, eyes): (Vec<CookieCells>, Vec<Option<bool>>) =
+            self.shown_cookies(result, now).into_iter().unzip();
+        let shown = cookie_shown(&real, &query);
         if self.cookies.is_empty() {
             let bar = self.jar_filter_bar(false, cx);
             return self.cookies_empty(bar, "cookies-none", "No cookies for this host.", cx);
@@ -2005,10 +2023,10 @@ impl ResponsePane {
             .collect();
         let rows = shown
             .into_iter()
-            .map(|(_, c)| {
+            .map(|(ix, c)| {
                 vec![
                     KvCell::Text(c.name.clone().into()),
-                    KvCell::Text(c.value.clone().into()),
+                    KvCell::Text(masked[ix].value.clone().into()),
                     KvCell::Text(c.domain.clone().into()),
                     KvCell::Text(c.path.clone().into()),
                     KvCell::Text(c.expires.clone().into()),
@@ -2082,19 +2100,30 @@ impl ResponsePane {
             any_shown,
             |p, cx| {
                 let filter = p.cookies_filter.read(cx).value().to_string();
-                done(p.send.read(cx))
-                    .map(|r| {
-                        let cookies: Vec<CookieCells> = (p.shown_cookies(&r, SystemTime::now()))
-                            .into_iter()
-                            .map(|(c, _)| c)
-                            .collect();
-                        cookie_lines(&cookies, &filter)
-                    })
-                    .unwrap_or_default()
+                cookie_lines(&p.cookie_table(SystemTime::now()), &filter)
             },
             "Copied the cookies",
             cx,
         )
+        .child(self.manage_cookies(cx))
+    }
+
+    // Opens the Cookies dialog to edit or add, its search set to the response's host.
+    fn manage_cookies(&self, cx: &mut Context<Self>) -> Button {
+        let domains: Vec<&str> = self.cookies.iter().map(|c| c.domain.as_str()).collect();
+        let search = self.jar_host(cx).map(|host| host_search(&host, &domains));
+        Button::new("cookies-manage")
+            .solid_ring(cx)
+            .ghost()
+            .small()
+            .label("Manage cookies")
+            .tooltip("Edit or add cookies in the Cookies dialog")
+            .on_click(move |_, window, cx| {
+                let jar = open_cookie_jar(window, cx);
+                if let Some(search) = &search {
+                    jar.update(cx, |j, cx| j.search_for(search, window, cx));
+                }
+            })
     }
 
     // The Headers tab: the filter bar over the rows it keeps; each row has a copy button.
@@ -3419,12 +3448,13 @@ impl ResponsePane {
         self.cookie_table(now)
             .into_iter()
             .map(|mut c| {
-                // Every value is hidden, as the console hides the whole Set-Cookie header.
+                // Every value hides behind the Cookies dialog's dots, since cookie values are
+                // often session tokens; "[redacted]" stays reserved for scrubbed secrets.
                 let mask = (m.cookies.entry(c.value.clone())).or_insert_with(|| Masked {
                     hidden: if c.value.is_empty() {
                         String::new()
                     } else {
-                        MASKED.to_owned()
+                        NAME_MASK.to_owned()
                     },
                     revealed: c.value.clone(),
                 });
