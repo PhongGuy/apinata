@@ -163,8 +163,6 @@ pub async fn forms(server: &MockServer, grant: &str) -> Vec<Vec<(String, String)
 pub enum Play {
     /// GET the loopback callback with this code and the prompt's state.
     Code(&'static str),
-    /// GET the callback with this code and another state.
-    WrongState(&'static str),
     /// GET the callback with `error=<this>` and the prompt's state.
     Deny(&'static str),
     /// Never answer.
@@ -247,13 +245,6 @@ impl Authorizer for FakeBrowser {
             match play {
                 Play::Code(code) => {
                     visit(callback, vec![("code", code.to_owned()), ("state", state)]).await
-                }
-                Play::WrongState(code) => {
-                    visit(
-                        callback,
-                        vec![("code", code.to_owned()), ("state", "forged".to_owned())],
-                    )
-                    .await
                 }
                 Play::Deny(error) => {
                     visit(
