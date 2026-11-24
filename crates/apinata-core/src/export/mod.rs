@@ -10,6 +10,7 @@ mod har;
 mod html;
 mod openapi;
 mod postman;
+mod process_env;
 mod write;
 
 pub use environment::{

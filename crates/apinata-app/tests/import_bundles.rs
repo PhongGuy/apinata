@@ -79,6 +79,7 @@ fn import(
     crate::import_collection::create_in(cx, into);
     cx.simulate_path_prompt_response(move |_| Some(vec![file]));
     cx.run_until_parked();
+    crate::import_collection::submit(cx);
 }
 
 #[gpui_kit::test]

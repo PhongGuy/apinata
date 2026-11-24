@@ -85,7 +85,7 @@ pub fn create_in(cx: &mut TestAppContext, into: &Path) {
     dialog.update(cx, |d, cx| d.set_parent(into, cx));
 }
 
-/// Creates in `into`, then answers the file prompt; no folder prompt follows.
+/// Creates in `into`, answers the file prompt, then imports; no folder prompt follows.
 pub fn answer(cx: &mut TestAppContext, file: PathBuf, into: PathBuf) {
     assert!(cx.did_prompt_for_paths());
     create_in(cx, &into);
@@ -95,6 +95,18 @@ pub fn answer(cx: &mut TestAppContext, file: PathBuf, into: PathBuf) {
     });
     cx.run_until_parked();
     assert!(!cx.did_prompt_for_paths(), "no folder prompt follows");
+    submit(cx);
+}
+
+/// Presses the open Import dialog's Import button.
+pub fn submit(cx: &mut TestAppContext) {
+    assert!(cx.read(import_link::current).is_some(), "dialog open");
+    let win = cx
+        .update(|cx| cx.active_window().or_else(|| cx.windows().first().copied()))
+        .expect("a window");
+    cx.update_window(win, |_, w, cx| w.click("import-link-import", cx))
+        .unwrap();
+    cx.run_until_parked();
 }
 
 #[gpui_kit::test]
@@ -147,6 +159,7 @@ fn an_unrecognized_file_is_refused_before_asking_where(cx: &mut TestAppContext) 
         Some(vec![file])
     });
     cx.run_until_parked();
+    submit(cx);
     assert!(
         !cx.did_prompt_for_paths(),
         "no folder prompt for a file that cannot import"
@@ -288,6 +301,7 @@ fn a_good_file_lands_in_the_create_in_folder_without_a_second_prompt(cx: &mut Te
     let file = input(files.path(), &shop(false));
     cx.simulate_path_prompt_response(move |_| Some(vec![file]));
     cx.run_until_parked();
+    submit(cx);
     assert!(!cx.did_prompt_for_paths(), "the dialog already said where");
     assert_eq!(opened(cx, &view), vec![parent.join("Shop")]);
     assert!(!present(cx, win, "import-link-dialog"));
