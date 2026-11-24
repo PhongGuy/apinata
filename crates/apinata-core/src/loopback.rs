@@ -471,6 +471,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_wrong_state_callback_leaves_the_wait_to_time_out() {
+        let l = bound("").await.expect_state("right".to_owned());
+        let addr = l.local_addr();
+        let cancel = CancelHandle::new();
+        let (err, page) = tokio::join!(
+            l.wait(Duration::from_millis(500), &cancel),
+            visit(addr, "/callback?error=x&state=wrong")
+        );
+        assert!(page.starts_with("HTTP/1.1 400"), "{page}");
+        assert!(page.contains("Cache-Control: no-store"), "{page}");
+        assert!(matches!(err, Err(ListenError::Timeout)), "{err:?}");
+        assert!(port_closes(addr), "the listener is still open");
+    }
+
+    #[tokio::test]
     async fn cancelling_stops_the_wait() {
         let l = bound("").await;
         let cancel = CancelHandle::new();

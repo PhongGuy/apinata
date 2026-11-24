@@ -285,3 +285,6 @@ make check
 runs the formatting, lints and tests. Building, installing from source, the
 checks, CI, the QA setup and how to send a change are all in
 [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Issues and pull requests from anyone are welcome, first ones included; see
+[Sending a change](CONTRIBUTING.md#sending-a-change).

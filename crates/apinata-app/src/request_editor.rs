@@ -22,7 +22,7 @@ use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::tab::Tab;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{
-    ActiveTheme as _, ResizablePanelEvent, ResizableState, Sizable as _, h_flex, h_resizable,
+    ActiveTheme as _, Icon, ResizablePanelEvent, ResizableState, Sizable as _, h_flex, h_resizable,
     resizable_panel, v_flex, v_resizable,
 };
 use gpui_kit::prelude::FluentBuilder as _;
@@ -318,6 +318,8 @@ pub struct RequestEditor {
     variables_context: u64,
     vars_key: Option<VarsKey>,
     _variables: Option<Task<()>>,
+    // The names the actor last found undefined for this request, sorted.
+    undefined: Vec<String>,
     // What the request sends, the selected environment and what it inherits as the last
     // refresh saw them; a change in any makes a shown error stale.
     seen_view: Option<SentShape>,
@@ -342,9 +344,9 @@ enum PartInputs {
     Breadcrumb(Option<Crumbs>),
     // Whether the URL is locked, and the variable set (identity and revision) it tints from.
     Url(bool, Option<(Same<VariableSet>, u64)>),
-    // Whether Save shows, which of Send, Cancel and Stop the slot holds, and whether the
-    // buttons last laid out on their own line.
-    Buttons(bool, u8, bool),
+    // Whether Save shows, which of Send, Cancel and Stop the slot holds, whether the
+    // buttons last laid out on their own line, and the undefined names the badge lists.
+    Buttons(bool, u8, bool, Vec<SharedString>),
     // The request kind, the shown section, and each section's count and mode mark.
     Sections(
         RequestKind,
@@ -836,6 +838,7 @@ impl RequestEditor {
             variables_context: 0,
             vars_key: None,
             _variables: None,
+            undefined: Vec::new(),
             seen_view: None,
             seen_env: None,
             seen_inherited: None,
@@ -1908,9 +1911,19 @@ impl RequestEditor {
         let context = key.context;
         self.vars_key = Some(key);
         let (reply, answer) = async_channel::bounded(1);
-        let command = Command::Variables { item, reply };
-        self.workspace
-            .update(cx, |w, cx| w.send(&root, command, cx));
+        let (undefined_reply, undefined_answer) = async_channel::bounded(1);
+        let command = Command::Variables {
+            item: item.clone(),
+            reply,
+        };
+        let undefined = Command::UndefinedVariables {
+            item,
+            reply: undefined_reply,
+        };
+        self.workspace.update(cx, |w, cx| {
+            w.send(&root, command, cx);
+            w.send(&root, undefined, cx);
+        });
         self._variables = Some(cx.spawn(async move |this, cx| {
             // A context that fails to build drops the old set, so no tooltip shows the
             // previous environment's values; a closed channel leaves the set as it was.
@@ -1918,7 +1931,12 @@ impl RequestEditor {
                 return;
             };
             let set = reply.ok().map(Arc::new);
-            let _ = this.update(cx, |e, cx| e.set_variables(set, context, cx));
+            let undefined = undefined_answer.recv().await.ok().and_then(Result::ok);
+            let _ = this.update(cx, |e, cx| {
+                e.undefined = undefined.unwrap_or_default();
+                e.set_variables(set, context, cx);
+                cx.notify();
+            });
         }));
     }
 
@@ -2871,6 +2889,7 @@ impl RequestEditor {
                 self.save_shown(cx),
                 self.slot_now(cx),
                 self.buttons_wrapped.get(),
+                self.undefined_shown(),
             ),
             ChromePart::Sections => PartInputs::Sections(
                 self.kind(cx),
@@ -2940,9 +2959,11 @@ impl RequestEditor {
                 } else {
                     (save, None)
                 };
+                let badge = undefined_badge(&self.undefined_shown(), cx);
                 h_flex()
                     .flex_none()
                     .gap(style::SPACE_1)
+                    .children(badge)
                     .children(lead)
                     .child(self.send_button(window, cx))
                     .child(self.generate_code_button(cx))
@@ -3382,6 +3403,16 @@ impl RequestEditor {
             }));
         let slot = div().id("generate-code").test_support().flex_none();
         slot.child(button).into_any_element()
+    }
+
+    // The actor's undefined names, less any the live set now resolves: a runtime value set
+    // since the last fetch clears its name at once, while new names wait for the next fetch.
+    fn undefined_shown(&self) -> Vec<SharedString> {
+        let defined = |name: &str| (self.variables.as_ref()).is_some_and(|v| v.get(name).is_some());
+        (self.undefined.iter())
+            .filter(|name| !defined(name))
+            .map(|name| SharedString::from(name.clone()))
+            .collect()
     }
 
     // Send while idle, Cancel while a send is planning or in flight.
@@ -4086,3 +4117,36 @@ const SECTION_TAB_IDS: ui::SectionTabIds = ui::SectionTabIds {
     mark: "section-mode",
     tooltip: "section-mode-tooltip",
 };
+
+// What the undefined-variable badge says, aloud and in its tooltip.
+fn undefined_label(names: &[SharedString]) -> String {
+    let list = names.join(", ");
+    if names.len() == 1 {
+        format!("Undefined variable: {list}")
+    } else {
+        format!("Undefined variables: {list}")
+    }
+}
+
+// A small warning mark before Send with the count of names a send would refuse; its tooltip
+// names them. Nothing shows while every name resolves.
+fn undefined_badge(names: &[SharedString], cx: &App) -> Option<AnyElement> {
+    if names.is_empty() {
+        return None;
+    }
+    let label = undefined_label(names);
+    let badge = h_flex()
+        .id("undefined-variables")
+        .test_support()
+        .flex_none()
+        .items_center()
+        .gap(style::SPACE_1)
+        .px(style::SPACE_1)
+        .text_size(style::TEXT_SMALL)
+        .text_color(cx.theme().warning)
+        .aria_label(label.clone())
+        .tooltip(ui::text_tooltip("undefined-variables-tooltip", label))
+        .child(Icon::new(IconName::CircleAlert).small())
+        .child(names.len().to_string());
+    Some(badge.into_any_element())
+}
