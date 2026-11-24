@@ -150,7 +150,7 @@ fn the_pane_shows_a_bounded_part_of_many_entries() {
 }
 
 #[gpui_kit::test]
-fn many_entries_end_in_a_note_and_copy_stays_whole(cx: &mut TestAppContext) {
+fn many_entries_note_the_left_out_ones_and_copy_stays_whole(cx: &mut TestAppContext) {
     let tall = "x\n".repeat(CONSOLE_ROW_LINES - 1);
     let console = vec![ConsoleEntry::new(ScriptPhase::Tests, ConsoleLevel::Log, tall.clone()); 10];
     let (_s, win, _view) = shown(cx, console.clone());
