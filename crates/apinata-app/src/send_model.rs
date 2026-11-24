@@ -7,9 +7,9 @@ use std::time::{Duration, Instant, SystemTime};
 
 use apinata_core::sse::SseEvent;
 use apinata_core::{
-    CancelHandle, DraftSnapshot, ExecutionMode, ItemPath, Outcome, RecheckRefused, RequestFile,
-    RequestResult, RunEvent, RunOptions, StreamLimits, VarContext, Verdict, known_secrets,
-    recheck_assertions,
+    CancelHandle, DraftSnapshot, ExecError, ExecutionMode, ItemPath, Outcome, RecheckRefused,
+    RequestFile, RequestResult, Response, RunError, RunEvent, RunOptions, StreamLimits, VarContext,
+    Verdict, known_secrets, recheck_assertions,
 };
 use gpui_kit::{App, AsyncApp, Context, Entity, Global, Task, WeakEntity, WeakFocusHandle};
 
@@ -449,6 +449,7 @@ impl SendModel {
 
     /// Shows `result` as `Done`, dropping any send or followed run under way.
     pub fn show(&mut self, result: Arc<RequestResult>, cx: &mut Context<Self>) {
+        let result = with_cut_head(result);
         self.ever_shown = true;
         self.task = None;
         self.keep_as = None;
@@ -786,6 +787,7 @@ impl SendModel {
                 }));
             }
         }
+        let result = with_cut_head(result);
         // The note belongs to this result alone, so a later result never inherits it.
         self.json_note = self.pending_json_note.take().map(|text| SentNote {
             result: Arc::downgrade(&result),
@@ -1005,4 +1007,28 @@ pub(crate) fn secret_values(file: &RequestFile, ctx: &VarContext) -> Vec<String>
     known_secrets(file, ctx)
         .map(|found| found.iter().map(|s| s.value().to_owned()).collect())
         .unwrap_or_default()
+}
+
+/// `result` with the status and headers a cut-short body carried shown as a bodiless response,
+/// so the pane keeps the head under its notice; any other result as it is. The kept send and
+/// the failure list read the result before this, so neither stores the stand-in.
+fn with_cut_head(result: Arc<RequestResult>) -> Arc<RequestResult> {
+    let Some(RunError::Exec(ExecError::BodyCut { url, cut, .. })) = &result.error else {
+        return result;
+    };
+    if result.response.is_some() {
+        return result;
+    }
+    let reason = (http::StatusCode::from_u16(cut.status).ok())
+        .and_then(|s| s.canonical_reason())
+        .unwrap_or("");
+    let mut head = Response::new(cut.status)
+        .with_status_text(reason)
+        .with_url(url.as_str());
+    for (name, value) in &cut.headers {
+        head = head.with_header(name, value.as_str());
+    }
+    let mut shown = (*result).clone();
+    shown.response = Some(head);
+    Arc::new(shown)
 }
