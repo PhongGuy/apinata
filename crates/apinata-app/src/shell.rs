@@ -3886,7 +3886,8 @@ pub fn notice_message(kind: &NoticeKind) -> Option<String> {
         | NoticeKind::Moved { .. }
         | NoticeKind::Deleted(_)
         | NoticeKind::Trashed { .. }
-        | NoticeKind::ExampleDeleted { .. } => None,
+        | NoticeKind::ExampleDeleted { .. }
+        | NoticeKind::MovedToSecret(_) => None,
     };
     text.map(|t| ui::plain_quotes(&t))
 }

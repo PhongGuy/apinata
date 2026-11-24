@@ -104,8 +104,37 @@ pub enum Edit {
     /// Move one literal credential of the target's auth to a secret: the auth as the draft
     /// holds it, with [`MOVE_SLOT`] in place of the field to move. The value goes to a secret
     /// variable of the environment, or to `.env` when no environment can hold it, once the
-    /// target is saved.
-    MoveToSecret(Box<AuthSpec>),
+    /// target is saved. With `pinned` (a redo) it goes under exactly that reference, or not
+    /// at all; without, the actor picks a name and reports it as [`NoticeKind::MovedToSecret`].
+    MoveToSecret {
+        slotted: Box<AuthSpec>,
+        pinned: Option<SecretRef>,
+    },
+    /// Undo a move to a secret not yet saved: the auth goes back to `auth`, which holds the
+    /// literal, and the value held for `reference` is dropped. Refused once that move was saved.
+    ReturnFromSecret {
+        auth: Box<AuthSpec>,
+        reference: SecretRef,
+    },
+}
+
+/// The secret a moved auth credential is referred to by.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SecretRef {
+    /// A secret variable of the environment that keeps secrets.
+    Environment(String),
+    /// A `.env` key.
+    Dotenv(String),
+}
+
+impl SecretRef {
+    /// The text the auth field holds to refer to this secret.
+    pub fn template(&self) -> String {
+        match self {
+            SecretRef::Environment(name) => format!("{{{{{name}}}}}"),
+            SecretRef::Dotenv(name) => format!("{{{{process.env.{name}}}}}"),
+        }
+    }
 }
 
 /// One secret field of the collection's network settings.
@@ -143,7 +172,10 @@ impl Edit {
             }
             Edit::Headers(_) => Field::Headers,
             Edit::Body(_) => Field::Body,
-            Edit::Auth(_) | Edit::MoveAuthSecrets | Edit::MoveToSecret(_) => Field::Auth,
+            Edit::Auth(_)
+            | Edit::MoveAuthSecrets
+            | Edit::MoveToSecret { .. }
+            | Edit::ReturnFromSecret { .. } => Field::Auth,
             Edit::Vars(_) => Field::Vars,
             Edit::PostResponseVars(_) => Field::PostResponseVars,
             Edit::Assertions(_) => Field::Assertions,
@@ -768,4 +800,6 @@ pub enum NoticeKind {
     },
     /// The command succeeded with warnings.
     Warnings(Vec<String>),
+    /// A move to a secret took this reference, which a redo of it must reuse.
+    MovedToSecret(SecretRef),
 }

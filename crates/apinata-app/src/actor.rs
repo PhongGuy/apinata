@@ -25,7 +25,7 @@ use async_channel::{Receiver, Sender};
 use crate::auth_secrets;
 use crate::command::{
     Command, Edit, EnvOp, Envelope, Field, HeldSecret, MOVE_SLOT, NetworkOp, Notice, NoticeKind,
-    PlanError, Planned, Target, TreeOp,
+    PlanError, Planned, SecretRef, Target, TreeOp,
 };
 use crate::context_cache::ContextCache;
 use crate::env_table;
@@ -320,9 +320,22 @@ impl Actor {
             } if !matches!(target, Target::Environment(_)) => self.auth_edit(&target, edit),
             Command::Edit {
                 target,
-                edit: Edit::MoveToSecret(slotted),
+                edit: Edit::MoveToSecret { slotted, pinned },
             } if !matches!(target, Target::Environment(_)) => {
-                self.move_to_secret(&target, *slotted)
+                let unpinned = pinned.is_none();
+                // The editor records the move as a step once it knows the name taken.
+                self.move_to_secret(&target, *slotted, pinned).map(|moved| {
+                    if let (true, Some(reference)) = (unpinned, moved) {
+                        let kind = NoticeKind::MovedToSecret(reference);
+                        self.notices.push(Notice { command: id, kind });
+                    }
+                })
+            }
+            Command::Edit {
+                target,
+                edit: Edit::ReturnFromSecret { auth, reference },
+            } if !matches!(target, Target::Environment(_)) => {
+                self.return_from_secret(&target, *auth, &reference)
             }
             Command::Edit { target, edit } => self.edit(&target, edit),
             // An import is never held: the user re-imports against what the reload loaded.
@@ -1919,37 +1932,56 @@ impl Actor {
 
     /// Move the credential `slotted` marks with `MOVE_SLOT` out of `target`'s draft: to a
     /// secret variable of the environment that keeps secrets, else to `.env`. The draft takes
-    /// the reference at once; the value is written when `target` is saved.
-    fn move_to_secret(&mut self, target: &Target, slotted: AuthSpec) -> Result<(), NoticeKind> {
+    /// the reference at once; the value is written when `target` is saved. A `pinned` move (a
+    /// redo) takes exactly that reference or is refused; the reference taken is returned.
+    fn move_to_secret(
+        &mut self,
+        target: &Target,
+        slotted: AuthSpec,
+        pinned: Option<SecretRef>,
+    ) -> Result<Option<SecretRef>, NoticeKind> {
         let refused = |message: String| NoticeKind::Failed {
             target: Some(target.clone()),
             message,
             row: None,
         };
+        let not_redone =
+            || refused("The secret could not be moved again; move it once more".into());
         let current = auth_secrets::current(&self.collection, target)
             .ok_or_else(|| NoticeKind::NotFound(target.clone()))?;
         // The draft must still hold this kind of auth with a literal in the marked field.
         let slots = auth_secret_fields(&slotted);
-        let Some(at) = slots.iter().position(|(_, text)| text == MOVE_SLOT) else {
-            return Ok(());
-        };
         let fields = auth_secret_fields(&current);
         let same_mode = mem::discriminant(&current) == mem::discriminant(&slotted);
-        let Some((kind, value)) = fields.get(at).filter(|(kind, value)| {
-            same_mode
-                && *kind == slots[at].0
-                && !value.is_empty()
-                && !network_secrets::is_template(value)
-        }) else {
-            return Ok(());
+        let found = slots
+            .iter()
+            .position(|(_, text)| text == MOVE_SLOT)
+            .and_then(|at| {
+                fields.get(at).filter(|(kind, value)| {
+                    same_mode
+                        && *kind == slots[at].0
+                        && !value.is_empty()
+                        && !network_secrets::is_template(value)
+                })
+            });
+        let Some((kind, value)) = found else {
+            return match pinned {
+                Some(_) => Err(not_redone()),
+                None => Ok(None),
+            };
         };
         let (kind, value) = (*kind, value.clone());
         let base = secret_name_base(&self.target_name(target), kind);
         let mut auth = slotted;
-        match secret_environment(&self.collection, self.selected.as_deref()) {
+        let reference = match secret_environment(&self.collection, self.selected.as_deref()) {
             Ok(env) => {
+                let base = match &pinned {
+                    None => base,
+                    Some(SecretRef::Environment(name)) => name.clone(),
+                    Some(SecretRef::Dotenv(_)) => return Err(not_redone()),
+                };
                 let mut probe = ImportedRequest::new("GET", "");
-                probe.secrets = vec![ImportedSecret::new(base, value.clone(), "")];
+                probe.secrets = vec![ImportedSecret::new(&base, value.clone(), "")];
                 let held = self.held_env_names();
                 claim_secret_names_besides(
                     &self.collection,
@@ -1959,7 +1991,12 @@ impl Actor {
                     &held,
                 );
                 let name = probe.secrets.remove(0).name;
-                replace_auth_secret(&mut auth, MOVE_SLOT, &format!("{{{{{name}}}}}"));
+                // A pinned name taken meanwhile is never swapped for a new one.
+                if matches!(&pinned, Some(SecretRef::Environment(p)) if *p != name) {
+                    return Err(not_redone());
+                }
+                let reference = SecretRef::Environment(name.clone());
+                replace_auth_secret(&mut auth, MOVE_SLOT, &reference.template());
                 self.edit(target, Edit::Auth(auth))?;
                 let held = HeldEnv {
                     environment: env,
@@ -1968,21 +2005,59 @@ impl Actor {
                 };
                 self.held_env.insert((target.clone(), name), held);
                 self.context.invalidate();
+                reference
             }
             Err(_) => {
                 let mut taken = (self.collection.dotenv_keys())
                     .map_err(|e| refused(format!("Could not read .env: {e}")))?;
                 taken.extend(self.held_names());
-                let base = format!("APINATA_{}", base.to_ascii_uppercase());
-                let name = network_secrets::dotenv_name(&base, &taken);
+                let name = match pinned {
+                    None => {
+                        let base = format!("APINATA_{}", base.to_ascii_uppercase());
+                        network_secrets::dotenv_name(&base, &taken)
+                    }
+                    Some(SecretRef::Dotenv(name)) if !taken.contains(&name) => name,
+                    Some(_) => return Err(not_redone()),
+                };
                 let planned = vec![(name.clone(), value)];
                 network_secrets::check(&self.collection, &planned).map_err(refused)?;
-                let reference = format!("{{{{process.env.{name}}}}}");
-                replace_auth_secret(&mut auth, MOVE_SLOT, &reference);
+                let reference = SecretRef::Dotenv(name);
+                replace_auth_secret(&mut auth, MOVE_SLOT, &reference.template());
                 self.edit(target, Edit::Auth(auth))?;
                 self.hold(target, planned);
+                reference
             }
+        };
+        Ok(Some(reference))
+    }
+
+    /// Undo a move to a secret: `target`'s auth goes back to `auth` and the value held for
+    /// `reference` is dropped. Once that move was saved nothing is held, so it is refused and
+    /// the literal never returns to a draft whose value is already stored.
+    fn return_from_secret(
+        &mut self,
+        target: &Target,
+        auth: AuthSpec,
+        reference: &SecretRef,
+    ) -> Result<(), NoticeKind> {
+        let key = |name: &String| (target.clone(), name.clone());
+        let held = match reference {
+            SecretRef::Environment(name) => self.held_env.contains_key(&key(name)),
+            SecretRef::Dotenv(name) => self.held_dotenv.contains_key(&key(name)),
+        };
+        if !held {
+            return Err(NoticeKind::Failed {
+                target: Some(target.clone()),
+                message: "The secret was saved already, so undo keeps it".into(),
+                row: None,
+            });
         }
+        self.edit(target, Edit::Auth(auth))?;
+        match reference {
+            SecretRef::Environment(name) => _ = self.held_env.remove(&key(name)),
+            SecretRef::Dotenv(name) => _ = self.held_dotenv.remove(&key(name)),
+        }
+        self.context.invalidate();
         Ok(())
     }
 
@@ -2043,7 +2118,8 @@ impl Actor {
                     | Edit::HostOverrides(_)
                     | Edit::MoveNetworkSecret(_)
                     | Edit::MoveAuthSecrets
-                    | Edit::MoveToSecret(_) => {
+                    | Edit::MoveToSecret { .. }
+                    | Edit::ReturnFromSecret { .. } => {
                         return Err(unsupported);
                     }
                 }

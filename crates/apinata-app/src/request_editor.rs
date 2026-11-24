@@ -40,7 +40,7 @@ use crate::auth_section::{AuthMode, AuthSection};
 use crate::banner::{self, Banner, Choice};
 use crate::body_section::BodySection;
 use crate::cached_part::{Same, Slot};
-use crate::command::{Command, Edit, Field, Notice, NoticeKind, Target};
+use crate::command::{Command, Edit, Field, Notice, NoticeKind, SecretRef, Target};
 use crate::confirm;
 use crate::default_headers_section::DefaultHeadersSection;
 use crate::edit_history::EditHistory;
@@ -303,6 +303,9 @@ pub struct RequestEditor {
     // The generated test text just appended; its edit is an undo step, unlike script typing.
     script_step: Option<String>,
     sent: HashMap<u64, Section>,
+    // Moves to a secret awaiting the name the actor takes, by command id: the auth before
+    // the move, the slotted auth it sent, and the auth field's sent stamp at that time.
+    moves: HashMap<u64, (AuthSpec, AuthSpec, Option<u64>)>,
     // The snapshots each field's controls loaded; its edits are built from that content.
     loaded: LoadStamps<Field>,
     // Set while a table change is sent whose rows the table no longer shows.
@@ -827,6 +830,7 @@ impl RequestEditor {
             checkpoint: None,
             script_step: None,
             sent: HashMap::new(),
+            moves: HashMap::new(),
             loaded: LoadStamps::default(),
             lagging: false,
             pasted: None,
@@ -1647,8 +1651,20 @@ impl RequestEditor {
             return;
         };
         match edit {
-            // The secret move rewrites values the history cannot restore.
-            Edit::MoveAuthSecrets | Edit::MoveToSecret(_) => {}
+            // The OAuth 2.0 move rewrites values the history cannot restore.
+            Edit::MoveAuthSecrets => {}
+            // A move to a secret becomes a step once the actor reports the name it took.
+            Edit::MoveToSecret { ref slotted, .. } => {
+                let before = self.auth_before(&edit, cx);
+                let stamp = self.history.sent_stamp(Field::Auth);
+                let slotted = (**slotted).clone();
+                if let Some(id) = self.dispatch(edit, section, item, cx)
+                    && let Some(before) = before
+                {
+                    self.moves.insert(id, (before, slotted, stamp));
+                }
+                return;
+            }
             // Script keystrokes stay with the code editor's own undo, unless they follow a script
             // step: then they are a typing run of their own, so undo takes the typing and the
             // step apart instead of dropping the step as stale.
@@ -1681,7 +1697,7 @@ impl RequestEditor {
         section: Option<Section>,
         item: ItemPath,
         cx: &mut Context<Self>,
-    ) {
+    ) -> Option<u64> {
         let auth = edit.field() == Field::Auth;
         if auth {
             self.auth.update(cx, |a, cx| a.set_notice(None, cx));
@@ -1690,11 +1706,46 @@ impl RequestEditor {
             target: Target::Request(item),
             edit,
         };
-        self.send_command(command, section, cx);
+        let id = self.send_command(command, section, cx);
         // The panel's plan queues behind the edit, so it reads the edited auth.
         if auth {
             refresh_token_panel(&self.auth, cx);
         }
+        id
+    }
+
+    // The auth a move to a secret starts from, as the history knows it.
+    fn auth_before(&mut self, edit: &Edit, cx: &App) -> Option<AuthSpec> {
+        let view = self.view(cx)?;
+        let read = |e: &Edit| view_edit(&view, e);
+        let busy = self.busy(Field::Auth, cx);
+        edit_track::rebase(&mut self.history, busy, &read, edit);
+        match edit_track::prior_of(&self.history, &read, edit)? {
+            Edit::Auth(auth) => Some(auth),
+            _ => None,
+        }
+    }
+
+    // Records the move command `id` made as one step, now that the actor named its secret:
+    // undo returns the literal and drops the held value, redo moves it under the same name.
+    // A later auth edit sent meanwhile has moved the field on, so the move stays unrecorded.
+    fn record_move(&mut self, id: u64, reference: &SecretRef) {
+        let Some((before, slotted, stamp)) = self.moves.remove(&id) else {
+            return;
+        };
+        if self.history.sent_stamp(Field::Auth) != stamp {
+            return;
+        }
+        let undo = Edit::ReturnFromSecret {
+            auth: Box::new(before),
+            reference: reference.clone(),
+        };
+        let redo = Edit::MoveToSecret {
+            slotted: Box::new(slotted),
+            pinned: Some(reference.clone()),
+        };
+        self.history.record(undo, redo, None);
+        self.history.bind(Some(id));
     }
 
     // Notes the snapshot behind the fields this refresh loads, which are the idle ones; the
@@ -1775,6 +1826,7 @@ impl RequestEditor {
     fn delivered(&mut self, root: &Path, acked: u64, cx: &App) {
         if self.target(cx).is_some_and(|(ours, _)| ours == root) {
             self.sent.retain(|&id, _| id > acked);
+            self.moves.retain(|&id, _| id > acked);
             self.history.settle(acked);
         }
     }
@@ -1786,6 +1838,10 @@ impl RequestEditor {
             return;
         }
         for notice in notices {
+            match &notice.kind {
+                NoticeKind::MovedToSecret(reference) => self.record_move(notice.command, reference),
+                _ => _ = self.moves.remove(&notice.command),
+            }
             let Some(section) = self.sent.remove(&notice.command) else {
                 continue;
             };
@@ -2066,7 +2122,9 @@ fn view_edit(view: &RequestView, edit: &Edit) -> Option<Edit> {
         Edit::Assertions(_) => Edit::Assertions(view.assertions.clone()),
         Edit::Body(_) => Edit::Body(view.body.clone()),
         Edit::Method(_) => Edit::Method(view.method.clone()),
-        Edit::Auth(_) => Edit::Auth(view.auth.clone()),
+        Edit::Auth(_) | Edit::MoveToSecret { .. } | Edit::ReturnFromSecret { .. } => {
+            Edit::Auth(view.auth.clone())
+        }
         Edit::Script(phase, _) => Edit::Script(*phase, view.scripts.get(*phase).to_string()),
         _ => return None,
     })

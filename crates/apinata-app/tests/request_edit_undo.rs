@@ -2414,3 +2414,169 @@ fn moving_oauth2_secrets_with_two_uncommitted_secrets_lands_after_a_settled_relo
     }
     .plain(cx);
 }
+
+// Move to a secret is one step: undo puts the literal back and drops the held value, redo
+// moves it again under the name it had.
+
+struct Moved {
+    col: tempfile::TempDir,
+    _state: tempfile::TempDir,
+    ws: Entity<apinata_app::workspace::Workspace>,
+    root: std::path::PathBuf,
+    win: AnyWindowHandle,
+    ed: Entity<RequestEditor>,
+    store: Arc<apinata_core::MemoryStore>,
+}
+
+// `b.yml` (a bearer token `t`) on its Auth section, with `dev` selected when `env` is set.
+fn moved_rig(cx: &mut TestAppContext, env: bool) -> Moved {
+    use apinata_app::command::Command;
+    support::init(cx);
+    let mut files = vec![("opencollection.yml", ROOT), ("b.yml", BEARER)];
+    if env {
+        files.push(("environments/dev.yml", "name: dev\n"));
+    }
+    let col = write_tree(&files);
+    let store = Arc::new(apinata_core::MemoryStore::new());
+    let (state, ws, root) = open_dir_with(cx, &col, store.clone());
+    if env {
+        let select = Command::SelectEnvironment(Some("dev".into()));
+        ws.update(cx, |w, cx| w.send(&root, select, cx));
+        cx.run_until_parked();
+    }
+    let (win, ed) = editor_for(cx, &ws, &root, "b.yml", false);
+    let m = Moved {
+        col,
+        _state: state,
+        ws,
+        root,
+        win,
+        ed,
+        store,
+    };
+    cx.update_window(m.win, |_, w, cx| {
+        w.click(("section", Section::Auth as usize), cx)
+    })
+    .unwrap();
+    frame(cx, m.win);
+    m
+}
+
+impl Moved {
+    fn token(&self, cx: &mut TestAppContext) -> String {
+        match &view_of(cx, &self.ws, &self.root, "b.yml").auth {
+            apinata_core::AuthSpec::Bearer { token } => token.clone(),
+            other => panic!("not bearer: {other:?}"),
+        }
+    }
+
+    fn click_move(&self, cx: &mut TestAppContext) {
+        frame(cx, self.win);
+        cx.update_window(self.win, |_, w, cx| w.click("auth-token-move", cx))
+            .unwrap();
+        cx.run_until_parked();
+    }
+
+    fn step(&self, cx: &mut TestAppContext, undo: bool) {
+        cx.update_window(self.win, |_, w, cx| {
+            self.ed.update(cx, |e, cx| {
+                if undo {
+                    e.undo_edit(w, cx)
+                } else {
+                    e.redo_edit(w, cx)
+                }
+            })
+        })
+        .unwrap();
+        cx.run_until_parked();
+    }
+
+    fn save(&self, cx: &mut TestAppContext) {
+        use apinata_app::command::{Command, Target};
+        let save = Command::Save(Target::Request(ip("b.yml")));
+        self.ws.update(cx, |w, cx| w.send(&self.root, save, cx));
+        cx.run_until_parked();
+    }
+
+    fn stored(&self, name: &str) -> Option<String> {
+        use apinata_core::{SecretKey, SecretStore};
+        let root = std::fs::canonicalize(&self.root).unwrap();
+        self.store.get(&SecretKey::new(root, "dev", name)).unwrap()
+    }
+
+    fn read(&self, rel: &str) -> String {
+        std::fs::read_to_string(self.col.path().join(rel)).unwrap_or_default()
+    }
+}
+
+#[gpui_kit::test]
+fn undoing_a_move_to_an_environment_secret_puts_the_literal_back(cx: &mut TestAppContext) {
+    let m = moved_rig(cx, true);
+    m.click_move(cx);
+    assert_eq!(m.token(cx), "{{b_token}}");
+    m.step(cx, true);
+    assert_eq!(m.token(cx), "t");
+    m.save(cx);
+    assert_eq!(m.stored("b_token"), None);
+    assert!(!m.read("environments/dev.yml").contains("b_token"));
+    // The held value went with the undo, so moving again claims the same name.
+    m.click_move(cx);
+    assert_eq!(m.token(cx), "{{b_token}}");
+}
+
+#[gpui_kit::test]
+fn undoing_a_move_to_dotenv_puts_the_literal_back(cx: &mut TestAppContext) {
+    let m = moved_rig(cx, false);
+    m.click_move(cx);
+    assert_eq!(m.token(cx), "{{process.env.APINATA_B_TOKEN}}");
+    m.step(cx, true);
+    assert_eq!(m.token(cx), "t");
+    m.save(cx);
+    assert!(
+        !m.read(".env").contains("APINATA_B_TOKEN"),
+        "{}",
+        m.read(".env")
+    );
+    m.click_move(cx);
+    assert_eq!(m.token(cx), "{{process.env.APINATA_B_TOKEN}}");
+}
+
+#[gpui_kit::test]
+fn redoing_a_move_keeps_its_name_and_the_save_stores_it(cx: &mut TestAppContext) {
+    let m = moved_rig(cx, true);
+    m.click_move(cx);
+    m.step(cx, true);
+    m.step(cx, false);
+    assert_eq!(m.token(cx), "{{b_token}}");
+    m.save(cx);
+    assert_eq!(m.stored("b_token").as_deref(), Some("t"));
+    assert!(
+        !m.read("b.yml").contains("token: t\n"),
+        "{}",
+        m.read("b.yml")
+    );
+}
+
+#[gpui_kit::test]
+fn a_move_saved_already_is_not_undone(cx: &mut TestAppContext) {
+    let m = moved_rig(cx, false);
+    m.click_move(cx);
+    m.save(cx);
+    assert!(
+        m.read(".env").contains("APINATA_B_TOKEN='t'"),
+        "{}",
+        m.read(".env")
+    );
+    m.step(cx, true);
+    assert_eq!(m.token(cx), "{{process.env.APINATA_B_TOKEN}}");
+    assert!(
+        !m.read("b.yml").contains("token: t\n"),
+        "{}",
+        m.read("b.yml")
+    );
+    assert!(
+        m.read(".env").contains("APINATA_B_TOKEN='t'"),
+        "{}",
+        m.read(".env")
+    );
+}

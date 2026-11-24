@@ -306,7 +306,10 @@ fn a_save_keeps_an_environment_secret_beside_a_dotenv_one(cx: &mut TestAppContex
     send(
         cx,
         &model,
-        edit(Edit::MoveToSecret(Box::new(bearer(MOVE_SLOT)))),
+        edit(Edit::MoveToSecret {
+            slotted: Box::new(bearer(MOVE_SLOT)),
+            pinned: None,
+        }),
     );
     let mut proxy = ProxyConfig::new("http", "proxy.local", "3128");
     proxy.auth = Some(ProxyAuth::new("u", "proxy-pw"));

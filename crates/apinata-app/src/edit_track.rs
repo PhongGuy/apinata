@@ -5,10 +5,13 @@
 //! edit, or `None` for a kind that is not undoable) and, to step, a `holds` check. Everything
 //! that is specific to an editor stays with it.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::hash::Hash;
 
-use crate::command::{Edit, Notice, NoticeKind};
+use apinata_core::import::replace_auth_secret;
+
+use crate::command::{Edit, MOVE_SLOT, Notice, NoticeKind};
 use crate::edit_history::{EditHistory, Typing};
 use crate::kv_table::{header_rows, param_rows, post_response_rows, var_rows};
 
@@ -26,16 +29,34 @@ fn shape(edit: &Edit) -> String {
     }
 }
 
+// A move to a secret and its undo leave a plain auth value; a move whose reference is not
+// known yet stays as it is and matches nothing.
+fn plain(edit: &Edit) -> Cow<'_, Edit> {
+    match edit {
+        Edit::MoveToSecret {
+            slotted,
+            pinned: Some(reference),
+        } => {
+            let mut auth = (**slotted).clone();
+            replace_auth_secret(&mut auth, MOVE_SLOT, &reference.template());
+            Cow::Owned(Edit::Auth(auth))
+        }
+        Edit::ReturnFromSecret { auth, .. } => Cow::Owned(Edit::Auth((**auth).clone())),
+        other => Cow::Borrowed(other),
+    }
+}
+
 /// Whether two edits of one field hold the same value.
 pub fn same_value(a: &Edit, b: &Edit) -> bool {
-    match (a, b) {
+    let (a, b) = (plain(a), plain(b));
+    match (a.as_ref(), b.as_ref()) {
         (Edit::Body(a), Edit::Body(b)) => a == b,
         (Edit::Auth(a), Edit::Auth(b)) => a == b,
         // The file keeps a script without its edge whitespace, so the view reads it trimmed.
         (Edit::Script(pa, a), Edit::Script(pb, b)) => {
             pa == pb && apinata_core::script_code(a) == apinata_core::script_code(b)
         }
-        _ => shape(a) == shape(b),
+        _ => shape(&a) == shape(&b),
     }
 }
 
@@ -58,7 +79,7 @@ pub fn prior_of(
     edit: &Edit,
 ) -> Option<Edit> {
     match sent_for(history, edit) {
-        Some(last) => Some(last.clone()),
+        Some(last) => Some(plain(last).into_owned()),
         None => view_edit(edit),
     }
 }

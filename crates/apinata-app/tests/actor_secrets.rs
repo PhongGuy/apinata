@@ -167,3 +167,95 @@ fn env_commands_follow_an_unseen_rename(cx: &mut TestAppContext) {
     );
     assert!(notices(cx, &model).is_empty());
 }
+
+// Switching the auth mode away from a moved secret and back keeps the value it holds, so the
+// save still stores it.
+#[gpui_kit::test]
+fn switching_auth_mode_keeps_a_held_secret(cx: &mut TestAppContext) {
+    use apinata_app::command::{Edit, MOVE_SLOT};
+    use apinata_core::AuthSpec;
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("a.yml", &request("a", "http://127.0.0.1:9/x")),
+        ("environments/dev.yml", "name: dev\n"),
+    ]);
+    let store = Arc::new(MemoryStore::new());
+    let model = open_with(cx, &dir, store.clone());
+    send(cx, &model, Command::SelectEnvironment(Some("dev".into())));
+    let target = Target::Request(ip("a.yml"));
+    let edit = |edit| Command::Edit {
+        target: target.clone(),
+        edit,
+    };
+    let bearer = |token: &str| AuthSpec::Bearer {
+        token: token.into(),
+    };
+    send(cx, &model, edit(Edit::Auth(bearer("tok-value"))));
+    let slotted = Box::new(bearer(MOVE_SLOT));
+    send(
+        cx,
+        &model,
+        edit(Edit::MoveToSecret {
+            slotted,
+            pinned: None,
+        }),
+    );
+    cx.run_until_parked();
+    let moved = snap(cx, &model).content.requests[&ip("a.yml")].auth.clone();
+    assert_eq!(moved, bearer("{{a_token}}"));
+    let basic = AuthSpec::Basic {
+        username: "u".into(),
+        password: "p".into(),
+    };
+    send(cx, &model, edit(Edit::Auth(basic)));
+    send(cx, &model, edit(Edit::Auth(moved)));
+    send(cx, &model, Command::Save(target.clone()));
+    cx.run_until_parked();
+    assert_eq!(
+        stored(&dir, &store, "dev", "a_token").as_deref(),
+        Some("tok-value")
+    );
+}
+
+// A redo that finds its `.env` name taken meanwhile changes nothing and never picks another.
+#[gpui_kit::test]
+fn a_redone_move_refuses_a_name_taken_meanwhile(cx: &mut TestAppContext) {
+    use apinata_app::command::{Edit, MOVE_SLOT, SecretRef};
+    use apinata_core::AuthSpec;
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("a.yml", &request("a", "http://127.0.0.1:9/x")),
+    ]);
+    let model = open_with(cx, &dir, Arc::new(MemoryStore::new()));
+    let target = Target::Request(ip("a.yml"));
+    let edit = |edit| Command::Edit {
+        target: target.clone(),
+        edit,
+    };
+    let bearer = |token: &str| AuthSpec::Bearer {
+        token: token.into(),
+    };
+    send(cx, &model, edit(Edit::Auth(bearer("tok-value"))));
+    std::fs::write(dir.path().join(".env"), "APINATA_A_TOKEN=other\n").unwrap();
+    cx.run_until_parked();
+    let id = send(
+        cx,
+        &model,
+        edit(Edit::MoveToSecret {
+            slotted: Box::new(bearer(MOVE_SLOT)),
+            pinned: Some(SecretRef::Dotenv("APINATA_A_TOKEN".into())),
+        }),
+    );
+    cx.run_until_parked();
+    let s = snap(cx, &model);
+    assert_eq!(s.content.requests[&ip("a.yml")].auth, bearer("tok-value"));
+    assert!(
+        s.notices
+            .iter()
+            .any(|n| n.command == id && matches!(n.kind, NoticeKind::Failed { .. })),
+        "{:?}",
+        s.notices
+    );
+    let env = std::fs::read_to_string(dir.path().join(".env")).unwrap();
+    assert_eq!(env, "APINATA_A_TOKEN=other\n");
+}
