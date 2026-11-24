@@ -6,7 +6,9 @@ use std::time::{Duration, Instant};
 
 use apinata_app::history_palette::{
     HISTORY_MAX, HistoryEntry, HistoryMatch, HistorySearch, UNSAVED_TAG, filter_history,
+    status_class,
 };
+use apinata_app::ui::StatusClass;
 use apinata_core::ItemPath;
 
 fn entry(name: &str, method: &str, url: &str, status: u16) -> HistoryEntry {
@@ -256,4 +258,26 @@ fn filtering_cost_grows_in_line_with_the_sends() {
     let ratio = best_large.as_secs_f64() / best_small.as_secs_f64();
     eprintln!("500 sends {best_small:?}, 5000 sends {best_large:?}, ratio {ratio:.1}");
     assert!(ratio < 30.0, "ten times the sends cost {ratio:.1} times");
+}
+
+// A send's status takes the response status line's colour; a failure takes the error colour.
+#[test]
+fn the_status_colour_follows_the_status_class() {
+    let class = |status| status_class(&entry("a", "GET", "https://h/a", status));
+    assert_eq!(class(200), StatusClass::Success);
+    assert_eq!(class(302), StatusClass::Info);
+    assert_eq!(class(404), StatusClass::Warning);
+    assert_eq!(class(500), StatusClass::Danger);
+    assert_eq!(class(0), StatusClass::Muted);
+    let mut failed = entry("a", "GET", "https://h/a", 0);
+    failed.reason = Some("Connection refused".into());
+    failed.detail = "Connection refused · 1 min ago".into();
+    assert_eq!(status_class(&failed), StatusClass::Danger);
+}
+
+#[test]
+fn a_class_term_still_keeps_and_highlights_its_statuses() {
+    let got = filter_history(&rows(), "4xx");
+    assert_eq!(got.iter().map(|m| m.index).collect::<Vec<_>>(), [3]);
+    assert_eq!(got[0].detail, [span(0, 3)]);
 }
