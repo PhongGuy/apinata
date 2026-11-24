@@ -341,8 +341,8 @@ pub enum ExecError {
         /// The run-wide cap, when it rather than the request's own timeout was the limit.
         run_wide: Option<Duration>,
         /// The response deadline that ran out: the request's own timeout, or the run-wide cap
-        /// when that was lower. `None` when another timer ran out, such as a PAC lookup, an
-        /// NTLM leg or a saved body's idle window.
+        /// when that was lower. `None` when another timer ran out, such as a PAC lookup or a
+        /// saved body's idle window.
         limit: Option<Duration>,
     },
     /// The connection to a hop's host failed, including its TLS handshake.
@@ -1055,31 +1055,15 @@ impl Executor {
             .or(own)
     }
 
-    /// [`Self::exchange_hops`], with a timeout the run-wide cap decided marked as such.
-    async fn exchange(
-        &self,
-        req: &ResolvedRequest,
-        buf: &mut HopBuffer,
-        pac: &mut PacSend,
-        stream: Option<(&StreamOptions, &CancelHandle)>,
-        preloaded: Option<&Preloaded>,
-    ) -> Result<Response, ExecError> {
-        let result = self.exchange_hops(req, buf, pac, stream, preloaded).await;
+    /// The run-wide cap when it, not the request's own timeout, set the hop deadline.
+    fn run_wide(&self, req: &ResolvedRequest) -> Option<Duration> {
         let own = req.timeout().filter(|t| !t.is_zero());
-        let cap_bound = self.timeout_cap.filter(|cap| own.is_none_or(|t| t > *cap));
-        match (result, cap_bound) {
-            (Err(ExecError::Timeout { url, limit, .. }), Some(cap)) => Err(ExecError::Timeout {
-                url,
-                run_wide: Some(cap),
-                limit,
-            }),
-            (result, _) => result,
-        }
+        self.timeout_cap.filter(|cap| own.is_none_or(|t| t > *cap))
     }
 
     /// The whole send: read the body's files, then run Bruno's redirect loop, keeping each
     /// completed hop in `buf`.
-    async fn exchange_hops(
+    async fn exchange(
         &self,
         req: &ResolvedRequest,
         buf: &mut HopBuffer,
@@ -1127,6 +1111,7 @@ impl Executor {
         let rule = rule_for(req.network().proxy(), &self.network);
         // The first hop and its proxy are judged before the body, so a refusal costs no file read.
         let timeout = self.effective_timeout(req);
+        let run_wide = self.run_wide(req);
         let mut hop_deadline = Deadline::after(timeout);
         let overrides = sorted_overrides(req.network().host_overrides());
         let (hop_rule, mut pac_line) = self
@@ -1450,10 +1435,11 @@ impl Executor {
             // One deadline per hop, over its PAC lookup, headers and body; it started with the
             // lookup. A digest retry is a fresh leg.
             let mut leg = hop_deadline;
-            // The hop's deadline ran out, so the error names it; a saved body's idle window does not.
+            // The hop's deadline ran out, so the error names it, and the cap when that set it; a
+            // saved body's idle window names neither.
             let timed_out = || ExecError::Timeout {
                 url: redact_url(url.as_str()),
-                run_wide: None,
+                run_wide,
                 limit: timeout,
             };
             // A hop in NTLM mode runs its three legs on a pinned connection; negotiate pushes the
@@ -1487,6 +1473,7 @@ impl Executor {
                             followed as usize,
                             store_cookies,
                             timeout,
+                            run_wide,
                             leg,
                             pac_line.as_deref(),
                             buf,

@@ -321,3 +321,63 @@ fn an_unrelated_write_during_a_password_read_reads_once(cx: &mut TestAppContext)
     answers[0].send("pw".into()).unwrap();
     assert!(wait_until(cx, |_| store.answered() == 1));
 }
+
+// A store whose first proxy password read panics and whose later reads answer from `inner`.
+struct PanicOnceStore {
+    inner: MemoryStore,
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+impl SecretStore for PanicOnceStore {
+    fn get(
+        &self,
+        key: &apinata_core::SecretKey,
+    ) -> Result<Option<String>, apinata_core::SecretError> {
+        if *key == proxy_password_key()
+            && self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0
+        {
+            panic!("the secret service fell over");
+        }
+        self.inner.get(key)
+    }
+    fn set(
+        &self,
+        key: &apinata_core::SecretKey,
+        value: &str,
+    ) -> Result<(), apinata_core::SecretError> {
+        self.inner.set(key, value)
+    }
+    fn delete(&self, key: &apinata_core::SecretKey) -> Result<(), apinata_core::SecretError> {
+        self.inner.delete(key)
+    }
+}
+
+// A password read that panics must not leave its target marked as on the way: the next write
+// still applies those settings, with the password the second read finds.
+#[gpui_kit::test]
+fn a_panicking_password_read_leaves_the_next_write_applied(cx: &mut TestAppContext) {
+    ready(cx);
+    let col = two_requests();
+    let inner = MemoryStore::new();
+    inner.set(&proxy_password_key(), "p1").unwrap();
+    let store = Arc::new(PanicOnceStore {
+        inner,
+        calls: Default::default(),
+    });
+    let _s = started_with_store(cx, &col, store.clone());
+    let target = mock_server(cx, wiremock::ResponseTemplate::new(200));
+    let proxy = mock_server(cx, wiremock::ResponseTemplate::new(200));
+    edit_settings(cx, |s| s.proxy = manual_proxy(&proxy, "u"));
+    assert!(wait_until(cx, |_| {
+        store.calls.load(std::sync::atomic::Ordering::SeqCst) == 1
+    }));
+    for _ in 0..5 {
+        cx.run_until_parked();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    edit_settings(cx, |s| s.wrap_editors = !s.wrap_editors);
+    network_installed(cx);
+    send_now(cx, &target);
+    // Basic base64 of "u:p1".
+    assert_eq!(proxy_auth(cx, &proxy).as_deref(), Some("Basic dTpwMQ=="));
+}
