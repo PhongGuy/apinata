@@ -422,6 +422,7 @@ mod oauth2_tokens;
 mod open_external;
 mod open_in_place;
 mod open_reveal;
+mod open_url;
 mod palette;
 mod palette_availability;
 mod palette_measure;
