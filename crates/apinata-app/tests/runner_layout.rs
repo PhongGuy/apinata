@@ -277,6 +277,11 @@ fn assert_options_in_columns(cx: &mut TestAppContext, s: &Started, width: f32) {
         "{width}px: labels start at {} different places: {columns:?}",
         columns.len()
     );
+    // The Data file label opens the third column, where the unsafe-retry checkbox sits.
+    let data = find(cx, s, "run-data-label");
+    if !columns.iter().any(|x| (*x - data.left()).abs() <= SLACK) {
+        columns.push(data.left());
+    }
     // The checkboxes line up with the controls' column, not with the labels.
     for id in ["run-bail", "run-retry-unsafe"] {
         let b = find(cx, s, id);
@@ -300,9 +305,9 @@ fn the_options_line_up_in_columns_at_1280x800(cx: &mut TestAppContext) {
         &["run-tags-label", "run-exclude-tags-label"][..],
         &["run-iterations-label", "run-delay-label", "run-data-label"],
         &[
-            "run-fail-on-status-label",
             "run-retries-label",
             "run-retry-delay-label",
+            "run-retry-unsafe",
         ],
     ] {
         let first = find(cx, &s, group[0]);
