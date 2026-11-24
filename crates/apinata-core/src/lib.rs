@@ -301,7 +301,8 @@ pub use runtime_vars::{RuntimeVar, RuntimeVars};
 pub use schema_test::schema_test_script;
 pub use script::{
     ConsoleEntry, ConsoleLevel, ExecutionMode, ScriptOptions, ScriptPhase, ScriptText,
-    ScriptTextKind, TestOutcome, plan_script_texts, plan_script_texts_across, script_texts,
+    ScriptTextKind, TestOutcome, own_script_line, plan_script_texts, plan_script_texts_across,
+    script_texts,
 };
 pub use script_snippets::{Snippet, SnippetPhase, script_snippets};
 pub use script_trust::{ScriptDecision, ScriptTrust, script_hash};
