@@ -529,7 +529,7 @@ fn imported_toast(
         [one] => Some(one.clone()),
         _ => None,
     };
-    let open = {
+    let open: Rc<dyn Fn(&mut App)> = {
         let (workspace, root) = (workspace.clone(), root.clone());
         Rc::new(move |cx: &mut App| {
             workspace.update(cx, |w, cx| {
@@ -550,7 +550,7 @@ fn imported_toast(
     };
     let Some(name) = single else {
         return toast
-            .action(move |_, _, cx| open_button(open.clone(), cx.entity(), cx))
+            .action(move |_, _, cx| open_button(Rc::clone(&open), cx.entity(), cx))
             .autohide(true);
     };
     let use_it = Rc::new(move |cx: &mut App| {
@@ -560,7 +560,7 @@ fn imported_toast(
     });
     toast
         .content(move |_, _, cx| {
-            let button = open_button(open.clone(), cx.entity(), cx);
+            let button = open_button(Rc::clone(&open), cx.entity(), cx);
             h_flex().pt_2().child(button).into_any_element()
         })
         .action(move |_, _, cx| {
