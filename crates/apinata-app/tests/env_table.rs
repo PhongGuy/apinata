@@ -986,7 +986,7 @@ fn the_heading_sits_on_the_table_head_fill(cx: &mut TestAppContext) {
             let head = w.find("env-head").bounds();
             let scale = w.scale_factor();
             let fill = cx.theme().table_head;
-            w.painted_quads().into_iter().any(|q| {
+            crate::support::whole_quads(w).into_iter().any(|q| {
                 let x = q.bounds.origin.x.0 / scale;
                 let y = q.bounds.origin.y.0 / scale;
                 let width = q.bounds.size.width.0 / scale;

@@ -264,7 +264,7 @@ fn the_banner_is_an_outlined_muted_box(cx: &mut TestAppContext) {
             let at = w.find("paste-banner").bounds();
             let scale = w.scale_factor();
             let fill = cx.theme().muted;
-            w.painted_quads().into_iter().any(|q| {
+            crate::support::whole_quads(w).into_iter().any(|q| {
                 (q.bounds.origin.x.0 / scale - f32::from(at.left())).abs() < 1.
                     && (q.bounds.origin.y.0 / scale - f32::from(at.top())).abs() < 1.
                     && q.background.as_solid() == Some(fill)
