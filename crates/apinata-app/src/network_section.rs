@@ -1,5 +1,5 @@
 //! The collection's Network tab: the proxy choice and its fields, the client certificates,
-//! and a way to move literal secrets out of the collection file.
+//! and the host overrides. The password and passphrases are shared secret fields.
 
 use crate::ui::SolidRing as _;
 use std::cell::{Cell, RefCell};
@@ -22,12 +22,15 @@ use gpui_kit::{
     Rems, SharedString, Subscription, TestSupportExt, Window, div, px,
 };
 
+use crate::auth_section::{
+    AuthScope, MoveToSecret, SecretDestination, SecretPlace, secret_field_placing, secret_hint,
+};
 use crate::body_section::collection_relative;
-use crate::command::Edit;
+use crate::command::{Edit, NetworkSlot};
 use crate::kv_table::set_text;
-use crate::network_secrets::env_name;
 use crate::section::SectionEdit;
-use crate::snapshot::{DotenvNames, SecretHome};
+use crate::snapshot::DotenvNames;
+use crate::ui::SecretMasks;
 use crate::{style, ui};
 
 /// How the collection picks its proxy, in segment order.
@@ -103,22 +106,12 @@ struct CertRow {
     // The outside answer for the certificate and key texts it was computed from, so a render
     // reads it and only an edited path pays for the filesystem check again.
     outside: RefCell<Option<([String; 2], bool)>>,
-    // Whether its `.env` passphrase is being replaced, so the passphrase input shows.
-    replacing: bool,
     // The width the path input's text had when last drawn, which fits the shown path.
     file_room: Rc<Cell<Option<Pixels>>>,
     _subs: Vec<Subscription>,
 }
 
 impl CertRow {
-    // Where the passphrase's `.env` value is when it shows the badge rather than its input.
-    fn stored_home(&self, names: &DotenvNames) -> Option<SecretHome> {
-        if self.replacing {
-            return None;
-        }
-        names.home(env_name(&self.cert.passphrase)?)
-    }
-
     fn outside(&self, root: &Path, canonical_root: Option<&Path>) -> bool {
         let [_, certificate, key, _] = cert_texts(&self.cert);
         let mut cache = self.outside.borrow_mut();
@@ -170,10 +163,10 @@ pub struct NetworkSection {
     bypass: Entity<InputState>,
     // The password last loaded or sent; every edit carries it, never half-typed text.
     password_committed: String,
-    // Whether the `.env` password is being replaced, so its input shows.
-    password_replacing: bool,
-    // The `.env` names that are stored or held for the collection, which decide the badges.
+    // The `.env` names that are stored or held for the collection, which the hints name.
     dotenv: DotenvNames,
+    // Masks the password and passphrases by their text, keeping a reveal while typing.
+    masks: SecretMasks,
     // The port last loaded or typed valid; a refused port shows `port_error` and every edit
     // carries this one instead.
     port_committed: String,
@@ -182,7 +175,6 @@ pub struct NetworkSection {
     loaded_proxy: ProxyConfig,
     certs: Vec<CertRow>,
     hosts: Vec<HostRow>,
-    plain_secrets: bool,
     notice: Option<String>,
     // What changed outside the app, or what a never-seen collection sets.
     change: Option<crate::network_gate::Notice>,
@@ -244,14 +236,13 @@ impl NetworkSection {
             password,
             bypass,
             password_committed: String::new(),
-            password_replacing: false,
             dotenv: DotenvNames::default(),
+            masks: SecretMasks::default(),
             port_committed: String::new(),
             port_error: None,
             loaded_proxy: ProxyConfig::new(PROTOCOLS[0], "", ""),
             certs: Vec::new(),
             hosts: Vec::new(),
-            plain_secrets: false,
             notice: None,
             change: None,
             focus: cx.focus_handle(),
@@ -261,17 +252,14 @@ impl NetworkSection {
         }
     }
 
-    /// Shows `network` from a snapshot without emitting an edit; `plain_secrets` offers the
-    /// move of literal secrets to `.env`.
+    /// Shows `network` from a snapshot without emitting an edit.
     pub fn load(
         &mut self,
         network: &CollectionNetwork,
-        plain_secrets: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.loads += 1;
-        self.plain_secrets = plain_secrets;
         let (choice, fields) = match &network.proxy {
             CollectionProxy::Off => (ProxyChoice::Off, network.stored_proxy.as_ref()),
             CollectionProxy::Custom(proxy) => (ProxyChoice::Custom, Some(proxy)),
@@ -304,14 +292,12 @@ impl NetworkSection {
         set_text(&self.host, &proxy.hostname, window, cx);
         self.port_error = None;
         self.show_fields(&proxy, window, cx);
-        self.password_replacing = false;
         let password = self.password_committed.clone();
-        set_text(&self.password, &password, window, cx);
+        self.masks.fill(&self.password, &password, window, cx);
         self.certs.retain(|row| !row.draft);
-        for row in &mut self.certs {
-            row.replacing = false;
+        for row in &self.certs {
             let pass = &row.inputs.0[CertField::Passphrase as usize];
-            set_text(pass, &row.cert.passphrase, window, cx);
+            self.masks.fill(pass, &row.cert.passphrase, window, cx);
         }
         self.hosts.retain(|slot| !slot.draft);
         cx.notify();
@@ -341,7 +327,7 @@ impl NetworkSection {
         // The password commits on Enter or blur, so typing over the committed value stays until
         // the file changes that value itself.
         if password != self.password_committed {
-            set_text(&self.password, password, window, cx);
+            self.masks.fill(&self.password, password, window, cx);
             self.password_committed = password.to_string();
         }
     }
@@ -380,10 +366,13 @@ impl NetworkSection {
             }
             row.cert = cert.clone();
             for (i, (state, text)) in row.inputs.0.iter().zip(cert_texts(cert)).enumerate() {
-                let kept = (typed_over && i == CertField::Passphrase as usize)
-                    || (!is_pem(cert) && i == CertField::Key as usize);
-                if !kept {
-                    set_text(state, text, window, cx);
+                let passphrase = i == CertField::Passphrase as usize;
+                let kept =
+                    (typed_over && passphrase) || (!is_pem(cert) && i == CertField::Key as usize);
+                match (kept, passphrase) {
+                    (true, _) => {}
+                    (false, true) => self.masks.fill(state, text, window, cx),
+                    (false, false) => set_text(state, text, window, cx),
                 }
             }
         }
@@ -612,7 +601,6 @@ impl NetworkSection {
             inputs: CertInputs(inputs),
             draft: false,
             outside: RefCell::default(),
-            replacing: false,
             file_room: Rc::default(),
             _subs: subs,
         }
@@ -681,22 +669,9 @@ impl NetworkSection {
             .map(|s| s.read(cx).value().to_string());
         row.cert.domain = domain;
         row.cert.kind = typed_kind(&row.inputs, is_pem(&row.cert), cx);
-        // Other fields carry the last committed passphrase, never half-typed text. A
-        // stored passphrase stays unless replaced, and a replace left empty keeps it.
+        // Other fields carry the last committed passphrase, never half-typed text.
         if *state == row.inputs.0[CertField::Passphrase as usize] {
-            let replacing = std::mem::take(&mut row.replacing);
-            let stored = row.stored_home(&self.dotenv).is_some();
-            let keep = if replacing {
-                passphrase.is_empty()
-            } else {
-                stored
-            };
-            if !keep {
-                row.cert.passphrase = passphrase;
-            }
-            if replacing {
-                cx.notify();
-            }
+            row.cert.passphrase = passphrase;
         }
         self.settle_cert(ix, before, cx);
     }
@@ -784,26 +759,16 @@ impl NetworkSection {
     /// Whether a password or passphrase still being typed would send an edit on Enter or blur,
     /// so a close asks to save it as it does for other unsent secrets.
     pub fn holds_pending(&self, cx: &App) -> bool {
-        // A replace left empty keeps the stored value, and a stored one stays unless replaced.
-        let sends = |text: &str, before: &str, replacing: bool, stored: bool| {
-            text != before && if replacing { !text.is_empty() } else { !stored }
-        };
         let password = self.password.read(cx).value();
         let proxy = self.choice == ProxyChoice::Custom
             && !self.held_back(cx)
-            && sends(
-                &password,
-                &self.password_committed,
-                self.password_replacing,
-                self.password_home().is_some(),
-            );
+            && *password != *self.password_committed;
         proxy
             || self.certs.iter().filter(|row| !row.draft).any(|row| {
                 let typed = row.inputs.0[CertField::Passphrase as usize]
                     .read(cx)
                     .value();
-                let stored = row.stored_home(&self.dotenv).is_some();
-                sends(&typed, &row.cert.passphrase, row.replacing, stored)
+                *typed != *row.cert.passphrase
             })
     }
 
@@ -949,25 +914,15 @@ impl NetworkSection {
     }
 
     // Sends the typed password once per change, as the environment table does for secrets.
-    // A stored password stays unless replaced, and a replace left empty keeps it.
     fn commit_password(&mut self, cx: &mut Context<Self>) {
         let text = self.password.read(cx).value().to_string();
-        let replacing = std::mem::take(&mut self.password_replacing);
-        let keep = if replacing {
-            text.is_empty()
-        } else {
-            self.password_home().is_some()
-        };
-        if replacing {
-            cx.notify();
-        }
-        if !keep && text != self.password_committed {
+        if text != self.password_committed {
             self.password_committed = text;
             self.emit(cx);
         }
     }
 
-    /// Sets the `.env` names stored or held for the collection, which decide the badges.
+    /// Sets the `.env` names stored or held for the collection, which the hints name.
     pub fn set_dotenv(&mut self, names: DotenvNames, cx: &mut Context<Self>) {
         if self.dotenv != names {
             self.dotenv = names;
@@ -975,40 +930,31 @@ impl NetworkSection {
         }
     }
 
-    // Where the proxy password's `.env` value is when it shows the badge rather than its input.
-    fn password_home(&self) -> Option<SecretHome> {
-        if self.password_replacing {
-            return None;
+    // Where the secret fields say their values live; nothing here belongs to an environment,
+    // so a moved value always goes to `.env`.
+    fn place(&self) -> SecretPlace {
+        SecretPlace {
+            scope: AuthScope::Collection,
+            dotenv: self.dotenv.clone(),
+            destination: SecretDestination::DotenvOnly,
         }
-        self.dotenv.home(env_name(&self.password_committed)?)
     }
 
-    // Opens the proxy password empty and focused for a new value in place of the stored one.
-    fn replace_password(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.password_replacing = true;
-        let input = self.password.clone();
-        set_text(&input, "", window, cx);
-        input.update(cx, |i, cx| i.focus(window, cx));
-        cx.notify();
+    // The action that moves `slot`'s literal to `.env`.
+    fn mover(&self, slot: NetworkSlot, cx: &Context<Self>) -> MoveToSecret {
+        let this = cx.entity().downgrade();
+        Rc::new(move |_, cx| {
+            this.update(cx, |s, cx| s.move_secret(slot, cx)).ok();
+        })
     }
 
-    // Opens row `ix`'s passphrase empty and focused for a new value in place of the stored one.
-    fn replace_passphrase(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(row) = self.certs.get_mut(ix) else {
-            return;
-        };
-        row.replacing = true;
-        let input = row.inputs.0[CertField::Passphrase as usize].clone();
-        set_text(&input, "", window, cx);
-        input.update(cx, |i, cx| i.focus(window, cx));
-        cx.notify();
-    }
-
-    // A password typed but not yet committed goes first, since a click does not blur it.
-    fn move_secrets(&mut self, cx: &mut Context<Self>) {
+    /// Moves `slot`'s literal value to `.env`: the draft refers to it at once and the value
+    /// is written when the collection is saved. A password or passphrase typed but not yet
+    /// committed goes first, since a click does not blur its field.
+    pub fn move_secret(&mut self, slot: NetworkSlot, cx: &mut Context<Self>) {
         self.commit_password(cx);
         self.commit_passphrases(cx);
-        cx.emit(SectionEdit::new(Edit::MoveNetworkSecrets));
+        cx.emit(SectionEdit::new(Edit::MoveNetworkSecret(slot)).after_loads(self.loads));
     }
 
     /// Whether `edit`, which this section sent, was built from settings a load has since
@@ -1119,22 +1065,15 @@ impl NetworkSection {
                 "Username",
                 field("proxy-username", &self.username, style::WIDE_INPUT_WIDTH),
             ))
-            .child(ui::form_row(
-                "proxy-password-row",
+            .child(secret_field_placing(
                 "Password",
-                if let Some(home) = self.password_home() {
-                    ui::stored_secret(
-                        "proxy-password-stored",
-                        "proxy-password-replace",
-                        home,
-                        cx.listener(|this, _, window, cx| this.replace_password(window, cx)),
-                        cx,
-                    )
-                    .into_any_element()
-                } else {
-                    field("proxy-password", &self.password, style::WIDE_INPUT_WIDTH)
-                        .into_any_element()
-                },
+                "proxy-password",
+                &self.password,
+                &self.password_committed,
+                None,
+                &self.place(),
+                Some(self.mover(NetworkSlot::ProxyPassword, cx)),
+                cx,
             ))
             .child(
                 ui::form_row(
@@ -1276,14 +1215,34 @@ impl NetworkSection {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
+        let place = self.place();
+        // A move names its row as the file holds it, where drafts take no place.
+        let mut filed = 0;
         let rows = self
             .certs
             .iter()
             .enumerate()
             .map(|(ix, row)| {
+                let file_row = filed;
+                filed += usize::from(!row.draft);
+                // A draft is not in the file yet, so its passphrase has no home to name.
+                let hint = (!row.draft)
+                    .then(|| {
+                        secret_hint(
+                            ("cert-passphrase-storage", ix).into(),
+                            ("cert-passphrase-move", ix).into(),
+                            &row.cert.passphrase,
+                            None,
+                            &place,
+                            Some(self.mover(NetworkSlot::Passphrase(file_row), cx)),
+                            cx,
+                        )
+                    })
+                    .flatten();
                 v_flex()
                     .gap(style::SPACE_1)
                     .child(self.cert_row(ix, row, window, cx))
+                    .children(hint.map(|hint| h_flex().justify_end().child(hint)))
                     .when(
                         row.outside(&self.root, self.canonical_root.as_deref()),
                         |el| el.child(muted_note(("cert-outside", ix), OUTSIDE_NOTICE, cx)),
@@ -1476,22 +1435,12 @@ impl NetworkSection {
                         )))
                     }),
             )
-            .child(h_flex().flex_1().min_w_0().child(
-                if let Some(home) = row.stored_home(&self.dotenv) {
-                    ui::stored_secret(
-                        ("cert-passphrase-stored", ix),
-                        ("cert-passphrase-replace", ix),
-                        home,
-                        cx.listener(move |this, _, window, cx| {
-                            this.replace_passphrase(ix, window, cx)
-                        }),
-                        cx,
-                    )
-                    .into_any_element()
-                } else {
-                    field("cert-passphrase", passphrase, cx).into_any_element()
-                },
-            ))
+            .child(
+                h_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .child(field("cert-passphrase", passphrase, cx)),
+            )
             .child(
                 ui::icon_button(
                     ("cert-remove", ix),
@@ -1635,21 +1584,7 @@ impl Render for NetworkSection {
         let passphrases =
             (self.certs.iter()).map(|row| &row.inputs.0[CertField::Passphrase as usize]);
         for input in std::iter::once(&self.password).chain(passphrases) {
-            ui::mask_unless_template(input, window, cx);
-        }
-        // Inputs hidden behind the badge keep the stored value, so nothing reads as typed.
-        let mut hidden = Vec::new();
-        if self.password_home().is_some() {
-            hidden.push((self.password.clone(), self.password_committed.clone()));
-        }
-        for row in (self.certs.iter()).filter(|row| row.stored_home(&self.dotenv).is_some()) {
-            let input = row.inputs.0[CertField::Passphrase as usize].clone();
-            hidden.push((input, row.cert.passphrase.clone()));
-        }
-        for (input, value) in hidden {
-            if input.read(cx).value() != value.as_str() {
-                set_text(&input, &value, window, cx);
-            }
+            self.masks.apply(input, window, cx);
         }
         let this = cx.entity();
         let selected = CHOICES
@@ -1671,24 +1606,6 @@ impl Render for NetworkSection {
             ProxyChoice::Off => Some("Requests connect directly."),
             ProxyChoice::Custom => None,
         };
-        let plain = self.plain_secrets.then(|| {
-            // Wraps so the button drops below the note when the pane is too narrow for both.
-            h_flex()
-                .id("network-plain-notice")
-                .test_support()
-                .flex_wrap()
-                .gap(style::SPACE_2)
-                .items_center()
-                .text_size(style::TEXT_SMALL)
-                .text_color(cx.theme().warning)
-                .child("Stored in plain text")
-                .child(
-                    Button::new("network-move-secrets")
-                        .solid_ring(cx)
-                        .label("Move to .env")
-                        .on_click(cx.listener(|this, _, _, cx| this.move_secrets(cx))),
-                )
-        });
         let notice = self.notice.clone().map(|text| {
             div()
                 .id("network-notice")
@@ -1743,7 +1660,6 @@ impl Render for NetworkSection {
             })
             .child(self.certificate_rows(window, cx))
             .child(self.host_rows(window, cx))
-            .children(plain)
             .children(notice)
     }
 }

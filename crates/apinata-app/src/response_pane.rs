@@ -1,6 +1,8 @@
 //! The response pane: a status line over Body, Headers, Cookies, Timeline, Tests and Console
 //! tabs for one tab's send, with run errors shown in place of the body.
 
+use crate::theme::SelectedStyle;
+use crate::ui::ChooseButton as _;
 use crate::ui::LockButton as _;
 use crate::ui::SolidRing as _;
 use std::cell::{Cell, RefCell};
@@ -44,6 +46,11 @@ use crate::body_view::{BodyView, SCRUBBED_TIP, SetVariable, Shown};
 use crate::compare_rows::{ComparePalette, RevealHeader, RowActions, Toggle, compare_row};
 use crate::compare_source::{self, CompareSide, CompareSource, HeaderValue, SourceChoice};
 use crate::compare_view::{self, CompareRow};
+use crate::console_view::{self, ConsoleFilter};
+pub use crate::console_view::{
+    CONSOLE_PANE_CHARS, CONSOLE_PANE_LINES, CONSOLE_ROW_CHARS, CONSOLE_ROW_LINES, ConsoleRows,
+    console_line, console_rows, console_shown, console_text,
+};
 use crate::cookie_jar::{
     HTTP_ONLY_LABEL, HTTP_ONLY_TIP, SECURE_LABEL, SECURE_TIP, host_search, open_cookie_jar,
 };
@@ -53,7 +60,7 @@ use crate::executor;
 use crate::follow_url::{OPEN_URL, OpenUrl, follow_target};
 use crate::kv_grid::{ActionShow, KvColumn, action_slot};
 use crate::last_response::{self, KeptAs, KeptSend, ResponseStore, StoreOp, Stored};
-use crate::live_stream::{self, EventRow};
+use crate::live_stream::{self, EventFilter, EventRow, EventTimes, FilterSource};
 use crate::request_editor::{SendRequest, ShowRequestSettings};
 use crate::save_example;
 use crate::scroll_follow::{FocusFollow, Followed};
@@ -691,7 +698,21 @@ pub struct ResponsePane {
     events_tab: bool,
     // The shown result's events, parsed off-thread once per result.
     done_events: Option<(Weak<RequestResult>, Rc<Vec<SseEvent>>)>,
+    // The stream index of `done_events`' first event, and when each arrived, for a stream
+    // that just ended; a kept response has no times.
+    done_first: u64,
+    done_times: Rc<EventTimes>,
     events_task: Option<Task<()>>,
+    // The event the detail panel shows, by its index in the stream, so it outlives the end.
+    selected_event: Option<u64>,
+    // The live stream last seen, so a new send starts with nothing picked.
+    live_serial: Option<u64>,
+    // The Events filter: its field, the text it settled on (lowercase), the wait for typing
+    // to pause, and its matches as last scanned.
+    events_filter: Entity<InputState>,
+    events_needle: String,
+    events_settle: Option<Task<()>>,
+    events_cache: RefCell<EventFilter>,
     // A focus marker under each tab, indexed by `ResponseTab::ALL` position.
     tab_markers: Vec<FocusHandle>,
     tab_reveal: ui::Reveal,
@@ -723,8 +744,9 @@ pub struct ResponsePane {
     // The real header values of the sends made live in this session, by request and kept send,
     // so Compare can find what the at-rest mask hides. Memory only, pruned to the kept history.
     live_headers: HashMap<(PathBuf, ItemPath, u64), (KeptAs, Vec<HeaderValue>)>,
-    // The Console tab's level filter; it belongs to the pane, so it outlives each send.
-    console_filter: Option<ConsoleLevel>,
+    // The Console tab's level filter and search; they belong to the pane, so they outlive
+    // each send.
+    console_filter: ConsoleFilter,
     // The Tests tab's verdict filter, kept across sends like the Console's.
     tests_filter: Option<TestFilter>,
     // The shown result's console lines redacted once per result, as renders repeat.
@@ -802,7 +824,18 @@ impl ResponsePane {
         let mut last = current;
         let headers_filter = cx.new(|cx| InputState::new(window, cx).placeholder("Filter headers"));
         let cookies_filter = cx.new(|cx| InputState::new(window, cx).placeholder("Filter cookies"));
-        let filter_events = [&headers_filter, &cookies_filter]
+        let console_filter = ConsoleFilter::new(window, cx);
+        let console_search = cx.subscribe(
+            console_filter.input(),
+            |p, input, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change) {
+                    let query = input.read(cx).value().to_string();
+                    p.set_console_search(&query, cx);
+                }
+            },
+        );
+        let events_filter = cx.new(|cx| InputState::new(window, cx).placeholder("Filter events"));
+        let mut filter_events = [&headers_filter, &cookies_filter]
             .map(|input| {
                 cx.subscribe(input, |_, _, event: &InputEvent, cx| {
                     if matches!(event, InputEvent::Change) {
@@ -811,7 +844,15 @@ impl ResponsePane {
                 })
             })
             .into_iter()
+            .chain([console_search])
             .collect::<Vec<_>>();
+        filter_events.push(
+            cx.subscribe(&events_filter, |this, _, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change) {
+                    this.events_typed(cx);
+                }
+            }),
+        );
         let subscription = cx.observe_in(&send, window, move |this, send, window, cx| {
             let next = done(send.read(cx));
             let same = match (&last, &next) {
@@ -833,6 +874,16 @@ impl ResponsePane {
             }
             let was_streaming = this.streaming;
             this.streaming = send.read(cx).is_streaming();
+            // A pick belongs to one send: a new stream or another shown result drops it, while
+            // a stream that just ended keeps it for its finished view.
+            let serial = send.read(cx).live().map(live_stream::LiveStream::serial);
+            if serial.is_some() && serial != this.live_serial {
+                this.selected_event = None;
+                this.live_serial = serial;
+            }
+            if !same && !was_streaming {
+                this.selected_event = None;
+            }
             this.refresh_events_tab(cx);
             if !same {
                 this.parse_events(was_streaming, cx);
@@ -880,7 +931,15 @@ impl ResponsePane {
             streaming: false,
             events_tab: false,
             done_events: None,
+            done_first: 0,
+            done_times: Rc::default(),
             events_task: None,
+            selected_event: None,
+            live_serial: None,
+            events_filter,
+            events_needle: String::new(),
+            events_settle: None,
+            events_cache: RefCell::default(),
             tab_markers: ResponseTab::ALL
                 .iter()
                 .map(|_| ui::tab_marker_handle(cx))
@@ -905,7 +964,7 @@ impl ResponsePane {
             compare_generation: 0,
             compare_task: None,
             live_headers: HashMap::new(),
-            console_filter: None,
+            console_filter,
             tests_filter: None,
             console_redacted: RefCell::default(),
             graphql_summary: RefCell::default(),
@@ -1360,12 +1419,18 @@ impl ResponsePane {
 
     /// The Console tab's level filter; `None` shows every entry.
     pub fn console_filter(&self) -> Option<ConsoleLevel> {
-        self.console_filter
+        self.console_filter.level()
     }
 
     /// Shows only entries of `filter`'s level in the Console tab, or all for `None`.
     pub fn set_console_filter(&mut self, filter: Option<ConsoleLevel>, cx: &mut Context<Self>) {
-        self.console_filter = filter;
+        self.console_filter.set_level(filter);
+        cx.notify();
+    }
+
+    /// Shows only Console tab entries whose text matches `query`; blank shows all.
+    pub fn set_console_search(&mut self, query: &str, cx: &mut Context<Self>) {
+        self.console_filter.set_search(query);
         cx.notify();
     }
 
@@ -3622,7 +3687,7 @@ impl ResponsePane {
             }
             ResponseTab::Console => {
                 let console = self.redacted_console(result);
-                self.console_list(&console, cx)
+                self.console_list(console, cx)
             }
             ResponseTab::Compare => self.compare_body(window, cx),
             ResponseTab::Events => self.events_body(cx),
@@ -3986,101 +4051,18 @@ impl ResponsePane {
         h_flex().pb(style::SPACE_2).child(pick)
     }
 
-    // A filter and Copy header over the entries the filter keeps, each a coloured level
-    // beside its monospace text with whitespace kept, since scripts log formatted JSON.
-    fn console_list(&self, console: &[ConsoleEntry], cx: &mut Context<Self>) -> AnyElement {
-        let filter = self.console_filter;
-        let selected = CONSOLE_FILTERS
-            .iter()
-            .position(|f| *f == filter)
-            .unwrap_or(0);
-        let this = cx.entity();
-        let pick = ui::segmented(
-            "console-filter",
-            ["All", "Log", "Debug", "Info", "Warn", "Error"],
-            selected,
-            move |ix, _, cx| {
-                let f = CONSOLE_FILTERS.get(*ix).copied().flatten();
-                this.update(cx, |p, cx| p.set_console_filter(f, cx));
+    // The shared console view over the shown result's redacted lines, with the pane's own
+    // filter, so the tab and the dock draw, filter and copy alike.
+    fn console_list(&self, console: Rc<[ConsoleEntry]>, cx: &mut Context<Self>) -> AnyElement {
+        let pane = cx.entity().downgrade();
+        console_view::view(
+            &console_view::TAB_IDS,
+            console,
+            &self.console_filter,
+            move |level, cx| {
+                let _ = pane.update(cx, |p, cx| p.set_console_filter(level, cx));
             },
-        );
-        // Copy reads the shown result when clicked, so a render never builds the text.
-        let pane = cx.entity();
-        let copy = Button::new("console-copy")
-            .solid_ring(cx)
-            .ghost()
-            .small()
-            .label("Copy")
-            .on_click(move |_, _, cx| {
-                let p = pane.read(cx);
-                let text = done(p.send.read(cx))
-                    .map(|r| console_text(&p.redacted_console(&r), p.console_filter))
-                    .unwrap_or_default();
-                cx.write_to_clipboard(ClipboardItem::new_string(text))
-            });
-        let header = h_flex()
-            .gap(style::SPACE_2)
-            .pb(style::SPACE_2)
-            .items_center()
-            .child(pick)
-            .child(copy);
-        let kept: Vec<&ConsoleEntry> = console.iter().filter(|e| keeps(filter, e)).collect();
-        let none = kept
-            .is_empty()
-            .then(|| ui::empty_state("console-none", "Nothing was logged.", &[]));
-        // The scroll frame is not virtualised, so the pane draws from one row and character
-        // budget across entries and notes how many entries it left out.
-        let (bodies, left) = console_shown(kept.iter().map(|e| e.text.as_str()));
-        let left_note = (left > 0).then(|| {
-            let entries = if left == 1 { "entry" } else { "entries" };
-            div()
-                .id("console-more-entries")
-                .test_support()
-                .pt(style::SPACE_2)
-                .text_color(cx.theme().muted_foreground)
-                .child(format!("{left} more {entries}; use Copy for the full log"))
-        });
-        let rows = kept
-            .into_iter()
-            .zip(bodies)
-            .enumerate()
-            .map(|(ix, (e, body))| {
-                let colour = level_colour(e.level, cx);
-                h_flex()
-                    .id(("console", ix))
-                    .test_support()
-                    .items_start()
-                    .gap(style::SPACE_2)
-                    .child(
-                        div()
-                            .id(("console-level", ix))
-                            .test_support()
-                            .flex_none()
-                            .text_color(colour)
-                            .child(e.level.as_str()),
-                    )
-                    .child(
-                        div()
-                            .flex_none()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(format!("[{}]", e.phase.as_str())),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .whitespace_normal()
-                            .font_family(cx.theme().mono_font_family.clone())
-                            .child(console_body("console-more", ix, body, cx)),
-                    )
-            });
-        scroll_frame(
-            "response-console",
-            v_flex()
-                .child(header)
-                .children(none)
-                .children(rows)
-                .children(left_note),
+            cx,
         )
     }
 }
@@ -4188,136 +4170,6 @@ fn pac_line(hop: &apinata_core::Hop, r: &RequestResult) -> Option<String> {
 fn override_line(hop: &apinata_core::Hop) -> Option<String> {
     hop.override_from()
         .map(|mapping| format!("Host override: {mapping}"))
-}
-
-// Warn and error lines stand out; every other level stays muted.
-pub(crate) fn level_colour(level: ConsoleLevel, cx: &App) -> Hsla {
-    match level {
-        ConsoleLevel::Warn => cx.theme().warning,
-        ConsoleLevel::Error => cx.theme().danger,
-        _ => cx.theme().muted_foreground,
-    }
-}
-
-// An entry's text as bounded rows, then a muted note `(more_id, ix)` for the lines left out.
-pub(crate) fn console_body(
-    more_id: &'static str,
-    ix: usize,
-    (lines, more): (Vec<String>, Option<String>),
-    cx: &App,
-) -> Div {
-    v_flex()
-        .children(lines.into_iter().map(|line| div().child(line)))
-        .children(more.map(|note| {
-            div()
-                .id((more_id, ix))
-                .test_support()
-                .text_color(cx.theme().muted_foreground)
-                .child(note)
-        }))
-}
-
-/// One console entry's shown rows and its "... N more lines" note, if any.
-pub type ConsoleRows = (Vec<String>, Option<String>);
-
-/// How many lines of one console entry the tab shows.
-pub const CONSOLE_ROW_LINES: usize = 1000;
-/// How many characters of one console entry the tab shows, each line break counting as one.
-pub const CONSOLE_ROW_CHARS: usize = 5000;
-/// How many lines the Console tab shows across all its entries.
-pub const CONSOLE_PANE_LINES: usize = 2000;
-/// How many characters the Console tab shows across all its entries, counted as per entry.
-pub const CONSOLE_PANE_CHARS: usize = 50_000;
-
-/// The rows the Console tab shows for an entry's `text`, and a "... N more lines" note when
-/// lines are left out. A line cut at the character limit ends in "…"; a blank line is one
-/// space so it keeps its height; a trailing carriage return is dropped.
-pub fn console_rows(text: &str) -> (Vec<String>, Option<String>) {
-    let (mut lines, mut chars) = (CONSOLE_ROW_LINES, CONSOLE_ROW_CHARS);
-    rows_within(text, &mut lines, &mut chars)
-}
-
-/// The rows of each entry text the Console tab shows, as [`console_rows`] but drawing on one
-/// budget of [`CONSOLE_PANE_LINES`] and [`CONSOLE_PANE_CHARS`]; the entries left out once it
-/// is spent are counted, not returned.
-pub fn console_shown<'a>(texts: impl IntoIterator<Item = &'a str>) -> (Vec<ConsoleRows>, usize) {
-    let (mut lines, mut chars) = (CONSOLE_PANE_LINES, CONSOLE_PANE_CHARS);
-    let mut shown = Vec::new();
-    let mut left = 0;
-    for text in texts {
-        if lines == 0 || chars == 0 {
-            left += 1;
-            continue;
-        }
-        let mut entry_lines = lines.min(CONSOLE_ROW_LINES);
-        let mut entry_chars = chars.min(CONSOLE_ROW_CHARS);
-        let rows = rows_within(text, &mut entry_lines, &mut entry_chars);
-        lines -= lines.min(CONSOLE_ROW_LINES) - entry_lines;
-        chars -= chars.min(CONSOLE_ROW_CHARS) - entry_chars;
-        shown.push(rows);
-    }
-    (shown, left)
-}
-
-// Takes rows of `text` while `lines` and `chars` last, spending them, and notes the rest.
-fn rows_within(text: &str, lines: &mut usize, chars: &mut usize) -> (Vec<String>, Option<String>) {
-    let total = text.bytes().filter(|b| *b == b'\n').count() + 1;
-    let mut rows = Vec::new();
-    for line in text.split('\n') {
-        if *lines == 0 || *chars == 0 {
-            break;
-        }
-        let line = line.strip_suffix('\r').unwrap_or(line);
-        *lines -= 1;
-        if let Some((cut, _)) = line.char_indices().nth(*chars) {
-            rows.push(format!("{}…", &line[..cut]));
-            *chars = 0;
-            break;
-        }
-        *chars = chars.saturating_sub(line.chars().count() + 1);
-        rows.push(if line.is_empty() {
-            " ".to_owned()
-        } else {
-            line.to_owned()
-        });
-    }
-    let more = total - rows.len();
-    let note = match more {
-        0 => None,
-        1 => Some("... 1 more line".to_owned()),
-        n => Some(format!("... {n} more lines")),
-    };
-    (rows, note)
-}
-
-// The Console filter's segments, in order: All, then each level.
-pub(crate) const CONSOLE_FILTERS: [Option<ConsoleLevel>; 6] = [
-    None,
-    Some(ConsoleLevel::Log),
-    Some(ConsoleLevel::Debug),
-    Some(ConsoleLevel::Info),
-    Some(ConsoleLevel::Warn),
-    Some(ConsoleLevel::Error),
-];
-
-// Whether `filter` shows `e`; a level the filter cannot name shows only under All.
-fn keeps(filter: Option<ConsoleLevel>, e: &ConsoleEntry) -> bool {
-    filter.is_none_or(|f| f == e.level)
-}
-
-/// "{level} [{phase}] {text}".
-pub fn console_line(e: &ConsoleEntry) -> String {
-    format!("{} [{}] {}", e.level.as_str(), e.phase.as_str(), e.text)
-}
-
-/// The lines of the entries `filter` keeps (all for `None`), joined by "\n".
-pub fn console_text(entries: &[ConsoleEntry], filter: Option<ConsoleLevel>) -> String {
-    entries
-        .iter()
-        .filter(|e| keeps(filter, e))
-        .map(console_line)
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 // The script tests under the assertions: a summary, then one heading per script in run order
@@ -4655,6 +4507,42 @@ fn mask_handshake(name: &str, value: &str) -> String {
     match value.split_once(' ') {
         Some((scheme, _)) => format!("{scheme} [redacted]"),
         None => "[redacted]".to_owned(),
+    }
+}
+
+// The shown result's events, the stream index of the first, and when each arrived.
+struct ShownEvents {
+    events: Rc<Vec<SseEvent>>,
+    first: u64,
+    times: Rc<EventTimes>,
+}
+
+// Characters of an event's data the detail panel draws.
+const DETAIL_CHARS: usize = 64 * 1024;
+
+// Position `ix` of the unfiltered Events list as its stream index and row: the live events
+// while streaming, else `kept`.
+fn listed_row(
+    send: &Entity<SendModel>,
+    kept: Option<&ShownEvents>,
+    ix: usize,
+    cx: &App,
+) -> Option<(u64, EventRow)> {
+    match (send.read(cx).live(), kept) {
+        (Some(live), _) => {
+            let event = live.events().get(ix)?;
+            let time = live.arrivals().get(ix).copied();
+            Some((
+                live.dropped_events() + ix as u64,
+                live_stream::event_row(event, time),
+            ))
+        }
+        (None, Some(kept)) => {
+            let at = kept.first + ix as u64;
+            let time = kept.times.get(usize::try_from(at).ok()?);
+            Some((at, live_stream::event_row(kept.events.get(ix)?, time)))
+        }
+        (None, None) => None,
     }
 }
 
@@ -5219,7 +5107,13 @@ impl ResponsePane {
     // A stream that just ended seeds the list with the live events until the parse lands.
     fn parse_events(&mut self, from_stream: bool, cx: &mut Context<Self>) {
         self.done_events = None;
+        self.done_first = 0;
         self.events_task = None;
+        // Only a stream that just ended knows when its events arrived.
+        self.done_times = match from_stream {
+            true => Rc::new(self.send.read(cx).ended_times().clone()),
+            false => Rc::default(),
+        };
         let Some(result) = done(self.send.read(cx)) else {
             return;
         };
@@ -5234,6 +5128,7 @@ impl ResponsePane {
         let seed = self.send.read(cx).ended_events();
         if from_stream && !seed.is_empty() {
             self.done_events = Some((Weak::clone(&weak), Rc::new(seed.to_vec())));
+            self.done_first = self.done_times.first();
         }
         self.events_task = Some(cx.spawn(async move |this, cx| {
             let parsed = cx
@@ -5250,7 +5145,9 @@ impl ResponsePane {
                 // A newer result owns the pane now; this parse is stale.
                 let current = done(p.send.read(cx));
                 if current.is_some_and(|c| Weak::ptr_eq(&weak, &Arc::downgrade(&c))) {
+                    // The stored body parses from the stream's first event.
                     p.done_events = Some((weak, Rc::new(parsed)));
+                    p.done_first = 0;
                     cx.notify();
                 }
             });
@@ -5269,14 +5166,107 @@ impl ResponsePane {
         self.strip_tabs().to_vec()
     }
 
-    /// The Events tab's rows: the live events while streaming, else the shown response's.
+    /// The Events tab's rows as listed: the live events while streaming, else the shown
+    /// response's, narrowed by the filter.
     pub fn event_rows(&self, cx: &App) -> Vec<EventRow> {
+        let kept = self.shown_list(cx);
+        let total = self.events_total(kept.as_ref(), cx);
+        let rows = |ix| listed_row(&self.send, kept.as_ref(), ix, cx).map(|(_, row)| row);
+        match self.visible_events(kept.as_ref(), cx) {
+            Some(shown) => shown.into_iter().filter_map(rows).collect(),
+            None => (0..total).filter_map(rows).collect(),
+        }
+    }
+
+    /// The event picked for the detail panel, by its index in the stream.
+    pub fn selected_event(&self) -> Option<usize> {
+        self.selected_event.and_then(|ix| usize::try_from(ix).ok())
+    }
+
+    // Picks stream event `ix` for the detail panel; picking it again closes the panel.
+    fn select_event(&mut self, ix: u64, cx: &mut Context<Self>) {
+        self.selected_event = (self.selected_event != Some(ix)).then_some(ix);
+        cx.notify();
+    }
+
+    // Each keystroke restarts the wait, so a fast stream is refiltered once typing pauses.
+    fn events_typed(&mut self, cx: &mut Context<Self>) {
+        let timer = cx.background_executor().timer(crate::body_view::SETTLE);
+        self.events_settle = Some(cx.spawn(async move |this, cx| {
+            timer.await;
+            this.update(cx, |p, cx| {
+                p.events_needle = p.events_filter.read(cx).value().to_lowercase();
+                p.events_settle = None;
+                cx.notify();
+            })
+            .ok();
+        }));
+    }
+
+    // The shown result's events, the stream index of the first, and their arrival times.
+    fn shown_list(&self, cx: &App) -> Option<ShownEvents> {
+        let events = self.shown_events(cx)?;
+        Some(ShownEvents {
+            events,
+            first: self.done_first,
+            times: Rc::clone(&self.done_times),
+        })
+    }
+
+    // How many events the list holds before the filter.
+    fn events_total(&self, kept: Option<&ShownEvents>, cx: &App) -> usize {
+        match (self.send.read(cx).live(), kept) {
+            (Some(live), _) => live.events().len(),
+            (None, Some(kept)) => kept.events.len(),
+            (None, None) => 0,
+        }
+    }
+
+    // The list positions the filter keeps, or `None` while no filter is set.
+    fn visible_events(&self, kept: Option<&ShownEvents>, cx: &App) -> Option<Vec<usize>> {
+        let needle = self.events_needle.as_str();
+        if needle.is_empty() {
+            return None;
+        }
+        let mut cache = self.events_cache.borrow_mut();
+        Some(match (self.send.read(cx).live(), kept) {
+            (Some(live), _) => cache.matches(
+                needle,
+                FilterSource::Live(live.serial()),
+                live.events(),
+                live.dropped_events(),
+            ),
+            (None, Some(kept)) => cache.matches(
+                needle,
+                FilterSource::Done(Rc::clone(&kept.events)),
+                &kept.events,
+                kept.first,
+            ),
+            (None, None) => Vec::new(),
+        })
+    }
+
+    // Stream event `ix` and when it arrived, while the list still holds it.
+    fn event_at(&self, ix: u64, cx: &App) -> Option<(SseEvent, Option<std::time::Duration>)> {
         match self.send.read(cx).live() {
-            Some(live) => live_stream::event_rows(live.events()),
-            None => self
-                .shown_events(cx)
-                .map(|e| live_stream::event_rows(&e))
-                .unwrap_or_default(),
+            Some(live) => {
+                let at = usize::try_from(ix.checked_sub(live.dropped_events())?).ok()?;
+                let event = live.events().get(at)?.clone();
+                Some((event, live.arrivals().get(at).copied()))
+            }
+            None => {
+                let kept = self.shown_list(cx)?;
+                let at = usize::try_from(ix.checked_sub(kept.first)?).ok()?;
+                let time = kept.times.get(usize::try_from(ix).ok()?);
+                Some((kept.events.get(at)?.clone(), time))
+            }
+        }
+    }
+
+    /// Copies the whole data of stream event `ix` to the clipboard and confirms it with a toast.
+    pub fn copy_event(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some((event, _)) = self.event_at(ix as u64, cx) {
+            copy_with_toast(event.data, "Copied event data", window, cx);
         }
     }
 
@@ -5285,29 +5275,15 @@ impl ResponsePane {
         self.send.read(cx).live().map_or(0, |l| l.dropped_events())
     }
 
-    /// Copies the whole data of event `ix` to the clipboard and confirms it with a toast.
-    pub fn copy_event(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
-        let data = match self.send.read(cx).live() {
-            Some(live) => live.events().get(ix).map(|e| e.data.clone()),
-            None => self
-                .shown_events(cx)
-                .and_then(|e| e.get(ix).map(|e| e.data.clone())),
-        };
-        if let Some(data) = data {
-            copy_with_toast(data, "Copied event data", window, cx);
-        }
-    }
-
-    // The Events tab: a muted note when old events were dropped or none came, over the rows.
+    // The Events tab: the filter field, a muted note when old events were dropped or none came,
+    // the rows, and the picked event's details under them.
     fn events_body(&self, cx: &mut Context<Self>) -> AnyElement {
         let live = self.send.read(cx).live().is_some();
         let dropped = self.events_dropped(cx);
-        let kept = self.shown_events(cx);
-        let count = match (live, &kept) {
-            (true, _) => self.send.read(cx).live().map_or(0, |l| l.events().len()),
-            (false, Some(e)) => e.len(),
-            (false, None) => 0,
-        };
+        let kept = self.shown_list(cx);
+        let total = self.events_total(kept.as_ref(), cx);
+        let shown = self.visible_events(kept.as_ref(), cx).map(Rc::new);
+        let count = shown.as_ref().map_or(total, |s| s.len());
         // Stay on the newest event only while a live list already sat at its end.
         if live && count > 0 && self.events_scroll.is_scrolled_to_end().unwrap_or(true) {
             self.events_scroll
@@ -5315,6 +5291,7 @@ impl ResponsePane {
         }
         let send = self.send.clone();
         let pane = cx.entity();
+        let selected = self.selected_event;
         let theme = cx.theme();
         let (muted, border) = (theme.muted_foreground, theme.border);
         let mono = theme.mono_font_family.clone();
@@ -5322,35 +5299,36 @@ impl ResponsePane {
             "response-events",
             count,
             move |range: std::ops::Range<usize>, _: &mut Window, cx: &mut App| {
-                let rows: Vec<EventRow> = match (&kept, send.read(cx).live()) {
-                    (_, Some(l)) => range
-                        .clone()
-                        .filter_map(|ix| l.events().get(ix))
-                        .map(|e| live_stream::event_rows(std::slice::from_ref(e)).remove(0))
-                        .collect(),
-                    (Some(e), None) => range
-                        .clone()
-                        .filter_map(|ix| e.get(ix))
-                        .map(|e| live_stream::event_rows(std::slice::from_ref(e)).remove(0))
-                        .collect(),
-                    (None, None) => Vec::new(),
-                };
                 range
-                    .zip(rows)
-                    .map(|(ix, row)| {
-                        let pane = pane.clone();
+                    .filter_map(|k| {
+                        let ix = shown.as_ref().map_or(Some(k), |s| s.get(k).copied())?;
+                        listed_row(&send, kept.as_ref(), ix, cx).map(|row| (k, row))
+                    })
+                    .map(|(k, (stream_ix, row))| {
                         let first = row.preview.lines().next().unwrap_or_default();
                         let name = format!("{}: {first}", row.name);
-                        // A ghost button, so Tab reaches the row and Enter copies it as a
-                        // click does. One line: a time slot, the name, id and retry, then the
-                        // data's first line, which gives way with an ellipsis.
+                        let time = live_stream::time_label(row.time);
+                        // A ghost button, so Tab reaches the row and Enter picks it as a click
+                        // does. One line: the arrival time, the name, id and retry, then the
+                        // data's first line, which gives way with an ellipsis before the icon.
                         let line = h_flex()
                             .size_full()
                             .min_w_0()
                             .items_center()
                             .gap_2()
+                            .pr(style::SPACE_5)
                             .text_size(style::TEXT_SMALL)
-                            .child(div().flex_none().w(style::EVENT_TIME_WIDTH))
+                            .child(
+                                div()
+                                    .id(("event-time", k))
+                                    .test_support()
+                                    .flex_none()
+                                    .w(style::EVENT_TIME_WIDTH)
+                                    .truncate()
+                                    .text_color(muted)
+                                    .aria_label(time.clone())
+                                    .child(time),
+                            )
                             .child(
                                 div()
                                     .flex_none()
@@ -5373,39 +5351,86 @@ impl ResponsePane {
                                     .font_family(mono.clone())
                                     .child(row.preview),
                             );
-                        let button = Button::new(("event-row", ix))
+                        let pick = pane.clone();
+                        let button = Button::new(("event-row", k))
                             .solid_ring(cx)
                             .ghost()
                             .size_full()
                             .rounded_none()
                             .px_2()
+                            .choose(selected == Some(stream_ix), SelectedStyle::Ghost, cx)
                             .accessibility_label(name)
-                            .tooltip("Copy event data")
-                            .on_click(move |_, window, cx| {
-                                pane.update(cx, |p, cx| p.copy_event(ix, window, cx));
+                            .tooltip("Show event details")
+                            .on_click(move |_, _, cx| {
+                                pick.update(cx, |p, cx| p.select_event(stream_ix, cx));
                             })
                             .child(line);
+                        let copy_pane = pane.clone();
+                        // The copy icon floats over the row's right end, so the row still spans
+                        // the list.
+                        let copy = ui::icon_button(
+                            ("event-copy", k),
+                            gpui_kit::assets::IconName::Copy,
+                            "Copy event data",
+                            None,
+                            cx,
+                        )
+                        .xsmall()
+                        .on_click(move |_, window, cx| {
+                            // The row under the icon has a click handler too; the copy ends it.
+                            cx.stop_propagation();
+                            let ix = stream_ix as usize;
+                            copy_pane.update(cx, |p, cx| p.copy_event(ix, window, cx));
+                        });
                         // Each list item lays out on its own and would shrink to its text,
                         // cutting the separator short; it spans the list instead. The last
                         // row ends the list, so it paints no edge at the dock.
                         div()
+                            .relative()
                             .h(style::EVENT_ROW_HEIGHT)
                             .w_full()
                             .overflow_hidden()
-                            .when(ix + 1 < count, |r| r.border_b_1().border_color(border))
+                            .when(k + 1 < count, |r| r.border_b_1().border_color(border))
                             .child(button)
+                            .child(
+                                h_flex()
+                                    .absolute()
+                                    .top_0()
+                                    .bottom_0()
+                                    .right(style::SPACE_1)
+                                    .items_center()
+                                    .child(copy),
+                            )
                     })
                     .collect::<Vec<_>>()
             },
         )
         .track_scroll(&self.events_scroll)
         .size_full();
+        let filter = div()
+            .id("events-filter")
+            .test_support()
+            .w_full()
+            // The focus ring is drawn outside the field; keep it inside the pane.
+            .pr(style::SPACE_1)
+            .aria_label("Filter events")
+            .child(ui::padded_input(
+                // A small field, so a short window still lists two rows under it.
+                Input::new(&self.events_filter)
+                    .id("events-filter-input")
+                    .small()
+                    .bg(ui::field_fill(false, cx)),
+                &self.events_filter,
+            ));
+        let detail = selected.and_then(|ix| self.event_detail(ix, cx));
         v_flex()
             .id("response-events-tab")
             .test_support()
             .flex_1()
             .min_h_0()
             .w_full()
+            .gap_1()
+            .child(filter)
             .when(dropped > 0, |v| {
                 v.child(
                     div()
@@ -5417,7 +5442,7 @@ impl ResponsePane {
                 )
             })
             // A live stream's waiting row already speaks for an empty list.
-            .when(!live && count == 0, |v| {
+            .when(!live && total == 0, |v| {
                 v.child(
                     div()
                         .id("response-events-empty")
@@ -5439,7 +5464,57 @@ impl ResponsePane {
                     .child(list)
                     .vertical_scrollbar(&self.events_scroll),
             )
+            .children(detail)
             .into_any_element()
+    }
+
+    // The picked event in full under the list: its time, name, id and retry, then all its
+    // data, cut at a bound so a huge event stays cheap to draw; the row's icon copies it whole.
+    fn event_detail(&self, ix: u64, cx: &App) -> Option<AnyElement> {
+        let (event, time) = self.event_at(ix, cx)?;
+        let row = live_stream::event_row(&event, time);
+        let theme = cx.theme();
+        let (muted, border) = (theme.muted_foreground, theme.border);
+        let data = match event.data.char_indices().nth(DETAIL_CHARS) {
+            Some((at, _)) => format!("{}\u{2026}", &event.data[..at]),
+            None => event.data,
+        };
+        let head = h_flex()
+            .gap_2()
+            .text_size(style::TEXT_SMALL)
+            .child(
+                div()
+                    .text_color(muted)
+                    .child(live_stream::time_label(row.time)),
+            )
+            .child(div().font_weight(FontWeight::MEDIUM).child(row.name))
+            .children(row.id.map(|id| div().text_color(muted).child(id)))
+            .children(
+                live_stream::retry_label(row.retry).map(|t| div().text_color(muted).child(t)),
+            );
+        let element = v_flex()
+            .id("event-detail")
+            .test_support()
+            .flex_none()
+            .max_h(relative(0.5))
+            .w_full()
+            .gap_1()
+            .pt(style::SPACE_1)
+            .border_t_1()
+            .border_color(border)
+            .child(head)
+            .child(
+                div()
+                    .id("event-detail-data")
+                    .test_support()
+                    .aria_label(data.clone())
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .text_size(style::TEXT_SMALL)
+                    .font_family(theme.mono_font_family.clone())
+                    .child(data),
+            );
+        Some(element.into_any_element())
     }
 
     // One header row that never wraps: the tabs on the left, the status facts right-aligned.

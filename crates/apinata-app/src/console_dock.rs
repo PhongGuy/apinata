@@ -2,6 +2,7 @@
 //! through its own feed and cursor, polled only while the dock is open.
 
 use crate::ui::SolidRing as _;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -10,21 +11,22 @@ use apinata_core::{
     ConsoleLevel, ConsoleLine, LoggedBody, LoggedHop, NetworkEntry, SendSource, SessionLog,
 };
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::input::InputEvent;
 use gpui_kit::component::tab::Tab;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, App, Entity, EventEmitter, FocusHandle, Focusable, Role, Subscription, Task,
+    AnyElement, App, EventEmitter, FocusHandle, Focusable, Role, Subscription, Task,
     TestSupportExt, WeakEntity, Window, div, relative,
 };
 
 use crate::body_text;
+use crate::console_view::{self, ConsoleFilter};
 use crate::har_export;
 use crate::list_keys::{self, ListDown, ListOpen, ListUp};
 use crate::log_feed::{self, Feed, SOURCE_FILTERS};
-use crate::response_pane::{self, CONSOLE_FILTERS};
+use crate::response_pane;
 use crate::tab_area::TabArea;
 use crate::timing_bar::{self, Phases};
 use crate::{style, ui};
@@ -59,9 +61,8 @@ pub struct ConsoleDock {
     console: Feed<ConsoleLine>,
     network: Feed<NetworkEntry>,
     tab: DockTab,
-    level: Option<ConsoleLevel>,
-    search: String,
-    search_input: Entity<InputState>,
+    // The console view's own level filter and search, apart from the response pane's.
+    filter: ConsoleFilter,
     source: Option<SendSource>,
     // Lets an export go through the open request tab that shows the same exchange.
     tab_area: Option<WeakEntity<TabArea>>,
@@ -87,10 +88,9 @@ impl ConsoleDock {
 
     /// A closed dock on the Console tab, reading `log`.
     pub fn new(log: SessionLog, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let search_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("Filter console lines"));
+        let filter = ConsoleFilter::new(window, cx);
         let mut subs = vec![
-            cx.subscribe(&search_input, |this, input, event: &InputEvent, cx| {
+            cx.subscribe(filter.input(), |this, input, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {
                     let query = input.read(cx).value().to_string();
                     this.set_search(&query, cx);
@@ -104,9 +104,7 @@ impl ConsoleDock {
             console: Feed::default(),
             network: Feed::default(),
             tab: DockTab::Console,
-            level: None,
-            search: String::new(),
-            search_input,
+            filter,
             source: None,
             tab_area: None,
             selected: None,
@@ -210,18 +208,18 @@ impl ConsoleDock {
 
     /// The console level filter; `None` keeps every level.
     pub fn level_filter(&self) -> Option<ConsoleLevel> {
-        self.level
+        self.filter.level()
     }
 
     /// Sets the console level filter.
     pub fn set_level_filter(&mut self, f: Option<ConsoleLevel>, cx: &mut Context<Self>) {
-        self.level = f;
+        self.filter.set_level(f);
         cx.notify();
     }
 
     /// Sets the console search text.
     pub fn set_search(&mut self, query: &str, cx: &mut Context<Self>) {
-        self.search = query.to_string();
+        self.filter.set_search(query);
         cx.notify();
     }
 
@@ -242,9 +240,7 @@ impl ConsoleDock {
         self.console
             .entries()
             .iter()
-            .filter(|l| {
-                log_feed::console_keeps(l.level, &l.request, &l.text, self.level, &self.search)
-            })
+            .filter(|l| self.filter.keeps(*l))
             .cloned()
             .collect()
     }
@@ -314,93 +310,23 @@ impl ConsoleDock {
         cx.notify();
     }
 
-    // The level filter and search box over the shown lines. The pane's budget is spent
-    // newest first, so a noisy log keeps its latest rows; they are drawn back in time order.
+    // The shared console view over every held line, with the dock's own filter.
     fn console_tab(&self, cx: &mut Context<Self>) -> AnyElement {
-        let selected = CONSOLE_FILTERS
-            .iter()
-            .position(|f| *f == self.level)
-            .unwrap_or(0);
         let dock = cx.entity().downgrade();
-        let pick = ui::segmented(
-            "dock-console-level",
-            ["All", "Log", "Debug", "Info", "Warn", "Error"],
-            selected,
-            move |ix, _, cx| {
-                let f = CONSOLE_FILTERS.get(*ix).copied().flatten();
-                dock.update(cx, |d, cx| d.set_level_filter(f, cx)).ok();
-            },
-        );
-        let search = div()
-            .id("dock-console-search")
-            .test_support()
-            .flex_1()
-            .child(ui::padded_input(
-                Input::new(&self.search_input).bg(ui::field_fill(false, cx)),
-                &self.search_input,
-            ));
-        let lines = self.console_shown();
-        let (mut bodies, left) =
-            response_pane::console_shown(lines.iter().rev().map(|l| l.text.as_str()));
-        bodies.reverse();
-        let lines = &lines[left..];
-        let muted = cx.theme().muted_foreground;
-        let none = lines
-            .is_empty()
-            .then(|| ui::empty_state("dock-console-none", "Nothing was logged.", &[]));
-        let omitted = (left > 0).then(|| {
-            div()
-                .id("dock-console-omitted")
-                .test_support()
-                .text_color(muted)
-                .child(log_feed::omitted_label(left, "line"))
-        });
-        let rows = lines.iter().zip(bodies).enumerate().map(|(ix, (l, body))| {
-            let clock = log_feed::clock_label(l.at);
-            let level = l.level.as_str();
-            let tag = l.phase.map(|p| format!("[{}]", p.as_str()));
-            let aria = match &tag {
-                Some(tag) => format!("{clock} {} {tag} {level} {}", l.request, l.text),
-                None => format!("{clock} {} {level} {}", l.request, l.text),
-            };
-            h_flex()
-                .id(("dock-console", ix))
-                .test_support()
-                .aria_label(aria)
-                .items_start()
-                .gap(style::SPACE_2)
-                .child(div().flex_none().text_color(muted).child(clock))
-                .child(div().flex_none().child(l.request.clone()))
-                .children(tag.map(|tag| div().flex_none().text_color(muted).child(tag)))
-                .child(
-                    div()
-                        .flex_none()
-                        .text_color(response_pane::level_colour(l.level, cx))
-                        .child(level),
-                )
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .whitespace_normal()
-                        .font_family(cx.theme().mono_font_family.clone())
-                        .child(response_pane::console_body(
-                            "dock-console-more",
-                            ix,
-                            body,
-                            cx,
-                        )),
-                )
-        });
+        let lines: Rc<[Arc<ConsoleLine>]> = self.console.entries().iter().cloned().collect();
+        // The dock's tabs sit in from its edges; the pane's tab body brings its own inset.
         v_flex()
             .flex_1()
             .min_h_0()
             .px_2()
-            .gap(style::SPACE_2)
-            .child(h_flex().gap_2().items_center().child(pick).child(search))
-            .child(response_pane::scroll_frame(
-                "dock-console-list",
-                v_flex().children(omitted).children(none).children(rows),
+            .child(console_view::view(
+                &console_view::DOCK_IDS,
+                lines,
+                &self.filter,
+                move |level, cx| {
+                    dock.update(cx, |d, cx| d.set_level_filter(level, cx)).ok();
+                },
+                cx,
             ))
             .into_any_element()
     }
@@ -641,10 +567,10 @@ fn detail_pane(e: &NetworkEntry, area: Option<WeakEntity<TabArea>>, cx: &App) ->
                         .test_support()
                         .aria_label(b.text.clone())
                         .font_family(mono.clone())
-                        .child(response_pane::console_body(
+                        .child(console_view::console_body(
                             more_id,
                             0,
-                            response_pane::console_rows(&b.text),
+                            console_view::console_rows(&b.text),
                             cx,
                         )),
                 )

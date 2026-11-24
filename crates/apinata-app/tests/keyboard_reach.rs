@@ -394,7 +394,7 @@ fn a_welcome_recent_collection_takes_tab_and_enter(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn an_event_row_takes_tab_and_enter_copies_it_with_a_toast(cx: &mut TestAppContext) {
+fn an_event_row_takes_tab_and_enter_selects_it_and_its_icon_copies(cx: &mut TestAppContext) {
     use crate::support::sse_server::{Script, event};
     use apinata_app::response_pane::ResponseTab;
     use gpui_kit::component::WindowExt as _;
@@ -422,7 +422,7 @@ fn an_event_row_takes_tab_and_enter_copies_it_with_a_toast(cx: &mut TestAppConte
         })
         .unwrap();
     assert_eq!(name.as_deref(), Some("message: first"));
-    assert_eq!(tip.as_deref(), Some("Copy event data"));
+    assert_eq!(tip.as_deref(), Some("Show event details"));
     let toasts = |cx: &mut TestAppContext| {
         cx.update_window(s.win, |_, w, cx| w.notifications(cx).len())
             .unwrap()
@@ -431,6 +431,13 @@ fn an_event_row_takes_tab_and_enter_copies_it_with_a_toast(cx: &mut TestAppConte
     assert!(
         tab_to(cx, s.win, ("event-row", 0usize)),
         "Tab reaches the row"
+    );
+    press(cx, s.win, "enter");
+    assert_eq!(pane.read_with(cx, |p, _| p.selected_event()), Some(0));
+    assert_eq!(cx.read_from_clipboard().and_then(|c| c.text()), None);
+    assert!(
+        tab_to(cx, s.win, ("event-copy", 0usize)),
+        "Tab reaches the copy icon"
     );
     press(cx, s.win, "enter");
     assert_eq!(

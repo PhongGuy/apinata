@@ -2041,7 +2041,7 @@ impl Actor {
                     | Edit::Proxy(_)
                     | Edit::ClientCertificates(_)
                     | Edit::HostOverrides(_)
-                    | Edit::MoveNetworkSecrets
+                    | Edit::MoveNetworkSecret(_)
                     | Edit::MoveAuthSecrets
                     | Edit::MoveToSecret(_) => {
                         return Err(unsupported);

@@ -1,7 +1,7 @@
 //! Naming and recognising the collection's network secrets, which live in `.env` and are
 //! referenced from the collection file as `{{process.env.NAME}}`.
 
-use crate::command::Edit;
+use crate::command::{Edit, NetworkSlot};
 use apinata_core::{
     Collection, CollectionNetwork, CollectionProxy, DotenvMoves as Moves, dotenv_quotable,
 };
@@ -49,13 +49,19 @@ pub fn apply(
         .dotenv_keys()
         .map_err(|e| format!("Could not read .env: {e}"))?;
     taken.extend(held.iter().cloned());
-    let all = matches!(edit, Edit::MoveNetworkSecrets);
+    // A move plans only its own field, and moves it even though the file already holds it.
+    let only = match &edit {
+        Edit::MoveNetworkSecret(slot) => Some(*slot),
+        _ => None,
+    };
+    let all = only.is_some();
+    let planned = |slot: NetworkSlot| only.is_none_or(|only| only == slot);
 
     // Plan every move against the edited values first, so a refusal writes nothing.
     let (mut proxy, mut certificates) = match edit {
         Edit::Proxy(proxy) => (Some(proxy), None),
         Edit::ClientCertificates(certificates) => (None, Some(certificates)),
-        Edit::MoveNetworkSecrets => (
+        Edit::MoveNetworkSecret(_) => (
             Some(current.proxy.clone()),
             Some(current.certificates.clone()),
         ),
@@ -71,7 +77,8 @@ pub fn apply(
         .collect();
     taken.extend(referenced.iter().cloned());
     let mut moves = Moves::new(literals(&current), all, taken, referenced);
-    if let Some(CollectionProxy::Custom(p)) = &mut proxy
+    if planned(NetworkSlot::ProxyPassword)
+        && let Some(CollectionProxy::Custom(p)) = &mut proxy
         && let Some(auth) = &mut p.auth
     {
         moves.plan(
@@ -81,6 +88,9 @@ pub fn apply(
         );
     }
     for (row, cert) in certificates.iter_mut().flatten().enumerate() {
+        if !planned(NetworkSlot::Passphrase(row)) {
+            continue;
+        }
         let previous = current
             .certificates
             .get(row)
@@ -88,7 +98,7 @@ pub fn apply(
         moves.plan(&mut cert.passphrase, previous, &passphrase_base(row));
     }
 
-    // Only a move touches `.env`; a "Move to .env" with nothing to move leaves the draft alone.
+    // Only a move touches `.env`; a move with nothing to move leaves the draft alone.
     if moves.planned().is_empty() && all {
         return Ok(Vec::new());
     }
@@ -181,15 +191,4 @@ pub(crate) fn referenced_names(
         .filter_map(|v| env_name(v))
         .map(str::to_owned)
         .collect()
-}
-
-/// Whether the network settings hold a literal secret: a non-empty proxy password or
-/// passphrase that is not a template.
-pub fn plain_secrets(network: &CollectionNetwork) -> bool {
-    let plain = |s: &str| !s.is_empty() && !is_template(s);
-    let proxy = match &network.proxy {
-        CollectionProxy::Custom(p) => p.auth.as_ref().is_some_and(|a| plain(&a.password)),
-        _ => false,
-    };
-    proxy || network.certificates.iter().any(|c| plain(&c.passphrase))
 }
