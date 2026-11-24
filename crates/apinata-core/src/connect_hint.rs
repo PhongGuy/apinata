@@ -77,8 +77,9 @@ impl ConnectHint {
 }
 
 impl ExecError {
-    /// For a send that went out but got no response (refused, DNS, TLS, other connect
-    /// failures, a timeout or a dropped connection), the hop's URL and a short reason.
+    /// For a send that went out but got no whole response (refused, DNS, TLS, other connect
+    /// failures, a timeout, or a connection dropped before or during the body), the hop's URL
+    /// and a short reason.
     pub fn send_failure(&self) -> Option<(&str, &'static str)> {
         match self {
             // The title is the cause's fixed name, so it never carries a value from the request.
@@ -86,7 +87,9 @@ impl ExecError {
                 Some((url, ConnectHint::new(url, *cause).title))
             }
             ExecError::Timeout { url, .. } => Some((url, "Timed out")),
-            ExecError::Transport { url, .. } => Some((url, "Connection dropped")),
+            ExecError::Transport { url, .. } | ExecError::BodyCut { url, .. } => {
+                Some((url, "Connection dropped"))
+            }
             _ => None,
         }
     }

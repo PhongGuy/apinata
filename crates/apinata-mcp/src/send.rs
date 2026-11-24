@@ -653,6 +653,16 @@ mod tests {
     }
 
     #[test]
+    fn a_cut_body_reports_the_status_and_both_counts() {
+        let err = ExecError::body_cut("http://a.test/", 200, Vec::new(), 10, Some(100), "closed");
+        let text = exec_message(&err);
+        assert!(
+            text.contains("200") && text.contains("10 of 100 bytes"),
+            "{text}"
+        );
+    }
+
+    #[test]
     fn a_locked_keychain_fails_the_context_so_nothing_is_sent() {
         let dir = tempfile::TempDir::new().expect("tempdir");
         std::fs::write(

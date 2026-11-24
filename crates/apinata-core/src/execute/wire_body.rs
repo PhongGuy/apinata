@@ -115,6 +115,11 @@ impl WireBody {
         self.encoded.then(|| self.wire.load(Ordering::Relaxed))
     }
 
+    /// The bytes that came over the wire so far, compressed or not.
+    pub(super) fn wire_size(&self) -> u64 {
+        self.wire.load(Ordering::Relaxed)
+    }
+
     /// The next decoded chunk, or `None` at the end. Cancel safe: a dropped call loses no bytes.
     pub(super) async fn chunk(&mut self) -> Result<Option<Bytes>, BodyError> {
         loop {
