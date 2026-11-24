@@ -67,6 +67,7 @@ pub mod export;
 pub mod file_dialog;
 pub mod focus_mode;
 pub mod focus_redraw;
+pub mod follow_url;
 pub mod form_drafts;
 pub mod generate_code;
 pub mod git_head;
