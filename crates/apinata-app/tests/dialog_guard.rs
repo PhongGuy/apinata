@@ -706,21 +706,27 @@ fn duplicating_waits_for_the_edits_to_be_saved(cx: &mut TestAppContext) {
     let g = globals(cx, &[("g.yml", HOST)]);
     replace_input(cx, g.win, None, ("env-value", 0usize), "b");
     cx.update_window(g.win, |_, w, cx| {
-        w.render_frame(cx);
-        w.click("global-env-duplicate", cx)
+        global_menu_in(
+            w,
+            cx,
+            apinata_app::global_env_editor::GLOBAL_ENV_MENU_DUPLICATE,
+        )
     })
     .unwrap();
     assert_eq!(drawn(cx, g.win, EDITOR), (false, true), "nothing asks");
     assert!(!g.dir.path().join("g copy.yml").exists());
-    cx.update_window(g.win, |_, w, cx| {
-        w.render_frame(cx);
-        w.click("global-env-save", cx)
-    })
-    .unwrap();
+    // The disabled entry leaves the menu open; Escape closes it and keeps the dialog.
+    cx.simulate_keystrokes(g.win, "escape");
+    assert!(!present(cx, g.win, "popup-menu"));
+    assert_eq!(drawn(cx, g.win, EDITOR), (false, true));
+    let _ = g.editor.update(cx, |e, cx| e.save(cx));
     cx.run_until_parked();
     cx.update_window(g.win, |_, w, cx| {
-        w.render_frame(cx);
-        w.click("global-env-duplicate", cx)
+        global_menu_in(
+            w,
+            cx,
+            apinata_app::global_env_editor::GLOBAL_ENV_MENU_DUPLICATE,
+        )
     })
     .unwrap();
     wait_for(cx, "copy selected", |cx| {

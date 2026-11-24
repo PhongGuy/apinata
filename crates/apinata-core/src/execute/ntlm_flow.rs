@@ -238,6 +238,7 @@ impl Executor {
         followed: usize,
         store_cookies: bool,
         timeout: Option<Duration>,
+        run_wide: Option<Duration>,
         hop_deadline: Deadline,
         pac: Option<&str>,
         buf: &mut HopBuffer,
@@ -273,8 +274,13 @@ impl Executor {
         let leg3 = probe.try_clone().ok_or_else(unclonable)?;
 
         // The probe leg runs on the hop's deadline, which started before the PAC lookup; the
-        // later legs each get a fresh one. Every deadline also covers draining its body.
-        let timed_out = || ExecError::timeout(redact_url(url.as_str()));
+        // later legs each get a fresh one. Every deadline also covers draining its body, and each
+        // is the request's limit, so a stall names it as the final leg's body read does.
+        let timed_out = || ExecError::Timeout {
+            url: redact_url(url.as_str()),
+            run_wide,
+            limit: timeout,
+        };
         let mut leg = hop_deadline;
         let probe_sent = Sent::of(&probe);
         let mut started = Instant::now();

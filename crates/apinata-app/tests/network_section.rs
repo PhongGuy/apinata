@@ -193,7 +193,9 @@ fn the_collection_settings_have_a_network_tab(cx: &mut TestAppContext) {
     let (win, ed) = editor(cx, &ws, &root, ConfigTarget::Collection);
     assert_eq!(
         ed.read_with(cx, |e, _| e.sections()),
-        [Headers, Auth, Vars, Script, Tests, Docs, Network, Presets]
+        [
+            Overview, Headers, Auth, Vars, Script, Tests, Docs, Network, Presets
+        ]
     );
     let ix = ed.read_with(cx, |e, _| e.sections().iter().position(|x| *x == Network));
     cx.update_window(win, |_, w, cx| w.click(("config-section", ix.unwrap()), cx))

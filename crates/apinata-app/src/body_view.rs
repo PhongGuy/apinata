@@ -30,11 +30,11 @@ use gpui_kit::component::{
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    Anchor, AnyElement, App, Bounds, ClickEvent, ClipboardItem, Entity, EventEmitter, FocusHandle,
-    Focusable, Font, FontFeatures, HighlightStyle, Hsla, Image, ImageFormat,
+    Anchor, AnyElement, App, Bounds, ClickEvent, ClipboardItem, DevicePixels, Entity, EventEmitter,
+    FocusHandle, Focusable, Font, FontFeatures, HighlightStyle, Hsla, Image, ImageFormat,
     ListHorizontalSizingBehavior, MouseButton, MouseDownEvent, MouseMoveEvent, ObjectFit, Pixels,
     Point, Rems, Result, ScrollStrategy, SharedString, StyledText, Subscription, Task,
-    TestSupportExt, UniformListScrollHandle, WeakEntity, Window, canvas, div, img, point, px,
+    TestSupportExt, UniformListScrollHandle, WeakEntity, Window, canvas, div, img, point, px, size,
     uniform_list,
 };
 
@@ -165,6 +165,17 @@ pub enum Shown {
     Image(ImageInfo),
 }
 
+/// How an image body is sized in the preview.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum ImageScale {
+    /// Shrunk to fit the pane, never enlarged past its own pixels.
+    #[default]
+    Fit,
+    /// Its own pixels at 100%, scrolling both ways when larger than the pane.
+    Actual,
+}
+
 /// How many digits the gutter holds for a body of `lines` rows (at least one).
 pub fn gutter_digits(lines: usize) -> usize {
     lines.max(1).ilog10() as usize + 1
@@ -265,6 +276,7 @@ pub struct BodyView {
     image: Option<Arc<Image>>,
     mode: BodyMode,
     binary_mode: BinaryMode,
+    image_scale: ImageScale,
     editing: bool,
     // Whether the View and Edit toggle is offered at all.
     editable: bool,
@@ -533,6 +545,7 @@ impl BodyView {
             image: None,
             mode: BodyMode::Pretty,
             binary_mode: BinaryMode::Hex,
+            image_scale: ImageScale::Fit,
             editing: false,
             editable: true,
             focus: cx.focus_handle(),
@@ -875,6 +888,19 @@ impl BodyView {
         self.mode = mode;
         self.refresh(window, cx);
         cx.notify();
+    }
+
+    /// How an image body is sized; Fit until changed, kept across bodies.
+    pub fn image_scale(&self) -> ImageScale {
+        self.image_scale
+    }
+
+    /// Sizes an image body to fit the pane or at its own pixels.
+    pub fn set_image_scale(&mut self, scale: ImageScale, cx: &mut Context<Self>) {
+        if scale != self.image_scale {
+            self.image_scale = scale;
+            cx.notify();
+        }
     }
 
     /// The Hex or Base64 view a binary body shows; Hex until changed, kept across bodies.
@@ -2828,15 +2854,34 @@ impl BodyView {
         }
     }
 
-    // The image centred in the area and shrunk to fit it, never enlarged past its own
-    // pixels when they are known, with its caption centred below.
+    // The image centred in the area with its caption below. Fit shrinks it to the area,
+    // never past its own pixels; 100% keeps its pixels and scrolls both ways. An image that
+    // can be transparent sits on a checkerboard so its clear parts read as clear.
     fn image_preview(&self, info: &ImageInfo, cx: &Context<Self>) -> AnyElement {
         let muted = cx.theme().muted_foreground;
+        let actual = self.image_scale == ImageScale::Actual;
+        let checker = info.alpha.then(|| {
+            let (light, dark) = (cx.theme().background, cx.theme().muted);
+            let dims = info.dimensions;
+            div()
+                .id("body-image-checker")
+                .test_support()
+                .absolute()
+                .inset_0()
+                .child(
+                    canvas(
+                        |_, _, _| {},
+                        move |bounds, _, window, _| {
+                            paint_checker(bounds, dims, light, dark, window)
+                        },
+                    )
+                    .size_full(),
+                )
+        });
         let content = self.image.clone().map(|image| {
             let picture = img(image)
                 .object_fit(ObjectFit::Contain)
-                .max_w_full()
-                .max_h_full()
+                .size_full()
                 .with_fallback(move || {
                     div()
                         .id("body-image-error")
@@ -2845,30 +2890,60 @@ impl BodyView {
                         .child("Could not decode the image.")
                         .into_any_element()
                 });
+            let frame = div()
+                .id("body-image-frame")
+                .test_support()
+                .relative()
+                .children(checker)
+                .child(picture);
             match info.dimensions {
                 // Its own pixels at 100%, following the app zoom like every other size.
-                Some((w, h)) => picture.w(style::ui(w as f32)).h(style::ui(h as f32)),
-                None => picture.size_full(),
+                Some((w, h)) => {
+                    let frame = frame.w(style::ui(w as f32)).h(style::ui(h as f32));
+                    if actual {
+                        frame.flex_none()
+                    } else {
+                        frame.max_w_full().max_h_full()
+                    }
+                }
+                None => frame.size_full(),
             }
         });
+        // At 100% a stage at least the area's size centres a smaller image, and grows with a
+        // larger one so it scrolls from its top-left corner rather than overflowing both edges.
+        let content = match (actual, info.dimensions) {
+            (true, Some(_)) => content.map(|frame| {
+                div()
+                    .flex()
+                    .flex_none()
+                    .min_w_full()
+                    .min_h_full()
+                    .items_center()
+                    .justify_center()
+                    .child(frame)
+                    .into_any_element()
+            }),
+            _ => content.map(IntoElement::into_any_element),
+        };
+        let area = div()
+            .id("body-image")
+            .test_support()
+            .flex()
+            .flex_1()
+            .min_h_0()
+            .w_full();
+        // Stretching would pin the stage to the area's height and overflow it both ways.
+        let area = if actual {
+            area.items_start().overflow_scroll()
+        } else {
+            area.items_center().justify_center().overflow_hidden()
+        };
         v_flex()
             .flex_1()
             .min_h_0()
             .w_full()
             .gap(style::SPACE_2)
-            .child(
-                div()
-                    .id("body-image")
-                    .test_support()
-                    .flex()
-                    .flex_1()
-                    .min_h_0()
-                    .w_full()
-                    .items_center()
-                    .justify_center()
-                    .overflow_hidden()
-                    .children(content),
-            )
+            .child(area.children(content))
             .child(
                 div()
                     .id("body-image-caption")
@@ -3397,6 +3472,27 @@ impl Render for BodyView {
             )
             .ids(["body-hex", "body-base64"])
         };
+        let scale_toggle = {
+            let view = view.clone();
+            ui::segmented(
+                "body-image-scale",
+                ["Fit", "100%"],
+                usize::from(self.image_scale == ImageScale::Actual),
+                move |ix, _, cx| {
+                    let scale = [ImageScale::Fit, ImageScale::Actual][*ix];
+                    view.update(cx, |this, cx| this.set_image_scale(scale, cx))
+                        .ok();
+                },
+            )
+            .ids(["body-image-fit", "body-image-actual"])
+            .tooltips([
+                ("body-image-fit-tooltip", "Shrink the image to fit the pane"),
+                (
+                    "body-image-actual-tooltip",
+                    "Show the image at its own size",
+                ),
+            ])
+        };
         let toggle = ui::segmented(
             "body-text-mode",
             ["Pretty", "Raw"],
@@ -3462,12 +3558,11 @@ impl Render for BodyView {
         if self.editable && self.shown == Shown::Editor && !filtered && !self.masked() {
             bar = bar.child(edit_toggle);
         }
-        // An image is shown the same either way, so it offers no toggle; a binary body
-        // swaps Pretty and Raw for Hex and Base64.
-        if matches!(self.shown, Shown::Binary(_)) {
-            bar = bar.child(binary_toggle);
-        } else if !matches!(self.shown, Shown::Image(_)) {
-            bar = bar.child(toggle);
+        // A binary body swaps Pretty and Raw for Hex and Base64, an image for Fit and 100%.
+        match self.shown {
+            Shown::Binary(_) => bar = bar.child(binary_toggle),
+            Shown::Image(_) => bar = bar.child(scale_toggle),
+            _ => bar = bar.child(toggle),
         }
         if self.wrap_offered() {
             bar = bar.child(
@@ -4030,6 +4125,48 @@ impl Step {
     // One down; the first press only marks the top visible row.
     fn after(&self) -> usize {
         if self.fresh { self.from } else { self.from + 1 }
+    }
+}
+
+// Squares of the checkerboard behind a transparent image, following the app zoom.
+const CHECKER_CELL: Rems = style::ui(8.0);
+
+// Paints the checkerboard over the part of `bounds` the image covers (where object-fit
+// Contain puts pixels of `dims`), and only the part on screen, so a large 100% image costs
+// no more quads than the pane holds.
+fn paint_checker(
+    bounds: Bounds<Pixels>,
+    dims: Option<(u32, u32)>,
+    light: Hsla,
+    dark: Hsla,
+    window: &mut Window,
+) {
+    let covered = match dims {
+        Some((w, h)) if w > 0 && h > 0 => ObjectFit::Contain
+            .get_bounds(bounds, size(DevicePixels(w as i32), DevicePixels(h as i32))),
+        _ => bounds,
+    };
+    let visible = covered.intersect(&window.content_mask().bounds);
+    if visible.is_empty() {
+        return;
+    }
+    window.paint_quad(gpui_kit::fill(visible, light));
+    // Cells count from the covered corner, so scrolling moves the pattern with the image.
+    let cell = style::resolve(CHECKER_CELL, window);
+    if cell <= px(0.) {
+        return;
+    }
+    let corner = covered.origin;
+    let first = |from: Pixels, origin: Pixels| ((from - origin) / cell).floor() as i64;
+    for row in first(visible.top(), corner.y).max(0)..=first(visible.bottom(), corner.y) {
+        for col in first(visible.left(), corner.x).max(0)..=first(visible.right(), corner.x) {
+            if (row + col) % 2 == 0 {
+                continue;
+            }
+            let at = point(corner.x + cell * col as f32, corner.y + cell * row as f32);
+            let square = Bounds::new(at, size(cell, cell));
+            window.paint_quad(gpui_kit::fill(square.intersect(&visible), dark));
+        }
     }
 }
 
