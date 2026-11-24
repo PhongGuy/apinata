@@ -92,7 +92,11 @@ fn a_binary_body_shows_hex_by_default(cx: &mut TestAppContext) {
             && present(cx, win, "body-hex")
             && present(cx, win, "body-base64")
     );
-    assert!(!present(cx, win, "body-pretty") && !present(cx, win, "body-raw"));
+    assert!(
+        !format_entries(cx, win)
+            .iter()
+            .any(|l| l == "Pretty" || l == "Raw")
+    );
     assert!(!present(cx, win, "body-binary-cap") && !present(cx, win, "body-binary-cut"));
 }
 
@@ -172,7 +176,7 @@ fn a_text_body_offers_no_binary_modes(cx: &mut TestAppContext) {
         Vec::new(),
     ));
     show(cx, win, &view, r);
-    assert!(present(cx, win, "body-pretty"));
+    assert!(format_entries(cx, win).iter().any(|l| l == "Pretty"));
     assert!(!present(cx, win, "body-hex") && !present(cx, win, "body-base64"));
 }
 

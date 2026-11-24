@@ -52,12 +52,7 @@ fn json_is_pretty_by_default_and_raw_on_request(cx: &mut TestAppContext) {
         text(cx, &view),
         ("{\n  \"a\": [\n    1,\n    2\n  ]\n}".into(), "json".into())
     );
-    cx.update_window(win, |_, w, cx| {
-        w.render_frame(cx);
-        w.click("body-raw", cx)
-    })
-    .unwrap();
-    cx.run_until_parked();
+    choose_format(cx, win, "Raw");
     assert_eq!(text(cx, &view), ("{\"a\":[1,2]}".into(), "text".into()));
 }
 
@@ -295,7 +290,7 @@ fn an_image_body_shows_a_preview_and_its_caption(cx: &mut TestAppContext) {
     );
     assert!(present(cx, win, "body-image"));
     assert!(present(cx, win, "body-image-caption"));
-    assert!(!present(cx, win, "body-pretty"));
+    assert!(!format_entries(cx, win).iter().any(|l| l == "Pretty"));
     assert!(!present(cx, win, "body-editor"));
 }
 

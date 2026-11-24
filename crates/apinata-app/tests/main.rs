@@ -139,6 +139,7 @@ mod body_gutter;
 mod body_image_view;
 mod body_json_marker;
 mod body_node_copy;
+mod body_overlay;
 mod body_rows_keys;
 mod body_section;
 mod body_tables;
