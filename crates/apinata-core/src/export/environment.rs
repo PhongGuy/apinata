@@ -76,13 +76,20 @@ fn unique_stem(taken: &mut HashSet<String>, stem: String) -> String {
 // `scope` heads each note's source, so a global's notes say where they came from.
 fn export_one(envs: &[Environment], name: &str, scope: &str) -> Option<PostmanExport> {
     let resolved = resolve_environment(envs, name)?;
+    let source = format!("{scope} / {name}");
+    let mut notes: Vec<ExportNote> = Vec::new();
+    let mut rewrites = super::process_env::Rewrites::default();
     // Secrets are typed but never valued: the file may hold one, and it must not leave.
     let values: Vec<Value> = resolved
         .vars
         .iter()
         .map(|(key, value)| {
             let (text, kind) = match value {
-                EnvValue::Plain(v) => (js::to_text(v), "default"),
+                EnvValue::Plain(v) => {
+                    let mut text = js::to_text(v);
+                    rewrites.text(&mut text, &source, &mut notes);
+                    (text, "default")
+                }
                 EnvValue::Secret => (String::new(), "secret"),
             };
             json!({"key": key, "value": text, "type": kind, "enabled": true})
@@ -103,11 +110,8 @@ fn export_one(envs: &[Environment], name: &str, scope: &str) -> Option<PostmanEx
     let mut json =
         serde_json::to_string_pretty(&Value::Object(root)).expect("a JSON value serializes");
     json.push('\n');
-    let source = format!("{scope} / {name}");
-    let notes = resolved
-        .warnings
-        .into_iter()
-        .map(|w| ExportNote::new(source.clone(), w))
-        .collect();
+    let warnings = resolved.warnings.into_iter();
+    let warnings = warnings.map(|w| ExportNote::new(source.clone(), w));
+    let notes = warnings.chain(notes).collect();
     Some(PostmanExport { json, notes })
 }

@@ -321,20 +321,32 @@ fn the_import_button_is_disabled_while_fetching(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn browse_runs_the_file_prompt(cx: &mut TestAppContext) {
+fn browse_fills_the_field_and_waits_for_import(cx: &mut TestAppContext) {
     let (files, win, view) = shell(cx);
     open_with(cx, win, "");
-    let into = tempfile::tempdir().unwrap();
-    create_in(cx, into.path());
     click(cx, win, "import-link-browse");
     assert!(cx.did_prompt_for_paths());
     let file = files.path().join("shop.json");
     fs::write(&file, postman()).unwrap();
+    let picked = file.clone();
     cx.simulate_path_prompt_response(move |o| {
         assert!(o.files && !o.directories && !o.multiple);
-        Some(vec![file])
+        Some(vec![picked])
     });
     cx.run_until_parked();
+    let d = cx
+        .read(import_link::current)
+        .expect("the dialog stays open");
+    assert_eq!(d.read_with(cx, |d, _| d.phase().clone()), Phase::Idle);
+    assert_eq!(d.read_with(cx, |d, cx| d.link(cx)), file.to_str().unwrap());
+    assert!(
+        opened(cx, &view).is_empty(),
+        "nothing imports before Import"
+    );
+    // Create in can still change after the pick, and Import uses it.
+    let into = tempfile::tempdir().unwrap();
+    create_in(cx, into.path());
+    click(cx, win, "import-link-import");
     landed(cx, &view, into.path());
     assert_eq!(opened(cx, &view), vec![into.path().join("Shop")]);
 }
