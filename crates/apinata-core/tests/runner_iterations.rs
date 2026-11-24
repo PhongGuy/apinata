@@ -4,8 +4,8 @@ use crate::common;
 
 use apinata_core::{
     CancelHandle, Collection, ContextOptions, ExecOptions, ExecutionMode, Executor, IterationData,
-    Outcome, ResolveError, RunError, RunEvent, RunOptions, RunReport, RuntimeVars, ScriptOptions,
-    VarContext, run,
+    Outcome, ResolveError, RunError, RunEvent, RunOptions, RunReport, RunStop, RuntimeVars,
+    ScriptOptions, VarContext, run,
 };
 use common::write_tree;
 use std::path::Path;
@@ -110,6 +110,10 @@ async fn each_row_runs_the_whole_plan_with_its_values() {
     );
     let marks: Vec<Option<usize>> = report.results.iter().map(|r| r.iteration).collect();
     assert_eq!(marks, [Some(0), Some(0), Some(1), Some(1)]);
+    assert_eq!(
+        report.summary.stop, None,
+        "a run that ends on its own has no stop"
+    );
 }
 
 #[tokio::test]
@@ -185,9 +189,36 @@ async fn bail_stops_every_later_iteration() {
         ("b.yml", &req("b", 2, &format!("{}/b", s.uri()), "")),
     ]);
     let opts = RunOptions::new().bail(true).iterations(csv("id\n1\n2\n"));
-    let (report, _) = run_with(dir.path(), opts, ContextOptions::new(), |_, _| {}).await;
+    let (report, events) = run_with(dir.path(), opts, ContextOptions::new(), |_, _| {}).await;
+    // Every planned request of every iteration is reported, the unrun ones as skipped.
     let outcomes: Vec<Outcome> = report.results.iter().map(|r| r.outcome).collect();
-    assert_eq!(outcomes, [Outcome::Failed, Outcome::Skipped]);
+    assert_eq!(
+        outcomes,
+        [
+            Outcome::Failed,
+            Outcome::Skipped,
+            Outcome::Skipped,
+            Outcome::Skipped
+        ]
+    );
+    let marks: Vec<Option<usize>> = report.results.iter().map(|r| r.iteration).collect();
+    assert_eq!(marks, [Some(0), Some(0), Some(1), Some(1)]);
+    assert_eq!(report.summary.stop, Some(RunStop::FirstFailure));
+    assert_eq!((report.summary.requests, report.summary.skipped), (4, 3));
+    assert_eq!(
+        events,
+        [
+            "started 2",
+            "iteration 0 of 2",
+            "start 0",
+            "finish 0 Failed",
+            "finish 1 Skipped",
+            "iteration 1 of 2",
+            "finish 0 Skipped",
+            "finish 1 Skipped",
+            "finished 4"
+        ]
+    );
     assert_eq!(served(&s).await, ["/a"]);
 }
 
@@ -204,8 +235,18 @@ async fn a_script_stop_ends_every_iteration() {
         .scripts(ScriptOptions::new().enabled(true))
         .iterations(csv("id\n1\n2\n"));
     let (report, _) = run_with(dir.path(), opts, ContextOptions::new(), |_, _| {}).await;
-    assert_eq!(report.results.len(), 2, "iteration 2 never starts");
-    assert_eq!(report.results[1].outcome, Outcome::Skipped);
+    let outcomes: Vec<Outcome> = report.results.iter().map(|r| r.outcome).collect();
+    assert_eq!(
+        outcomes,
+        [
+            Outcome::Passed,
+            Outcome::Skipped,
+            Outcome::Skipped,
+            Outcome::Skipped
+        ],
+        "iteration 2 never sends but is reported"
+    );
+    assert_eq!(report.summary.stop, Some(RunStop::Script));
     assert_eq!(served(&s).await, ["/a"]);
 }
 
@@ -260,6 +301,7 @@ async fn cancel_during_a_delay_ends_the_run_at_once() {
     assert!(t.elapsed() < Duration::from_secs(5), "{:?}", t.elapsed());
     let outcomes: Vec<Outcome> = report.results.iter().map(|r| r.outcome).collect();
     assert_eq!(outcomes, [Outcome::Passed, Outcome::Skipped]);
+    assert_eq!(report.summary.stop, Some(RunStop::Cancelled));
     assert_eq!(served(&s).await, ["/a"]);
 }
 

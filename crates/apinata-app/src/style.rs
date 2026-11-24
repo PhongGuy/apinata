@@ -308,6 +308,8 @@ pub const RUN_RESULT_WIDTH: Rems = ui(200.);
 pub const RUN_TABLE_MIN_WIDTH: Rems = ui(3. * 80. + 200. + 120. + 4. * 8. + 2. * 12.);
 /// The runner options' label column, wide enough for "Retry delay (ms)".
 pub const RUN_OPTION_LABEL_WIDTH: Rems = ui(120.);
+/// Most the runner's "Also retry POST and PATCH" option takes, so its warning wraps under it.
+pub const RUN_RETRY_UNSAFE_WIDTH: Rems = ui(220.);
 /// Most the runner's results or plan list keep when the pane is short; the options give way
 /// only after the list has shrunk to this.
 pub const RUN_LIST_FLOOR: Rems = ui(120.);
