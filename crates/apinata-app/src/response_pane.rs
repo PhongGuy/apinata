@@ -5534,18 +5534,33 @@ impl ResponsePane {
 
     // A live tab other than Body and Events: the headers as they arrived, masked as the
     // finished list masks them by default, or a note for what only the result can fill.
-    fn live_tab_body(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn live_tab_body(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         if self.tab != ResponseTab::Headers {
-            let note = "Fills in when the stream ends";
-            return div()
+            // The hops before the final response are done, so the Timeline shows them now.
+            let earlier = (self.tab == ResponseTab::Timeline)
+                .then(|| self.send.read(cx).live_sent().cloned())
+                .flatten()
+                .filter(|sent| !sent.timeline.is_empty());
+            let note = match earlier {
+                Some(_) => "The last hop fills in when the stream ends",
+                None => "Fills in when the stream ends",
+            };
+            let note = div()
                 .id("response-stream-pending")
                 .test_support()
                 .aria_label(note)
                 .p(style::SPACE_2)
                 .text_size(style::TEXT_SMALL)
                 .text_color(cx.theme().muted_foreground)
-                .child(note)
-                .into_any_element();
+                .child(note);
+            return match earlier {
+                Some(sent) => v_flex()
+                    .size_full()
+                    .child(note)
+                    .child(self.tab_body(&sent, None, window, cx))
+                    .into_any_element(),
+                None => note.into_any_element(),
+            };
         }
         let pairs: Vec<(String, String)> = (self.send.read(cx).live())
             .map(|l| {
@@ -5584,7 +5599,7 @@ impl ResponsePane {
                 .gap_2()
                 .child(header)
                 .children(waiting)
-                .child(self.live_tab_body(cx))
+                .child(self.live_tab_body(window, cx))
                 .into_any_element();
         }
         let (count, skipped) = self

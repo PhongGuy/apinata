@@ -633,6 +633,7 @@ mod stream_pane;
 mod stream_stable;
 mod stream_status;
 mod stream_stop;
+mod stream_timeline;
 mod strip_overflow;
 mod style_icons;
 mod subscription_errors;
