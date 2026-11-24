@@ -120,6 +120,7 @@ mod execute_cancel;
 mod execute_confine;
 mod execute_cookie_prefs;
 mod execute_cookies;
+mod execute_cut_body;
 mod execute_deadlines;
 mod execute_encode_url;
 mod execute_host_overrides;

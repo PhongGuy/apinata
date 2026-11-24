@@ -99,6 +99,8 @@ pub enum ErrorKind {
     NotSent,
     /// A subscription was refused at its handshake or its socket ended with an error.
     Subscription,
+    /// The status and headers arrived but the body was cut short.
+    BodyCut,
     /// Anything else.
     Failed,
 }
@@ -235,6 +237,15 @@ pub fn describe_error(error: &RunError, details: &str, env: Option<&str>) -> Err
             "Request not sent",
             "A body file could not be read.".into(),
             false,
+        ),
+        RunError::Exec(ExecError::BodyCut { cut, .. }) => view(
+            ErrorKind::BodyCut,
+            "Body cut short",
+            format!(
+                "The connection closed after {} of the body arrived.",
+                cut.count()
+            ),
+            true,
         ),
         RunError::Subscription { .. } => {
             let plain = ui::plain_quotes(details);

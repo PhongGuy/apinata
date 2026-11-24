@@ -205,7 +205,7 @@ pub use example::{
     Example, ExampleBody, ExampleBodyKind, ExampleRequest, ExampleResponse, ScrubReport, Scrubbed,
     ScrubbedExample, scrub_example_userinfo,
 };
-pub use execute::{ConnectCause, ExecError, ExecOptions, Executor, NtlmCause};
+pub use execute::{ConnectCause, CutBody, ExecError, ExecOptions, Executor, NtlmCause};
 pub use git::{
     Branch, CancelFlag, CloneError, CloneProgress, CloneRequest, CloneUrlKind, CommitError,
     CommitOutcome, ConflictKind, ConflictPath, DiffLine, DotenvGit, FetchError, FileDiff,

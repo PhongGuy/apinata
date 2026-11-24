@@ -209,6 +209,7 @@ mod cookie_prefs;
 mod cookie_views_shared;
 mod copy_curl;
 mod current_collection;
+mod cut_body;
 mod default_headers_section;
 mod demo_offer;
 mod derived_credentials;

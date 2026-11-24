@@ -100,9 +100,11 @@ fn retry_wanted(sent: &Result<Response, ExecError>, subscription: bool) -> Optio
             Some(retry_after(response).unwrap_or_default())
         }
         Ok(_) => None,
-        Err(ExecError::Timeout { run_wide: None, .. } | ExecError::Transport { .. }) => {
-            Some(Duration::ZERO)
-        }
+        Err(
+            ExecError::Timeout { run_wide: None, .. }
+            | ExecError::Transport { .. }
+            | ExecError::BodyCut { .. },
+        ) => Some(Duration::ZERO),
         Err(ExecError::Connect { cause, .. }) if !is_tls(*cause) => Some(Duration::ZERO),
         Err(_) => None,
     }
