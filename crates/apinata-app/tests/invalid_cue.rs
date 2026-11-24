@@ -495,7 +495,7 @@ fn danger_borders_at(
         let (l, t) = (b.left().as_f32() * scale, b.top().as_f32() * scale);
         use gpui_kit::component::ActiveTheme as _;
         let danger = cx.theme().danger;
-        w.painted_quads()
+        crate::support::whole_quads(w)
             .into_iter()
             .filter(|q| {
                 q.border_widths.left.0 > 0.

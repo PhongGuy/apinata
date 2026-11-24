@@ -479,6 +479,83 @@ pub fn open_area_of(cx: &mut gpui_kit::TestAppContext, col: TempDir) -> Area {
     }
 }
 
+/// The quads of the last frame as elements painted them. The renderer splits a rounded or
+/// bordered quad into an interior and four strips that keep the whole quad's bounds and draw
+/// order; this folds each such run back into one quad, so tests count and read borders as painted.
+pub fn whole_quads(w: &gpui_kit::Window) -> Vec<gpui_kit::Quad> {
+    let quads = w.painted_quads();
+    let mut whole = Vec::with_capacity(quads.len());
+    let mut run: Vec<gpui_kit::Quad> = Vec::new();
+    for q in quads {
+        // A split's pieces sit next to each other and never overlap, which two separately
+        // painted quads with the same bounds would.
+        let joins = run.first().is_some_and(|first| {
+            first.bounds == q.bounds
+                && first.order == q.order
+                && run.iter().all(|p| !masked(p).intersects(&masked(&q)))
+        });
+        if !joins && !run.is_empty() {
+            whole.push(fold_pieces(std::mem::take(&mut run)));
+        }
+        run.push(q);
+    }
+    if !run.is_empty() {
+        whole.push(fold_pieces(run));
+    }
+    whole
+}
+
+fn masked(q: &gpui_kit::Quad) -> gpui_kit::Bounds<gpui_kit::ScaledPixels> {
+    q.bounds.intersect(&q.content_mask.bounds)
+}
+
+// A rounded or styled border keeps the whole quad in each strip, so any strip is the quad. A plain
+// border's strips are fills of the border colour after the interior, and their widths are the
+// strips' depths.
+fn fold_pieces(run: Vec<gpui_kit::Quad>) -> gpui_kit::Quad {
+    use gpui_kit::{Corners, Edges, ScaledPixels};
+    let mut quad = run[0];
+    if run.len() == 1 {
+        return quad;
+    }
+    let (b, mut mask) = (quad.bounds, masked(&quad));
+    for p in &run[1..] {
+        mask = mask.union(&masked(p));
+    }
+    quad.content_mask.bounds = mask;
+    if let Some(styled) = run
+        .iter()
+        .find(|p| p.corner_radii != Corners::default() || p.border_widths != Edges::default())
+    {
+        return gpui_kit::Quad {
+            content_mask: quad.content_mask,
+            ..*styled
+        };
+    }
+    let colour = run[run.len() - 1].background;
+    let interior = (run[0].background != colour).then_some(run[0].background);
+    let mut widths = Edges::<ScaledPixels>::default();
+    for p in &run[usize::from(interior.is_some())..] {
+        let m = masked(p);
+        let full_width = m.left() == b.left() && m.right() == b.right();
+        if full_width && m.top() == b.top() {
+            widths.top = m.size.height;
+        } else if full_width && m.bottom() == b.bottom() {
+            widths.bottom = m.size.height;
+        } else if m.left() == b.left() {
+            widths.left = m.size.width;
+        } else if m.right() == b.right() {
+            widths.right = m.size.width;
+        }
+    }
+    gpui_kit::Quad {
+        background: interior.unwrap_or_else(|| gpui_kit::transparent_black().into()),
+        border_color: colour.as_solid().unwrap_or_default(),
+        border_widths: widths,
+        ..quad
+    }
+}
+
 /// How the mark `id` paints: the fills and the border colours of the quads that cover its
 /// box, so a test can tell a filled dot from a hollow ring.
 pub fn mark_paint(
@@ -495,8 +572,7 @@ pub fn mark_paint(
         let b = w.find(id).bounds();
         let (l, t) = (b.left().as_f32() * scale, b.top().as_f32() * scale);
         let (r, bt) = (b.right().as_f32() * scale, b.bottom().as_f32() * scale);
-        let quads: Vec<_> = w
-            .painted_quads()
+        let quads: Vec<_> = crate::support::whole_quads(w)
             .into_iter()
             .filter(|q| {
                 let (x, y) = (q.bounds.origin.x.0, q.bounds.origin.y.0);
@@ -1310,6 +1386,21 @@ pub fn choose_menu(
     })
     .unwrap();
     frame(cx, win);
+    // An export sits in the row's Export submenu; a greyed Export row opens none, so there is
+    // nothing to pick.
+    if entry.is_export() {
+        click_menu(cx, win, apinata_app::app_menu::EXPORT_MENU);
+        frame(cx, win);
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            if let Some(ix) = submenu_index(w, entry.label()) {
+                w.within("submenu").click(ix, cx);
+            }
+        })
+        .unwrap();
+        cx.run_until_parked();
+        return;
+    }
     // A GraphQL row names its conversion entry after the other kind.
     let label = cx
         .update_window(win, |_, w, _| {
@@ -1342,6 +1433,31 @@ pub fn try_menu_index(w: &mut gpui_kit::Window, label: &str) -> Option<usize> {
             Some(_) => menu.within(ix).try_find_by_label(label).is_some(),
         }
     })
+}
+
+/// The index of the open submenu's entry labelled `label`, or `None` when no submenu is open
+/// or none of its entries has the label.
+pub fn submenu_index(w: &mut gpui_kit::Window, label: &str) -> Option<usize> {
+    use gpui_kit::test::TestWindowExt as _;
+    w.try_find("submenu")?;
+    (0..32usize).find(|&ix| {
+        let sub = w.within("submenu");
+        sub.try_find(ix).is_some_and(|e| e.label() == Some(label))
+    })
+}
+
+/// The labels of the open submenu's entries in order, empty when none is open.
+pub fn submenu_labels(w: &mut gpui_kit::Window) -> Vec<String> {
+    use gpui_kit::test::TestWindowExt as _;
+    if w.try_find("submenu").is_none() {
+        return Vec::new();
+    }
+    (0..32usize)
+        .filter_map(|ix| {
+            let sub = w.within("submenu");
+            sub.try_find(ix).and_then(|e| e.label().map(str::to_owned))
+        })
+        .collect()
 }
 
 /// The labels of the open popup menu's entries in order, `None` for each separator.
@@ -1773,7 +1889,7 @@ pub fn outlined(
         let at = w.find(id.clone()).bounds();
         let scale = w.scale_factor();
         let border = cx.theme().border;
-        w.painted_quads().into_iter().any(|q| {
+        crate::support::whole_quads(w).into_iter().any(|q| {
             (q.bounds.origin.x.0 / scale - f32::from(at.left())).abs() < 1.
                 && (q.bounds.origin.y.0 / scale - f32::from(at.top())).abs() < 1.
                 && q.border_widths.left.0 > 0.
@@ -1934,7 +2050,7 @@ pub fn filled(
         w.render_frame(cx);
         let at = w.find(id.clone()).bounds();
         let scale = w.scale_factor();
-        w.painted_quads().into_iter().any(|q| {
+        crate::support::whole_quads(w).into_iter().any(|q| {
             (q.bounds.origin.x.0 / scale - f32::from(at.left())).abs() < 1.
                 && (q.bounds.origin.y.0 / scale - f32::from(at.top())).abs() < 1.
                 && q.background == gpui_kit::Background::from(color)
@@ -2248,7 +2364,7 @@ pub fn ring_drawn(
         let b = w.find(id).bounds();
         let (l, t) = (b.left().as_f32() * scale, b.top().as_f32() * scale);
         let (r, bt) = (b.right().as_f32() * scale, b.bottom().as_f32() * scale);
-        w.painted_quads().into_iter().any(|q| {
+        crate::support::whole_quads(w).into_iter().any(|q| {
             let (x, y) = (q.bounds.origin.x.0, q.bounds.origin.y.0);
             let (x2, y2) = (x + q.bounds.size.width.0, y + q.bounds.size.height.0);
             let c = q.border_color.to_rgb();
@@ -2293,7 +2409,7 @@ pub fn painted_edges(
         let b = w.find(id).bounds();
         let (l, t) = (b.left().as_f32() * scale, b.top().as_f32() * scale);
         let (r, bt) = (b.right().as_f32() * scale, b.bottom().as_f32() * scale);
-        w.painted_quads()
+        crate::support::whole_quads(w)
             .into_iter()
             .filter(|q| {
                 let (x, y) = (q.bounds.origin.x.0, q.bounds.origin.y.0);

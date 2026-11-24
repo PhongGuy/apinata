@@ -51,6 +51,10 @@ pub enum StreamEvent {
         headers: Vec<(String, String)>,
         /// Whether the body is a Server-Sent Events stream.
         event_stream: bool,
+        /// The hops completed before this response, such as redirects, in order.
+        timeline: Vec<crate::Hop>,
+        /// What those hops hide when shown, as the send's finished result hides it.
+        hidden: HiddenValues,
     },
     /// The next piece of the body. With a body file set it holds only the bytes kept in memory.
     Chunk(Vec<u8>),
@@ -61,6 +65,18 @@ pub enum StreamEvent {
         /// The body's length when the response states it and is not compressed.
         total: Option<u64>,
     },
+}
+
+/// The values a send hides wherever its hops are shown. Opaque, and its `Debug` shows only
+/// how many there are.
+#[derive(Clone, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct HiddenValues(pub(crate) Vec<String>);
+
+impl fmt::Debug for HiddenValues {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("HiddenValues").field(&self.0.len()).finish()
+    }
 }
 
 /// Which bound ended a stream.

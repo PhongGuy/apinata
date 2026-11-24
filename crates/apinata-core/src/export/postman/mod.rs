@@ -80,7 +80,8 @@ pub fn postman_with(collection: &Collection, options: &PostmanOptions) -> Postma
     if scripted && options.keep_scripts {
         notes.push(ExportNote::new("scripts", KEPT));
     }
-    let root = Value::Object(root);
+    let mut root = Value::Object(root);
+    super::process_env::Rewrites::default().collection(&mut root, &mut notes);
     // A `serde_json::Value` has only string keys, so serializing it cannot fail.
     #[allow(clippy::expect_used)]
     let mut json = serde_json::to_string_pretty(&root).expect("a JSON value serializes");

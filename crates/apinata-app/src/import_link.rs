@@ -1134,7 +1134,8 @@ impl ImportLinkDialog {
         window.close_dialog(cx);
     }
 
-    // Asks for a file and imports or previews it as the link would be, in either mode.
+    // Asks for a file and puts its path in the field, in either mode; like a typed path it
+    // waits for Import, so Create in can still be checked first.
     fn browse_source(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if matches!(
             self.phase,
@@ -1160,7 +1161,6 @@ impl ImportLinkDialog {
                 let text = file.to_string_lossy().into_owned();
                 this.file = Some(file);
                 this.set_link(&text, window, cx);
-                this.start(window, cx);
             });
         })
         .detach();

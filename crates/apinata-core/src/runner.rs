@@ -25,7 +25,7 @@ use crate::script::{
 };
 use crate::secret_names::log_values;
 use crate::session_log::{ConsoleLine, Logged, Redactor, SendHold, SendSource};
-use crate::stream::{StreamEnd, StreamEvent, StreamLimits, StreamOptions};
+use crate::stream::{HiddenValues, StreamEnd, StreamEvent, StreamLimits, StreamOptions};
 use crate::subscription::is_subscription;
 use crate::tags::{TagFilter, normalize};
 use std::fmt;
@@ -553,7 +553,7 @@ pub enum RunError {
         message: String,
     },
     /// A pre-request script threw, hit a limit or called an unsupported member, so nothing was sent.
-    #[error("{} script error, {message}", phase.as_str())]
+    #[error("{} error, {message}", phase.script_label())]
     Script {
         /// The phase whose script failed.
         phase: ScriptPhase,
@@ -899,6 +899,9 @@ pub enum RunEvent {
         headers: Vec<(String, String)>,
         /// Whether the body is a Server-Sent Events stream.
         event_stream: bool,
+        /// The send so far, not its result: no response yet, the hops completed before this
+        /// one (such as redirects) on `timeline`, and the redaction its result will apply.
+        sent: Arc<RequestResult>,
     },
     /// The next piece of the response body.
     ResponseChunk {
@@ -1250,6 +1253,8 @@ async fn send_streaming_one(
             status,
             headers,
             event_stream,
+            timeline,
+            hidden,
         }) => {
             started = true;
             on_event(RunEvent::ResponseStarted {
@@ -1257,6 +1262,13 @@ async fn send_streaming_one(
                 status,
                 headers,
                 event_stream,
+                sent: Arc::new(RequestResult::in_flight(
+                    path.clone(),
+                    request,
+                    ctx,
+                    timeline,
+                    hidden,
+                )),
             });
         }
         Wire::Event(StreamEvent::Chunk(bytes)) => {
@@ -2029,6 +2041,22 @@ impl RequestResult {
             body_dropped: false,
             saved_unmarked: false,
         }
+    }
+
+    /// A stream's send at its final response's headers: the hops before it, hidden as the
+    /// finished result will hide them, which adds only what the later phases read.
+    fn in_flight(
+        path: ItemPath,
+        request: &RequestFile,
+        ctx: &VarContext,
+        timeline: Vec<Hop>,
+        hidden: HiddenValues,
+    ) -> RequestResult {
+        let mut sent = RequestResult::new(path, request, Outcome::Errored);
+        sent.timeline = timeline;
+        sent.log_values = log_values(request, ctx);
+        sent.log_values.extend(hidden.0);
+        sent
     }
 
     /// A result for `request` that has sent nothing, ending as `outcome`.
