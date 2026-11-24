@@ -30,6 +30,7 @@ mod oauth2_support;
 mod openapi_support;
 mod parity;
 mod paste;
+mod percent_text;
 mod resolve_hint;
 mod response_view;
 mod results_report;

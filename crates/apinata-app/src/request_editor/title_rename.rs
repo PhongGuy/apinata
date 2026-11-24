@@ -1,5 +1,5 @@
-//! Renaming the request from the breadcrumb: a double-click, or F2 or Enter on the focused
-//! name, swaps the name for a field; the rename itself goes through the sidebar's.
+//! Renaming the request from the breadcrumb: a double-click, Enter or the sidebar's rename key
+//! on the focused name swaps the name for a field; the rename itself goes through the sidebar's.
 
 use std::path::Path;
 
@@ -12,11 +12,10 @@ use gpui_kit::component::{ActiveTheme as _, Sizable as _, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, App, Context, Entity, KeyDownEvent, SharedString, Subscription, TestSupportExt,
-    Window, div, rems,
+    AnyElement, App, Context, Entity, SharedString, Subscription, TestSupportExt, Window, div, rems,
 };
 
-use super::RequestEditor;
+use super::{RenameTitle, RequestEditor, TITLE_KEY_CONTEXT};
 use crate::workspace::Workspace;
 use crate::{style, ui};
 
@@ -154,7 +153,8 @@ impl RequestEditor {
     }
 
     // The request's name at the end of the breadcrumb: the field while retyped, a focusable
-    // crumb that a double-click, F2 or Enter renames, or plain text where it cannot rename.
+    // crumb that a double-click, Enter or the rename key renames, or plain text where it
+    // cannot rename.
     pub(super) fn title_crumb(
         &self,
         title: String,
@@ -208,16 +208,14 @@ impl RequestEditor {
         }
         let editor = cx.entity().downgrade();
         let label = format!("Rename request {title}");
-        // F2 has no binding outside the tree, so the crumb answers the key itself.
-        let on_key = cx.listener(|this, e: &KeyDownEvent, window, cx| {
-            let k = &e.keystroke;
-            if k.key == "f2" && !k.modifiers.modified() {
-                this.start_title_rename(window, cx);
-                cx.stop_propagation();
-            }
-        });
+        // The rename key reaches the crumb through the keymap, so a rebinding moves it here too.
         crumb
-            .on_key_down(on_key)
+            .key_context(TITLE_KEY_CONTEXT)
+            .on_action(
+                cx.listener(|this, _: &RenameTitle, window, cx| {
+                    this.start_title_rename(window, cx)
+                }),
+            )
             .tooltip(ui::text_tooltip("breadcrumb-file-tooltip", RENAME_TIP))
             .child(
                 Button::new("breadcrumb-rename")

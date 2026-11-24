@@ -91,9 +91,14 @@ actions!(
         /// Redoes the table edit [`UndoEdit`] took back.
         RedoEdit,
         /// Shows the request's Settings section, as the timeout error's link does.
-        ShowRequestSettings
+        ShowRequestSettings,
+        /// Retypes the request's name in the breadcrumb, from its focused name crumb.
+        RenameTitle
     ]
 );
+
+/// The key context of the breadcrumb's focused name crumb, where the rename key binds.
+pub const TITLE_KEY_CONTEXT: &str = "RequestTitle";
 
 /// The key context of the request editor, where Save and Send bind.
 pub const KEY_CONTEXT: &str = "RequestEditor";

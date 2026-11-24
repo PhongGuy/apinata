@@ -270,8 +270,8 @@ fn the_close_button_is_the_last_tab_stop(cx: &mut TestAppContext) {
         }
     }
     // Measured with the kit's own x before it was replaced, plus the shortcut list's one stop
-    // and the AI agents section's link for the one open collection.
-    assert_eq!(tabs, Some(42));
+    // and the AI agents section's link for the one open collection, and the preview tabs box.
+    assert_eq!(tabs, Some(43));
     press_key(cx, s.win, "tab");
     assert!(holds_focus(cx, s.win, "prefs-search"));
     assert_app_x(cx, s.win);

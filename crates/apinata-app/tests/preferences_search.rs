@@ -173,6 +173,7 @@ fn ctrl_f_focuses_the_search_from_another_input(cx: &mut TestAppContext) {
     let col = two_requests();
     let s = started(cx, &col);
     let view = opened(cx, &s);
+    prefs_reveal(cx, &s, "body-cap");
     cx.update_window(s.win, |_, w, cx| w.click("body-cap", cx))
         .unwrap();
     assert!(!search_focused(cx, &s, &view));
