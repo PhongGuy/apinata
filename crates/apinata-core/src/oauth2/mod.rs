@@ -5,7 +5,6 @@ mod cache;
 mod client;
 pub(crate) mod config;
 mod interactive;
-mod listener;
 mod prepare;
 mod target;
 
@@ -260,6 +259,25 @@ pub enum OAuth2Error {
 impl From<ResolveError> for OAuth2Error {
     fn from(e: ResolveError) -> OAuth2Error {
         OAuth2Error::Resolve(e)
+    }
+}
+
+impl From<crate::loopback::ListenError> for OAuth2Error {
+    fn from(e: crate::loopback::ListenError) -> OAuth2Error {
+        use crate::loopback::ListenError;
+        match e {
+            ListenError::Bind { address, message } => {
+                OAuth2Error::CallbackBind { address, message }
+            }
+            ListenError::Timeout => OAuth2Error::CallbackTimeout,
+            ListenError::Cancelled => OAuth2Error::Cancelled,
+        }
+    }
+}
+
+impl From<crate::pkce::NoRandomness> for OAuth2Error {
+    fn from(_: crate::pkce::NoRandomness) -> OAuth2Error {
+        OAuth2Error::NoRandomness
     }
 }
 

@@ -217,9 +217,41 @@ pub struct ServerInfo {
     pub api: u32,
     /// Whether it accepts a username and password.
     pub password_sign_in: bool,
+    /// The single sign-on provider it offers, if any.
+    pub sso: Option<SsoProvider>,
 }
 
-/// A successful password sign-in.
+/// A team server's single sign-on provider.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct SsoProvider {
+    /// What the sign-in button names, cut to 64 characters with control and bidi characters
+    /// removed.
+    pub name: String,
+}
+
+impl SsoProvider {
+    /// A provider named by the server's `name`, made safe to show.
+    pub fn named(name: &str) -> SsoProvider {
+        // Bidi controls could reorder the button's text, so they go with the other controls.
+        let bidi = |c: char| matches!(c, '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}');
+        let clean: String = name
+            .chars()
+            .filter(|&c| !c.is_control() && !bidi(c))
+            .collect();
+        let name: String = clean.trim().chars().take(64).collect();
+        let name = name.trim_end();
+        SsoProvider {
+            name: if name.is_empty() {
+                "single sign-on".into()
+            } else {
+                name.into()
+            },
+        }
+    }
+}
+
+/// A successful sign-in, by password or single sign-on.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct SignIn {
@@ -229,6 +261,8 @@ pub struct SignIn {
     pub token_id: String,
     /// The signed-in user.
     pub user: User,
+    /// When the token stops working, RFC 3339; None when it does not expire.
+    pub expires_at: Option<String>,
 }
 
 /// A request to create a workspace, its fields already checked.

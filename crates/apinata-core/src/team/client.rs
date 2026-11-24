@@ -17,7 +17,7 @@ use url::Url;
 
 use super::{
     APINATA_KIND, Me, NewWorkspace, ServerInfo, ServerRelease, ServerUpdate, ServerUrl, SignIn,
-    Team, TeamError, TeamToken, User, Workspace, redact_token,
+    SsoProvider, Team, TeamError, TeamToken, User, Workspace, redact_token,
 };
 
 /// A boxed future from a `TeamApi` call.
@@ -53,6 +53,11 @@ pub trait TeamApi: Send + Sync {
     fn server_update<'a>(&'a self, token: &'a TeamToken) -> TeamFuture<'a, ServerUpdate>;
     /// `POST /api/v1/update/check` (server admin): checks now; 503 carries the server's reason.
     fn check_server_update<'a>(&'a self, token: &'a TeamToken) -> TeamFuture<'a, ServerUpdate>;
+    /// `POST /api/v1/oidc/redeem`: trades a single sign-on code and its PKCE verifier for a
+    /// token named `TOKEN_NAME`. A client that does not speak single sign-on answers `SsoOff`.
+    fn redeem_sso<'a>(&'a self, _code: &'a str, _verifier: &'a str) -> TeamFuture<'a, SignIn> {
+        Box::pin(async { Err(TeamError::SsoOff) })
+    }
 }
 
 /// `TeamApi` over reqwest against one server.
@@ -89,34 +94,13 @@ impl HttpTeamClient {
         Ok(HttpTeamClient { server, http })
     }
 
-    /// `{server}/api/v1/<segments>`, each segment percent-encoded, with no empty segment from a
-    /// trailing slash on the server address.
-    fn url(&self, segments: &[&str]) -> Result<Url, TeamError> {
-        let mut url = Url::parse(self.server.as_str())
-            .map_err(|_| TeamError::BadServerUrl(self.server.to_string()))?;
-        let base: Vec<String> = url
-            .path_segments()
-            .into_iter()
-            .flatten()
-            .filter(|s| !s.is_empty())
-            .map(str::to_owned)
-            .collect();
-        url.path_segments_mut()
-            .map_err(|_| TeamError::BadServerUrl(self.server.to_string()))?
-            .clear()
-            .extend(&base)
-            .extend(["api", "v1"])
-            .extend(segments);
-        Ok(url)
-    }
-
     fn request(
         &self,
         method: Method,
         segments: &[&str],
         token: Option<&TeamToken>,
     ) -> Result<RequestBuilder, TeamError> {
-        let mut request = self.http.request(method, self.url(segments)?);
+        let mut request = self.http.request(method, api_url(&self.server, segments)?);
         if let Some(token) = token {
             let mut value = HeaderValue::from_str(&format!("Bearer {}", token.expose()))
                 .map_err(|_| TeamError::Protocol("the session token cannot be sent".into()))?;
@@ -152,6 +136,27 @@ impl HttpTeamClient {
     async fn call<T: DeserializeOwned>(request: RequestBuilder) -> Result<T, TeamError> {
         parse(&Self::send(request).await?)
     }
+}
+
+/// `{server}/api/v1/<segments>`, each segment percent-encoded, with no empty segment from a
+/// trailing slash on the server address.
+pub(super) fn api_url(server: &ServerUrl, segments: &[&str]) -> Result<Url, TeamError> {
+    let bad = || TeamError::BadServerUrl(server.to_string());
+    let mut url = Url::parse(server.as_str()).map_err(|_| bad())?;
+    let base: Vec<String> = url
+        .path_segments()
+        .into_iter()
+        .flatten()
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .collect();
+    url.path_segments_mut()
+        .map_err(|_| bad())?
+        .clear()
+        .extend(&base)
+        .extend(["api", "v1"])
+        .extend(segments);
+    Ok(url)
 }
 
 /// A JSON request body; reqwest is built without its `json` feature.
@@ -208,6 +213,16 @@ struct ServerInfoWire {
 #[derive(Deserialize)]
 struct AuthWire {
     password: bool,
+    // `null`, `false` (older servers) or missing all mean off; only `{name}` turns it on.
+    #[serde(default)]
+    oidc: Option<serde_json::Value>,
+}
+
+impl AuthWire {
+    fn sso(&self) -> Option<SsoProvider> {
+        let name = self.oidc.as_ref()?.get("name")?.as_str()?;
+        Some(SsoProvider::named(name))
+    }
 }
 
 #[derive(Deserialize)]
@@ -221,6 +236,19 @@ struct SignInWire {
 #[derive(Deserialize)]
 struct TokenMetaWire {
     id: i64,
+    #[serde(default)]
+    expires_at: Option<String>,
+}
+
+impl SignInWire {
+    fn into_sign_in(self) -> Result<SignIn, TeamError> {
+        Ok(SignIn {
+            token: TeamToken::parse(&self.token)?,
+            token_id: self.token_meta.id.to_string(),
+            user: self.user,
+            expires_at: self.token_meta.expires_at,
+        })
+    }
 }
 
 // Only the fields the update line shows; the digest and dates are left to the server.
@@ -262,6 +290,7 @@ impl TeamApi for HttpTeamClient {
             let wire: ServerInfoWire =
                 Self::call(self.request(Method::GET, &["server"], None)?).await?;
             Ok(ServerInfo {
+                sso: wire.auth.sso(),
                 version: wire.version,
                 api: wire.api,
                 password_sign_in: wire.auth.password,
@@ -274,12 +303,7 @@ impl TeamApi for HttpTeamClient {
             let body =
                 json!({"username": username, "password": password, "token_name": TOKEN_NAME});
             let request = with_json(self.request(Method::POST, &["session"], None)?, &body);
-            let wire: SignInWire = Self::call(request).await?;
-            Ok(SignIn {
-                token: TeamToken::parse(&wire.token)?,
-                token_id: wire.token_meta.id.to_string(),
-                user: wire.user,
-            })
+            Self::call::<SignInWire>(request).await?.into_sign_in()
         })
     }
 
@@ -325,6 +349,23 @@ impl TeamApi for HttpTeamClient {
         Box::pin(async move {
             let request = self.request(Method::POST, &["update", "check"], Some(token))?;
             Ok(Self::call::<UpdateWire>(request).await?.into())
+        })
+    }
+
+    fn redeem_sso<'a>(&'a self, code: &'a str, verifier: &'a str) -> TeamFuture<'a, SignIn> {
+        Box::pin(async move {
+            let body = json!({"code": code, "verifier": verifier, "token_name": TOKEN_NAME});
+            let request = with_json(
+                self.request(Method::POST, &["oidc", "redeem"], None)?,
+                &body,
+            );
+            // A server without single sign-on has no such route.
+            match Self::call::<SignInWire>(request).await {
+                Err(TeamError::NotFound(_) | TeamError::Server { status: 404, .. }) => {
+                    Err(TeamError::SsoOff)
+                }
+                other => other?.into_sign_in(),
+            }
         })
     }
 }

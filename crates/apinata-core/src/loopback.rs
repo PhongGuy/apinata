@@ -1,6 +1,6 @@
-//! The one-shot loopback listener that receives the authorization redirect.
+//! The one-shot loopback listener that receives a browser sign-in's redirect, shared by the
+//! OAuth 2.0 grants and team single sign-on.
 
-use super::OAuth2Error;
 use crate::cancel::CancelHandle;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::Duration;
@@ -9,7 +9,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use url::{Host, Url};
 
-/// How long the listener waits for the redirect (R§5).
+/// How long the listener waits for the redirect.
 pub(crate) const CALLBACK_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// The longest request head a connection may send, and how long it may take to send it.
@@ -20,6 +20,17 @@ const ACCEPT_BACKOFF: Duration = Duration::from_millis(100);
 const DONE_PAGE: &str = "Apinata received the sign-in response. You can close this tab.";
 const BAD_PAGE: &str = "This sign-in response has no code or error.";
 const MISSING_PAGE: &str = "Not found.";
+
+/// Why the listener gave no callback.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ListenError {
+    /// The socket could not be bound at `address`.
+    Bind { address: String, message: String },
+    /// No callback arrived in time.
+    Timeout,
+    /// The caller cancelled the wait.
+    Cancelled,
+}
 
 /// How the redirect from the authorization server reaches Apinata.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,14 +94,15 @@ impl Accept for TcpListener {
 /// A bound loopback socket waiting for one authorization redirect.
 pub(crate) struct Listener<A = TcpListener> {
     listener: A,
+    port: u16,
     path: String,
     redirect_uri: String,
 }
 
 impl Listener {
-    /// Fails with `CallbackBind { address: bind.to_string(), message }`.
-    pub(crate) async fn bind(bind: SocketAddr, redirect: &Url) -> Result<Listener, OAuth2Error> {
-        let failed = |e: std::io::Error| OAuth2Error::CallbackBind {
+    /// Fails with `Bind { address: bind.to_string(), message }`.
+    pub(crate) async fn bind(bind: SocketAddr, redirect: &Url) -> Result<Listener, ListenError> {
+        let failed = |e: std::io::Error| ListenError::Bind {
             address: bind.to_string(),
             message: e.to_string(),
         };
@@ -101,6 +113,7 @@ impl Listener {
         let _ = redirect.set_port(Some(port));
         Ok(Listener {
             listener,
+            port,
             path: redirect.path().to_owned(),
             redirect_uri: redirect.to_string(),
         })
@@ -118,6 +131,7 @@ impl Listener {
     fn with_accept<B: Accept>(self, wrap: impl FnOnce(TcpListener) -> B) -> Listener<B> {
         Listener {
             listener: wrap(self.listener),
+            port: self.port,
             path: self.path,
             redirect_uri: self.redirect_uri,
         }
@@ -125,6 +139,11 @@ impl Listener {
 }
 
 impl<A: Accept> Listener<A> {
+    /// The bound port.
+    pub(crate) fn port(&self) -> u16 {
+        self.port
+    }
+
     /// The redirect URL with the bound port, e.g. `http://127.0.0.1:54321/callback`.
     pub(crate) fn redirect_uri(&self) -> &str {
         &self.redirect_uri
@@ -137,7 +156,7 @@ impl<A: Accept> Listener<A> {
         self,
         timeout: Duration,
         cancel: &CancelHandle,
-    ) -> Result<Vec<(String, String)>, OAuth2Error> {
+    ) -> Result<Vec<(String, String)>, ListenError> {
         // Each connection is served on its own task so a browser's silent preconnect cannot
         // block the callback; dropping the set on return aborts whatever is still open.
         let (tx, mut rx) = mpsc::channel(1);
@@ -162,8 +181,8 @@ impl<A: Accept> Listener<A> {
         let outcome = cancel.run(tokio::time::timeout(timeout, accept)).await;
         self.listener.shut_down();
         match outcome {
-            None => Err(OAuth2Error::Cancelled),
-            Some(Err(_)) => Err(OAuth2Error::CallbackTimeout),
+            None => Err(ListenError::Cancelled),
+            Some(Err(_)) => Err(ListenError::Timeout),
             Some(Ok(pairs)) => Ok(pairs),
         }
     }
@@ -426,7 +445,7 @@ mod tests {
             .wait(Duration::from_millis(200), &CancelHandle::new())
             .await
             .unwrap_err();
-        assert!(matches!(err, OAuth2Error::CallbackTimeout), "{err:?}");
+        assert!(matches!(err, ListenError::Timeout), "{err:?}");
         assert!(port_closes(addr), "the listener is still open");
     }
 
@@ -440,7 +459,7 @@ mod tests {
             stop.cancel();
         });
         let err = l.wait(LONG, &cancel).await.unwrap_err();
-        assert!(matches!(err, OAuth2Error::Cancelled), "{err:?}");
+        assert!(matches!(err, ListenError::Cancelled), "{err:?}");
     }
 
     // A process spawned mid-wait holds a copy of the listening socket until its exec; the
@@ -456,7 +475,7 @@ mod tests {
         let cancel = CancelHandle::new();
         cancel.cancel();
         let err = l.wait(LONG, &cancel).await.unwrap_err();
-        assert!(matches!(err, OAuth2Error::Cancelled), "{err:?}");
+        assert!(matches!(err, ListenError::Cancelled), "{err:?}");
         let rebound = std::net::TcpListener::bind(addr);
         assert!(rebound.is_ok(), "the port is still held: {rebound:?}");
     }
@@ -474,7 +493,7 @@ mod tests {
             .err()
             .expect("an error");
         match err {
-            OAuth2Error::CallbackBind { address, message } => {
+            ListenError::Bind { address, message } => {
                 assert_eq!(address, format!("127.0.0.1:{port}"));
                 assert!(!message.is_empty());
             }
@@ -506,7 +525,7 @@ mod tests {
         let out = listener
             .wait(Duration::from_millis(450), &CancelHandle::new())
             .await;
-        assert!(matches!(out, Err(OAuth2Error::CallbackTimeout)), "{out:?}");
+        assert!(matches!(out, Err(ListenError::Timeout)), "{out:?}");
         let n = calls.load(std::sync::atomic::Ordering::SeqCst);
         assert!((3..=6).contains(&n), "{n} accept calls in 450 ms");
     }

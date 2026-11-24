@@ -42,8 +42,8 @@ pub struct Resumed {
     pub branch: String,
 }
 
-/// Resumes the folder `binding` names. A session for another user, or none, is `SignedOut`
-/// with no request. A server that cannot be reached is `Offline` on the kept token, the
+/// Resumes the folder `binding` names. A session for another user, an expired one, or none,
+/// is `SignedOut` with no request. A server that cannot be reached is `Offline` on the kept token, the
 /// cached identity and the binding's role; a server that answers refreshes the binding's role
 /// and branch. An events address off this server is `TeamError::Protocol`.
 pub async fn resume(
@@ -73,6 +73,9 @@ pub async fn resume(
         .identity
         .clone()
         .unwrap_or_else(|| fallback_identity(binding, Some(&account)));
+    if account.expired() {
+        return Ok(kept(Standing::SignedOut, cached, String::new(), None));
+    }
     let token = account_token(api, secrets, &account)?;
 
     match current(api, secrets, team_file).await {
