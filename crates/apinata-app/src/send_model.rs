@@ -17,7 +17,7 @@ use crate::body_section;
 use crate::command::{Command, PlanError, Planned};
 use crate::executor;
 use crate::last_response::{self, KeptDigests, SendExtra, Stored};
-use crate::live_stream::LiveStream;
+use crate::live_stream::{EventTimes, LiveStream};
 use crate::prompt_vars::prompt_answers;
 use crate::script_gate::{Prepared, prepare};
 use crate::scrub;
@@ -95,6 +95,8 @@ pub struct SendModel {
     live: Option<LiveStream>,
     // The events the live view held when the stream ended, for a view until the final parse.
     ended_events: Vec<SseEvent>,
+    // When each of those events arrived, so the finished view keeps their times.
+    ended_times: EventTimes,
     // The run reported the end of the body, so Stop can no longer end just the read.
     body_ended: bool,
     // The seq the store kept a live result as, once it answers, and the wait for that answer.
@@ -134,6 +136,7 @@ impl SendModel {
             root: None,
             live: None,
             ended_events: Vec::new(),
+            ended_times: EventTimes::default(),
             body_ended: false,
             kept: None,
             kept_task: None,
@@ -219,6 +222,11 @@ impl SendModel {
     /// The events the live view held when the last stream ended; empty otherwise.
     pub fn ended_events(&self) -> &[SseEvent] {
         &self.ended_events
+    }
+
+    /// When each event of the last ended stream arrived; empty otherwise.
+    pub fn ended_times(&self) -> &EventTimes {
+        &self.ended_times
     }
 
     /// The live view of a streaming body, if one is open.
@@ -842,11 +850,12 @@ impl SendModel {
         }
         self.state = state;
         self.pending_json_note = None;
-        self.ended_events = self
-            .live
-            .take()
+        let live = self.live.take();
+        self.ended_events = live
+            .as_ref()
             .map(|l| l.events().to_vec())
             .unwrap_or_default();
+        self.ended_times = live.map(|l| l.times()).unwrap_or_default();
         self.body_ended = false;
         self.cancel = None;
         self.running = false;
