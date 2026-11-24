@@ -44,7 +44,7 @@ use crate::response::{HOP_BODY_LIMIT, Hop, Response, SentRequest};
 use crate::session_log::{
     Exchange, Logged, NetworkEntry, Redactor, SendHold, SendSource, SessionLog,
 };
-use crate::stream::{StreamBound, StreamEnd, StreamEvent, StreamOptions};
+use crate::stream::{HiddenValues, StreamBound, StreamEnd, StreamEvent, StreamOptions};
 use crate::subscription::{ack_wait, detect, handshake, socket, unstreamed_limits};
 use crate::timing::{Recorder, SystemResolve, TimedConnect, TimedResolve};
 use crate::trust::normalize_host;
@@ -230,6 +230,13 @@ pub(crate) struct HopBuffer {
 }
 
 impl HopBuffer {
+    /// The hops completed so far and the values they hide, for a stream's start to report.
+    fn so_far(&self, req: &ResolvedRequest) -> (Vec<Hop>, HiddenValues) {
+        let mut values = req.sensitive_values().to_vec();
+        values.extend(derived_list(self.placed.clone(), req.derived()));
+        (self.hops.clone(), HiddenValues(values))
+    }
+
     /// Keeps a credential this send placed on the wire, for its entry's redactor.
     fn place(&mut self, value: &str) {
         if !self.placed.iter().any(|v| v == value) {
@@ -1711,10 +1718,13 @@ impl Executor {
                     let _armed = Armed(cancel);
                     cancel.arm();
                     if let Some(sink) = &options.sink {
+                        let (timeline, hidden) = buf.so_far(req);
                         sink(StreamEvent::Started {
                             status: status.as_u16(),
                             headers: lossy(&hop_headers),
                             event_stream: true,
+                            timeline,
+                            hidden,
                         });
                     }
                     let session = socket::Session {
@@ -1745,7 +1755,10 @@ impl Executor {
                     }
                 }
                 (Some((options, cancel)), _) if challenge.is_none() && next.is_none() => {
+                    let (timeline, hidden) = buf.so_far(req);
                     let wire = StreamHead {
+                        timeline,
+                        hidden,
                         status: status.as_u16(),
                         headers: lossy(&hop_headers),
                         event_stream: hop_headers
@@ -2093,6 +2106,8 @@ struct StreamHead {
     status: u16,
     headers: Vec<(String, String)>,
     event_stream: bool,
+    timeline: Vec<Hop>,
+    hidden: HiddenValues,
 }
 
 /// Why a streamed read failed rather than ended.
@@ -2170,6 +2185,8 @@ async fn read_streaming(
         status: head.status,
         headers: head.headers,
         event_stream,
+        timeline: head.timeline,
+        hidden: head.hidden,
     });
 
     let mut temp = match &options.body_file {
@@ -2647,6 +2664,8 @@ mod tests {
             status: 200,
             headers: Vec::new(),
             event_stream: true,
+            timeline: Vec::new(),
+            hidden: HiddenValues::default(),
         };
         read_streaming(
             WireBody::new(reqwest::Response::from(res), true),

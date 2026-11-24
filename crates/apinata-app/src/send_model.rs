@@ -93,6 +93,8 @@ pub struct SendModel {
     root: Option<PathBuf>,
     // The open response body; `Some` only while Streaming.
     live: Option<LiveStream>,
+    // The send as it stood when the stream started, for the hops before it; `Some` with `live`.
+    live_sent: Option<Arc<RequestResult>>,
     // The events the live view held when the stream ended, for a view until the final parse.
     ended_events: Vec<SseEvent>,
     // When each of those events arrived, so the finished view keeps their times.
@@ -135,6 +137,7 @@ impl SendModel {
             ever_shown: false,
             root: None,
             live: None,
+            live_sent: None,
             ended_events: Vec::new(),
             ended_times: EventTimes::default(),
             body_ended: false,
@@ -232,6 +235,12 @@ impl SendModel {
     /// The live view of a streaming body, if one is open.
     pub fn live(&self) -> Option<&LiveStream> {
         self.live.as_ref()
+    }
+
+    /// The streaming send as it stood at its final response's headers, with the hops before
+    /// it, while the stream is open.
+    pub fn live_sent(&self) -> Option<&Arc<RequestResult>> {
+        self.live_sent.as_ref()
     }
 
     /// Whether a prompt-variable or trust dialog is open for this send.
@@ -857,6 +866,7 @@ impl SendModel {
             .as_ref()
             .map(|l| l.events().to_vec())
             .unwrap_or_default();
+        self.live_sent = None;
         self.ended_times = live.map(|l| l.times()).unwrap_or_default();
         self.body_ended = false;
         self.cancel = None;
@@ -880,9 +890,11 @@ impl SendModel {
                 status,
                 headers,
                 event_stream,
+                sent,
                 ..
             } => {
                 self.live = Some(LiveStream::new(status, headers, event_stream));
+                self.live_sent = Some(sent);
                 self.body_ended = false;
                 if matches!(self.state, SendState::Sending) {
                     self.state = SendState::Streaming;
