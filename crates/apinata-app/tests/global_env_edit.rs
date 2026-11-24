@@ -739,7 +739,7 @@ fn the_global_table_has_the_lock_but_no_parent(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn the_duplicate_button_copies_the_selected_global_environment(cx: &mut TestAppContext) {
+fn the_menus_duplicate_copies_the_selected_global_environment(cx: &mut TestAppContext) {
     support::init(cx);
     let body = "name: g\nvariables:\n  - name: host\n    value: a\n";
     let (_c, g, _s, ws) = start(cx, &[("g.yml", body)]);
@@ -756,9 +756,11 @@ fn the_duplicate_button_copies_the_selected_global_environment(cx: &mut TestAppC
     })
     .unwrap();
     cx.update_window(win, |_, w, cx| {
-        w.render_frame(cx);
-        assert_eq!(w.find("global-env-duplicate").label(), Some("Duplicate"));
-        w.click("global-env-duplicate", cx)
+        global_menu_in(
+            w,
+            cx,
+            apinata_app::global_env_editor::GLOBAL_ENV_MENU_DUPLICATE,
+        )
     })
     .unwrap();
     wait_for(cx, "copy selected", |cx| {
@@ -771,23 +773,6 @@ fn the_duplicate_button_copies_the_selected_global_environment(cx: &mut TestAppC
         std::fs::read_to_string(g.path().join("g copy.yml")).expect("copy"),
         body.replacen("name: g\n", "name: g copy\n", 1)
     );
-}
-
-#[gpui_kit::test]
-fn enter_on_the_focused_duplicate_button_copies_the_environment(cx: &mut TestAppContext) {
-    support::init(cx);
-    let (_c, g, _s, ws) = start(cx, &[("g.yml", "name: g\n")]);
-    let (win, editor) = open_editor(cx, &ws, "g");
-    cx.update(apinata_app::keymap::init);
-    enter_on(cx, win, "global-env-duplicate");
-    wait_for(cx, "copy selected", |cx| {
-        editor
-            .read_with(cx, |e, _| e.selected().map(str::to_owned))
-            .as_deref()
-            == Some("g copy")
-    });
-    assert!(g.path().join("g copy.yml").is_file());
-    assert!(present(cx, win, "global-env-editor"));
 }
 
 #[gpui_kit::test]
@@ -1602,18 +1587,16 @@ fn duplicate_is_off_with_its_reason_while_edits_are_unsaved(cx: &mut TestAppCont
     let (_c, _g, _s, ws) = start(cx, &[("g.yml", ONE_VAR)]);
     let (win, _editor) = open_editor(cx, &ws, "g");
     frame(cx, win);
-    cx.update_window(win, |_, w, cx| {
-        w.render_frame(cx);
-        assert_ne!(w.find("global-env-duplicate").disabled(), Some(true));
-    })
-    .unwrap();
     replace_input(cx, win, None, ("env-value", 0usize), "b");
     cx.update_window(win, |_, w, cx| {
+        global_menu_in(
+            w,
+            cx,
+            apinata_app::global_env_editor::GLOBAL_ENV_MENU_DUPLICATE,
+        );
         w.render_frame(cx);
-        let duplicate = w.find("global-env-duplicate");
-        assert_eq!(duplicate.disabled(), Some(true));
-        assert_eq!(duplicate.description(), Some(RENAME_LOCKED_REASON));
-        w.click("global-env-duplicate", cx)
+        let duplicate = w.find("env-duplicate-locked");
+        assert_eq!(duplicate.label(), Some(RENAME_LOCKED_REASON));
     })
     .unwrap();
     frame(cx, win);
@@ -1621,13 +1604,14 @@ fn duplicate_is_off_with_its_reason_while_edits_are_unsaved(cx: &mut TestAppCont
     assert_eq!(names(cx, &ws), ["g"]);
 }
 
-// The header is the collection editor's: the name, the "…" menu, Duplicate, Discard changes
-// and Save on one line, with Rename, Export all and Delete in the menu.
+// The header is the collection editor's: the name, the "…" menu, Discard changes and Save on
+// one line, with Rename, Duplicate, Export all and Delete in the menu.
 #[gpui_kit::test]
 fn the_header_is_the_name_then_the_menu_and_save_on_one_line(cx: &mut TestAppContext) {
     use apinata_app::env_editor::MORE_ACTIONS;
     use apinata_app::global_env_editor::{
-        GLOBAL_ENV_MENU_DELETE, GLOBAL_ENV_MENU_EXPORT_ALL, GLOBAL_ENV_MENU_RENAME,
+        GLOBAL_ENV_MENU_DELETE, GLOBAL_ENV_MENU_DUPLICATE, GLOBAL_ENV_MENU_EXPORT_ALL,
+        GLOBAL_ENV_MENU_RENAME,
     };
     support::init(cx);
     let (_c, g, _s, ws) = start(cx, &[("g.yml", ONE_VAR), ("h.yml", "name: h\n")]);
@@ -1641,7 +1625,6 @@ fn the_header_is_the_name_then_the_menu_and_save_on_one_line(cx: &mut TestAppCon
         let row: Vec<_> = [
             "global-env-title",
             "global-env-more",
-            "global-env-duplicate",
             "global-env-discard",
             "global-env-save",
         ]
@@ -1657,6 +1640,7 @@ fn the_header_is_the_name_then_the_menu_and_save_on_one_line(cx: &mut TestAppCon
         }
         for gone in [
             "global-env-rename",
+            "global-env-duplicate",
             "global-env-export",
             "global-env-delete",
         ] {
@@ -1669,6 +1653,10 @@ fn the_header_is_the_name_then_the_menu_and_save_on_one_line(cx: &mut TestAppCon
     cx.update_window(win, |_, w, _| {
         let menu = w.within("popup-menu");
         assert_eq!(menu.find(GLOBAL_ENV_MENU_RENAME).label(), Some("Rename"));
+        assert_eq!(
+            menu.find(GLOBAL_ENV_MENU_DUPLICATE).label(),
+            Some("Duplicate")
+        );
         assert_eq!(
             menu.find(GLOBAL_ENV_MENU_EXPORT_ALL).label(),
             Some("Export all to Postman…")
@@ -1730,9 +1718,9 @@ fn the_empty_dialog_has_a_single_new_button(cx: &mut TestAppContext) {
     assert!(!present(cx, win, "global-env-create"), "no second New");
 }
 
-// A coloured global environment shows its dot in the list, as the collection editor's does.
+// A coloured global environment shows its bar in the list, as the collection editor's does.
 #[gpui_kit::test]
-fn a_coloured_global_shows_its_dot_in_the_list(cx: &mut TestAppContext) {
+fn a_coloured_global_shows_its_bar_in_the_list(cx: &mut TestAppContext) {
     support::init(cx);
     let red = "name: g\ncolor: \"#CE4F3B\"\n";
     let (_c, _g, _s, ws) = start(cx, &[("g.yml", red), ("h.yml", "name: h\n")]);
@@ -1741,7 +1729,7 @@ fn a_coloured_global_shows_its_dot_in_the_list(cx: &mut TestAppContext) {
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
         let row = w.within(("global-env-item", 0usize));
-        assert!(row.try_find("global-env-item-dot").is_some(), "g has a dot");
+        assert!(row.try_find("env-item-color").is_some(), "g has a bar");
     })
     .unwrap();
 }
@@ -1858,9 +1846,9 @@ fn naming_the_first_global_replaces_the_empty_state(cx: &mut TestAppContext) {
     );
 }
 
-// The list dot keeps the collection list's gap before the name.
+// The list bar keeps the collection list's gap before the name.
 #[gpui_kit::test]
-fn the_global_list_dot_has_a_gap_before_the_name(cx: &mut TestAppContext) {
+fn the_global_list_bar_has_a_gap_before_the_name(cx: &mut TestAppContext) {
     support::init(cx);
     let red = "name: g\ncolor: \"#CE4F3B\"\n";
     let (_c, _g, _s, ws) = start(cx, &[("g.yml", red)]);
@@ -1870,7 +1858,7 @@ fn the_global_list_dot_has_a_gap_before_the_name(cx: &mut TestAppContext) {
         w.render_frame(cx);
         let gap_want = apinata_app::style::resolve(apinata_app::style::SPACE_1, w);
         let row = w.within(("global-env-item", 0usize));
-        let dot = row.find("global-env-item-dot").bounds();
+        let dot = row.find("env-item-color").bounds();
         let name = w.find(("global-env-item-name", 0usize)).bounds();
         assert_eq!(name.left() - dot.right(), gap_want, "{dot:?} {name:?}");
     })

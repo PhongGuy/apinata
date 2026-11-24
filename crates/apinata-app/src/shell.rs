@@ -65,7 +65,7 @@ use crate::keymap::{
     ToggleSidebar, ToggleTheme, UndoActive, ZoomIn, ZoomOut,
 };
 use crate::mock_server::{MOCK_TIP, MockState};
-use crate::palette::{GoToRequest, OpenCommandPalette, OpenRequest};
+use crate::palette::{GoToRequest, OpenCommandPalette, OpenRequest, SwitchTab};
 use crate::path_display;
 use crate::persisted::{Persisted, SaveFailed};
 use crate::preferences::OpenPreferences;
@@ -3360,6 +3360,11 @@ impl Render for Shell {
             .on_action(cx.listener(|this, _: &GoToRequest, window, cx| {
                 let requests = crate::palette::request_entries(this.workspace.read(cx), cx);
                 crate::palette::open_requests(this.focus.clone(), requests, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &SwitchTab, window, cx| {
+                let (open, closed) = this.tab_area.read(cx).switcher_entries(cx);
+                let (focus, ws) = (this.focus.clone(), this.workspace.clone());
+                crate::palette::open_tab_switcher(focus, open, closed, ws, window, cx)
             }))
             .on_action(cx.listener(|this, a: &OpenRequest, _, cx| {
                 (this.workspace)
