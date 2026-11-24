@@ -148,7 +148,8 @@ fn sidebar_entries_show_their_bound_keys(cx: &mut TestAppContext) {
         "delete"
     };
     for (label, chord) in [
-        ("Rename", "secondary-r"),
+        // Rename names the tree's own key, not the palette's Ctrl+R.
+        ("Rename", "f2"),
         ("Delete", delete),
         ("Duplicate", "secondary-d"),
         ("Copy", "secondary-c"),
@@ -167,7 +168,7 @@ fn a_rebound_key_shows_in_the_menu(cx: &mut TestAppContext) {
     cx.update(|cx| {
         apinata_app::keymap::apply(
             &overrides(&[
-                ("request.rename", &["f3"]),
+                ("request.rename_in_sidebar", &["f3"]),
                 ("request.delete_in_sidebar", &[]),
                 ("request.show_in_file_manager", &["alt-f"]),
             ]),

@@ -240,6 +240,19 @@ impl RunnerModel {
         self.workspace.read(cx).selected_environment(&self.root, cx)
     }
 
+    /// The workspace the runner reads its collection and environments from.
+    pub fn workspace(&self) -> &Entity<Workspace> {
+        &self.workspace
+    }
+
+    /// The global environment a run would use, whether a profile or a workspace one.
+    pub fn effective_global(&self, cx: &App) -> Option<String> {
+        self.workspace
+            .read(cx)
+            .effective_global()
+            .map(|(_, name)| name)
+    }
+
     /// What this runner runs.
     pub fn target(&self) -> &RunTarget {
         &self.target
@@ -995,12 +1008,19 @@ impl RunnerModel {
             }
         }
         let state = match (self.rerun_of.take(), state) {
-            (Some(_), RunState::Finished(_)) => {
+            (Some(before), RunState::Finished(now)) => {
                 let done = self.rows.iter().filter_map(|row| match &row.state {
                     RowState::Done(result) => Some(result.as_ref()),
                     _ => None,
                 });
-                RunState::Finished(Summary::of(done))
+                // The stop still explains the run while a request it left unsent stays unsent.
+                let earlier = match before {
+                    RunState::Finished(s) => s.stop,
+                    _ => None,
+                };
+                let mut summary = Summary::of(done);
+                summary.stop = now.stop.or(earlier).filter(|_| summary.skipped > 0);
+                RunState::Finished(summary)
             }
             (Some(before), RunState::Cancelled) => before,
             (_, state) => state,

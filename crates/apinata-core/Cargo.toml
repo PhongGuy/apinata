@@ -26,6 +26,7 @@ thiserror.workspace = true
 similar.workspace = true
 base64.workspace = true
 url.workspace = true
+unicode-properties.workspace = true
 percent-encoding.workspace = true
 hyper-util.workspace = true
 tower.workspace = true

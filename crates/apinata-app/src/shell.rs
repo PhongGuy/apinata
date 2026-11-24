@@ -168,8 +168,11 @@ pub const APP_MENU_TIP: &str = "App menu";
 /// Element id of the app menu's tooltip text, so a test can see when it is drawn.
 pub const APP_MENU_TIP_ID: &str = "app-menu-tip";
 
-// The no-collection state's icon, decoded once rather than on every frame.
-static APP_ICON: LazyLock<Arc<Image>> = LazyLock::new(|| {
+/// The status bar's console toggle icon: a terminal, so it reads apart from the layout toggle.
+pub const CONSOLE_ICON: IconName = IconName::SquareTerminal;
+
+// The app icon the no-collection state and About show, decoded once rather than on every frame.
+pub(crate) static APP_ICON: LazyLock<Arc<Image>> = LazyLock::new(|| {
     let png = include_bytes!("../../../assets/icon/generated/png/64x64.png");
     Arc::new(Image::from_bytes(ImageFormat::Png, png.to_vec()))
 });
@@ -2613,7 +2616,7 @@ impl Shell {
                     .right(
                         icon_button(
                             "toggle-console",
-                            IconName::PanelBottom,
+                            CONSOLE_ICON,
                             commands::label("view.toggle_console"),
                             Some(&ToggleConsole),
                             cx,
@@ -3886,7 +3889,8 @@ pub fn notice_message(kind: &NoticeKind) -> Option<String> {
         | NoticeKind::Moved { .. }
         | NoticeKind::Deleted(_)
         | NoticeKind::Trashed { .. }
-        | NoticeKind::ExampleDeleted { .. } => None,
+        | NoticeKind::ExampleDeleted { .. }
+        | NoticeKind::MovedToSecret(_) => None,
     };
     text.map(|t| ui::plain_quotes(&t))
 }

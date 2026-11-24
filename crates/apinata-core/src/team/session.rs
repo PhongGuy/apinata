@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use super::{Account, Me, ServerUrl, TeamApi, TeamError, TeamStore, TeamToken, token_key};
+use super::{Account, Me, ServerUrl, SignIn, TeamApi, TeamError, TeamStore, TeamToken, token_key};
 use crate::{CancelFlag, SecretError, SecretStore};
 
 pub(super) fn secrets_error(e: SecretError) -> TeamError {
@@ -32,9 +32,7 @@ pub(super) fn account_token(
     kept_token(api.server(), secrets, &account.username)
 }
 
-/// Signs `username` in with a password and keeps the session, replacing any earlier account
-/// on this server. The earlier token is revoked only once the new one is kept, so a failure
-/// at any step leaves the working session as it was. A `cancel` set before the session is
+/// Signs `username` in with a password and keeps the session through `keep_session`. A `cancel` set before the session is
 /// kept ends it with `Cancelled`, revoking a token the server already issued; once kept, the
 /// sign-in completes.
 pub async fn sign_in(
@@ -57,6 +55,19 @@ pub async fn sign_in(
         let _ = api.revoke(&signed.token, &signed.token_id).await;
         return Err(TeamError::Cancelled);
     }
+    keep_session(api, secrets, team_file, signed).await
+}
+
+/// Keeps a fresh session: the token in the keychain under `token_key`, the account in the team
+/// file, replacing any earlier account on this server. The earlier token is revoked only once
+/// the new one is kept, so a failure at any step leaves the working session as it was and gives
+/// the new token back.
+pub(super) async fn keep_session(
+    api: &dyn TeamApi,
+    secrets: &dyn SecretStore,
+    team_file: &Path,
+    signed: SignIn,
+) -> Result<Account, TeamError> {
     let server = api.server();
     let previous = TeamStore::load(team_file)?.account(server).cloned();
     // A keychain error here only means the old token cannot be revoked; sign-in goes on.
@@ -64,13 +75,14 @@ pub async fn sign_in(
         .as_ref()
         .and_then(|a| account_token(api, secrets, a).ok().flatten());
 
-    let account = Account::new(
+    let mut account = Account::new(
         server,
         &signed.user.username,
         &signed.user.display_name,
         &signed.token_id,
         signed.user.server_admin,
     );
+    account.expires_at = signed.expires_at.clone();
     let key = token_key(server, &account.username);
     if let Err(e) = secrets.set(&key, signed.token.expose()) {
         let _ = api.revoke(&signed.token, &signed.token_id).await;
