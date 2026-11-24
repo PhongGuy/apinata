@@ -3849,14 +3849,24 @@ impl Render for BodyView {
                         .readonly(!self.edit_on())
                         .h_full()
                         .text_size(Self::font_size(cx))
-                        // A read-only body offers its node entries, if JSON, then the URL entry.
+                        // A read-only body offers its node entries on JSON, else the kit's
+                        // own entries, then the URL entry.
                         .when(!self.edit_on(), |editor| {
                             let pending = Rc::clone(&self.node_pending);
                             let url = Rc::clone(&self.url_pending);
+                            let (node, state) = (self.node_offered(), self.editor.downgrade());
                             editor.context_menu(move |menu, _, cx| {
                                 let (entries, selected) = &*pending.borrow();
                                 let off = !url.get();
-                                node_menu(menu, entries, *selected, cx).menu_with_disabled(
+                                let menu = match state.upgrade().filter(|_| !node) {
+                                    Some(state) => {
+                                        let caps = state.read(cx).context_menu_capabilities();
+                                        crate::percent_codec::edit_entries(menu, &caps, cx)
+                                            .separator()
+                                    }
+                                    None => node_menu(menu, entries, *selected, cx),
+                                };
+                                menu.menu_with_disabled(
                                     ui::native_menu_label(OPEN_URL, off, cx),
                                     off,
                                     Box::new(OpenUrlAsRequest),
