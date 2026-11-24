@@ -522,6 +522,14 @@ pub enum Command {
         /// Where the result goes.
         reply: async_channel::Sender<Result<VariableSet, PlanError>>,
     },
+    /// Send the names a send of a request would refuse as undefined
+    /// (`apinata_core::undefined_variables`) on `reply`.
+    UndefinedVariables {
+        /// The request.
+        item: ItemPath,
+        /// Where the names, sorted, go.
+        reply: async_channel::Sender<Result<Vec<String>, PlanError>>,
+    },
     /// Send every secret value the collection's variable context holds
     /// (`VarContext::secret_values`) on `reply`, or why the context cannot be built.
     SecretValues {

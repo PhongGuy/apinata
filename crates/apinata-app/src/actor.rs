@@ -515,6 +515,10 @@ impl Actor {
                 let _ = reply.try_send(self.variables(&item));
                 Ok(())
             }
+            Command::UndefinedVariables { item, reply } => {
+                let _ = reply.try_send(self.undefined_variables(&item));
+                Ok(())
+            }
             Command::MockSource { reply } => {
                 let source = self.open_saved().and_then(|collection| {
                     let context = self.saved_context(&collection)?;
@@ -796,6 +800,23 @@ impl Actor {
         Ok(context.variables(req))
     }
 
+    /// The names request `item` would refuse as undefined, from its draft and the cached context.
+    fn undefined_variables(&mut self, item: &ItemPath) -> Result<Vec<String>, PlanError> {
+        if self.collection.request(item).is_none() {
+            return Err(PlanError::NotFound(item.clone()));
+        }
+        let context = self
+            .draft_context(Some(item))
+            .map_err(|e| PlanError::Context(e.to_string()))?;
+        let req =
+            (self.collection.request(item)).ok_or_else(|| PlanError::NotFound(item.clone()))?;
+        Ok(apinata_core::undefined_variables(
+            &self.collection,
+            req,
+            &context,
+        ))
+    }
+
     /// Redirect every path in `command` past the moves its sender had not yet seen.
     fn remap(&self, command: Command, seen: u64) -> Command {
         let t = |target: Target| self.ledger.remap(&target, seen);
@@ -960,6 +981,10 @@ impl Actor {
                 reply,
             },
             Command::Variables { item, reply } => Command::Variables {
+                item: p(item),
+                reply,
+            },
+            Command::UndefinedVariables { item, reply } => Command::UndefinedVariables {
                 item: p(item),
                 reply,
             },
@@ -2624,6 +2649,7 @@ fn shapes_context(command: &Command) -> bool {
         | Command::PlanSavedItems { .. }
         | Command::FileTexts { .. }
         | Command::Variables { .. }
+        | Command::UndefinedVariables { .. }
         | Command::SecretValues { .. }
         | Command::MockSource { .. }
         | Command::Search { .. }

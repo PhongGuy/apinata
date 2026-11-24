@@ -150,6 +150,7 @@ pub use body_filter::{BodyFilterError, filter_body, validate_filter};
 pub use cancel::CancelHandle;
 pub use check::{
     CheckError, CheckOptions, CheckReport, Finding, FindingKind, Severity, check_collection,
+    undefined_variables,
 };
 pub use codegen::{Target, UnknownTarget, generate};
 pub use collection::{
