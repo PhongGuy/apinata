@@ -508,6 +508,7 @@ mod runner_saved_options;
 mod runner_script_trust;
 mod runner_scrollbar;
 mod runner_selection;
+mod runner_stop;
 mod runner_stream;
 mod runner_tab;
 mod runtime_vars;
