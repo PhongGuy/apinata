@@ -4,7 +4,9 @@
 use crate::support;
 
 use apinata_app::body_view::{BodyView, Shown};
-use apinata_app::follow_url::{OPEN_URL, follow_target, same_origin, url_at};
+use apinata_app::follow_url::{
+    BASE_QUERY, NO_URL, OPEN_URL, PLACEHOLDER, follow_target, same_origin, url_at,
+};
 use apinata_app::response_pane::ResponseTab;
 use apinata_app::workspace::Workspace;
 use apinata_core::{AuthSpec, ItemPath};
@@ -51,15 +53,15 @@ fn a_target_resolves_against_the_request_url_and_refuses_other_schemes() {
     let base = "http://127.0.0.1:9/users/1?x=1";
     assert_eq!(
         follow_target("/items/7", base).as_deref(),
-        Some("http://127.0.0.1:9/items/7")
+        Ok("http://127.0.0.1:9/items/7")
     );
     assert_eq!(
         follow_target("2", base).as_deref(),
-        Some("http://127.0.0.1:9/users/2")
+        Ok("http://127.0.0.1:9/users/2")
     );
     assert_eq!(
         follow_target("https://x.invalid/a?b=1", base).as_deref(),
-        Some("https://x.invalid/a?b=1")
+        Ok("https://x.invalid/a?b=1")
     );
     for refused in [
         "ftp://x.invalid/f",
@@ -67,8 +69,49 @@ fn a_target_resolves_against_the_request_url_and_refuses_other_schemes() {
         "file:///etc/passwd",
         "data:text/plain,hi",
     ] {
-        assert_eq!(follow_target(refused, base), None, "{refused}");
+        assert_eq!(follow_target(refused, base), Err(NO_URL), "{refused}");
     }
+}
+
+#[test]
+fn a_target_holding_a_placeholder_is_refused() {
+    let base = "http://127.0.0.1:9/users/1";
+    for raw in [
+        "https://attacker.test.invalid/?t={{token}}",
+        "http://127.0.0.1:9/{{path}}",
+        "/items?t={{token}}",
+    ] {
+        assert_eq!(follow_target(raw, base), Err(PLACEHOLDER), "{raw}");
+    }
+}
+
+#[test]
+fn a_relative_target_never_takes_the_request_urls_query() {
+    let base = "http://127.0.0.1:9/users/1?api_key=SECRET";
+    for raw in ["", "#frag"] {
+        assert_eq!(follow_target(raw, base), Err(BASE_QUERY), "{raw:?}");
+    }
+    assert_eq!(
+        follow_target("?page=2", base).as_deref(),
+        Ok("http://127.0.0.1:9/users/1?page=2")
+    );
+    assert_eq!(
+        follow_target("/next", base).as_deref(),
+        Ok("http://127.0.0.1:9/next")
+    );
+}
+
+#[test]
+fn a_target_never_carries_userinfo() {
+    let base = "http://u:pw@127.0.0.1:9/users/1";
+    assert_eq!(
+        follow_target("/next", base).as_deref(),
+        Ok("http://127.0.0.1:9/next")
+    );
+    assert_eq!(
+        follow_target("https://u:pw@x.invalid/a?b=1", base).as_deref(),
+        Ok("https://x.invalid/a?b=1")
+    );
 }
 
 #[test]
@@ -79,6 +122,10 @@ fn same_origin_compares_scheme_host_and_port() {
     assert!(!same_origin(a, "http://127.0.0.1:10/a"));
     assert!(!same_origin(a, "http://x.invalid:9/a"));
     assert!(same_origin("http://x.invalid/a", "http://X.invalid:80/b"));
+    assert!(same_origin(
+        "https://x.invalid:443/a",
+        "https://x.invalid/b"
+    ));
 }
 
 // A collection whose `users/u.yml` carries a literal header and bearer token and answers with
@@ -86,6 +133,7 @@ fn same_origin_compares_scheme_host_and_port() {
 struct Sent {
     s: Started,
     server: wiremock::MockServer,
+    _front: Option<wiremock::MockServer>,
     body: Entity<BodyView>,
     pane: Entity<apinata_app::response_pane::ResponsePane>,
     uri: String,
@@ -93,13 +141,19 @@ struct Sent {
 }
 
 fn sent(cx: &mut TestAppContext) -> Sent {
+    sent_via(cx, false)
+}
+
+// With `redirected`, the request goes to a front server that redirects to the answering one,
+// so the URL first sent to and the URL that answered have different origins.
+fn sent_via(cx: &mut TestAppContext, redirected: bool) -> Sent {
     use apinata_app::request_editor::SendRequest;
     http_ready(cx);
     let handle = cx.update(|cx| apinata_app::tokio_bridge::handle(cx));
     let server = handle.block_on(wiremock::MockServer::builder().start());
     let uri = server.uri();
     let json = format!(
-        r#"{{"next": "{uri}/page/2", "away": "https://away.test.invalid/x", "ftp": "ftp://x.invalid/f"}}"#
+        r#"{{"next": "{uri}/page/2", "away": "https://away.test.invalid/x", "ftp": "ftp://x.invalid/f", "leak": "https://leak.test.invalid/?t={{{{token}}}}"}}"#
     );
     handle.block_on(
         wiremock::Mock::given(wiremock::matchers::any())
@@ -110,9 +164,22 @@ fn sent(cx: &mut TestAppContext) -> Sent {
             )
             .mount(&server),
     );
+    let front = redirected.then(|| {
+        let front = handle.block_on(wiremock::MockServer::builder().start());
+        handle.block_on(
+            wiremock::Mock::given(wiremock::matchers::any())
+                .respond_with(
+                    wiremock::ResponseTemplate::new(302)
+                        .insert_header("Location", format!("{uri}/users/1").as_str()),
+                )
+                .mount(&front),
+        );
+        front
+    });
+    let first = front.as_ref().map_or(uri.clone(), |f| f.uri());
     let u = format!(
         "{}  headers:\n    - name: X-Team\n      value: t1\n  auth:\n    type: bearer\n    token: lit-token\n",
-        request("u", &format!("{uri}/users/1"))
+        request("u", &format!("{first}/users/1"))
     );
     let col = write_tree(&[
         ("opencollection.yml", ROOT),
@@ -140,6 +207,7 @@ fn sent(cx: &mut TestAppContext) -> Sent {
     Sent {
         s,
         server,
+        _front: front,
         body,
         pane,
         uri,
@@ -194,14 +262,17 @@ fn a_same_origin_url_opens_an_unsent_get_draft_with_the_requests_headers_and_aut
 }
 
 #[gpui_kit::test]
-fn another_origins_url_carries_no_headers_and_inherits_auth(cx: &mut TestAppContext) {
+fn another_origins_url_carries_no_headers_and_no_auth(cx: &mut TestAppContext) {
     let t = sent(cx);
     open_at(cx, &t, "away.test");
     let item = active_draft(cx, &t.s.ws).expect("a draft tab is active");
     let view = view_of(cx, &t.s.ws, &t.s.root, item.as_str());
     assert_eq!(view.url, "https://away.test.invalid/x");
     assert!(view.headers.is_empty());
-    assert!(matches!(view.auth, AuthSpec::Inherit));
+    assert!(
+        matches!(view.auth, AuthSpec::None),
+        "no folder or collection auth goes to another host"
+    );
     assert_eq!(received(cx, &t.server), 1, "nothing is sent");
 }
 
@@ -212,6 +283,37 @@ fn a_caret_on_another_scheme_opens_nothing(cx: &mut TestAppContext) {
     assert_eq!(active_draft(cx, &t.s.ws), None);
     open_at(cx, &t, "\"away\"");
     assert_eq!(active_draft(cx, &t.s.ws), None);
+}
+
+#[gpui_kit::test]
+fn a_url_holding_a_placeholder_opens_nothing(cx: &mut TestAppContext) {
+    let t = sent(cx);
+    open_at(cx, &t, "leak.test");
+    assert_eq!(active_draft(cx, &t.s.ws), None);
+}
+
+#[gpui_kit::test]
+fn after_a_redirect_the_origin_is_the_first_urls_and_the_base_the_last(cx: &mut TestAppContext) {
+    let t = sent_via(cx, true);
+    // The link shares the origin that answered, not the one the request was sent to.
+    open_at(cx, &t, "page/2");
+    let item = active_draft(cx, &t.s.ws).expect("a draft tab is active");
+    let view = view_of(cx, &t.s.ws, &t.s.root, item.as_str());
+    assert_eq!(view.url, format!("{}/page/2", t.uri));
+    assert!(view.headers.is_empty());
+    assert!(matches!(view.auth, AuthSpec::None));
+    // A relative Location resolves against the URL that answered.
+    cx.update_window(t.s.win, |_, w, cx| {
+        t.pane
+            .update(cx, |p, cx| p.open_url_as_request("/items/7", w, cx))
+    })
+    .unwrap();
+    cx.run_until_parked();
+    frame(cx, t.s.win);
+    let item = active_draft(cx, &t.s.ws).expect("a draft tab is active");
+    let view = view_of(cx, &t.s.ws, &t.s.root, item.as_str());
+    assert_eq!(view.url, format!("{}/items/7", t.uri));
+    assert_eq!(received(cx, &t.server), 1, "nothing is sent");
 }
 
 #[gpui_kit::test]

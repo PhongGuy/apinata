@@ -21,6 +21,13 @@ pub const OPEN_URL: &str = "Open URL as new request";
 /// Shown when the command has no http or https URL to open.
 pub const NO_URL: &str = "Only an http or https URL opens as a new request";
 
+/// Shown when the URL holds a `{{variable}}`, which would send its value to wherever it points.
+pub const PLACEHOLDER: &str = "A URL holding a {{variable}} does not open as a new request";
+
+/// Shown when a relative URL would keep the query of the request URL it resolves against.
+pub const BASE_QUERY: &str =
+    "This URL would reuse the request's own query, so it does not open as a new request";
+
 /// The http or https URL around byte `offset` of `text`, if there is one.
 pub fn url_at(text: &str, offset: usize) -> Option<&str> {
     if offset > text.len() || !text.is_char_boundary(offset) {
@@ -45,21 +52,40 @@ pub fn url_at(text: &str, offset: usize) -> Option<&str> {
     (within && parsed.host().is_some()).then_some(url)
 }
 
-/// `raw` resolved against the request URL `base`; `None` unless the result is http or https.
-pub fn follow_target(raw: &str, base: &str) -> Option<String> {
+/// `raw` resolved against the request URL `base`; the toast text saying why it is refused
+/// unless the result is http or https.
+pub fn follow_target(raw: &str, base: &str) -> Result<String, &'static str> {
     let raw = raw.trim();
-    let (url, absolute) = match Url::parse(raw) {
+    // A placeholder would resolve at send to this collection's value, wherever the URL points.
+    if raw.contains("{{") {
+        return Err(PLACEHOLDER);
+    }
+    let (mut url, absolute) = match Url::parse(raw) {
         Ok(url) => (url, true),
         Err(url::ParseError::RelativeUrlWithoutBase) => {
-            (Url::parse(base).ok()?.join(raw).ok()?, false)
+            let joined = Url::parse(base).ok().and_then(|b| b.join(raw).ok());
+            (joined.ok_or(NO_URL)?, false)
         }
-        Err(_) => return None,
+        Err(_) => return Err(NO_URL),
     };
     if !matches!(url.scheme(), "http" | "https") || url.host().is_none() {
-        return None;
+        return Err(NO_URL);
     }
-    // An absolute target keeps its text as written; a relative one takes the joined form.
-    Some(if absolute { raw.to_owned() } else { url.into() })
+    // The request URL's query, which may hold a key, carries over only when the target names
+    // no query of its own, so that case is refused rather than followed.
+    let own_query = raw.split('#').next().is_some_and(|r| r.contains('?'));
+    if !absolute && url.query().is_some() && !own_query {
+        return Err(BASE_QUERY);
+    }
+    // Userinfo is never carried into a new request; untouched, the text stays as written.
+    let userinfo = !url.username().is_empty() || url.password().is_some();
+    let _ = url.set_username("");
+    let _ = url.set_password(None);
+    Ok(if absolute && !userinfo {
+        raw.to_owned()
+    } else {
+        url.into()
+    })
 }
 
 /// Whether `a` and `b` share scheme, host and port.

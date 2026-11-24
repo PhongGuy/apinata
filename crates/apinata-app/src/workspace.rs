@@ -2251,7 +2251,8 @@ impl Workspace {
 
     /// Asks for an unsent GET draft of `url` in the folder of the request `source`, opening as
     /// `new_draft_of_kind`'s does. It carries `source`'s headers and auth as written only when
-    /// `url` has the origin of `sent_to`, the URL `source` was sent to; otherwise it inherits.
+    /// `url` has the origin of `sent_to`, the URL `source` was sent to; otherwise it has no
+    /// headers of its own and no auth, so no folder or collection auth reaches another host.
     /// `None` with nothing sent when the root is not open.
     pub fn new_draft_from_url(
         &mut self,
@@ -2271,7 +2272,7 @@ impl Workspace {
             .filter(|_| crate::follow_url::same_origin(url, sent_to));
         let (headers, auth) = match view {
             Some(view) => (view.headers.clone(), view.auth.clone()),
-            None => (Vec::new(), apinata_core::AuthSpec::Inherit),
+            None => (Vec::new(), apinata_core::AuthSpec::None),
         };
         let snapshot = DraftSnapshot::http_get(url, headers, auth).ok()?;
         let op = TreeOp::CreateDraftFrom {

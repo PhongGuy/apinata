@@ -50,7 +50,7 @@ use crate::cookie_jar::{
 use crate::diff_doc::DiffRow;
 use crate::download_model::DownloadModel;
 use crate::executor;
-use crate::follow_url::{NO_URL, OPEN_URL, OpenUrl, follow_target};
+use crate::follow_url::{OPEN_URL, OpenUrl, follow_target};
 use crate::kv_grid::{ActionShow, KvColumn, action_slot};
 use crate::last_response::{self, KeptAs, KeptSend, ResponseStore, StoreOp, Stored};
 use crate::live_stream::{self, EventRow};
@@ -941,9 +941,9 @@ impl ResponsePane {
             window.push_notification(ui::info_toast("This response has no request to follow"), cx);
             return;
         };
-        let Some(url) = follow_target(raw, &last.url) else {
-            window.push_notification(ui::info_toast(NO_URL), cx);
-            return;
+        let url = match follow_target(raw, &last.url) {
+            Ok(url) => url,
+            Err(why) => return window.push_notification(ui::info_toast(why), cx),
         };
         workspace.update(cx, |w, cx| {
             w.new_draft_from_url(&root, &result.path, &url, &first.url, cx)

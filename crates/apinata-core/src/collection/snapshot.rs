@@ -12,7 +12,10 @@ use crate::url_password::{is_lone_placeholder, url_without_password};
 use std::fmt;
 use yaml_serde::{Mapping, Value};
 
-/// A request's mapping as it stood at one moment, safe to store beside its response.
+/// A request's mapping as it stood at one moment. One taken from a request through
+/// [`RequestFile::snapshot`] has its literal credentials blanked and is safe to store; one built
+/// by [`DraftSnapshot::http_get`] holds its auth as given, and only a snapshot of the draft it
+/// starts, taken the same way, is stored.
 #[derive(Clone, PartialEq)]
 #[non_exhaustive]
 pub struct DraftSnapshot {
@@ -61,8 +64,10 @@ impl DraftSnapshot {
         Ok(DraftSnapshot { root })
     }
 
-    /// An unnamed HTTP GET of `url` with `headers` and `auth` kept as given, so a draft made
-    /// from it takes a free name; [`EditError::InvalidHeaderName`] for a name with a line break.
+    /// An unnamed HTTP GET of `url` with `headers` and `auth` kept as given, credentials
+    /// included, so a draft made from it takes a free name and sends what the source would. It
+    /// is for starting a draft, not for storing; [`EditError::InvalidHeaderName`] for a name
+    /// with a line break.
     pub fn http_get(
         url: &str,
         headers: Vec<KeyValue>,
