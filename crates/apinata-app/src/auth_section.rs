@@ -405,7 +405,10 @@ impl AuthSection {
             }),
             cx.subscribe(&oauth1, |this, _, OAuth1MoveSecret(spec), cx| {
                 if this.mode == Some(AuthMode::OAuth1) {
-                    let edit = Edit::MoveToSecret(Box::new(AuthSpec::OAuth1(spec.clone())));
+                    let edit = Edit::MoveToSecret {
+                        slotted: Box::new(AuthSpec::OAuth1(spec.clone())),
+                        pinned: None,
+                    };
                     cx.emit(SectionEdit::new(edit).after_loads(this.loads));
                 }
             }),
@@ -585,7 +588,11 @@ impl AuthSection {
         };
         let text = self.input(field).read(cx).value().to_string();
         apinata_core::import::replace_auth_secret(&mut auth, &text, MOVE_SLOT);
-        cx.emit(SectionEdit::new(Edit::MoveToSecret(Box::new(auth))).after_loads(self.loads));
+        let edit = Edit::MoveToSecret {
+            slotted: Box::new(auth),
+            pinned: None,
+        };
+        cx.emit(SectionEdit::new(edit).after_loads(self.loads));
     }
 
     /// Offers only `modes` in the picker, in the order given; a shown mode left out of
