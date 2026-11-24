@@ -172,7 +172,7 @@ fn an_unacknowledged_snapshot_never_rewrites_the_saved_choice(cx: &mut TestAppCo
 
 #[gpui_kit::test]
 fn a_selected_environment_deleted_on_disk_shows_no_environment(cx: &mut TestAppContext) {
-    use apinata_app::env_selector::{EnvSelector, NO_ENVIRONMENT};
+    use apinata_app::env_picker::{EnvPicker, NO_ENVIRONMENT};
     use gpui_kit::{AppContext as _, SharedString, WindowOptions};
     support::init(cx);
     let col = with_envs();
@@ -186,25 +186,21 @@ fn a_selected_environment_deleted_on_disk_shows_no_environment(cx: &mut TestAppC
     let (_win, sel) = cx
         .update(|cx| {
             gpui_kit::open_window(WindowOptions::default(), cx, |win, cx| {
-                cx.new(|cx| EnvSelector::new(ws, win, cx))
+                cx.new(|cx| EnvPicker::new(ws, win, cx))
             })
         })
         .unwrap();
     cx.run_until_parked();
     assert_eq!(
-        sel.read_with(cx, |s, _| s.shown()),
-        Some(SharedString::from("dev"))
+        sel.read_with(cx, |s, cx| s.checked(cx).0),
+        SharedString::from("dev")
     );
     std::fs::remove_file(col.path().join("environments/dev.yml")).unwrap();
     wait_for(cx, "the select to drop dev", |cx| {
-        sel.read_with(cx, |s, _| s.shown()) == Some(SharedString::from(NO_ENVIRONMENT))
+        sel.read_with(cx, |s, cx| s.checked(cx).0) == NO_ENVIRONMENT
     });
-    let value = sel.read_with(cx, |s, cx| s.select().read(cx).selected_value().cloned());
-    assert_eq!(
-        value,
-        Some(SharedString::from(NO_ENVIRONMENT)),
-        "the kit shows it too"
-    );
+    let label = sel.read_with(cx, |s, cx| s.label(cx));
+    assert_eq!(label, NO_ENVIRONMENT, "the button shows it too");
 }
 
 fn with_one_env() -> tempfile::TempDir {

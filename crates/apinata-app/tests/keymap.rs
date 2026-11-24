@@ -311,8 +311,8 @@ fn send_works_from_the_title_bar_environment_picker(cx: &mut TestAppContext) {
     open_tab(cx, &s.ws, &s.root, "a.yml");
     let env = s
         .shell
-        .read_with(cx, |v, cx| v.env_selector().read(cx).select().clone());
-    send_from_select(cx, &s, |w, cx| env.update(cx, |m, cx| m.focus(w, cx)));
+        .read_with(cx, |v, cx| v.env_picker().read(cx).focus_handle().clone());
+    send_from_select(cx, &s, |w, cx| env.focus(w, cx));
     wait_real(cx, |cx| !served(cx, &server).is_empty());
     assert_eq!(served(cx, &server), ["/ok"]);
     assert_eq!(expanded(cx, &s, "env-select"), Some(false));

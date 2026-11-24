@@ -9,9 +9,7 @@ use apinata_app::session::Session;
 use apinata_app::shell::Shell;
 use apinata_app::style::{ENV_CONTROL_MIN, ENV_CONTROL_WIDTH, SPACE_1, at_zoom};
 use gpui_kit::test::TestWindowExt as _;
-use gpui_kit::{
-    AnyWindowHandle, AppContext as _, Focusable as _, TestAppContext, WindowOptions, px, size,
-};
+use gpui_kit::{AnyWindowHandle, AppContext as _, TestAppContext, WindowOptions, px, size};
 use support::*;
 
 fn request_close(cx: &mut TestAppContext, s: &Started) {
@@ -186,41 +184,37 @@ fn the_app_menu_and_its_ring_stay_inside_a_narrow_zoomed_window(cx: &mut TestApp
 }
 
 #[gpui_kit::test]
-fn the_environment_selects_keep_their_width_at_100_percent(cx: &mut TestAppContext) {
+fn the_environment_picker_keeps_its_width_at_100_percent(cx: &mut TestAppContext) {
     let col = two_requests();
     let s = started(cx, &col);
     title_room(cx, &s, 1280., 800., 1.0);
     cx.update_window(s.win, |_, w, cx| {
         w.render_frame(cx);
         let bar = w.within("title-bar");
-        for id in ["env-control", "global-env-selector"] {
-            let b = bar.find(id).bounds();
-            assert_eq!(b.size.width, at_zoom(ENV_CONTROL_WIDTH, 1.0), "{id} {b:?}");
-        }
+        let b = bar.find("env-control").bounds();
+        assert_eq!(b.size.width, at_zoom(ENV_CONTROL_WIDTH, 1.0), "{b:?}");
+        assert!(bar.try_find("global-env-selector").is_none());
     })
     .unwrap();
 }
 
 #[gpui_kit::test]
-fn a_focused_environment_select_draws_a_ring(cx: &mut TestAppContext) {
+fn the_environment_picker_is_one_tab_stop(cx: &mut TestAppContext) {
     let col = two_requests();
     let s = started(cx, &col);
-    let env = s.shell.read_with(cx, |sh, _| sh.env_selector().clone());
+    let env = s.shell.read_with(cx, |sh, _| sh.env_picker().clone());
     cx.update_window(s.win, |_, w, cx| {
-        let handle = env.read(cx).select().focus_handle(cx);
+        let handle = env.read(cx).focus_handle().clone();
         handle.focus(w, cx)
     })
     .unwrap();
-    // A programmatic focus move is no key press, so the keyboard ring is set by hand.
-    cx.update(|cx| apinata_app::focus_mode::set(apinata_app::focus_mode::Modality::Keyboard, cx));
-    assert!(present(cx, s.win, "env-select-ring"));
-    assert!(!present(cx, s.win, "global-env-select-ring"));
-    // The global select is the next Tab stop.
+    assert!(holds_focus(cx, s.win, "env-select"));
+    // The next Tab stop is past the picker, with no second environment control between.
     cx.update_window(s.win, |_, w, cx| w.focus_next(cx))
         .unwrap();
     frame(cx, s.win);
-    assert!(!present(cx, s.win, "env-select-ring"));
-    assert!(present(cx, s.win, "global-env-select-ring"));
+    assert!(!holds_focus(cx, s.win, "env-select"));
+    assert!(!present(cx, s.win, "global-env-select"));
 }
 
 #[gpui_kit::test]
@@ -266,12 +260,12 @@ fn the_collection_select_has_no_globe_before_it(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn the_environment_selects_shrink_but_stay_in_the_bar(cx: &mut TestAppContext) {
+fn the_environment_picker_shrinks_but_stays_in_the_bar(cx: &mut TestAppContext) {
     let col = two_requests();
     let s = started(cx, &col);
     for (w, h, zoom) in [(320., 700., 1.0), (800., 600., 2.0)] {
         title_room(cx, &s, w, h, zoom);
-        let (switcher, ctl, sel, gctl, gsel, width) = cx
+        let (switcher, ctl, sel, width) = cx
             .update_window(s.win, |_, win, cx| {
                 win.render_frame(cx);
                 let width = win.viewport_size().width;
@@ -280,8 +274,6 @@ fn the_environment_selects_shrink_but_stay_in_the_bar(cx: &mut TestAppContext) {
                     bar.find("collection-switcher").bounds(),
                     bar.find("env-control").bounds(),
                     bar.find("env-select").bounds(),
-                    bar.find("global-env-selector").bounds(),
-                    bar.find("global-env-select").bounds(),
                     width,
                 )
             })
@@ -291,21 +283,15 @@ fn the_environment_selects_shrink_but_stay_in_the_bar(cx: &mut TestAppContext) {
             switcher.right() <= ctl.left() + px(0.5),
             "{at}: {switcher:?} under {ctl:?}"
         );
+        assert!(ctl.right() <= width, "{at}: {ctl:?} past {width:?}");
         assert!(
-            ctl.right() <= gctl.left() + px(0.5),
-            "{at}: {ctl:?} {gctl:?}"
+            ctl.size.width >= at_zoom(ENV_CONTROL_MIN, zoom) - px(0.5),
+            "{at}: {ctl:?}"
         );
-        assert!(gctl.right() <= width, "{at}: {gctl:?} past {width:?}");
-        for (c, inner) in [(ctl, sel), (gctl, gsel)] {
-            assert!(
-                c.size.width >= at_zoom(ENV_CONTROL_MIN, zoom) - px(0.5),
-                "{at}: {c:?}"
-            );
-            assert!(
-                inner.left() >= c.left() - px(0.5) && inner.right() <= c.right() + px(0.5),
-                "{at}: {inner:?} leaves {c:?}"
-            );
-        }
+        assert!(
+            sel.left() >= ctl.left() - px(0.5) && sel.right() <= ctl.right() + px(0.5),
+            "{at}: {sel:?} leaves {ctl:?}"
+        );
     }
 }
 
@@ -352,7 +338,6 @@ fn below_the_select_minimum_the_title_bar_still_fits(cx: &mut TestAppContext) {
                 let found: Vec<(&str, gpui_kit::Bounds<gpui_kit::Pixels>)> = [
                     "collection-switcher",
                     "env-control",
-                    "global-env-selector",
                     "environments",
                     "app-menu",
                 ]

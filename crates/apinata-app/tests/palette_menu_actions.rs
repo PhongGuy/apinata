@@ -133,7 +133,7 @@ fn menus_take_the_registry_names() {
         named("collection.new_graphql_request")
     );
     assert_eq!(
-        apinata_app::global_env_selector::manage_global_environments(),
+        apinata_app::env_picker::manage_global_environments(),
         named("environment.manage_globals")
     );
     assert_eq!(MenuEntry::Close.label(), named("collection.close"));

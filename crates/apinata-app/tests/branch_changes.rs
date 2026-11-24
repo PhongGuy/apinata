@@ -315,7 +315,6 @@ fn a_320_px_bar_truncates_the_branch_and_keeps_its_controls_in_the_window(cx: &m
                 "collection-switcher",
                 "git-label",
                 "env-control",
-                "global-env-selector",
                 "environments",
                 "app-menu",
             ];
@@ -325,14 +324,9 @@ fn a_320_px_bar_truncates_the_branch_and_keeps_its_controls_in_the_window(cx: &m
     };
     let (_, wide) = measure(cx, 1280.);
     let (bar, narrow) = measure(cx, 320.);
-    for (id, b) in [
-        "env-control",
-        "global-env-selector",
-        "environments",
-        "app-menu",
-    ]
-    .iter()
-    .zip(&narrow[2..])
+    for (id, b) in ["env-control", "environments", "app-menu"]
+        .iter()
+        .zip(&narrow[2..])
     {
         assert!(
             b.left() >= bar.left() && b.right() <= bar.right() + px(0.5),
@@ -436,14 +430,14 @@ fn a_drag_on_an_empty_title_bar_spot_reaches_the_window_move(cx: &mut TestAppCon
     );
 }
 
-// At 320 px the counted label shrinks to nothing; a Tab stop with no box would take focus
+// At 260 px the counted label shrinks to nothing; a Tab stop with no box would take focus
 // and draw its ring as a sliver, so Tab skips both its parts while it has no room.
 #[gpui_kit::test]
 fn a_counted_label_with_no_room_is_no_tab_stop(cx: &mut TestAppContext) {
     use gpui_kit::{px, size};
     let sb = Sandbox::new();
     let (_col, s) = one_changed(cx, &sb);
-    VisualTestContext::from_window(s.win, cx).simulate_resize(size(px(320.), px(700.)));
+    VisualTestContext::from_window(s.win, cx).simulate_resize(size(px(260.), px(700.)));
     frame(cx, s.win);
     frame(cx, s.win);
     let width = cx

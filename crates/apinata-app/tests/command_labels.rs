@@ -132,11 +132,11 @@ fn ui_text_for_a_command_comes_from_the_registry() {
 fn the_environment_selector_entries_read_as_their_commands() {
     let label = apinata_app::commands::label;
     assert_eq!(
-        apinata_app::env_selector::MANAGE_ENVIRONMENTS,
+        apinata_app::env_picker::MANAGE_ENVIRONMENTS,
         label("environment.open")
     );
     assert_eq!(
-        apinata_app::env_selector::IMPORT_ENVIRONMENT,
+        apinata_app::env_picker::IMPORT_ENVIRONMENT,
         label("environment.import")
     );
 }

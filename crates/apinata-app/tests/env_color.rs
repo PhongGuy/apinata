@@ -5,7 +5,7 @@ use crate::support;
 
 use apinata_app::command::{Command, Edit, Target};
 use apinata_app::env_color::{env_fill, text_on};
-use apinata_app::env_selector::option_id;
+use apinata_app::env_picker::option_id;
 use apinata_app::style::{ENV_STRIPE_HEIGHT, at_zoom};
 use apinata_app::ui::{luminance_ratio, parse_color};
 use gpui_kit::component::Colorize as _;
@@ -200,7 +200,7 @@ fn the_stripe_follows_a_switch_and_a_colour_edit(cx: &mut TestAppContext) {
 fn the_trigger_shows_a_dot_for_a_coloured_choice(cx: &mut TestAppContext) {
     let col = coloured();
     let s = started(cx, &col);
-    let sel = s.shell.read_with(cx, |v, _| v.env_selector().clone());
+    let sel = s.shell.read_with(cx, |v, _| v.env_picker().clone());
     assert!(!present(cx, s.win, "env-trigger-dot"));
     select(cx, &s, Some("dev"));
     assert!(present(cx, s.win, "env-trigger-dot"));
@@ -208,7 +208,10 @@ fn the_trigger_shows_a_dot_for_a_coloured_choice(cx: &mut TestAppContext) {
         assert!(w.within("env-select").try_find("env-trigger-dot").is_some());
     })
     .unwrap();
-    assert_eq!(sel.read_with(cx, |v, _| v.dot("dev")), Some(hex("#ce4f3b")));
+    assert_eq!(
+        sel.read_with(cx, |v, cx| v.collection_dot("dev", cx)),
+        Some(hex("#ce4f3b"))
+    );
     select(cx, &s, Some("plain"));
     assert!(!present(cx, s.win, "env-trigger-dot"));
 }
@@ -220,7 +223,7 @@ fn the_dot_leaves_the_accessible_value_alone(cx: &mut TestAppContext) {
     select(cx, &s, Some("dev"));
     cx.update_window(s.win, |_, w, cx| {
         w.render_frame(cx);
-        assert_eq!(w.find("env-select").value(), Some("dev"));
+        assert_eq!(w.find("env-select").label(), Some("Environment: dev"));
     })
     .unwrap();
 }
@@ -240,7 +243,7 @@ fn dropdown_names_line_up_with_and_without_a_dot(cx: &mut TestAppContext) {
                 .left()
         };
         let dev = left("dev");
-        for row in ["plain", "prod", apinata_app::env_selector::NO_ENVIRONMENT] {
+        for row in ["plain", "prod", apinata_app::env_picker::NO_ENVIRONMENT] {
             assert_eq!(left(row), dev, "{row}");
         }
     })
@@ -262,10 +265,13 @@ fn dropdown_rows_show_a_dot_only_when_coloured(cx: &mut TestAppContext) {
         assert!(w.within("env-none").try_find("env-row-dot").is_none());
     })
     .unwrap();
-    let sel = s.shell.read_with(cx, |v, _| v.env_selector().clone());
+    let sel = s.shell.read_with(cx, |v, _| v.env_picker().clone());
     assert_eq!(
-        sel.read_with(cx, |v, _| v.dot("prod")),
+        sel.read_with(cx, |v, cx| v.collection_dot("prod", cx)),
         Some(hex("#2f9e44"))
     );
-    assert_eq!(sel.read_with(cx, |v, _| v.dot("plain")), None);
+    assert_eq!(
+        sel.read_with(cx, |v, cx| v.collection_dot("plain", cx)),
+        None
+    );
 }

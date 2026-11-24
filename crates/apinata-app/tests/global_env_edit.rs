@@ -2,9 +2,11 @@
 
 use crate::support;
 
+use apinata_app::env_picker::{
+    EnvPicker, global_option_id as option_id, manage_global_environments,
+};
 use apinata_app::env_table::{EnvRow, EnvTableEvent};
 use apinata_app::global_env_editor::open_global_env_editor;
-use apinata_app::global_env_selector::{GlobalEnvSelector, manage_global_environments, option_id};
 use apinata_app::workspace::{GlobalOp, Workspace};
 use apinata_core::{EnvVariable, VarValue};
 use gpui_kit::test::TestWindowExt as _;
@@ -320,18 +322,19 @@ fn the_manage_row_opens_the_editor(cx: &mut TestAppContext) {
         .unwrap();
     let shared = ws.clone();
     let sel = cx
-        .update_window(win, |_, w, cx| {
-            cx.new(|cx| GlobalEnvSelector::new(shared, w, cx))
-        })
+        .update_window(win, |_, w, cx| cx.new(|cx| EnvPicker::new(shared, w, cx)))
         .unwrap();
     frame(cx, win);
-    let items = sel.read_with(cx, |s, cx| s.items(cx));
+    let sections = sel.read_with(cx, |s, cx| s.sections(cx));
+    let actions = &sections.last().expect("an actions section").1;
     assert_eq!(
-        items.last().map(|s| s.as_ref()),
+        actions.last().map(|s| s.as_ref()),
         Some(manage_global_environments())
     );
     cx.update_window(win, |_, w, cx| {
-        sel.update(cx, |s, cx| s.choose(manage_global_environments(), w, cx))
+        sel.update(cx, |s, cx| {
+            s.choose_global(manage_global_environments(), w, cx)
+        })
     })
     .unwrap();
     cx.run_until_parked();
@@ -652,27 +655,27 @@ fn enter_in_the_name_input_commits_and_keeps_the_dialog(cx: &mut TestAppContext)
 }
 
 #[gpui_kit::test]
-fn the_manage_row_fits_the_picker(cx: &mut TestAppContext) {
+fn the_manage_row_fits_the_menu(cx: &mut TestAppContext) {
     support::init(cx);
     let (_c, _g, _s, ws) = start(cx, &[("g.yml", "name: g\n")]);
     let shared = ws.clone();
     let (win, _) = cx
         .update(|cx| {
             gpui_kit::open_window(WindowOptions::default(), cx, |w, cx| {
-                cx.new(|cx| GlobalEnvSelector::new(shared, w, cx))
+                cx.new(|cx| EnvPicker::new(shared, w, cx))
             })
         })
         .unwrap();
     frame(cx, win);
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
-        w.click("global-env-select", cx);
+        w.click("env-select", cx);
     })
     .unwrap();
     frame(cx, win);
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
-        let picker = w.find("global-env-selector").bounds();
+        let picker = w.find("popup-menu").bounds();
         let row = w.find("global-env-manage").bounds();
         // The row's box is cut to the menu, so the label's own width, shaped at the menu's
         // small text size, must fit it.
@@ -1474,11 +1477,10 @@ fn escape_closes_the_dialog_after_each_step_from_the_empty_pane(cx: &mut TestApp
         let win = s.win;
         cx.update_window(win, |_, w, _| w.activate_window())
             .unwrap();
-        platform_click(cx, win, "global-env-select");
+        platform_click(cx, win, "env-select");
         settle_frames(cx, win);
         cx.update_window(win, |_, w, cx| {
-            w.within("global-env-selector")
-                .click("global-env-manage", cx)
+            w.within("popup-menu").click("global-env-manage", cx)
         })
         .unwrap();
         settle_frames(cx, win);
@@ -1875,14 +1877,14 @@ fn the_globals_picker_row_shows_the_dot(cx: &mut TestAppContext) {
     let (win, _) = cx
         .update(|cx| {
             gpui_kit::open_window(WindowOptions::default(), cx, |w, cx| {
-                cx.new(|cx| GlobalEnvSelector::new(shared, w, cx))
+                cx.new(|cx| EnvPicker::new(shared, w, cx))
             })
         })
         .unwrap();
     frame(cx, win);
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
-        w.click("global-env-select", cx);
+        w.click("env-select", cx);
     })
     .unwrap();
     frame(cx, win);
@@ -1947,39 +1949,6 @@ fn a_colour_pick_keeps_unsaved_typing_out_of_the_file(cx: &mut TestAppContext) {
     assert!(!editor.read_with(cx, |e, cx| e.has_edits(cx)));
     let file = std::fs::read_to_string(g.path().join("g.yml")).unwrap();
     assert!(file.contains("#CE4F3B"), "Discard keeps the colour: {file}");
-}
-
-// The closed globals picker shows the active global's dot beside its name.
-#[gpui_kit::test]
-fn the_closed_globals_picker_shows_the_active_dot(cx: &mut TestAppContext) {
-    support::init(cx);
-    let red = "name: g\ncolor: \"#CE4F3B\"\n";
-    let (_c, _g, _s, ws) = start(cx, &[("g.yml", red), ("h.yml", "name: h\n")]);
-    let shared = ws.clone();
-    let (win, _) = cx
-        .update(|cx| {
-            gpui_kit::open_window(WindowOptions::default(), cx, |w, cx| {
-                cx.new(|cx| GlobalEnvSelector::new(shared, w, cx))
-            })
-        })
-        .unwrap();
-    let shown = |cx: &mut TestAppContext| {
-        frame(cx, win);
-        cx.update_window(win, |_, w, cx| {
-            w.render_frame(cx);
-            (w.within("global-env-select"))
-                .try_find("global-env-trigger-dot")
-                .is_some()
-        })
-        .unwrap()
-    };
-    assert!(!shown(cx), "no globals active");
-    ws.update(cx, |w, cx| w.select_picker_item("g", cx));
-    cx.run_until_parked();
-    assert!(shown(cx), "g is coloured");
-    ws.update(cx, |w, cx| w.select_picker_item("h", cx));
-    cx.run_until_parked();
-    assert!(!shown(cx), "h has no colour");
 }
 
 // Active is a form row like Color: its label in the label column, the box in the control column.
