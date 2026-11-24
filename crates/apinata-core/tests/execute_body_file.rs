@@ -129,7 +129,7 @@ async fn a_connection_that_drops_mid_body_leaves_no_file_and_keeps_an_old_one() 
     )
     .await
     .unwrap_err();
-    assert!(matches!(err, ExecError::Transport { .. }), "{err:?}");
+    assert!(matches!(err, ExecError::BodyCut { .. }), "{err:?}");
     assert_eq!(std::fs::read(&out).unwrap(), b"old");
     assert_eq!(names(dir.path()), ["out.bin"]);
 }
