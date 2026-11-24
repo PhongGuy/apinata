@@ -1,8 +1,8 @@
 use crate::support;
 
 use apinata_app::sidebar::model::{
-    EMPTY_LABEL, Expanded, Node, NodeKind, OpenDraft, UNSAVED_LABEL, build, empty_id, invalid_id,
-    node_id, to_tree_items, unsaved_id,
+    EMPTY_LABEL, EMPTY_ROOT_LABEL, Expanded, Node, NodeKind, OpenDraft, UNSAVED_LABEL, build,
+    empty_id, invalid_id, node_id, to_tree_items, unsaved_id,
 };
 use apinata_app::snapshot::{Content, DiskState, SnapshotCache};
 use apinata_core::{Collection, ItemPath};
@@ -505,4 +505,33 @@ fn an_empty_folder_holds_one_disabled_empty_row() {
         flat(&build(&input, &[], &expanded(dir.path(), &[]), "a", None)).len(),
         3
     );
+}
+
+#[test]
+fn an_empty_collection_root_holds_one_disabled_hint_row() {
+    let dir = write_tree(&[("opencollection.yml", ROOT)]);
+    let c = content(&dir);
+    let input = [(dir.path(), "c", Some(&c))];
+    let nodes = build(&input, &[], &expanded(dir.path(), &[""]), "", None);
+    let hint = empty_id(0, &ItemPath::root());
+    assert_eq!(
+        flat(&nodes),
+        [
+            s("0:", NodeKind::Collection, true),
+            s(hint.as_ref(), NodeKind::Empty, false),
+        ]
+    );
+    assert_eq!(find(&nodes, hint.as_ref()).name, EMPTY_ROOT_LABEL);
+    assert!(to_tree_items(&nodes)[0].children[0].is_disabled());
+    // The scratch pad and a collection still opening show no hint, and a filter keeps none.
+    assert_eq!(
+        flat(&build(&input, &[], &Expanded::new(), "", Some(dir.path()))).len(),
+        1
+    );
+    let opening = [(dir.path(), "c", None)];
+    assert_eq!(
+        flat(&build(&opening, &[], &Expanded::new(), "", None)).len(),
+        1
+    );
+    assert!(build(&input, &[], &Expanded::new(), "a", None).is_empty());
 }
