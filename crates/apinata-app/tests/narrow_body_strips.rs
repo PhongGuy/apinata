@@ -138,10 +138,11 @@ fn assert_inside(b: Bounds<Pixels>, strip: Bounds<Pixels>, what: &str) {
 }
 
 // Choosing the last section in view keeps the first section where it started, at the strip's
-// left padding, with no blank band before it.
+// left padding, with no blank band before it. At 660 px the click's peek cuts the first section
+// and the chosen one still fits once it comes back whole.
 #[gpui_kit::test]
-fn at_640_the_section_strip_has_no_band_at_its_left(cx: &mut TestAppContext) {
-    let (s, _server) = narrow(cx, 640.);
+fn at_660_the_section_strip_has_no_band_at_its_left(cx: &mut TestAppContext) {
+    let (s, _server) = narrow(cx, 660.);
     let start = bounds(cx, s.win, ("section", 0usize));
     let chosen = click_rightmost(cx, s.win, "section-strip-viewport", "section");
     let strip = bounds(cx, s.win, "section-strip-viewport");

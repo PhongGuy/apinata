@@ -107,14 +107,14 @@ fn no_script_leaves_the_script_tab_plain(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn a_tests_script_marks_the_tests_tab(cx: &mut TestAppContext) {
+fn a_tests_script_marks_the_scripts_tab(cx: &mut TestAppContext) {
     let tests = "runtime:\n  scripts:\n    - type: tests\n      code: \"test('ok', () => {})\"\n";
     let text = format!("{}{tests}", request("a", "http://x/"));
     let col = write_tree(&[("opencollection.yml", ROOT), ("a.yml", &text)]);
     let (_state, ws, root) = open_dir(cx, &col);
     let (win, ed) = editor_for(cx, &ws, &root, "a.yml", false);
-    assert!(ed.read_with(cx, |e, cx| e.section_marked(Section::Tests, cx)));
-    assert!(present(cx, win, ("section-mode", Section::Tests as usize)));
+    assert!(ed.read_with(cx, |e, cx| e.section_marked(Section::Script, cx)));
+    assert!(present(cx, win, ("section-mode", Section::Script as usize)));
 }
 
 #[gpui_kit::test]
@@ -236,12 +236,7 @@ fn every_content_mark_is_a_filled_dot(cx: &mut TestAppContext) {
     let (_state, ws, root) = open_dir(cx, &col);
     let (win, _ed) = editor_for(cx, &ws, &root, "a.yml", false);
     let muted = cx.update(|cx| gpui_kit::component::ActiveTheme::theme(cx).muted_foreground);
-    for s in [
-        Section::Body,
-        Section::Auth,
-        Section::Script,
-        Section::Tests,
-    ] {
+    for s in [Section::Body, Section::Auth, Section::Script] {
         let (fills, edges) = mark_paint(cx, win, ("section-mode", s as usize));
         assert_eq!(fills, vec![muted], "{s:?} is a muted dot");
         assert!(edges.is_empty(), "{s:?} draws no ring: {edges:?}");

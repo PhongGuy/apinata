@@ -145,11 +145,11 @@ fn the_request_editor_shows_and_edits_scripts(cx: &mut TestAppContext) {
     let view = view_of(cx, &ws, &root, "a.yml");
     assert_eq!(view.scripts.post_response, "let b = 2");
     assert!(view.dirty);
-    open_section(cx, win, Section::Tests);
+    // The tests editor sits under the post-response one, on the same sub-tab.
     replace_code(
         cx,
         win,
-        Some("tests-section"),
+        Some("script-tests"),
         "script-tests-code",
         "let c = 3",
     );
@@ -162,7 +162,7 @@ fn each_section_opens_at_its_own_scroll_offset(cx: &mut TestAppContext) {
     let col = scripted();
     let (_state, ws, root) = open_dir(cx, &col);
     let (win, _ed) = editor_for(cx, &ws, &root, "a.yml", false);
-    // Short enough that both the Script and the Tests section overflow the body.
+    // Short enough that the Scripts section overflows the body.
     gpui_kit::VisualTestContext::from_window(win, cx)
         .simulate_resize(gpui_kit::size(gpui_kit::px(1000.), gpui_kit::px(340.)));
     frame(cx, win);
@@ -186,12 +186,13 @@ fn each_section_opens_at_its_own_scroll_offset(cx: &mut TestAppContext) {
         offset(cx, "script-section") < at_rest,
         "the Script section scrolled"
     );
-    open_section(cx, win, Section::Tests);
+    open_section(cx, win, Section::Headers);
+    open_section(cx, win, Section::Script);
     frame(cx, win);
-    assert_eq!(offset(cx, "tests-section"), at_rest);
+    assert_eq!(offset(cx, "script-section"), at_rest);
 }
 
-// Script and Tests lay out like Body: Wrap shares the row of snippet buttons, and no label
+// Each script editor lays out like Body: Wrap shares the row of snippet buttons, and no label
 // row sits between that row and the editor.
 #[gpui_kit::test]
 fn script_and_tests_put_wrap_beside_the_snippets(cx: &mut TestAppContext) {
@@ -200,21 +201,18 @@ fn script_and_tests_put_wrap_beside_the_snippets(cx: &mut TestAppContext) {
     let col = scripted();
     let (_state, ws, root) = open_dir(cx, &col);
     let (win, _ed) = editor_for(cx, &ws, &root, "a.yml", false);
-    for (section, scope, code, slot) in [
+    for (tab, scope, code, slot) in [
         (
-            Section::Script,
-            "script-section",
+            0usize,
+            "script-pre-request",
             "script-pre-request-code",
             SnippetPhase::PreRequest,
         ),
-        (
-            Section::Tests,
-            "tests-section",
-            "script-tests-code",
-            SnippetPhase::Tests,
-        ),
+        (1, "script-tests", "script-tests-code", SnippetPhase::Tests),
     ] {
-        open_section(cx, win, section);
+        open_section(cx, win, Section::Script);
+        cx.update_window(win, |_, w, cx| w.click(("script-tab", tab), cx))
+            .unwrap();
         let first = script_snippets()
             .iter()
             .find(|s| s.phases.contains(&slot))

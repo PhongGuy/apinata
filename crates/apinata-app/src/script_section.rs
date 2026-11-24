@@ -1,5 +1,5 @@
-//! The Script and Tests sections: one JavaScript code editor per script phase, the Script
-//! section showing one phase at a time under a Pre-request / Post-response switch.
+//! The script sections: one JavaScript code editor per script phase, grouped under a
+//! Pre-request / Post-response switch, with the tests editor under the post-response one.
 
 use crate::ui::SolidRing as _;
 use std::ops::Range;
@@ -45,8 +45,8 @@ struct PhaseEditor {
 pub struct ScriptSection {
     id: &'static str,
     editors: Vec<PhaseEditor>,
-    // The index of the editor shown, and whether a load or `show` has set it, after which
-    // a load keeps it.
+    // The index of the editor last chosen, whose side is on show, and whether a load or `show`
+    // has set it, after which a load keeps it.
     shown: usize,
     picked: bool,
     // The Preferences default last applied to the editors.
@@ -147,6 +147,14 @@ fn line_diagnostic(text: &Rope, line: u32, message: &str) -> Option<Diagnostic> 
     let width = source.split('\n').nth(row as usize)?.chars().count() as u32;
     let range = Position::new(row, 0)..Position::new(row, width.max(1));
     Some(Diagnostic::new(range, message.to_string()).with_severity(DiagnosticSeverity::Error))
+}
+
+/// The switch side `phase` shows under: tests run after the response, so they sit with it.
+pub fn side(phase: ScriptPhase) -> ScriptPhase {
+    match phase {
+        ScriptPhase::Tests => ScriptPhase::PostResponse,
+        phase => phase,
+    }
 }
 
 /// Post-response when only the post-response script has content after trimming, else Pre-request.
@@ -277,11 +285,11 @@ fn hint(phase: ScriptPhase) -> &'static str {
 }
 
 impl ScriptSection {
-    /// One JavaScript editor per phase, completing `bru`, `req` and `res` members, two phases
-    /// under a "Pre-request" / "Post-response" switch, one alone, since the section tab names
-    /// it; root id `script-section` (phases [PreRequest, PostResponse]) or `tests-section`
-    /// (phases [Tests]); editor ids
-    /// `script-pre-request-code`, `script-post-response-code`, `script-tests-code`.
+    /// One JavaScript editor per phase, completing `bru`, `req` and `res` members, under a
+    /// "Pre-request" / "Post-response" switch when the phases fall on both [`side`]s, the tests
+    /// editor stacked under the post-response one; root id `tests-section` for phases
+    /// [Tests] alone, else `script-section`; each editor sits in `script-<phase>` with id
+    /// `script-<phase>-code`, as in `script-tests-code`.
     pub fn new(phases: &[ScriptPhase], window: &mut Window, cx: &mut Context<Self>) -> Self {
         let mut editors = Vec::new();
         let mut subs = Vec::new();
@@ -332,7 +340,7 @@ impl ScriptSection {
                 wrap: default_wrap,
             });
         }
-        let id = if phases.contains(&ScriptPhase::Tests) {
+        let id = if phases == [ScriptPhase::Tests] {
             "tests-section"
         } else {
             "script-section"
@@ -401,12 +409,33 @@ impl ScriptSection {
     /// A replaced text is no longer counted as typed. The first load shows [`default_side`]
     /// unless `show` already chose a phase.
     pub fn load(&mut self, code: &ScriptCode, window: &mut Window, cx: &mut Context<Self>) {
+        let all: Vec<ScriptPhase> = self.editors.iter().map(|e| e.phase).collect();
+        self.load_phases(code, &all, window, cx);
+    }
+
+    /// [`Self::load`] for the editors of `phases` alone, so an edit in flight in another holds
+    /// only that one back. The first call picks the side as `load` does.
+    pub fn load_phases(
+        &mut self,
+        code: &ScriptCode,
+        phases: &[ScriptPhase],
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if !self.picked {
             self.picked = true;
-            let side = default_side(&code.pre_request, &code.post_response);
-            self.shown = self.index(side).unwrap_or(0);
+            // The tests count toward the post-response side they show on.
+            let later: String = (self.editors.iter())
+                .filter(|e| side(e.phase) == ScriptPhase::PostResponse)
+                .map(|e| code.get(e.phase))
+                .collect();
+            self.shown = self.side_index(default_side(&code.pre_request, &later));
         }
-        for e in &mut self.editors {
+        for e in self
+            .editors
+            .iter_mut()
+            .filter(|e| phases.contains(&e.phase))
+        {
             let want = code.get(e.phase);
             // The file keeps a script trimmed, so a redo echoes the block without its edge
             // whitespace; the redone text itself is what the editor should show.
@@ -501,14 +530,21 @@ impl ScriptSection {
         }
     }
 
-    /// The phase on show under the switch; `None` for a one-phase section, which has no switch.
+    /// The side on show under the switch; `None` for a section on one side, which has no switch.
     pub fn shown(&self) -> Option<ScriptPhase> {
-        (self.editors.len() > 1).then(|| self.editors[self.shown].phase)
+        (self.sides().len() > 1).then(|| self.shown_side())
     }
 
-    /// Shows the editor of `phase`, if this section has one; a later load keeps it.
+    /// Shows the side of `phase`, choosing its editor, or the side's first one when this section
+    /// lacks `phase`; a later load keeps it.
     pub fn show(&mut self, phase: ScriptPhase, cx: &mut Context<Self>) {
-        if let Some(ix) = self.index(phase) {
+        let ix = self.index(phase);
+        let ix = ix.or_else(|| {
+            self.editors
+                .iter()
+                .position(|e| side(e.phase) == side(phase))
+        });
+        if let Some(ix) = ix {
             self.shown = ix;
             self.picked = true;
             cx.notify();
@@ -543,6 +579,28 @@ impl ScriptSection {
 
     fn index(&self, phase: ScriptPhase) -> Option<usize> {
         self.editors.iter().position(|e| e.phase == phase)
+    }
+
+    // The sides this section's editors fall on, in editor order.
+    fn sides(&self) -> Vec<ScriptPhase> {
+        let mut sides: Vec<ScriptPhase> = Vec::new();
+        for e in &self.editors {
+            if !sides.contains(&side(e.phase)) {
+                sides.push(side(e.phase));
+            }
+        }
+        sides
+    }
+
+    fn shown_side(&self) -> ScriptPhase {
+        side(self.editors[self.shown].phase)
+    }
+
+    // The first editor on `want`, or the first editor when none is.
+    fn side_index(&self, want: ScriptPhase) -> usize {
+        (self.editors.iter())
+            .position(|e| side(e.phase) == want)
+            .unwrap_or(0)
     }
 
     /// The editor of `phase`, if this section shows it.
@@ -583,22 +641,21 @@ impl ScriptSection {
 }
 
 impl ScriptSection {
-    // The phase switch: one tab per phase, the content dot after each label whose script has text.
+    // The phase switch: one tab per side, the content dot after each label whose side has text.
     fn switch(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let this = cx.entity();
-        let tabs = self.editors.iter().enumerate().map(|(ix, e)| {
-            let has_script = !e.code.read(cx).value().trim().is_empty();
+        let sides = self.sides();
+        let selected = sides.iter().position(|s| *s == self.shown_side());
+        let tabs = sides.iter().enumerate().map(|(ix, &on)| {
+            let has_script = (self.editors.iter())
+                .filter(|e| side(e.phase) == on)
+                .any(|e| !e.code.read(cx).value().trim().is_empty());
             Tab::new().child(
                 h_flex()
                     .line_height(relative(style::TAB_LINE_HEIGHT))
                     .gap(SPACE_1)
                     .items_center()
-                    .child(
-                        div()
-                            .id(("script-tab", ix))
-                            .test_support()
-                            .child(label(e.phase)),
-                    )
+                    .child(div().id(("script-tab", ix)).test_support().child(label(on)))
                     .when(has_script, |d| {
                         d.child(ui::content_dot(("script-dot", ix), "Has a script").test_support())
                     }),
@@ -606,12 +663,12 @@ impl ScriptSection {
         });
         div().id("script-phase").test_support().w_full().child(
             ui::tab_strip("script-phase-tabs", cx)
-                .selected_index(self.shown)
+                .selected_index(selected.unwrap_or(0))
                 .children(tabs)
                 .on_click(move |ix, _, cx| {
-                    let ix = *ix;
+                    let phase = sides.get(*ix).copied();
                     this.update(cx, |s, cx| {
-                        if let Some(phase) = s.editors.get(ix).map(|e| e.phase) {
+                        if let Some(phase) = phase {
                             s.show(phase, cx);
                             cx.emit(SideChosen(phase));
                         }
@@ -624,16 +681,14 @@ impl ScriptSection {
 impl Render for ScriptSection {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let this = cx.entity();
-        let switched = self.editors.len() > 1;
-        let switch = switched.then(|| self.switch(cx));
-        // Under a switch only the shown phase's editor renders; every editor entity is kept,
-        // so each keeps its text, caret and history.
-        let shown = self
-            .editors
-            .iter()
-            .enumerate()
-            .filter(|(ix, _)| !switched || *ix == self.shown)
-            .map(|(_, e)| e);
+        let switch = (self.sides().len() > 1).then(|| self.switch(cx));
+        // Only the shown side's editors render; every editor entity is kept, so each keeps its
+        // text, caret and history. Stacked editors are each headed by their phase.
+        let on = self.shown_side();
+        let shown: Vec<&PhaseEditor> = (self.editors.iter())
+            .filter(|e| side(e.phase) == on)
+            .collect();
+        let stacked = shown.len() > 1;
         v_flex()
             .id(self.id)
             .test_support()
@@ -641,12 +696,21 @@ impl Render for ScriptSection {
             .flex_1()
             .gap(SPACE_3)
             .children(switch)
-            // Only one editor shows at a time, and it takes the room the controls leave.
-            .children(shown.map(|e| {
+            // The shown editors share the room the controls leave.
+            .children(shown.into_iter().map(|e| {
                 v_flex()
+                    .id(SharedString::from(format!("script-{}", e.phase.as_str())))
                     .w_full()
                     .flex_1()
                     .gap(SPACE_1)
+                    .when(stacked, |col| {
+                        col.child(
+                            div()
+                                .text_size(style::TEXT_SMALL)
+                                .text_color(cx.theme().muted_foreground)
+                                .child(label(e.phase)),
+                        )
+                    })
                     // Like Body's mode row: the snippet buttons, then Wrap at the row's end.
                     // The padding leaves room for the kit's ring, which sits outside each
                     // button and would be clipped at the pane edge on the first one.

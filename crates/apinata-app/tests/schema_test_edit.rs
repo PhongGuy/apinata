@@ -30,7 +30,7 @@ fn a_click_appends_the_block_as_one_undoable_dirty_step(cx: &mut TestAppContext)
     assert!(model.update(cx, |m, cx| m.send(&r, ip("a.yml"), cx)));
     finished(cx, &model);
     frame(cx, win);
-    let tests = ed.read_with(cx, |e, _| e.tests_script().clone());
+    let tests = ed.read_with(cx, |e, _| e.script().clone());
     let text = |cx: &mut TestAppContext| {
         tests.read_with(cx, |t, cx| {
             t.code(ScriptPhase::Tests)
@@ -52,7 +52,7 @@ fn a_click_appends_the_block_as_one_undoable_dirty_step(cx: &mut TestAppContext)
     assert!(first.contains("response matches schema"), "{first}");
     assert!(first.contains("\"required\""), "{first}");
     assert!(view_of(cx, &ws, &root, "a.yml").dirty);
-    assert_eq!(ed.read_with(cx, |e, _| e.section()), Section::Tests);
+    assert_eq!(ed.read_with(cx, |e, _| e.section()), Section::Script);
     let typed = ed.read_with(cx, |e, cx| e.typed_scripts(cx));
     assert_eq!(typed, std::slice::from_ref(&first));
 
@@ -88,7 +88,7 @@ macro_rules! sent_editor {
         assert!(model.update($cx, |m, cx| m.send(&r, ip("a.yml"), cx)));
         finished($cx, &model);
         frame($cx, win);
-        let tests = ed.read_with($cx, |e, _| e.tests_script().clone());
+        let tests = ed.read_with($cx, |e, _| e.script().clone());
         (server, ws, root, win, ed, tests)
     }};
 }
@@ -203,7 +203,11 @@ fn redo_after_undoing_the_typing_brings_the_typing_back(cx: &mut TestAppContext)
 fn typing_without_an_appended_block_stays_with_the_editor_undo(cx: &mut TestAppContext) {
     let (_server, ws, root, win, ed, tests) = sent_editor!(cx);
     cx.update_window(win, |_, w, cx| {
-        w.click(("section", Section::Tests as usize), cx)
+        w.click(("section", Section::Script as usize), cx);
+        ed.update(cx, |e, cx| {
+            e.script()
+                .update(cx, |s, cx| s.show(ScriptPhase::Tests, cx))
+        });
     })
     .unwrap();
     cx.run_until_parked();
@@ -461,7 +465,8 @@ fn typing_in_another_phase_does_not_touch_the_tests_step(cx: &mut TestAppContext
     click(cx, win);
     let block = shown_tests(cx, &tests);
     cx.update_window(win, |_, w, cx| {
-        w.click(("section", Section::Script as usize), cx)
+        w.click(("section", Section::Script as usize), cx);
+        w.click(("script-tab", 0usize), cx);
     })
     .unwrap();
     cx.run_until_parked();

@@ -541,6 +541,7 @@ mod script_switch;
 mod script_timeout;
 mod script_trust_prompt;
 mod script_vars;
+mod scripts_tab;
 mod scroll_follow;
 mod scrollbar_thumb;
 mod scrollbars;

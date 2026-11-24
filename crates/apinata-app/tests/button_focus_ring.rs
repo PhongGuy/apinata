@@ -120,7 +120,11 @@ fn a_tab_focused_button_rings_opaque_at_three_to_one(cx: &mut TestAppContext) {
             let (_state, ws, root) = open_dir(cx, &col);
             let (win, ed) = editor_for(cx, &ws, &root, "a.yml", false);
             use_theme(cx, name);
-            ed.update(cx, |e, cx| e.show(Section::Tests, cx));
+            ed.update(cx, |e, cx| {
+                e.show(Section::Script, cx);
+                e.script()
+                    .update(cx, |s, cx| s.show(apinata_core::ScriptPhase::Tests, cx));
+            });
             frame(cx, win);
             cx.update(|cx| set(Modality::Keyboard, cx));
             tab_to(cx, win, id);

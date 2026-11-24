@@ -77,12 +77,11 @@ pub fn summary(count: usize, capped: bool) -> String {
 
 /// The request editor section that shows a hit's field; `None` for the name and the URL,
 /// which the URL bar always shows.
-pub fn section_for(field: SearchField, key: Option<&str>) -> Option<Section> {
+pub fn section_for(field: SearchField) -> Option<Section> {
     match field {
         SearchField::PathParam => Some(Section::Params),
         SearchField::HeaderName | SearchField::HeaderValue => Some(Section::Headers),
         SearchField::Body => Some(Section::Body),
-        SearchField::Script if key == Some("tests") => Some(Section::Tests),
         SearchField::Script => Some(Section::Script),
         SearchField::Docs => Some(Section::Docs),
         _ => None,
@@ -371,7 +370,7 @@ impl SearchForm {
         let action: Box<dyn Action> = Box::new(OpenSearchHit {
             root: self.root.clone(),
             path: hit.path.clone(),
-            section: section_for(hit.field, hit.key.as_deref()),
+            section: section_for(hit.field),
         });
         window.close_dialog(cx);
         self.target.focus(window, cx);
