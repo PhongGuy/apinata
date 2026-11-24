@@ -3454,11 +3454,16 @@ impl Render for Sidebar {
                                         h_flex()
                                             .gap(style::SPACE_1)
                                             .child(div().w(style::SPACE_4).flex_none())
-                                            .child(
-                                                marker("name", n)
+                                            .child({
+                                                let text = empty_text(n, cx);
+                                                div()
+                                                    .id(marker_id("name", &n.id))
+                                                    .aria_label(text.clone())
+                                                    .test_support()
+                                                    .flex_none()
                                                     .text_color(cx.theme().muted_foreground)
-                                                    .child(n.name.clone()),
-                                            ),
+                                                    .child(text)
+                                            }),
                                     )
                                     .on_mouse_down(MouseButton::Left, |_, _, cx| {
                                         cx.stop_propagation()
@@ -3844,9 +3849,9 @@ fn fill_row_menu(
             Some(action) => line.action(action),
             None => line,
         };
-        // Rename shows the key the palette shows for it, not the tree's own F2.
+        // Rename shows the key that renames in the tree the menu came from, F2 by default.
         let line = match choice {
-            MenuEntry::Rename => line.key(ui::primary_key(&RenameSelected, cx)),
+            MenuEntry::Rename => line.key(ui::key_in(&RenameSelected, ui::SIDEBAR_ROW_KEYS, cx)),
             _ => line,
         };
         let line = line
@@ -3890,6 +3895,17 @@ fn export_submenu(
             )
         })
     })
+}
+
+// The words of a muted row; an empty collection's root also names the key for a new request.
+fn empty_text(n: &Node, cx: &App) -> SharedString {
+    if n.kind != NodeKind::Empty || !n.path.is_root() {
+        return n.name.clone().into();
+    }
+    match ui::primary_key(&crate::keymap::NewRequest, cx) {
+        Some(key) => format!("{}. New request ({})", n.name, Kbd::format(&key)).into(),
+        None => format!("{}.", n.name).into(),
+    }
 }
 
 /// The note under a scratch-only sidebar.

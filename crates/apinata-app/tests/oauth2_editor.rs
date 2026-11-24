@@ -1188,21 +1188,26 @@ fn replacing_with_nothing_keeps_the_stored_secret(cx: &mut TestAppContext) {
     assert!(present(cx, win, "oauth2-client-secret-stored"));
 }
 
-// The plain OAuth 2.0 fields show a short example while empty, as the other auth fields do.
+// An empty required field describes what goes in it rather than showing a value that looks
+// filled in, and an optional field shows nothing, so an empty field reads as empty.
 #[gpui_kit::test]
-fn oauth2_fields_show_example_placeholders(cx: &mut TestAppContext) {
+fn oauth2_placeholders_describe_required_fields_only(cx: &mut TestAppContext) {
     let spec = AuthSpec::OAuth2(OAuth2Spec::new(OAuth2Flow::AuthorizationCode));
     let (_win, _host, s) = section(cx, spec);
     let e = editor(cx, &s);
-    for f in [
-        OAuth2Field::AuthorizationUrl,
-        OAuth2Field::AccessTokenUrl,
-        OAuth2Field::ClientId,
-        OAuth2Field::Scope,
-        OAuth2Field::State,
-    ] {
+    let placeholder = |cx: &mut TestAppContext, f: OAuth2Field| {
         let input = e.read_with(cx, |e, _| e.input(f).clone());
-        let hint = input.read_with(cx, |i, _| i.presentation().placeholder().to_string());
-        assert!(!hint.is_empty(), "{f:?} has an example");
+        input.read_with(cx, |i, _| i.presentation().placeholder().to_string())
+    };
+    for (f, want) in [
+        (OAuth2Field::AuthorizationUrl, "Authorization endpoint URL"),
+        (OAuth2Field::AccessTokenUrl, "Token endpoint URL"),
+        (OAuth2Field::ClientId, "Client ID issued by the provider"),
+        (OAuth2Field::Username, "Account username"),
+        (OAuth2Field::Scope, ""),
+        (OAuth2Field::State, ""),
+        (OAuth2Field::RefreshTokenUrl, ""),
+    ] {
+        assert_eq!(placeholder(cx, f), want, "{f:?}");
     }
 }

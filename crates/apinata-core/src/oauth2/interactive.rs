@@ -1,15 +1,16 @@
 //! The browser sign-in for the authorization code and implicit grants, up to the token map
 //! that goes into the cache.
 
-use super::authorize::{Pkce, Redirect, authorization_url, read_callback, read_pasted, state_for};
+use super::authorize::{Redirect, authorization_url, read_callback, read_pasted, state_for};
 use super::client::{Grant, request_token};
 use super::config::TokenConfig;
-use super::listener::{CallbackPlan, Listener};
 use super::{AuthorizationPrompt, AuthorizeCancelled, Authorizer, OAuth2Error};
 use crate::cancel::CancelHandle;
 use crate::context::VarContext;
 use crate::edit::OAuth2Flow;
 use crate::execute::{Executor, SendTag};
+use crate::loopback::{CallbackPlan, Listener};
+use crate::pkce::Pkce;
 use crate::request::RequestFile;
 use serde_json::{Map, Value};
 use std::time::Duration;

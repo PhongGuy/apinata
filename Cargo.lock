@@ -440,6 +440,7 @@ dependencies = [
  "tokio-util",
  "tower",
  "trash",
+ "unicode-properties",
  "uppsala",
  "url",
  "uuid",

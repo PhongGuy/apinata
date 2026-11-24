@@ -141,7 +141,7 @@ fn chord(chord: &str) -> Keystroke {
 }
 
 #[gpui_kit::test]
-fn rename_shows_one_key_in_the_palette_and_the_row_menu(cx: &mut TestAppContext) {
+fn rename_menu_shows_the_key_that_works_in_the_tree(cx: &mut TestAppContext) {
     let col = collection();
     let s = support::started(cx, &col);
     select_in_tree(cx, &s, support::row("b.yml"));
@@ -157,7 +157,8 @@ fn rename_shows_one_key_in_the_palette_and_the_row_menu(cx: &mut TestAppContext)
                 .and_then(|e| e.label().map(str::to_owned))
         })
         .unwrap();
-    // The keymap lists Ctrl+R (Cmd+R) for Rename before the tree's F2, so both show it.
+    // The palette names the command's first key, while the row menu names F2, the key that
+    // renames in the tree the menu was opened from.
     let primary = chord("secondary-r");
     assert_eq!(palette_key, Some(apinata_app::shortcuts::unparse(&primary)));
     cx.simulate_keystrokes(s.win, "escape");
@@ -171,7 +172,7 @@ fn rename_shows_one_key_in_the_palette_and_the_row_menu(cx: &mut TestAppContext)
     let menu_keys = cx
         .update_window(s.win, |_, w, _| support::menu_row_keys(w, "Rename"))
         .unwrap();
-    assert_eq!(menu_keys, [Kbd::format(&primary)]);
+    assert_eq!(menu_keys, [Kbd::format(&chord("f2"))]);
 }
 
 #[gpui_kit::test]
