@@ -403,3 +403,49 @@ async fn an_endless_plain_body_with_no_limit_set_ends_at_the_default_cap() {
     assert_eq!(res.body().len(), 10 * 1024 * 1024);
     assert_eq!(res.stream_end(), None);
 }
+
+// A 302 on `/hop` that closes its connection, in front of an event-stream on every other path.
+async fn redirected_stream() -> SlowServer {
+    let redirect = "HTTP/1.1 302 Found\r\nlocation: /s\r\ncontent-length: 0\r\n\
+                    connection: close\r\n\r\n";
+    crate::common::sse_server::routed_sse_server(
+        vec![(
+            "/hop",
+            Script::raw_head(redirect.to_owned(), vec![Step::Abort]),
+        )],
+        Script::sse(vec![event("one"), Step::Finish]),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn a_redirected_stream_starts_with_its_redirect_hop() {
+    let s = redirected_stream().await;
+    let (opts, seen) = recording(StreamLimits::new());
+    let req = resolved_one("GET", &s.url("/hop"), "", "");
+    exec()
+        .send_streaming(&req, &CancelHandle::new(), opts)
+        .await
+        .unwrap();
+    let seen = seen.lock().unwrap();
+    let StreamEvent::Started { timeline, .. } = &seen[0] else {
+        panic!("no start: {seen:?}");
+    };
+    let hops: Vec<(u16, &str)> = timeline
+        .iter()
+        .map(|h| (h.status, h.url.as_str()))
+        .collect();
+    assert_eq!(hops, vec![(302, s.url("/hop").as_str())]);
+}
+
+#[tokio::test]
+async fn an_unredirected_stream_starts_with_no_earlier_hops() {
+    let s = slow_sse_server(Script::sse(vec![event("one"), Step::Finish])).await;
+    let (opts, seen) = recording(StreamLimits::new());
+    exec()
+        .send_streaming(&req(&s, None), &CancelHandle::new(), opts)
+        .await
+        .unwrap();
+    let seen = seen.lock().unwrap();
+    assert!(matches!(&seen[0], StreamEvent::Started { timeline, .. } if timeline.is_empty()));
+}

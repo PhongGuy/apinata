@@ -166,3 +166,59 @@ async fn a_send_that_fails_before_headers_has_no_end_event() {
     assert_eq!(lines, ["finish 0"]);
     assert_eq!(outcomes, [Outcome::Errored]);
 }
+
+#[tokio::test]
+async fn the_start_carries_the_redirect_hop_masked_as_the_result_masks_it() {
+    const SECRET: &str = "s3cr3t-stream-77";
+    let redirect = "HTTP/1.1 302 Found\r\nlocation: /s\r\ncontent-length: 0\r\n\
+                    connection: close\r\n\r\n";
+    let s = crate::common::sse_server::routed_sse_server(
+        vec![(
+            "/hop",
+            Script::raw_head(redirect.to_owned(), vec![Step::Abort]),
+        )],
+        Script::sse(vec![event("one"), Step::Finish]),
+    )
+    .await;
+    let a = format!(
+        "info:\n  name: a\n  type: http\n  seq: 1\nhttp:\n  method: GET\n  url: \"{}?key={{{{tok}}}}\"\n  headers:\n    - name: authorization\n      value: Bearer {{{{tok}}}}\n",
+        s.url("/hop")
+    );
+    let dir = write_tree(&[("opencollection.yml", ROOT), ("a.yml", &a)]);
+    let c = Collection::open(dir.path()).unwrap();
+    let plan = c.plan(dir.path()).unwrap();
+    let ctx = VarContext::new(&c, ContextOptions::new().sensitive_env_var("tok", SECRET)).unwrap();
+    let exec = Arc::new(Executor::new(ExecOptions::new()).unwrap());
+    let starts = Arc::new(Mutex::new(Vec::new()));
+    let sink = Arc::clone(&starts);
+    run(
+        plan,
+        ctx,
+        exec,
+        RunOptions::new().stream(StreamLimits::new()),
+        CancelHandle::new(),
+        Box::new(move |e| {
+            if let RunEvent::ResponseStarted { sent, .. } = e {
+                sink.lock().unwrap().push(sent);
+            }
+        }),
+    )
+    .await;
+    let starts = starts.lock().unwrap();
+    assert_eq!(starts.len(), 1);
+    let sent = &starts[0];
+    assert!(sent.response.is_none());
+    let [hop] = sent.timeline.as_slice() else {
+        panic!("hops: {:?}", sent.timeline.len());
+    };
+    assert_eq!(hop.status, 302);
+    assert!(hop.url.contains(SECRET), "the hop keeps what was sent");
+    let shown = sent.redact_url(&hop.url);
+    assert!(!shown.contains(SECRET), "{shown}");
+    let auth = hop
+        .request_headers
+        .iter()
+        .find(|(n, _)| n == "authorization")
+        .expect("authorization was sent");
+    assert!(!sent.redact_header(&auth.0, &auth.1).contains(SECRET));
+}
