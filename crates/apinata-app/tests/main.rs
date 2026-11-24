@@ -200,6 +200,7 @@ mod console_dock;
 mod console_dock_shell;
 mod console_dock_short;
 mod console_dock_tabs;
+mod console_view;
 mod content_type_notice;
 mod convert_kind;
 mod cookie_jar;

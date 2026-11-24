@@ -55,7 +55,11 @@ fn scripted(uri: &str, code: &str) -> String {
 }
 
 // The collection dir comes back with the app so it lives as long as the test.
-fn scripted_app(cx: &mut TestAppContext, uri: &str, code: &str) -> (tempfile::TempDir, Started) {
+pub(crate) fn scripted_app(
+    cx: &mut TestAppContext,
+    uri: &str,
+    code: &str,
+) -> (tempfile::TempDir, Started) {
     let a = scripted(uri, code);
     let col = write_tree(&[("opencollection.yml", ROOT), ("a.yml", &a)]);
     let root = col.path().to_path_buf();
@@ -132,10 +136,10 @@ fn the_console_budget_keeps_the_newest_lines(cx: &mut TestAppContext) {
     assert!(present(cx, s.win, "dock-console-omitted"));
 }
 
-const SECRET: &str = "Dock-S3cret-41";
+pub(crate) const SECRET: &str = "Dock-S3cret-41";
 
 // An app whose `a.yml` sends the secret `token` in its query and logs it from a script.
-fn secret_app(cx: &mut TestAppContext, uri: &str) -> (tempfile::TempDir, Started) {
+pub(crate) fn secret_app(cx: &mut TestAppContext, uri: &str) -> (tempfile::TempDir, Started) {
     let a = format!(
         "{}runtime:\n  scripts:\n    - type: before-request\n      code: \"console.log(bru.getEnvVar('token'))\"\n",
         request("a", &format!("{uri}/ok?token={{{{token}}}}"))

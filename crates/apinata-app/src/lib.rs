@@ -39,6 +39,7 @@ pub mod compare_view;
 pub mod config_editor;
 pub mod confirm;
 pub mod console_dock;
+pub mod console_view;
 mod context_cache;
 pub mod convert_kind;
 pub mod cookie_jar;

@@ -44,6 +44,11 @@ use crate::body_view::{BodyView, SCRUBBED_TIP, SetVariable, Shown};
 use crate::compare_rows::{ComparePalette, RevealHeader, RowActions, Toggle, compare_row};
 use crate::compare_source::{self, CompareSide, CompareSource, HeaderValue, SourceChoice};
 use crate::compare_view::{self, CompareRow};
+use crate::console_view::{self, ConsoleFilter};
+pub use crate::console_view::{
+    CONSOLE_PANE_CHARS, CONSOLE_PANE_LINES, CONSOLE_ROW_CHARS, CONSOLE_ROW_LINES, ConsoleRows,
+    console_line, console_rows, console_shown, console_text,
+};
 use crate::cookie_jar::{
     HTTP_ONLY_LABEL, HTTP_ONLY_TIP, SECURE_LABEL, SECURE_TIP, host_search, open_cookie_jar,
 };
@@ -711,8 +716,9 @@ pub struct ResponsePane {
     // The real header values of the sends made live in this session, by request and kept send,
     // so Compare can find what the at-rest mask hides. Memory only, pruned to the kept history.
     live_headers: HashMap<(PathBuf, ItemPath, u64), (KeptAs, Vec<HeaderValue>)>,
-    // The Console tab's level filter; it belongs to the pane, so it outlives each send.
-    console_filter: Option<ConsoleLevel>,
+    // The Console tab's level filter and search; they belong to the pane, so they outlive
+    // each send.
+    console_filter: ConsoleFilter,
     // The Tests tab's verdict filter, kept across sends like the Console's.
     tests_filter: Option<TestFilter>,
     // The shown result's console lines redacted once per result, as renders repeat.
@@ -789,6 +795,16 @@ impl ResponsePane {
         let mut last = current;
         let headers_filter = cx.new(|cx| InputState::new(window, cx).placeholder("Filter headers"));
         let cookies_filter = cx.new(|cx| InputState::new(window, cx).placeholder("Filter cookies"));
+        let console_filter = ConsoleFilter::new(window, cx);
+        let console_search = cx.subscribe(
+            console_filter.input(),
+            |p, input, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change) {
+                    let query = input.read(cx).value().to_string();
+                    p.set_console_search(&query, cx);
+                }
+            },
+        );
         let filter_events = [&headers_filter, &cookies_filter]
             .map(|input| {
                 cx.subscribe(input, |_, _, event: &InputEvent, cx| {
@@ -798,6 +814,7 @@ impl ResponsePane {
                 })
             })
             .into_iter()
+            .chain([console_search])
             .collect::<Vec<_>>();
         let subscription = cx.observe_in(&send, window, move |this, send, window, cx| {
             let next = done(send.read(cx));
@@ -889,7 +906,7 @@ impl ResponsePane {
             compare_generation: 0,
             compare_task: None,
             live_headers: HashMap::new(),
-            console_filter: None,
+            console_filter,
             tests_filter: None,
             console_redacted: RefCell::default(),
             graphql_summary: RefCell::default(),
@@ -1318,12 +1335,18 @@ impl ResponsePane {
 
     /// The Console tab's level filter; `None` shows every entry.
     pub fn console_filter(&self) -> Option<ConsoleLevel> {
-        self.console_filter
+        self.console_filter.level()
     }
 
     /// Shows only entries of `filter`'s level in the Console tab, or all for `None`.
     pub fn set_console_filter(&mut self, filter: Option<ConsoleLevel>, cx: &mut Context<Self>) {
-        self.console_filter = filter;
+        self.console_filter.set_level(filter);
+        cx.notify();
+    }
+
+    /// Shows only Console tab entries whose text matches `query`; blank shows all.
+    pub fn set_console_search(&mut self, query: &str, cx: &mut Context<Self>) {
+        self.console_filter.set_search(query);
         cx.notify();
     }
 
@@ -3568,7 +3591,7 @@ impl ResponsePane {
             }
             ResponseTab::Console => {
                 let console = self.redacted_console(result);
-                self.console_list(&console, cx)
+                self.console_list(console, cx)
             }
             ResponseTab::Compare => self.compare_body(window, cx),
             ResponseTab::Events => self.events_body(cx),
@@ -3932,101 +3955,18 @@ impl ResponsePane {
         h_flex().pb(style::SPACE_2).child(pick)
     }
 
-    // A filter and Copy header over the entries the filter keeps, each a coloured level
-    // beside its monospace text with whitespace kept, since scripts log formatted JSON.
-    fn console_list(&self, console: &[ConsoleEntry], cx: &mut Context<Self>) -> AnyElement {
-        let filter = self.console_filter;
-        let selected = CONSOLE_FILTERS
-            .iter()
-            .position(|f| *f == filter)
-            .unwrap_or(0);
-        let this = cx.entity();
-        let pick = ui::segmented(
-            "console-filter",
-            ["All", "Log", "Debug", "Info", "Warn", "Error"],
-            selected,
-            move |ix, _, cx| {
-                let f = CONSOLE_FILTERS.get(*ix).copied().flatten();
-                this.update(cx, |p, cx| p.set_console_filter(f, cx));
+    // The shared console view over the shown result's redacted lines, with the pane's own
+    // filter, so the tab and the dock draw, filter and copy alike.
+    fn console_list(&self, console: Rc<[ConsoleEntry]>, cx: &mut Context<Self>) -> AnyElement {
+        let pane = cx.entity().downgrade();
+        console_view::view(
+            &console_view::TAB_IDS,
+            console,
+            &self.console_filter,
+            move |level, cx| {
+                let _ = pane.update(cx, |p, cx| p.set_console_filter(level, cx));
             },
-        );
-        // Copy reads the shown result when clicked, so a render never builds the text.
-        let pane = cx.entity();
-        let copy = Button::new("console-copy")
-            .solid_ring(cx)
-            .ghost()
-            .small()
-            .label("Copy")
-            .on_click(move |_, _, cx| {
-                let p = pane.read(cx);
-                let text = done(p.send.read(cx))
-                    .map(|r| console_text(&p.redacted_console(&r), p.console_filter))
-                    .unwrap_or_default();
-                cx.write_to_clipboard(ClipboardItem::new_string(text))
-            });
-        let header = h_flex()
-            .gap(style::SPACE_2)
-            .pb(style::SPACE_2)
-            .items_center()
-            .child(pick)
-            .child(copy);
-        let kept: Vec<&ConsoleEntry> = console.iter().filter(|e| keeps(filter, e)).collect();
-        let none = kept
-            .is_empty()
-            .then(|| ui::empty_state("console-none", "Nothing was logged.", &[]));
-        // The scroll frame is not virtualised, so the pane draws from one row and character
-        // budget across entries and notes how many entries it left out.
-        let (bodies, left) = console_shown(kept.iter().map(|e| e.text.as_str()));
-        let left_note = (left > 0).then(|| {
-            let entries = if left == 1 { "entry" } else { "entries" };
-            div()
-                .id("console-more-entries")
-                .test_support()
-                .pt(style::SPACE_2)
-                .text_color(cx.theme().muted_foreground)
-                .child(format!("{left} more {entries}; use Copy for the full log"))
-        });
-        let rows = kept
-            .into_iter()
-            .zip(bodies)
-            .enumerate()
-            .map(|(ix, (e, body))| {
-                let colour = level_colour(e.level, cx);
-                h_flex()
-                    .id(("console", ix))
-                    .test_support()
-                    .items_start()
-                    .gap(style::SPACE_2)
-                    .child(
-                        div()
-                            .id(("console-level", ix))
-                            .test_support()
-                            .flex_none()
-                            .text_color(colour)
-                            .child(e.level.as_str()),
-                    )
-                    .child(
-                        div()
-                            .flex_none()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(format!("[{}]", e.phase.as_str())),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .whitespace_normal()
-                            .font_family(cx.theme().mono_font_family.clone())
-                            .child(console_body("console-more", ix, body, cx)),
-                    )
-            });
-        scroll_frame(
-            "response-console",
-            v_flex()
-                .child(header)
-                .children(none)
-                .children(rows)
-                .children(left_note),
+            cx,
         )
     }
 }
@@ -4134,136 +4074,6 @@ fn pac_line(hop: &apinata_core::Hop, r: &RequestResult) -> Option<String> {
 fn override_line(hop: &apinata_core::Hop) -> Option<String> {
     hop.override_from()
         .map(|mapping| format!("Host override: {mapping}"))
-}
-
-// Warn and error lines stand out; every other level stays muted.
-pub(crate) fn level_colour(level: ConsoleLevel, cx: &App) -> Hsla {
-    match level {
-        ConsoleLevel::Warn => cx.theme().warning,
-        ConsoleLevel::Error => cx.theme().danger,
-        _ => cx.theme().muted_foreground,
-    }
-}
-
-// An entry's text as bounded rows, then a muted note `(more_id, ix)` for the lines left out.
-pub(crate) fn console_body(
-    more_id: &'static str,
-    ix: usize,
-    (lines, more): (Vec<String>, Option<String>),
-    cx: &App,
-) -> Div {
-    v_flex()
-        .children(lines.into_iter().map(|line| div().child(line)))
-        .children(more.map(|note| {
-            div()
-                .id((more_id, ix))
-                .test_support()
-                .text_color(cx.theme().muted_foreground)
-                .child(note)
-        }))
-}
-
-/// One console entry's shown rows and its "... N more lines" note, if any.
-pub type ConsoleRows = (Vec<String>, Option<String>);
-
-/// How many lines of one console entry the tab shows.
-pub const CONSOLE_ROW_LINES: usize = 1000;
-/// How many characters of one console entry the tab shows, each line break counting as one.
-pub const CONSOLE_ROW_CHARS: usize = 5000;
-/// How many lines the Console tab shows across all its entries.
-pub const CONSOLE_PANE_LINES: usize = 2000;
-/// How many characters the Console tab shows across all its entries, counted as per entry.
-pub const CONSOLE_PANE_CHARS: usize = 50_000;
-
-/// The rows the Console tab shows for an entry's `text`, and a "... N more lines" note when
-/// lines are left out. A line cut at the character limit ends in "…"; a blank line is one
-/// space so it keeps its height; a trailing carriage return is dropped.
-pub fn console_rows(text: &str) -> (Vec<String>, Option<String>) {
-    let (mut lines, mut chars) = (CONSOLE_ROW_LINES, CONSOLE_ROW_CHARS);
-    rows_within(text, &mut lines, &mut chars)
-}
-
-/// The rows of each entry text the Console tab shows, as [`console_rows`] but drawing on one
-/// budget of [`CONSOLE_PANE_LINES`] and [`CONSOLE_PANE_CHARS`]; the entries left out once it
-/// is spent are counted, not returned.
-pub fn console_shown<'a>(texts: impl IntoIterator<Item = &'a str>) -> (Vec<ConsoleRows>, usize) {
-    let (mut lines, mut chars) = (CONSOLE_PANE_LINES, CONSOLE_PANE_CHARS);
-    let mut shown = Vec::new();
-    let mut left = 0;
-    for text in texts {
-        if lines == 0 || chars == 0 {
-            left += 1;
-            continue;
-        }
-        let mut entry_lines = lines.min(CONSOLE_ROW_LINES);
-        let mut entry_chars = chars.min(CONSOLE_ROW_CHARS);
-        let rows = rows_within(text, &mut entry_lines, &mut entry_chars);
-        lines -= lines.min(CONSOLE_ROW_LINES) - entry_lines;
-        chars -= chars.min(CONSOLE_ROW_CHARS) - entry_chars;
-        shown.push(rows);
-    }
-    (shown, left)
-}
-
-// Takes rows of `text` while `lines` and `chars` last, spending them, and notes the rest.
-fn rows_within(text: &str, lines: &mut usize, chars: &mut usize) -> (Vec<String>, Option<String>) {
-    let total = text.bytes().filter(|b| *b == b'\n').count() + 1;
-    let mut rows = Vec::new();
-    for line in text.split('\n') {
-        if *lines == 0 || *chars == 0 {
-            break;
-        }
-        let line = line.strip_suffix('\r').unwrap_or(line);
-        *lines -= 1;
-        if let Some((cut, _)) = line.char_indices().nth(*chars) {
-            rows.push(format!("{}…", &line[..cut]));
-            *chars = 0;
-            break;
-        }
-        *chars = chars.saturating_sub(line.chars().count() + 1);
-        rows.push(if line.is_empty() {
-            " ".to_owned()
-        } else {
-            line.to_owned()
-        });
-    }
-    let more = total - rows.len();
-    let note = match more {
-        0 => None,
-        1 => Some("... 1 more line".to_owned()),
-        n => Some(format!("... {n} more lines")),
-    };
-    (rows, note)
-}
-
-// The Console filter's segments, in order: All, then each level.
-pub(crate) const CONSOLE_FILTERS: [Option<ConsoleLevel>; 6] = [
-    None,
-    Some(ConsoleLevel::Log),
-    Some(ConsoleLevel::Debug),
-    Some(ConsoleLevel::Info),
-    Some(ConsoleLevel::Warn),
-    Some(ConsoleLevel::Error),
-];
-
-// Whether `filter` shows `e`; a level the filter cannot name shows only under All.
-fn keeps(filter: Option<ConsoleLevel>, e: &ConsoleEntry) -> bool {
-    filter.is_none_or(|f| f == e.level)
-}
-
-/// "{level} [{phase}] {text}".
-pub fn console_line(e: &ConsoleEntry) -> String {
-    format!("{} [{}] {}", e.level.as_str(), e.phase.as_str(), e.text)
-}
-
-/// The lines of the entries `filter` keeps (all for `None`), joined by "\n".
-pub fn console_text(entries: &[ConsoleEntry], filter: Option<ConsoleLevel>) -> String {
-    entries
-        .iter()
-        .filter(|e| keeps(filter, e))
-        .map(console_line)
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 // The script tests under the assertions: a summary, then one heading per script in run order
