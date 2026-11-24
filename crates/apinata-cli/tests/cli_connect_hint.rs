@@ -133,51 +133,7 @@ fn a_failure_that_is_not_a_connect_error_has_no_hint_field() {
 
 /// A TLS server whose certificate (the core fixtures' server.pem) no default trust store knows.
 fn untrusted_tls_port() -> u16 {
-    tls_port("server")
-}
-
-/// A TLS server on the core fixture `stem` that answers every request with a 200.
-fn tls_port(stem: &str) -> u16 {
-    use std::sync::Arc;
-    use tokio_rustls::rustls::pki_types::pem::PemObject;
-    use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
-    use tokio_rustls::rustls::{ServerConfig, ServerConnection, StreamOwned};
-
-    const NET: &str = "../apinata-core/tests/fixtures/network";
-    let cert =
-        CertificateDer::from_pem_file(format!("{}/{NET}/{stem}.pem", env!("CARGO_MANIFEST_DIR")))
-            .expect("cert");
-    let key =
-        PrivateKeyDer::from_pem_file(format!("{}/{NET}/{stem}.key", env!("CARGO_MANIFEST_DIR")))
-            .expect("key");
-    let config = Arc::new(
-        ServerConfig::builder()
-            .with_no_client_auth()
-            .with_single_cert(vec![cert], key)
-            .expect("tls config"),
-    );
-    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
-    let port = listener.local_addr().expect("addr").port();
-    std::thread::spawn(move || {
-        for tcp in listener.incoming() {
-            let Ok(tcp) = tcp else { return };
-            let Ok(conn) = ServerConnection::new(config.clone()) else {
-                return;
-            };
-            let mut tls = StreamOwned::new(conn, tcp);
-            // A verifying client hangs up mid-handshake and the read fails; a client that
-            // skips verification gets a plain answer.
-            let mut buf = [0u8; 4096];
-            if tls.read(&mut buf).is_ok() {
-                let _ = tls.write_all(
-                    b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
-                );
-                tls.conn.send_close_notify();
-                let _ = tls.flush();
-            }
-        }
-    });
-    port
+    common::tls_port("server")
 }
 
 #[test]
@@ -207,7 +163,7 @@ const CA_LEAF: &str = "selfsigned-ca-leaf";
 
 #[test]
 fn a_self_signed_ca_certificate_line_names_the_cli_flags() {
-    let url = format!("https://127.0.0.1:{}/x", tls_port(CA_LEAF));
+    let url = format!("https://127.0.0.1:{}/x", common::tls_port(CA_LEAF));
     let dir = collection(&url);
     let (code, text) = run(dir.path(), &[]);
     assert_eq!(code, 2, "{text}");
@@ -221,7 +177,7 @@ fn a_self_signed_ca_certificate_line_names_the_cli_flags() {
 
 #[test]
 fn a_self_signed_ca_certificate_json_hint_is_neutral() {
-    let url = format!("https://127.0.0.1:{}/x", tls_port(CA_LEAF));
+    let url = format!("https://127.0.0.1:{}/x", common::tls_port(CA_LEAF));
     let dir = collection(&url);
     let (_, report) = common::run_json(dir.path(), &[]);
     let hint = report["results"][0]["hint"].as_str().expect("hint");
@@ -231,7 +187,7 @@ fn a_self_signed_ca_certificate_json_hint_is_neutral() {
 
 #[test]
 fn insecure_runs_against_a_self_signed_ca_certificate() {
-    let url = format!("https://127.0.0.1:{}/x", tls_port(CA_LEAF));
+    let url = format!("https://127.0.0.1:{}/x", common::tls_port(CA_LEAF));
     let dir = collection(&url);
     let (code, text) = run(dir.path(), &["--insecure"]);
     assert_eq!(code, 0, "{text}");
