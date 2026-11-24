@@ -607,3 +607,128 @@ fn an_unsaved_edit_shows_its_refusal_in_the_dialog_and_keeps_the_branch(cx: &mut
         "main"
     );
 }
+
+fn branch_of(sb: &Sandbox, r: &Rig) -> String {
+    sb.git(r.dir.path(), &["branch", "--show-current"])
+        .trim()
+        .to_owned()
+}
+
+/// Opens the new-branch field from the dialog and types `name` into it.
+fn name_new_branch(cx: &mut TestAppContext, r: &Rig, name: &str) {
+    assert_eq!(label_of(cx, r, "branch-new"), "New branch from main…");
+    click(cx, r, "branch-new");
+    type_at_end(cx, r.win, None, "branch-new-name", name);
+    frame(cx, r.win);
+}
+
+#[gpui_kit::test]
+fn a_new_branch_keeps_the_uncommitted_changes(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let r = rig(cx, &sb, |_| {});
+    write(r.dir.path(), "a.txt", "edited\n");
+    let status = sb.git(r.dir.path(), &["status", "--porcelain"]);
+    open_dialog(cx, &r);
+    name_new_branch(cx, &r, "topic");
+    click(cx, &r, "branch-create");
+    wait_for(cx, "the dialog to close", |cx| !dialog_open(cx, &r));
+    assert_eq!(branch_of(&sb, &r), "topic");
+    assert_eq!(sb.git(r.dir.path(), &["status", "--porcelain"]), status);
+    assert_eq!(
+        std::fs::read_to_string(r.dir.path().join("a.txt")).unwrap(),
+        "edited\n"
+    );
+}
+
+#[gpui_kit::test]
+fn enter_in_the_name_field_creates_the_branch(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let r = rig(cx, &sb, |_| {});
+    cx.update(apinata_app::keymap::init);
+    open_dialog(cx, &r);
+    name_new_branch(cx, &r, "topic");
+    cx.update_window(r.win, |_, w, cx| w.press("enter", cx))
+        .unwrap();
+    wait_for(cx, "the dialog to close", |cx| !dialog_open(cx, &r));
+    assert_eq!(branch_of(&sb, &r), "topic");
+}
+
+#[gpui_kit::test]
+fn an_invalid_or_taken_name_shows_the_refusal_and_stays_put(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let r = rig(cx, &sb, |_| {});
+    sb.git(r.dir.path(), &["branch", "taken"]);
+    for name in ["a..b", "taken"] {
+        open_dialog(cx, &r);
+        name_new_branch(cx, &r, name);
+        click(cx, &r, "branch-create");
+        wait_for(cx, "the refusal", |cx| present(cx, r.win, "branch-notice"));
+        assert!(dialog_open(cx, &r), "{name}");
+        assert_eq!(branch_of(&sb, &r), "main", "{name}");
+        close_dialog(cx, &r);
+    }
+}
+
+#[gpui_kit::test]
+fn create_waits_for_a_name(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let r = rig(cx, &sb, |_| {});
+    open_dialog(cx, &r);
+    assert!(
+        !present(cx, r.win, "branch-new-name"),
+        "the field waits for a click"
+    );
+    name_new_branch(cx, &r, "  ");
+    assert!(locked(cx, &r, "branch-create"));
+    click(cx, &r, "branch-new-cancel");
+    assert!(!present(cx, r.win, "branch-new-name"));
+    assert!(dialog_open(cx, &r));
+}
+
+#[gpui_kit::test]
+fn a_short_list_has_no_filter(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let r = rig(cx, &sb, |_| {});
+    for i in 0..6 {
+        sb.git(r.dir.path(), &["branch", &format!("topic-{i}")]);
+    }
+    open_dialog(cx, &r);
+    assert!(!present(cx, r.win, "branch-filter"));
+}
+
+#[gpui_kit::test]
+fn the_filter_narrows_a_long_list(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let r = rig(cx, &sb, |_| {});
+    for i in 0..8 {
+        sb.git(r.dir.path(), &["branch", &format!("topic-{i}")]);
+    }
+    open_dialog(cx, &r);
+    assert!(present(cx, r.win, "branch-filter"));
+    let (feature, main, topic) = (
+        row_of(cx, "feature"),
+        row_of(cx, "main"),
+        row_of(cx, "topic-3"),
+    );
+    type_at_end(cx, r.win, None, "branch-filter", "FEAT");
+    frame(cx, r.win);
+    assert!(
+        present(cx, r.win, ("branch-row", feature)),
+        "case is ignored"
+    );
+    assert!(!present(cx, r.win, ("branch-row", main)));
+    assert!(!present(cx, r.win, ("branch-row", topic)));
+}
+
+#[gpui_kit::test]
+fn a_filter_that_matches_nothing_says_so(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let r = rig(cx, &sb, |_| {});
+    for i in 0..8 {
+        sb.git(r.dir.path(), &["branch", &format!("topic-{i}")]);
+    }
+    open_dialog(cx, &r);
+    type_at_end(cx, r.win, None, "branch-filter", "nothing-like-this");
+    frame(cx, r.win);
+    assert_eq!(label_of(cx, &r, "branch-no-match"), branch_dialog::NO_MATCH);
+}

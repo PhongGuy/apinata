@@ -699,15 +699,18 @@ fn the_collection_menu_says_what_each_postman_export_does_with_scripts(cx: &mut 
     })
     .unwrap();
     frame(cx, s.win);
+    click_menu(cx, s.win, apinata_app::app_menu::EXPORT_MENU);
+    frame(cx, s.win);
     let labels = cx
-        .update_window(s.win, |_, w, _| {
+        .update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
             [
                 MenuEntry::ExportPostman,
                 MenuEntry::ExportPostmanKeepScripts,
             ]
             .map(|e| {
-                let ix = menu_index(w, e.label());
-                let found = w.within("popup-menu").find(ix);
+                let ix = submenu_index(w, e.label()).expect("in the Export submenu");
+                let found = w.within("submenu").find(ix);
                 found.label().unwrap_or_default().to_owned()
             })
         })

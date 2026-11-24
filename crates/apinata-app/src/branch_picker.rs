@@ -492,6 +492,49 @@ impl BranchPicker {
         .detach();
     }
 
+    /// Makes branch `name` at HEAD and switches to it. The files stay as they are, uncommitted
+    /// changes and unsaved edits included, so the collection needs no reload.
+    pub fn create(&mut self, name: String, cx: &mut Context<Self>) {
+        if self.activity != Activity::Idle {
+            return;
+        }
+        self.notice = None;
+        self.activity = Activity::Switching;
+        let (root, options) = (self.root.clone(), self.options(cx));
+        self.workspace.update(cx, |w, cx| w.begin_switch(&root, cx));
+        let rx = off_thread(move || {
+            apinata_core::repo_lock(&root, REPO_LOCK_WAIT, &options)
+                .map(|_repo| apinata_core::create_branch(&root, &name, &options))
+        });
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let Ok(result) = rx.recv().await else { return };
+            let _ = this.update(cx, |this, cx| match result {
+                Ok(result) => this.created(result, cx),
+                Err(_) => this.busy(cx),
+            });
+        })
+        .detach();
+    }
+
+    fn created(&mut self, result: Result<Switched, SwitchError>, cx: &mut Context<Self>) {
+        let root = self.root.clone();
+        match result {
+            Ok(done) => {
+                self.current = git_head::branch_label(&root);
+                self.relist(cx);
+                self.workspace.update(cx, |w, cx| w.refresh_git(&root, cx));
+                self.release(true, cx);
+                cx.emit(PickerEvent::Switched {
+                    branch: done.branch,
+                });
+                return;
+            }
+            Err(e) => self.notice = Some(Notice::Failed(e.to_string())),
+        }
+        self.release(true, cx);
+    }
+
     // Lands a switch. Unsaved work that appeared anyway keeps the collection open; a collection
     // that survives reloads its open tabs before the switch ends, so no paint shows the old
     // branch; one that does not is closed.
@@ -623,6 +666,24 @@ impl BranchPicker {
 /// Whether the branch just checked out still has a collection at `root`.
 pub fn collection_survives(root: &Path) -> bool {
     root.join("opencollection.yml").is_file()
+}
+
+/// Whether `branch` shows under the filter `query`: its local name or `remote/name` holds the
+/// query, ignoring case. An empty query shows every branch.
+pub fn matches_filter(branch: &Branch, query: &str) -> bool {
+    let query = query.trim().to_lowercase();
+    if query.is_empty() {
+        return true;
+    }
+    let remote = branch
+        .upstream
+        .as_ref()
+        .map(|u| format!("{}/{}", u.remote, u.name));
+    branch
+        .local
+        .iter()
+        .chain(remote.iter())
+        .any(|name| name.to_lowercase().contains(&query))
 }
 
 /// The notification shown when a switch closed the collection.

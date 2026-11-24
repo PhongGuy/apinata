@@ -1,5 +1,5 @@
-//! The branch dialog: lists a collection's branches, fetches and switches to one, and pulls or
-//! pushes the current one.
+//! The branch dialog: lists a collection's branches, fetches and switches to one, makes a new
+//! one from the current branch, and pulls or pushes the current one.
 //! The model is `branch_picker`; this is the view over it.
 
 use crate::ui::LockButton as _;
@@ -8,13 +8,14 @@ use std::path::PathBuf;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, App, Entity, Global, Subscription, TestSupportExt, WeakEntity, Window, div,
 };
 
-use crate::branch_picker::{Activity, BranchPicker, Notice, PickerEvent};
+use crate::branch_picker::{Activity, BranchPicker, Notice, PickerEvent, matches_filter};
 use crate::changes_dialog;
 use crate::style::{SPACE_1, SPACE_2};
 use crate::ui::{self, RingRoom as _, RingSides};
@@ -25,11 +26,21 @@ const EMPTY: &str = "No branches yet. Fetch to look for them.";
 /// Why Fetch, Pull and Push are locked in a repository without a remote.
 pub const NO_REMOTE: &str = "No remote configured";
 
+/// What the list shows when the filter hides every branch.
+pub const NO_MATCH: &str = "No branch matches the filter";
+
+/// A list longer than this many branches gets a filter field.
+pub const FILTER_AFTER: usize = 8;
+
 // The dialog's body: it owns the model, so closing the dialog drops the model and cancels a fetch.
 struct BranchView {
     picker: Entity<BranchPicker>,
     workspace: Entity<Workspace>,
-    _subscription: Subscription,
+    filter: Entity<InputState>,
+    new_name: Entity<InputState>,
+    // Whether the new-branch name field is showing.
+    naming: bool,
+    _subscriptions: Vec<Subscription>,
 }
 
 // The most recently opened dialog's model; it lapses once the dialog lets go of it.
@@ -50,13 +61,31 @@ pub fn open(
 ) -> Entity<BranchPicker> {
     let picker = cx.new(|cx| BranchPicker::new(workspace.clone(), root, cx));
     cx.set_global(OpenPicker(picker.downgrade()));
-    let view = cx.new(|cx| BranchView {
-        picker: picker.clone(),
-        workspace: workspace.clone(),
-        // A switch that landed, or closed the collection, ends the dialog's job.
-        _subscription: cx.subscribe_in(&picker, window, |_, _, _: &PickerEvent, window, cx| {
-            window.close_dialog(cx)
-        }),
+    let view = cx.new(|cx| {
+        let filter = cx.new(|cx| InputState::new(window, cx).placeholder("Filter branches"));
+        let new_name = cx.new(|cx| InputState::new(window, cx).placeholder("Branch name"));
+        let subscriptions = vec![
+            // A switch that landed, or closed the collection, ends the dialog's job.
+            cx.subscribe_in(&picker, window, |_, _, _: &PickerEvent, window, cx| {
+                window.close_dialog(cx)
+            }),
+            cx.subscribe(&filter, |_, _, _: &InputEvent, cx| cx.notify()),
+            cx.subscribe(
+                &new_name,
+                |this: &mut BranchView, _, e: &InputEvent, cx| match e {
+                    InputEvent::PressEnter { .. } => this.create(cx),
+                    _ => cx.notify(),
+                },
+            ),
+        ];
+        BranchView {
+            picker: picker.clone(),
+            workspace: workspace.clone(),
+            filter,
+            new_name,
+            naming: false,
+            _subscriptions: subscriptions,
+        }
     });
     let guard = picker.clone();
     crate::ui::open_dialog(window, cx, move |dialog, window, _| {
@@ -84,6 +113,19 @@ impl BranchView {
         window.close_dialog(cx);
         changes_dialog::open_changes(&self.workspace, &root, None, window, cx);
     }
+
+    // The typed name, trimmed; None while it is blank.
+    fn typed_name(&self, cx: &App) -> Option<String> {
+        let name = self.new_name.read(cx).value().trim().to_owned();
+        (!name.is_empty()).then_some(name)
+    }
+
+    // The field stays open, so a refused name can be fixed in place.
+    fn create(&mut self, cx: &mut Context<Self>) {
+        if let Some(name) = self.typed_name(cx) {
+            self.picker.update(cx, |p, cx| p.create(name, cx));
+        }
+    }
 }
 
 impl Render for BranchView {
@@ -94,10 +136,14 @@ impl Render for BranchView {
         // during a switch (its result must land first).
         let idle = activity == Activity::Idle;
         let muted = cx.theme().muted_foreground;
+        // Hidden rows keep their index, so a row's id names the same branch filtered or not.
+        let filtering = picker.branches().len() > FILTER_AFTER;
+        let query = self.filter.read(cx).value().to_string();
         let rows: Vec<AnyElement> = picker
             .branches()
             .iter()
             .enumerate()
+            .filter(|(_, b)| !filtering || matches_filter(b, &query))
             .map(|(ix, b)| {
                 // A local row shows its name, and its upstream only when that is named
                 // differently; a remote-only row shows `remote/name`.
@@ -158,7 +204,25 @@ impl Render for BranchView {
                     .into_any_element()
             })
             .collect();
-        let list = if rows.is_empty() && activity != Activity::Listing {
+        let filter = filtering.then(|| {
+            div().ring_room(RingSides::ALL).child(ui::padded_input(
+                Input::new(&self.filter)
+                    .id("branch-filter")
+                    .w_full()
+                    .bg(ui::field_fill(false, cx)),
+                &self.filter,
+            ))
+        });
+        let new_branch = self.new_branch_row(idle, cx);
+        let list = if rows.is_empty() && !picker.branches().is_empty() {
+            div()
+                .id("branch-no-match")
+                .test_support()
+                .aria_label(NO_MATCH)
+                .text_color(muted)
+                .child(NO_MATCH)
+                .into_any_element()
+        } else if rows.is_empty() && activity != Activity::Listing {
             div()
                 .text_color(cx.theme().muted_foreground)
                 .child(EMPTY)
@@ -271,12 +335,67 @@ impl Render for BranchView {
             .id("branch-dialog")
             .test_support()
             .gap(SPACE_2)
+            .children(filter)
             .child(list)
+            .child(new_branch)
             .children(notice)
             .child(ui::dialog_footer(
                 Some(fetch),
                 pull.into_iter().chain(push).chain(stop),
                 close,
             ))
+    }
+}
+
+impl BranchView {
+    // "New branch from <current>…" until clicked, then the name field with Create and Cancel.
+    fn new_branch_row(&self, idle: bool, cx: &Context<Self>) -> AnyElement {
+        if !self.naming {
+            let from = self.picker.read(cx).current().unwrap_or("HEAD").to_owned();
+            return div()
+                .ring_room(RingSides::ALL)
+                .child(
+                    Button::new("branch-new")
+                        .solid_ring(cx)
+                        .ghost()
+                        .label(format!("New branch from {from}…"))
+                        .lock(!idle, cx)
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.naming = true;
+                            this.new_name.update(cx, |i, cx| i.focus(window, cx));
+                            cx.notify();
+                        })),
+                )
+                .into_any_element();
+        }
+        let blank = self.typed_name(cx).is_none();
+        h_flex()
+            .ring_room(RingSides::ALL)
+            .gap(SPACE_2)
+            .child(ui::padded_input(
+                Input::new(&self.new_name)
+                    .id("branch-new-name")
+                    .flex_1()
+                    .bg(ui::field_fill(false, cx)),
+                &self.new_name,
+            ))
+            .child(
+                Button::new("branch-create")
+                    .solid_ring(cx)
+                    .label("Create")
+                    .lock(!idle || blank, cx)
+                    .on_click(cx.listener(|this, _, _, cx| this.create(cx))),
+            )
+            .child(
+                Button::new("branch-new-cancel")
+                    .solid_ring(cx)
+                    .label("Cancel")
+                    .lock(!idle, cx)
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.naming = false;
+                        cx.notify();
+                    })),
+            )
+            .into_any_element()
     }
 }

@@ -12,6 +12,13 @@ fn started(headers: Vec<(String, String)>, event_stream: bool) -> RunEvent {
         status: 200,
         headers,
         event_stream,
+        sent: Arc::new(RequestResult::from_parts(
+            ip("a.yml"),
+            "A",
+            Outcome::Errored,
+            None,
+            vec![],
+        )),
     }
 }
 
