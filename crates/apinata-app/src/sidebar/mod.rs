@@ -27,7 +27,7 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Escape, Input, InputEvent, InputState};
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::list::ListItem;
-use gpui_kit::component::menu::PopupMenu;
+use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::tree::{TreeEvent, TreeState, tree};
@@ -3810,11 +3810,30 @@ fn fill_row_menu(
     let mut prev = None;
     for &choice in menu_entries(node.kind).iter().chain(&extra) {
         let choice = request_kind.map_or(choice, |k| menu::for_request_kind(choice, k));
-        let (view, node) = (view.clone(), node.clone());
         // Paste greys out with nothing cut or copied, or when it would put a folder into
         // itself; the scratch's row greys out what needs collection files.
         let blocked = (choice == MenuEntry::PasteItem && paste_blocked)
             || (scratch.as_deref() == Some(node.root.as_path()) && menu::scratch_blocked(choice));
+        // The exports share one Export row, drawn at the first of them, whose submenu holds all.
+        if choice.is_export() {
+            if prev.is_some_and(|p: MenuEntry| p.is_export()) {
+                continue;
+            }
+            if prev.is_some_and(|p: MenuEntry| p.group() != choice.group()) {
+                menu = menu.separator();
+            }
+            prev = Some(choice);
+            // A greyed row gets no submenu, since the kit opens one on hover even when greyed.
+            menu = if blocked {
+                let line = ui::MenuLine::new(crate::app_menu::EXPORT_MENU).disabled(true);
+                line.add_to(menu, ui::SIDEBAR_ROW_KEYS, |_, _, _| {}, cx)
+            } else {
+                let sub = export_submenu(view, &node, window, cx);
+                menu.item(PopupMenuItem::submenu(crate::app_menu::EXPORT_MENU, sub))
+            };
+            continue;
+        }
+        let (view, node) = (view.clone(), node.clone());
         // The mock entry names what choosing it does for this collection's server.
         let text = match choice {
             MenuEntry::MockServer => crate::mock_server::command_label(mock_on),
@@ -3846,6 +3865,31 @@ fn fill_row_menu(
         );
     }
     menu
+}
+
+// The Export row's submenu for `node`'s collection: each export, run on that collection.
+fn export_submenu(
+    view: &WeakEntity<Sidebar>,
+    node: &Node,
+    window: &mut Window,
+    cx: &mut App,
+) -> Entity<PopupMenu> {
+    let (view, node) = (view.clone(), node.clone());
+    PopupMenu::build(window, cx, move |sub, _, cx| {
+        let exports = menu_entries(node.kind).iter().filter(|e| e.is_export());
+        exports.fold(sub, |sub, &choice| {
+            let (view, node) = (view.clone(), node.clone());
+            ui::MenuLine::new(choice.label()).add_to(
+                sub,
+                ui::SIDEBAR_ROW_KEYS,
+                move |_, window, cx| {
+                    view.update(cx, |s, cx| s.choose(&node, choice, window, cx))
+                        .ok();
+                },
+                cx,
+            )
+        })
+    })
 }
 
 /// The note under a scratch-only sidebar.

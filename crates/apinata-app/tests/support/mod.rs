@@ -1310,6 +1310,21 @@ pub fn choose_menu(
     })
     .unwrap();
     frame(cx, win);
+    // An export sits in the row's Export submenu; a greyed Export row opens none, so there is
+    // nothing to pick.
+    if entry.is_export() {
+        click_menu(cx, win, apinata_app::app_menu::EXPORT_MENU);
+        frame(cx, win);
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            if let Some(ix) = submenu_index(w, entry.label()) {
+                w.within("submenu").click(ix, cx);
+            }
+        })
+        .unwrap();
+        cx.run_until_parked();
+        return;
+    }
     // A GraphQL row names its conversion entry after the other kind.
     let label = cx
         .update_window(win, |_, w, _| {
@@ -1342,6 +1357,31 @@ pub fn try_menu_index(w: &mut gpui_kit::Window, label: &str) -> Option<usize> {
             Some(_) => menu.within(ix).try_find_by_label(label).is_some(),
         }
     })
+}
+
+/// The index of the open submenu's entry labelled `label`, or `None` when no submenu is open
+/// or none of its entries has the label.
+pub fn submenu_index(w: &mut gpui_kit::Window, label: &str) -> Option<usize> {
+    use gpui_kit::test::TestWindowExt as _;
+    w.try_find("submenu")?;
+    (0..32usize).find(|&ix| {
+        let sub = w.within("submenu");
+        sub.try_find(ix).is_some_and(|e| e.label() == Some(label))
+    })
+}
+
+/// The labels of the open submenu's entries in order, empty when none is open.
+pub fn submenu_labels(w: &mut gpui_kit::Window) -> Vec<String> {
+    use gpui_kit::test::TestWindowExt as _;
+    if w.try_find("submenu").is_none() {
+        return Vec::new();
+    }
+    (0..32usize)
+        .filter_map(|ix| {
+            let sub = w.within("submenu");
+            sub.try_find(ix).and_then(|e| e.label().map(str::to_owned))
+        })
+        .collect()
 }
 
 /// The labels of the open popup menu's entries in order, `None` for each separator.
