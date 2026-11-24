@@ -918,7 +918,7 @@ impl ConfigEditor {
         if let (Some(section), Some(network)) = (self.network.clone(), &view.network)
             && !self.busy(Field::Network, cx)
         {
-            section.update(cx, |s, cx| s.load(network, view.plain_secrets, window, cx));
+            section.update(cx, |s, cx| s.load(network, window, cx));
         }
         self.refresh_network_notice(cx);
         cx.notify();

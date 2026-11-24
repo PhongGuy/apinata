@@ -17,7 +17,7 @@ fn network_window(cx: &mut TestAppContext, network: CollectionNetwork) -> AnyWin
     let (win, host) = host_section(cx, |w, cx| NetworkSection::new(PathBuf::from("/c"), w, cx));
     let s = host.read_with(cx, |h, _| h.view.clone());
     cx.update_window(win, |_, w, cx| {
-        s.update(cx, |s, cx| s.load(&network, false, w, cx))
+        s.update(cx, |s, cx| s.load(&network, w, cx))
     })
     .unwrap();
     cx.update_window(win, |_, w, _| w.activate_window())
