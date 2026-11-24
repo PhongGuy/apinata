@@ -65,8 +65,8 @@ fn events_open(
     .unwrap()
 }
 
-// In a short window the request keeps its rows first: the Events list shows at least one full
-// row above the dock, and the response keeps its header floor.
+// In a short window the request keeps its rows first: the Events list shows at least two full
+// rows above the dock, and the response keeps its header floor.
 #[gpui_kit::test]
 fn events_rows_stay_usable_at_a_short_window_with_the_dock_open(cx: &mut TestAppContext) {
     let (full, list, dock, response, (pane, need)) = events_open(cx, 500., false);
@@ -78,7 +78,7 @@ fn events_rows_stay_usable_at_a_short_window_with_the_dock_open(cx: &mut TestApp
         response >= RESPONSE_FLOOR - px(0.5),
         "response {response:?}"
     );
-    assert!(full >= 1, "{full} full rows in {list:?}");
+    assert!(full >= 2, "{full} full rows in {list:?}");
     assert!(list.bottom() <= dock.top(), "{list:?} {dock:?}");
 }
 
@@ -102,6 +102,6 @@ fn finished_events_rows_stay_usable_at_a_short_window_with_the_dock_open(cx: &mu
         response >= RESPONSE_FLOOR - px(0.5),
         "response {response:?}"
     );
-    assert!(full >= 1, "{full} full rows in {list:?}");
+    assert!(full >= 2, "{full} full rows in {list:?}");
     assert!(list.bottom() <= dock.top(), "{list:?} {dock:?}");
 }
