@@ -58,7 +58,7 @@ use crate::last_response::ResponseStore;
 use crate::paste_notes;
 use crate::request_chrome::{Chrome, ChromePart};
 use crate::response_pane::{HistoryTarget, ResponsePane, response_strip};
-use crate::script_section::{ScriptSection, SideChosen, SnippetChosen};
+use crate::script_section::{ScriptSection, SideChosen, SnippetChosen, script_error_notes};
 use crate::scroll_follow::FocusFollow;
 use crate::section::SectionEdit;
 use crate::send_model::{Restored, SendModel, SendState};
@@ -259,6 +259,8 @@ pub struct RequestEditor {
     slot_kind: Cell<u8>,
     // The last live result seen, so each successful send refreshes the token panel once.
     last_result: Weak<RequestResult>,
+    // The result whose script errors the script editors mark now.
+    marked: Weak<RequestResult>,
     response: Entity<ResponsePane>,
     split: Entity<ResizableState>,
     split_axis: Orientation,
@@ -528,6 +530,7 @@ impl RequestEditor {
             // The URL bar swaps Send and Cancel as the model starts and stops sending.
             cx.observe(&send_model, |this, _, cx| {
                 this.clear_notice_after_send(cx);
+                this.mark_script_errors(cx);
                 cx.notify()
             }),
             cx.observe_in(&workspace, window, |this, _, window, cx| {
@@ -795,6 +798,7 @@ impl RequestEditor {
             section_body_focus: cx.focus_handle(),
             slot_kind: Cell::new(0),
             last_result: Weak::new(),
+            marked: Weak::new(),
             response,
             split,
             split_axis,
@@ -899,6 +903,28 @@ impl RequestEditor {
         self.last_result = Arc::downgrade(result);
         if ok {
             refresh_token_panel(&self.auth, cx);
+        }
+    }
+
+    // Marks the script errors of the result on show in the script editors, once per result;
+    // anything but a finished result clears them.
+    fn mark_script_errors(&mut self, cx: &mut Context<Self>) {
+        let shown = match self.send_model.read(cx).state() {
+            SendState::Done(result) => Some(Arc::clone(result)),
+            _ => None,
+        };
+        let same = match (&shown, self.marked.upgrade()) {
+            (Some(now), Some(before)) => Arc::ptr_eq(now, &before),
+            (None, None) => true,
+            _ => false,
+        };
+        if same {
+            return;
+        }
+        self.marked = shown.as_ref().map_or_else(Weak::new, Arc::downgrade);
+        let notes = shown.as_deref().map(script_error_notes).unwrap_or_default();
+        for section in [&self.script, &self.tests_script] {
+            section.update(cx, |s, cx| s.set_errors(&notes, cx));
         }
     }
 
