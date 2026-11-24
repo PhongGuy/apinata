@@ -2,7 +2,7 @@
 
 use crate::support;
 
-use apinata_app::command::{Command, Edit, Field, NoticeKind, Target};
+use apinata_app::command::{Command, Edit, Field, NetworkSlot, NoticeKind, Target};
 use apinata_app::model::CollectionModel;
 use apinata_core::{ClientCertificate, CollectionNetwork, CollectionProxy, ProxyAuth, ProxyConfig};
 use gpui_kit::{Entity, TestAppContext};
@@ -88,7 +88,6 @@ fn a_new_literal_moves_to_dotenv_and_dotenv_is_ignored(cx: &mut TestAppContext) 
     // Nothing reaches the disk before the save.
     assert!(!dir.path().join(".env").exists() && !dir.path().join(".gitignore").exists());
     assert!(notices(cx, &model).is_empty());
-    assert!(!snap(cx, &model).content.collection.plain_secrets);
     save(cx, &model);
     assert_eq!(read(&dir, ".env"), "APINATA_PROXY_PASSWORD='hunter2'\n");
     assert_eq!(read(&dir, ".gitignore"), ".env\n");
@@ -132,16 +131,18 @@ fn an_unclosed_brace_pair_is_a_secret_not_a_template(cx: &mut TestAppContext) {
 fn an_existing_literal_stays_until_moved(cx: &mut TestAppContext) {
     let dir = write_tree(&[("opencollection.yml", &root_with_password("hunter2"))]);
     let model = open(cx, &dir);
-    assert!(snap(cx, &model).content.collection.plain_secrets);
     apply(cx, &model, Edit::Proxy(custom("proxy2.local", "hunter2")));
     assert_eq!(password_of(&network(cx, &model).proxy), "hunter2");
     assert!(!dir.path().join(".env").exists());
-    apply(cx, &model, Edit::MoveNetworkSecrets);
+    apply(
+        cx,
+        &model,
+        Edit::MoveNetworkSecret(NetworkSlot::ProxyPassword),
+    );
     assert_eq!(
         password_of(&network(cx, &model).proxy),
         "{{process.env.APINATA_PROXY_PASSWORD}}"
     );
-    assert!(!snap(cx, &model).content.collection.plain_secrets);
     assert!(!dir.path().join(".env").exists());
     save(cx, &model);
     assert!(read(&dir, ".env").contains("APINATA_PROXY_PASSWORD='hunter2'"));
@@ -305,7 +306,11 @@ fn moving_nothing_writes_nothing(cx: &mut TestAppContext) {
     let dir = write_tree(&[("opencollection.yml", &root_with_password("{{pw}}"))]);
     let model = open(cx, &dir);
     let before = network(cx, &model);
-    apply(cx, &model, Edit::MoveNetworkSecrets);
+    apply(
+        cx,
+        &model,
+        Edit::MoveNetworkSecret(NetworkSlot::ProxyPassword),
+    );
     assert_eq!(network(cx, &model), before);
     assert!(!snap(cx, &model).content.collection.dirty);
     assert!(!dir.path().join(".env").exists() && !dir.path().join(".gitignore").exists());

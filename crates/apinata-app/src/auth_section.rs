@@ -16,7 +16,7 @@ use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    App, Entity, EventEmitter, SharedString, Subscription, TestSupportExt, Window, div,
+    App, ElementId, Entity, EventEmitter, SharedString, Subscription, TestSupportExt, Window, div,
 };
 
 use crate::command::{Edit, MOVE_SLOT};
@@ -558,6 +558,7 @@ impl AuthSection {
         SecretPlace {
             scope: self.scope,
             dotenv: self.dotenv.clone(),
+            destination: SecretDestination::SecretOrDotenv,
         }
     }
 
@@ -1136,14 +1137,36 @@ pub struct SecretPlace {
     pub scope: AuthScope,
     /// The `.env` names stored or held for the target.
     pub dotenv: DotenvNames,
+    /// Where "Move to a secret" puts the value.
+    pub destination: SecretDestination,
+}
+
+/// Where a secret field's "Move to a secret" puts the value.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SecretDestination {
+    /// A secret of the environment, or `.env` when no environment can keep it.
+    #[default]
+    SecretOrDotenv,
+    /// Always the collection's `.env`, for settings no environment applies to.
+    DotenvOnly,
+}
+
+impl SecretDestination {
+    /// The move button's tooltip.
+    pub fn move_tip(self) -> &'static str {
+        match self {
+            SecretDestination::SecretOrDotenv => MOVE_TIP,
+            SecretDestination::DotenvOnly => MOVE_TIP_DOTENV,
+        }
+    }
 }
 
 /// Moves a secret field's literal value to a secret.
 pub(crate) type MoveToSecret = Rc<dyn Fn(&mut Window, &mut App)>;
 
-/// The one secret field every auth secret uses: a masked input, with variables (tint only)
-/// only while its text is one reference, and under it where the value lives. A literal
-/// written in a file offers "Move to a secret" when `on_move` is given.
+/// The one secret field every auth and network secret uses: a masked input, with variables
+/// (tint only) only while its text is one reference, and beside it where the value lives. A
+/// literal written in a file offers "Move to a secret" when `on_move` is given.
 pub(crate) fn secret_field(
     label: &'static str,
     id: &'static str,
@@ -1152,12 +1175,36 @@ pub(crate) fn secret_field(
     place: &SecretPlace,
     on_move: Option<MoveToSecret>,
     cx: &App,
-) -> impl IntoElement {
+) -> ui::FormRow {
     let text = state.read(cx).value().to_string();
-    let storage = SecretStorage::of(&text, place.scope, vars.as_deref(), &place.dotenv);
+    secret_field_placing(label, id, state, &text, vars, place, on_move, cx)
+}
+
+/// [`secret_field`] whose hint places `placed` rather than the typed text, for a field that
+/// commits on Enter or blur and so keeps its value where the last committed text put it.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn secret_field_placing(
+    label: &'static str,
+    id: &'static str,
+    state: &Entity<InputState>,
+    placed: &str,
+    vars: Option<Arc<VariableSet>>,
+    place: &SecretPlace,
+    on_move: Option<MoveToSecret>,
+    cx: &App,
+) -> ui::FormRow {
+    let text = state.read(cx).value().to_string();
+    let hint = secret_hint(
+        SharedString::from(format!("{id}-storage")).into(),
+        SharedString::from(format!("{id}-move")).into(),
+        placed,
+        vars.as_deref(),
+        place,
+        on_move,
+        cx,
+    );
     let vars = vars.filter(|_| ui::is_variable_reference(&text));
     let input = var_input(id, state, vars, true, cx).tint_only();
-    let hint = storage.map(|s| storage_line(id, s, on_move.filter(|_| s.movable(&text)), cx));
     // The hint sits beside the input, which gives up width for it, so a form keeps its
     // height; only a slot too narrow for both wraps the hint below.
     ui::form_row(
@@ -1179,41 +1226,55 @@ pub(crate) fn secret_field(
     )
 }
 
-// The small line under a secret field naming where its value lives, with the move action.
-fn storage_line(
-    id: &'static str,
-    storage: SecretStorage,
+/// The small line naming where a secret field's value `text` lives, with the move action
+/// when `on_move` is given and the value is a literal written in a file; None when there is
+/// nothing to place. A field laid out in a grid shows it under its row.
+pub(crate) fn secret_hint(
+    id: ElementId,
+    move_id: ElementId,
+    text: &str,
+    vars: Option<&VariableSet>,
+    place: &SecretPlace,
     on_move: Option<MoveToSecret>,
     cx: &App,
-) -> impl IntoElement {
-    h_flex()
-        .id(SharedString::from(format!("{id}-storage")))
-        .test_support()
-        .aria_label(storage.text())
-        .gap(style::SPACE_2)
-        .items_center()
-        .flex_none()
-        .whitespace_nowrap()
-        .text_size(style::TEXT_SMALL)
-        .text_color(cx.theme().muted_foreground)
-        .child(storage.text())
-        .when_some(on_move, |line, on_move| {
-            line.child(
-                Button::new(SharedString::from(format!("{id}-move")))
-                    .solid_ring(cx)
-                    .label("Move to a secret")
-                    .small()
-                    .flex_none()
-                    .tooltip(MOVE_TIP)
-                    .on_click(move |_, window, cx| on_move(window, cx)),
-            )
-        })
+) -> Option<impl IntoElement + use<>> {
+    let storage = SecretStorage::of(text, place.scope, vars, &place.dotenv)?;
+    let on_move = on_move.filter(|_| storage.movable(text));
+    let tip = place.destination.move_tip();
+    Some(
+        h_flex()
+            .id(id)
+            .test_support()
+            .aria_label(storage.text())
+            .gap(style::SPACE_2)
+            .items_center()
+            .flex_none()
+            .whitespace_nowrap()
+            .text_size(style::TEXT_SMALL)
+            .text_color(cx.theme().muted_foreground)
+            .child(storage.text())
+            .when_some(on_move, |line, on_move| {
+                line.child(
+                    Button::new(move_id)
+                        .solid_ring(cx)
+                        .label("Move to a secret")
+                        .small()
+                        .flex_none()
+                        .tooltip(tip)
+                        .on_click(move |_, window, cx| on_move(window, cx)),
+                )
+            }),
+    )
 }
 
 /// Where "Move to a secret" puts the value.
 const MOVE_TIP: &str = "When you save, the value is kept as a secret of the environment, in \
      your keychain; with no environment to keep it, it goes to this collection's .env file, \
      which is kept out of git.";
+
+/// Where "Move to a secret" puts a value no environment applies to.
+const MOVE_TIP_DOTENV: &str =
+    "When you save, the value goes to this collection's .env file, which is kept out of git.";
 
 // The wide input `id` wrapped in its `VarField`; a secret one has the eye that reveals it.
 fn var_input(

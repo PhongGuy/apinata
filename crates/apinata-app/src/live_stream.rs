@@ -2,6 +2,9 @@
 //! text lines and, for event streams, the parsed events.
 
 use std::collections::VecDeque;
+use std::rc::Rc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
 use apinata_core::sse::{SseEvent, SseParser};
 
@@ -25,9 +28,16 @@ pub struct LiveStream {
     skipped: u64,
     parser: SseParser,
     events: Vec<SseEvent>,
+    /// When each of `events` arrived, as an offset from `started`.
+    arrivals: Vec<Duration>,
     /// Events already compacted away from the front of `events`.
     compacted: u64,
+    started: Instant,
+    serial: u64,
 }
+
+// Tells one live stream from the next, so a cache keyed on a stream never outlives it.
+static SERIAL: AtomicU64 = AtomicU64::new(0);
 
 impl LiveStream {
     /// An empty buffer for a response whose headers have just arrived.
@@ -42,19 +52,32 @@ impl LiveStream {
             skipped: 0,
             parser: SseParser::new(),
             events: Vec::new(),
+            arrivals: Vec::new(),
             compacted: 0,
+            started: Instant::now(),
+            serial: SERIAL.fetch_add(1, Ordering::Relaxed),
         }
     }
 
     /// Adds body bytes: splits them into lines and, for event streams, events.
     pub fn push(&mut self, bytes: &[u8]) {
+        self.push_at(bytes, Instant::now());
+    }
+
+    /// Adds body bytes as `push` does, stamping the events they complete as arrived at `at`.
+    pub fn push_at(&mut self, bytes: &[u8], at: Instant) {
         self.bytes += bytes.len() as u64;
         if self.event_stream {
-            self.events.extend(self.parser.push(bytes));
+            let done = self.parser.push(bytes);
+            let offset = at.saturating_duration_since(self.started);
+            self.arrivals
+                .extend(std::iter::repeat_n(offset, done.len()));
+            self.events.extend(done);
             // Compact lazily so the front drain is amortised, not per event.
             if self.events.len() >= EVENT_CAP * 2 {
                 let excess = self.events.len() - EVENT_CAP;
                 self.events.drain(..excess);
+                self.arrivals.drain(..excess);
                 self.compacted += excess as u64;
             }
         }
@@ -167,6 +190,143 @@ impl LiveStream {
     pub fn skipped_lines(&self) -> u64 {
         self.skipped
     }
+
+    /// When the response's headers arrived, which event times count from.
+    pub fn started(&self) -> Instant {
+        self.started
+    }
+
+    /// The arrival offsets of `events()`, index for index.
+    pub fn arrivals(&self) -> &[Duration] {
+        &self.arrivals[self.arrivals.len().saturating_sub(EVENT_CAP)..]
+    }
+
+    /// The arrival offsets of the kept events, by their index in the whole stream.
+    pub fn times(&self) -> EventTimes {
+        EventTimes {
+            first: self.dropped_events(),
+            times: self.arrivals().to_vec(),
+        }
+    }
+
+    /// Tells this stream apart from every other one in the process.
+    pub fn serial(&self) -> u64 {
+        self.serial
+    }
+}
+
+/// Arrival offsets of a stream's events, by the event's index in the whole stream.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EventTimes {
+    /// The stream index of the first kept time; earlier events were dropped.
+    first: u64,
+    times: Vec<Duration>,
+}
+
+impl EventTimes {
+    /// The arrival offset of stream event `ix`, when it was stamped and kept.
+    pub fn get(&self, ix: usize) -> Option<Duration> {
+        let at = (ix as u64).checked_sub(self.first)?;
+        self.times.get(usize::try_from(at).ok()?).copied()
+    }
+
+    /// The stream index of the first kept time.
+    pub fn first(&self) -> u64 {
+        self.first
+    }
+}
+
+/// An arrival offset as the Events tab shows it: seconds with milliseconds, minutes once a
+/// minute has passed, whole seconds past an hour; blank when unknown.
+pub fn time_label(at: Option<Duration>) -> String {
+    let Some(at) = at else {
+        return String::new();
+    };
+    let ms = at.as_millis();
+    let (secs, milli) = (ms / 1000, ms % 1000);
+    let (h, m, s) = (secs / 3600, secs / 60 % 60, secs % 60);
+    match secs {
+        0..60 => format!("+{s}.{milli:03}s"),
+        60..3600 => format!("+{m}:{s:02}.{milli:03}"),
+        _ => format!("+{h}:{m:02}:{s:02}"),
+    }
+}
+
+/// Whether `event` holds `needle` (already lowercase) in its name, id or data.
+pub fn event_matches(event: &SseEvent, needle: &str) -> bool {
+    let name = event.event.as_deref().filter(|n| !n.is_empty());
+    [
+        name.unwrap_or("message"),
+        event.id.as_deref().unwrap_or_default(),
+        event.data.as_str(),
+    ]
+    .iter()
+    .any(|field| field.to_lowercase().contains(needle))
+}
+
+/// Where a filtered event list comes from: one live stream, or one finished result's events.
+#[derive(Clone)]
+pub enum FilterSource {
+    /// A live stream, by its serial.
+    Live(u64),
+    /// A finished result's parsed or seeded events.
+    Done(Rc<Vec<SseEvent>>),
+}
+
+impl FilterSource {
+    fn same(&self, other: &FilterSource) -> bool {
+        match (self, other) {
+            (FilterSource::Live(a), FilterSource::Live(b)) => a == b,
+            (FilterSource::Done(a), FilterSource::Done(b)) => Rc::ptr_eq(a, b),
+            _ => false,
+        }
+    }
+}
+
+/// The filter's matches over a growing list, scanned once per event: a live stream only
+/// appends, so each call looks at the events that arrived since the last one.
+#[derive(Default)]
+pub struct EventFilter {
+    needle: String,
+    source: Option<FilterSource>,
+    /// Stream index up to which events were scanned.
+    scanned: u64,
+    /// Stream indices of the matches, ascending.
+    hits: Vec<u64>,
+}
+
+impl EventFilter {
+    /// The positions in `events` that hold `needle` (lowercase), where `events[0]` is stream
+    /// event `first`.
+    pub fn matches(
+        &mut self,
+        needle: &str,
+        source: FilterSource,
+        events: &[SseEvent],
+        first: u64,
+    ) -> Vec<usize> {
+        let end = first + events.len() as u64;
+        let same = self.source.as_ref().is_some_and(|s| s.same(&source));
+        if !same || self.needle != needle || self.scanned > end {
+            *self = EventFilter {
+                needle: needle.to_owned(),
+                source: Some(source),
+                scanned: first,
+                hits: Vec::new(),
+            };
+        }
+        let from = self.scanned.max(first);
+        for ix in from..end {
+            if event_matches(&events[(ix - first) as usize], needle) {
+                self.hits.push(ix);
+            }
+        }
+        self.scanned = end;
+        // Matches that fell off the front of a live list go with their events.
+        let gone = self.hits.partition_point(|&ix| ix < first);
+        self.hits.drain(..gone);
+        self.hits.iter().map(|&ix| (ix - first) as usize).collect()
+    }
 }
 
 /// Characters kept of the data's first line in an event's row.
@@ -183,6 +343,8 @@ pub struct EventRow {
     pub retry: Option<u64>,
     /// The data's first line, cut short with an ellipsis.
     pub preview: String,
+    /// When the event arrived after the response started; unknown for a kept response.
+    pub time: Option<Duration>,
 }
 
 /// The first line of `data`, cut at `PREVIEW_CHARS`; an ellipsis marks that anything was
@@ -204,21 +366,24 @@ pub fn retry_label(retry: Option<u64>) -> Option<String> {
     retry.map(|ms| format!("retry {ms} ms"))
 }
 
-/// The rows for `events`, in order.
+/// The rows for `events`, in order, with no arrival times.
 pub fn event_rows(events: &[SseEvent]) -> Vec<EventRow> {
-    events
-        .iter()
-        .map(|e| EventRow {
-            name: e
-                .event
-                .clone()
-                .filter(|n| !n.is_empty())
-                .unwrap_or_else(|| "message".to_owned()),
-            id: e.id.clone(),
-            retry: e.retry,
-            preview: preview(&e.data),
-        })
-        .collect()
+    events.iter().map(|e| event_row(e, None)).collect()
+}
+
+/// The row for one event that arrived at `time`.
+pub fn event_row(e: &SseEvent, time: Option<Duration>) -> EventRow {
+    EventRow {
+        name: e
+            .event
+            .clone()
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| "message".to_owned()),
+        id: e.id.clone(),
+        retry: e.retry,
+        preview: preview(&e.data),
+        time,
+    }
 }
 
 /// A short word for why a stream ended, shown beside the size.
