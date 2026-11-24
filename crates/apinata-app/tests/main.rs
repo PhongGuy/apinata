@@ -502,6 +502,7 @@ mod runner_checkboxes;
 mod runner_data_preview;
 mod runner_export;
 mod runner_fail_on_status;
+mod runner_isolation;
 mod runner_layout;
 mod runner_model;
 mod runner_rerun_failed;
