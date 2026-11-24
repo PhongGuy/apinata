@@ -48,6 +48,15 @@ pub fn error_text(e: &TeamError) -> String {
             format!("The sign-in could not be saved in the system keychain: {message}")
         }
         TeamError::Store(message) => format!("The team server list could not be saved: {message}"),
+        // Core words single sign-on failures for people already.
+        TeamError::SsoOff
+        | TeamError::SsoRefused
+        | TeamError::AccountNotLinked
+        | TeamError::SsoExpired
+        | TeamError::SsoCodeInvalid
+        | TeamError::SsoStateMismatch
+        | TeamError::SsoTimeout
+        | TeamError::SsoListen(_) => e.to_string(),
         _ => "Something went wrong talking to the server.".into(),
     }
 }
