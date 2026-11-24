@@ -31,6 +31,7 @@ use crate::keymap::{
     ToggleOrientation, UndoActive,
 };
 use crate::mock_server::MockState;
+use crate::percent_codec::{PercentDecode, PercentEncode};
 use crate::request_editor::CancelRequest;
 use crate::shell::{
     PullBranch, PushBranch, ShowChanges, ShowTeamSync, SwitchBranch, ToggleMockServer,
@@ -49,6 +50,7 @@ use crate::tab_area::{
     GoForward, MinifyBody, PinTab, RecheckAssertions, ReopenClosedTab, RevealInSidebar, SaveAll,
     SaveAsExample, SendActive, StopActive, TabArea, UnpinTab,
 };
+use crate::tabs::{TabId, TabKind};
 use crate::updates::CheckForUpdates;
 use crate::workspace::Workspace;
 use crate::zoom;
@@ -59,7 +61,9 @@ actions!(
         /// Opens the command palette.
         OpenCommandPalette,
         /// Opens the palette on the open collections' requests alone.
-        GoToRequest
+        GoToRequest,
+        /// Opens the tab switcher: open tabs by visit, then recently closed ones.
+        SwitchTab
     ]
 );
 
@@ -104,6 +108,26 @@ pub struct OpenRequest {
     pub root: PathBuf,
     /// The request's path in its collection.
     pub path: ItemPath,
+}
+
+/// What a tab switcher row stands for.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TabTarget {
+    /// An open tab, activated on confirm.
+    Open(TabId),
+    /// A closed tab of `kind` in the collection at the root, reopened on confirm.
+    Closed(PathBuf, TabKind),
+}
+
+/// A tab switcher row.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TabSwitchEntry {
+    /// The tab's title, as its tab shows it; also what the filter matches.
+    pub label: String,
+    /// The name of the tab's collection, shown muted after the title.
+    pub collection: String,
+    /// The tab the row activates or reopens.
+    pub target: TabTarget,
 }
 
 /// Every request row of every open collection, collections in open order and rows in
@@ -204,16 +228,19 @@ pub enum PaletteGroup {
     View,
     /// Environments of the current collection.
     Environment,
+    /// Changing the focused field's selected text.
+    Edit,
 }
 
 impl PaletteGroup {
     /// Every group, in display order.
-    pub const ALL: [PaletteGroup; 5] = [
+    pub const ALL: [PaletteGroup; 6] = [
         PaletteGroup::Collection,
         PaletteGroup::Request,
         PaletteGroup::Tabs,
         PaletteGroup::View,
         PaletteGroup::Environment,
+        PaletteGroup::Edit,
     ];
 
     /// The group's heading.
@@ -224,6 +251,7 @@ impl PaletteGroup {
             PaletteGroup::Tabs => "Tabs",
             PaletteGroup::View => "View",
             PaletteGroup::Environment => "Environment",
+            PaletteGroup::Edit => "Edit",
         }
     }
 }
@@ -342,6 +370,8 @@ pub struct Availability {
     pub team_sync: bool,
     /// "Last export report": an export in this session left a report.
     pub last_export: bool,
+    /// Percent-encode and Percent-decode: a field that allows them holds focus and a selection.
+    pub selection_codec: bool,
 }
 
 impl Availability {
@@ -392,6 +422,7 @@ impl Availability {
             mock_on: false,
             team_sync: true,
             last_export: true,
+            selection_codec: true,
         }
     }
 }
@@ -447,6 +478,10 @@ pub fn palette_items_for(available: Availability) -> Vec<PaletteEntry> {
         (available.reveal, RevealInSidebar.name()),
         (available.close_others, CloseOtherTabs.name()),
         (available.reopen_closed, ReopenClosedTab.name()),
+        (
+            available.has_tabs || available.reopen_closed,
+            SwitchTab.name(),
+        ),
         (available.go_back, GoBack.name()),
         (available.go_forward, GoForward.name()),
         (available.stop, StopActive.name()),
@@ -499,6 +534,8 @@ pub fn palette_items_for(available: Availability) -> Vec<PaletteEntry> {
         (available.side_by_side, ToggleOrientation.name()),
         (available.team_sync, ShowTeamSync.name()),
         (available.last_export, ShowLastExportReport.name()),
+        (available.selection_codec, PercentEncode.name()),
+        (available.selection_codec, PercentDecode.name()),
     ]
     .into_iter()
     .filter(|(on, _)| !on)
@@ -650,6 +687,8 @@ fn show(
         git_repo: in_repo,
         updates,
         tree_request: (sidebar.as_ref()).and_then(|s| s.read(cx).tree_request_kind(window, cx)),
+        selection_codec: crate::percent_codec::focused_field(window, cx)
+            .is_some_and(|f| crate::percent_codec::offered(f.read(cx))),
     };
     let row_targets: Rc<[RowTarget]> = (sidebar.as_ref())
         .map(|s| row_targets(s.read(cx), opening, window, cx))
@@ -726,12 +765,114 @@ fn show(
     state.read(cx).focus_handle(cx).focus(window, cx);
 }
 
+/// Opens the tab switcher (`#tab-switcher`) over `window`: `open` tabs in a first group and
+/// `closed` ones in a "Recently closed" group after it, empty groups hidden. Confirming an
+/// open row activates its tab; a closed row reopens it and drops it from the closed stack.
+pub fn open_tab_switcher(
+    fallback: FocusHandle,
+    open: Vec<TabSwitchEntry>,
+    closed: Vec<TabSwitchEntry>,
+    workspace: Entity<Workspace>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let target = window.focused(cx).unwrap_or(fallback);
+    // The rows are fixed while the switcher is open; the kit filters them by label and keeps
+    // each row's index in its group, so a confirmed path names the entry directly.
+    let groups: Rc<[Vec<TabSwitchEntry>; 2]> = Rc::new([open, closed]);
+    let state = cx.new(|cx| CommandState::new(window, cx));
+    let dialog_state = state.clone();
+    let rows_key = Rc::new(RowsKey::new());
+    crate::ui::open_dialog(window, cx, move |dialog, window, cx| {
+        let max_h = list_max_height(window);
+        let key = (dialog_state.read(cx).query(cx), max_h);
+        let command = rows_key.render(&dialog_state, key, || {
+            let group = |section: usize, label: &'static str| {
+                let rows = (groups[section].iter().enumerate())
+                    .map(|(r, e)| tab_switch_row(SWITCH_ROW_IDS[section], r, e));
+                CommandGroup::new().label(label).items(rows)
+            };
+            Command::new(&dialog_state)
+                .bordered(false)
+                .max_h(max_h)
+                .placeholder("Type a tab name")
+                .group(group(0, "Open tabs"))
+                .group(group(1, "Recently closed"))
+                .on_confirm({
+                    let (target, groups, workspace) =
+                        (target.clone(), Rc::clone(&groups), workspace.clone());
+                    move |path, window, cx| {
+                        let Some(entry) = groups.get(path.section).and_then(|g| g.get(path.row))
+                        else {
+                            return;
+                        };
+                        let chosen = entry.target.clone();
+                        window.close_dialog(cx);
+                        target.focus(window, cx);
+                        workspace.update(cx, |w, cx| match chosen {
+                            TabTarget::Open(id) => {
+                                w.update_tabs(cx, |t| t.activate(id));
+                            }
+                            TabTarget::Closed(root, kind) => {
+                                w.reopen_closed(&root, kind, cx);
+                            }
+                        });
+                    }
+                })
+        });
+        crate::dialog_frame::place(dialog, window)
+            .w(style::resolve(style::PALETTE_WIDTH, window))
+            .close_button(false)
+            .child(
+                div()
+                    .id("tab-switcher")
+                    .test_support()
+                    .capture_action(escape_closes(&dialog_state))
+                    .child(command),
+            )
+    });
+    // The dialog took focus for itself; the query input takes it over so typing filters.
+    state.read(cx).focus_handle(cx).focus(window, cx);
+}
+
+// The row ids of the switcher's two groups, so tests can tell an open row from a closed one.
+const SWITCH_ROW_IDS: [&str; 2] = ["tab-switch-open", "tab-switch-closed"];
+
+// A switcher row shows the tab's title, with its collection muted on the right.
+fn tab_switch_row(id: &'static str, r: usize, entry: &TabSwitchEntry) -> CommandItem {
+    let (label, collection) = (entry.label.clone(), entry.collection.clone());
+    CommandItem::new().label(label.clone()).child(move |_, cx| {
+        count_row_build();
+        h_flex()
+            .flex_1()
+            .justify_between()
+            .pr(style::SCROLLBAR_GUTTER)
+            .child(
+                div()
+                    .id((id, r))
+                    .test_support()
+                    .aria_label(label.clone())
+                    .min_w_0()
+                    .truncate()
+                    .child(label.clone()),
+            )
+            .child(
+                div()
+                    .flex_none()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(collection.clone())
+                    .test_text(collection.clone()),
+            )
+    })
+}
+
 // What holds for the palette's whole life, read once as it opens.
 #[derive(Clone, Copy)]
 struct Opening {
     git_repo: bool,
     updates: bool,
     tree_request: Option<RequestKind>,
+    selection_codec: bool,
 }
 
 // Which commands have something to do right now; a missing sidebar or workspace means all of theirs.
@@ -747,6 +888,7 @@ fn availability_now(
         git_repo,
         updates,
         tree_request,
+        selection_codec,
     } = opening;
     let tab = workspace.map(|w| crate::tab_area::active_tab_commands(w.read(cx).tabs()));
     let tabs = tab_area.map(|t| t.read(cx).palette_flags(cx));
@@ -812,6 +954,7 @@ fn availability_now(
             (w.current_root()).is_some_and(|r| w.team_status(&r).is_some())
         }),
         last_export: crate::export::has_last_report(cx),
+        selection_codec,
     }
 }
 
