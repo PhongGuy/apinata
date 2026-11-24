@@ -1,13 +1,14 @@
-//! The About dialog: the app's name, running version and licence, with links to the project.
+//! The About dialog: the app's icon, running version and licence, with links to the project,
+//! all centred.
 
 use crate::ui::SolidRing as _;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::v_flex;
 use gpui_kit::prelude::*;
-use gpui_kit::{App, TestSupportExt as _, Window, actions, div};
+use gpui_kit::{App, TestSupportExt as _, Window, actions, div, img};
 
-use crate::style::SPACE_1;
+use crate::style::{APP_ICON_SIZE, SPACE_1};
 use crate::ui::{self, dialog_footer};
 
 actions!(
@@ -45,7 +46,16 @@ pub fn open(window: &mut Window, cx: &mut App) {
                     .id("about-dialog")
                     .test_support()
                     .key_context(ui::DIALOG_FOOTER_CONTEXT)
+                    .w_full()
+                    .items_center()
                     .gap(SPACE_1)
+                    .child(
+                        div()
+                            .id("about-icon")
+                            .test_support()
+                            .size(APP_ICON_SIZE)
+                            .child(img(crate::shell::APP_ICON.clone()).size_full()),
+                    )
                     .child(line("about-version", version))
                     .child(line("about-licence", licence))
                     .child(link("about-repository", "Repository", REPOSITORY_URL, cx))
