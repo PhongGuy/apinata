@@ -97,6 +97,7 @@ pub(crate) struct Listener<A = TcpListener> {
     port: u16,
     path: String,
     redirect_uri: String,
+    state: Option<String>,
 }
 
 impl Listener {
@@ -116,6 +117,7 @@ impl Listener {
             port,
             path: redirect.path().to_owned(),
             redirect_uri: redirect.to_string(),
+            state: None,
         })
     }
 
@@ -134,11 +136,19 @@ impl Listener {
             port: self.port,
             path: self.path,
             redirect_uri: self.redirect_uri,
+            state: self.state,
         }
     }
 }
 
 impl<A: Accept> Listener<A> {
+    /// Only a callback carrying `state` finishes the wait; any other is answered like one
+    /// without a code, so a page that forges a return cannot end the sign-in.
+    pub(crate) fn expect_state(mut self, state: String) -> Listener<A> {
+        self.state = Some(state);
+        self
+    }
+
     /// The bound port.
     pub(crate) fn port(&self) -> u16 {
         self.port
@@ -167,7 +177,8 @@ impl<A: Accept> Listener<A> {
                     accepted = self.listener.accept() => {
                         match accepted {
                             Ok((stream, _)) => {
-                                connections.spawn(serve(stream, self.path.clone(), tx.clone()));
+                                let (path, state) = (self.path.clone(), self.state.clone());
+                                connections.spawn(serve(stream, path, state, tx.clone()));
                             }
                             // A persistent error such as EMFILE would otherwise spin the CPU
                             // until the timeout; pause so finished connections can free slots.
@@ -190,11 +201,16 @@ impl<A: Accept> Listener<A> {
 
 /// Reads one request head, answers it with a fixed page, and passes on a finished callback's
 /// query only after the page is written, so the browser always sees it.
-async fn serve(mut stream: TcpStream, path: String, done: mpsc::Sender<Vec<(String, String)>>) {
+async fn serve(
+    mut stream: TcpStream,
+    path: String,
+    state: Option<String>,
+    done: mpsc::Sender<Vec<(String, String)>>,
+) {
     let Ok(Some(head)) = tokio::time::timeout(READ_TIMEOUT, read_head(&mut stream)).await else {
         return;
     };
-    let (status, page, pairs) = match callback_query(&head, &path) {
+    let (status, page, pairs) = match callback_query(&head, &path, state.as_deref()) {
         Answer::NotFound => ("404 Not Found", MISSING_PAGE, None),
         Answer::Incomplete => ("400 Bad Request", BAD_PAGE, None),
         Answer::Done(pairs) => ("200 OK", DONE_PAGE, Some(pairs)),
@@ -233,8 +249,9 @@ enum Answer {
     Done(Vec<(String, String)>),
 }
 
-/// Classifies `GET <target> HTTP/1.x`: only the callback path with `code` or `error` finishes.
-fn callback_query(head: &str, path: &str) -> Answer {
+/// Classifies `GET <target> HTTP/1.x`: only the callback path with `code` or `error`, and the
+/// expected `state` when there is one, finishes.
+fn callback_query(head: &str, path: &str, state: Option<&str>) -> Answer {
     let line = head.lines().next().unwrap_or_default();
     let mut parts = line.split(' ');
     let (Some("GET"), Some(target), Some(version)) = (parts.next(), parts.next(), parts.next())
@@ -251,7 +268,11 @@ fn callback_query(head: &str, path: &str) -> Answer {
     let pairs: Vec<(String, String)> = url::form_urlencoded::parse(query.as_bytes())
         .into_owned()
         .collect();
-    if pairs.iter().any(|(k, _)| k == "code" || k == "error") {
+    let state_ok = state.is_none_or(|want| {
+        let got = pairs.iter().find(|(k, _)| k == "state").map(|(_, v)| v);
+        got.is_some_and(|got| got == want)
+    });
+    if state_ok && pairs.iter().any(|(k, _)| k == "code" || k == "error") {
         Answer::Done(pairs)
     } else {
         Answer::Incomplete

@@ -3,6 +3,7 @@
 use std::fmt;
 
 use serde::Deserialize;
+use unicode_properties::{GeneralCategory, UnicodeGeneralCategory};
 use url::{Host, Url};
 
 use super::{APINATA_KIND, Identity, Role, TeamError, valid_name};
@@ -225,20 +226,26 @@ pub struct ServerInfo {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct SsoProvider {
-    /// What the sign-in button names, cut to 64 characters with control and bidi characters
-    /// removed.
+    /// What the sign-in button names, cut to 64 characters with control, format and line and
+    /// paragraph separator characters removed.
     pub name: String,
 }
 
 impl SsoProvider {
     /// A provider named by the server's `name`, made safe to show.
     pub fn named(name: &str) -> SsoProvider {
-        // Bidi controls could reorder the button's text, so they go with the other controls.
-        let bidi = |c: char| matches!(c, '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}');
-        let clean: String = name
-            .chars()
-            .filter(|&c| !c.is_control() && !bidi(c))
-            .collect();
+        // Format characters (bidi controls among them) and line breaks could reorder or split
+        // the button's text, so they go with the other controls.
+        let hidden = |c: char| {
+            matches!(
+                c.general_category(),
+                GeneralCategory::Control
+                    | GeneralCategory::Format
+                    | GeneralCategory::LineSeparator
+                    | GeneralCategory::ParagraphSeparator
+            )
+        };
+        let clean: String = name.chars().filter(|&c| !hidden(c)).collect();
         let name: String = clean.trim().chars().take(64).collect();
         let name = name.trim_end();
         SsoProvider {

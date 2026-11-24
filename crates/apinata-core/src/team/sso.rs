@@ -44,6 +44,7 @@ pub async fn begin_sso(api: &dyn TeamApi) -> Result<PendingSso, TeamError> {
     let pkce = Pkce::generate().map_err(no_randomness)?;
     let state = random_b64url().map_err(no_randomness)?;
     let (listener, loopback) = bind().await?;
+    let listener = listener.expect_state(state.clone());
     let mut url = api_url(api.server(), &["oidc", "start"])?;
     url.query_pairs_mut()
         .append_pair("port", &listener.port().to_string())
@@ -118,7 +119,7 @@ impl PendingSso {
                 .find(|(k, _)| k == key)
                 .map(|(_, v)| v.as_str())
         };
-        // A return this app did not start is dropped before its code or error is looked at.
+        // The listener already waits past a return this app did not start; this guards it.
         if value("state") != Some(state.as_str()) {
             return Err(TeamError::SsoStateMismatch);
         }

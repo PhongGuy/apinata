@@ -238,15 +238,71 @@ async fn sso_replaces_a_password_session_and_revokes_the_old_token() {
 }
 
 #[tokio::test]
-async fn a_wrong_state_never_redeems_and_keeps_nothing() {
+async fn a_wrong_state_is_refused_and_the_real_return_still_signs_in() {
     let (s, dir, secrets) = fresh().await;
     answer(&s, "POST", REDEEM, redeemed(9, "2099-01-01T00:00:00Z")).await;
-    for back in ["code=c&state=someone-elses-state-value", "code=c"] {
-        let (got, addr) = sign_in_with(&s, &secrets, &file(&dir), |_| back.to_owned()).await;
-        assert_eq!(got.unwrap_err(), TeamError::SsoStateMismatch, "{back}");
-        assert!(port_closes(addr), "the listener is still open");
+    let api = client(&s);
+    let pending = team::begin_sso(&api).await.unwrap();
+    let start = pending.url().to_owned();
+    let (state, addr) = (param(&start, "state"), callback_addr(&start));
+    let (cancel, team_file) = (CancelHandle::new(), file(&dir));
+    let browser = async {
+        let mut forged = Vec::new();
+        for q in [
+            "state=no-code-at-all",
+            "error=oidc_refused&state=forged-state-value",
+            "code=forged-code&state=forged-state-value",
+            "error=oidc_refused",
+        ] {
+            forged.push(land(addr, q.to_owned()).await);
+        }
+        (forged, land(addr, format!("code=c&state={state}")).await)
+    };
+    let (got, (forged, real)) = tokio::join!(
+        pending.finish(&api, &secrets, &team_file, LONG, &cancel),
+        browser
+    );
+    assert_eq!(got.unwrap().token_id, "9");
+    assert!(real.starts_with("HTTP/1.1 200"), "{real}");
+    // Every forged return gets the very answer a callback without a code gets.
+    let bare = &forged[0];
+    assert!(bare.starts_with("HTTP/1.1 400"), "{bare}");
+    assert!(bare.contains("Cache-Control: no-store"), "{bare}");
+    for page in &forged {
+        assert_eq!(page, bare);
+        assert!(
+            !page.contains("forged") && !page.contains("oidc_refused"),
+            "{page}"
+        );
     }
-    assert_eq!(hits(&s, "POST", REDEEM).await, 0);
+    assert_eq!(hits(&s, "POST", REDEEM).await, 1);
+    assert_eq!(redeem_bodies(&s).await[0]["code"], "c");
+}
+
+#[tokio::test]
+async fn a_cancel_during_the_redeem_revokes_the_new_token_and_keeps_nothing() {
+    let (s, dir, secrets) = fresh().await;
+    let slow = redeemed(9, "2099-01-01T00:00:00Z").set_delay(Duration::from_millis(600));
+    answer(&s, "POST", REDEEM, slow).await;
+    answer(&s, "DELETE", "/api/v1/tokens/9", ResponseTemplate::new(204)).await;
+    let api = client(&s);
+    let pending = team::begin_sso(&api).await.unwrap();
+    let start = pending.url().to_owned();
+    let (state, addr) = (param(&start, "state"), callback_addr(&start));
+    let (cancel, team_file) = (CancelHandle::new(), file(&dir));
+    let stop = cancel.clone();
+    let browser = async {
+        land(addr, format!("code=c&state={state}")).await;
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        stop.cancel();
+    };
+    let (got, _) = tokio::join!(
+        pending.finish(&api, &secrets, &team_file, LONG, &cancel),
+        browser
+    );
+    assert_eq!(got.unwrap_err(), TeamError::SsoTimeout);
+    assert_eq!(hits(&s, "POST", REDEEM).await, 1);
+    assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/9").await, 1);
     nothing_kept(&s, &secrets, &file(&dir));
 }
 
@@ -347,22 +403,52 @@ async fn a_cancel_ends_the_wait_as_a_timeout_and_closes_the_port() {
 }
 
 #[tokio::test]
-async fn debug_output_never_shows_the_state_challenge_or_token() {
+async fn debug_output_never_shows_the_state_verifier_or_token() {
     let (s, dir, secrets) = fresh().await;
     answer(&s, "POST", REDEEM, redeemed(9, "2099-01-01T00:00:00Z")).await;
     let api = client(&s);
     let pending = team::begin_sso(&api).await.unwrap();
     let start = pending.url().to_owned();
-    let shown = format!("{pending:?}");
-    for secret in [param(&start, "state"), param(&start, "challenge")] {
-        assert!(!shown.contains(&secret), "{shown}");
+    let shown_pending = format!("{pending:?}");
+    let (state, addr) = (param(&start, "state"), callback_addr(&start));
+    let (cancel, team_file) = (CancelHandle::new(), file(&dir));
+    let (got, _) = tokio::join!(
+        pending.finish(&api, &secrets, &team_file, LONG, &cancel),
+        land(addr, format!("code=c&state={state}"))
+    );
+    got.unwrap();
+    let verifier = redeem_bodies(&s).await[0]["verifier"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    for secret in [&state, &param(&start, "challenge"), &verifier] {
+        assert!(!shown_pending.contains(secret.as_str()), "{shown_pending}");
     }
-    let (got, _) = sign_in_with(&s, &secrets, &file(&dir), |state| {
-        format!("code=c&state={state}")
-    })
-    .await;
-    let shown = format!("{:?}", got.unwrap());
-    assert!(!shown.contains(&tok()), "{shown}");
+    let signed = api.redeem_sso("c", &verifier).await.unwrap();
+    let shown = format!("{signed:?}");
+    assert!(
+        !shown.contains(&tok()) && !shown.contains(&verifier),
+        "{shown}"
+    );
+
+    // Errors from the redeem, including one whose server message carries the token.
+    for (status, code) in [(400, "oidc_code_invalid"), (500, "boom")] {
+        let bad = MockServer::start().await;
+        let body = error(code, &format!("refused {}", tok()), None);
+        answer(
+            &bad,
+            "POST",
+            REDEEM,
+            ResponseTemplate::new(status).set_body_json(body),
+        )
+        .await;
+        let e = client(&bad).redeem_sso("c", &verifier).await.unwrap_err();
+        let shown = format!("{e:?} {e}");
+        assert!(
+            !shown.contains(&tok()) && !shown.contains(&verifier),
+            "{shown}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -376,6 +462,27 @@ async fn the_server_info_names_the_sso_provider_only_when_it_is_set() {
             Some("Acme ID".to_owned()),
         ),
         (json!({"name": "x".repeat(100)}), Some("x".repeat(64))),
+        // Format characters and line and paragraph separators (Cf, Zl, Zp) go too.
+        (
+            json!({"name": "Ac\u{2028}me ID"}),
+            Some("Acme ID".to_owned()),
+        ),
+        (
+            json!({"name": "Ac\u{2029}me ID"}),
+            Some("Acme ID".to_owned()),
+        ),
+        (
+            json!({"name": "Ac\u{200b}me ID"}),
+            Some("Acme ID".to_owned()),
+        ),
+        (
+            json!({"name": "\u{feff}Acme ID"}),
+            Some("Acme ID".to_owned()),
+        ),
+        (
+            json!({"name": "Ac\u{00ad}me ID"}),
+            Some("Acme ID".to_owned()),
+        ),
     ] {
         let s = MockServer::start().await;
         let body = json!({"version": "0.2.0", "api": 1,
@@ -500,4 +607,55 @@ async fn the_default_redeem_is_sso_off() {
         api.redeem_sso("c", "v").await.unwrap_err(),
         TeamError::SsoOff
     );
+}
+
+#[test]
+fn a_malformed_expiry_counts_as_not_expired() {
+    let server = ServerUrl::parse("http://127.0.0.1:9").unwrap();
+    for at in ["", "soon", "2099-13-45T99:00:00Z", "1700000000", "\u{0}"] {
+        let mut account = Account::new(&server, "ada", "Ada Lovelace", "9", false);
+        account.expires_at = Some(at.to_owned());
+        assert!(!account.expired(), "{at:?}");
+    }
+}
+
+#[tokio::test]
+async fn an_expired_password_session_resumes_signed_out_without_asking_the_server() {
+    let (s, dir, secrets) = fresh().await;
+    answer(&s, "GET", "/api/v1/server", info(true)).await;
+    let mut meta = token_meta(7);
+    meta["expires_at"] = json!("2020-01-01T00:00:00Z");
+    let past = ResponseTemplate::new(201)
+        .set_body_json(json!({"token": tok(), "token_meta": meta, "user": user("ada", false)}));
+    answer(&s, "POST", "/api/v1/session", past).await;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/api/v1/me"))
+        .respond_with(me(false, vec![]))
+        .expect(0)
+        .mount(&s)
+        .await;
+    let account = team::sign_in(
+        &client(&s),
+        &secrets,
+        &file(&dir),
+        "ada",
+        "hunter2",
+        &apinata_core::CancelFlag::new(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(account.expires_at.as_deref(), Some("2020-01-01T00:00:00Z"));
+    let b = Binding::new(
+        PathBuf::from("/work/api"),
+        &account,
+        "core",
+        "api",
+        Role::Write,
+    );
+    TeamStore::update(&file(&dir), |t| t.put_binding(b.clone())).unwrap();
+    let r = team::resume(&client(&s), &secrets, &file(&dir), &b)
+        .await
+        .unwrap();
+    assert_eq!(r.standing, Standing::SignedOut);
+    s.verify().await;
 }
