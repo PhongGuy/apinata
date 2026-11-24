@@ -233,8 +233,8 @@ pub const ENV_CONTROL_MIN: Rems = ui(96.);
 pub const ENV_CONTROL_SHOWN_FROM: Rems = ui(40.);
 /// Below this window width the title bar's environment selects shrink past their minimum.
 pub const TITLE_BAR_CRAMPED_BELOW: Rems = ui(320.);
-/// Below this window width the global select has no usable room left, so the title bar shows
-/// a button to its dialog in its place.
+/// Below this window width the environment picker has little usable room left, so the title
+/// bar also shows a button to the global environments dialog.
 pub const TITLE_GLOBAL_BUTTON_BELOW: Rems = ui(240.);
 /// Below this window width the title bar drops its variables button; the palette still lists it.
 pub const VARIABLES_BUTTON_FROM: Rems = ui(480.);

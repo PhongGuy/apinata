@@ -2,7 +2,7 @@
 
 use crate::support;
 
-use apinata_app::env_selector::IMPORT_ENVIRONMENT;
+use apinata_app::env_picker::IMPORT_ENVIRONMENT;
 use apinata_app::session::Session;
 use apinata_app::shell::Shell;
 use gpui_kit::component::WindowExt as _;
@@ -133,7 +133,7 @@ fn an_environment_file_with_several_environments_imports_each(cx: &mut TestAppCo
     let (files, win, view) = shell(cx, Some(&col));
     let bulk = files.path().join("bulk.json");
     fs::write(&bulk, ENVS).unwrap();
-    let sel = view.read_with(cx, |v, _| v.env_selector().clone());
+    let sel = view.read_with(cx, |v, _| v.env_picker().clone());
     cx.update_window(win, |_, w, cx| {
         sel.update(cx, |s, cx| s.choose(IMPORT_ENVIRONMENT, w, cx))
     })

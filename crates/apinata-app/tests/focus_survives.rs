@@ -662,7 +662,7 @@ fn the_palette_from_the_menu_closed_by_escape_returns_to_the_url(cx: &mut TestAp
     assert_url_takes_keys(cx, &s);
 }
 
-// The global environment picker's popup closes as its row opens the editor, but the picker
+// The environment picker's menu closes as its global row opens the editor, but the picker
 // itself stays drawn and is the opener the editor hands focus back to.
 #[gpui_kit::test]
 fn global_environments_from_the_picker_closed_by_its_x_return_to_the_picker(
@@ -670,10 +670,10 @@ fn global_environments_from_the_picker_closed_by_its_x_return_to_the_picker(
 ) {
     let (_col, s) = three_requests_started(cx);
     pointer_in_tab(cx, &s, "a.yml");
-    platform_click(cx, s.win, "global-env-selector");
+    platform_click(cx, s.win, "env-select");
     next_frame(cx, s.win);
     next_frame(cx, s.win);
-    click_within(cx, s.win, "global-env-selector", "global-env-manage");
+    click_within(cx, s.win, "popup-menu", "global-env-manage");
     assert!(
         present(cx, s.win, "global-env-editor"),
         "the manage row opens the editor"
@@ -682,10 +682,7 @@ fn global_environments_from_the_picker_closed_by_its_x_return_to_the_picker(
     after_close(cx, s.win);
     assert!(!dialog_open(cx, s.win), "the x closes it");
     assert!(!keyboard(cx), "pointer mode stays, so no ring");
-    assert!(
-        ring_on(cx, s.win, "global-env-select"),
-        "the picker holds focus"
-    );
+    assert!(ring_on(cx, s.win, "env-select"), "the picker holds focus");
 }
 
 // The arrow steps from the menu button to the row of `action`: arrows skip greyed rows, and

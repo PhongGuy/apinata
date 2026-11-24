@@ -53,11 +53,10 @@ use crate::draft_file::MAX_DRAFTS;
 use crate::draft_store::{
     DraftStoreEvent, Drafts, NotKeptReason, reopened_blanked_message, reopened_message,
 };
-use crate::env_selector::EnvSelector;
+use crate::env_picker::EnvPicker;
 use crate::export::ExportFormat;
 use crate::git_status::{GitChanges, branch_text};
 use crate::global_env_editor::open_global_env_editor;
-use crate::global_env_selector::GlobalEnvSelector;
 use crate::history_palette::{OpenHistory, OpenHistoryEntry, OpenHistoryFailure};
 use crate::keymap::{
     NewRequest, OpenCollectionSettings, OpenEnvironmentSelector, OpenEnvironments, ResetZoom,
@@ -184,8 +183,7 @@ pub struct Shell {
     sidebar: Entity<Sidebar>,
     tab_area: Entity<TabArea>,
     autosave: Entity<Autosave>,
-    env_selector: Entity<EnvSelector>,
-    global_env_selector: Entity<GlobalEnvSelector>,
+    env_picker: Entity<EnvPicker>,
     sidebar_visible: bool,
     dock: Entity<ConsoleDock>,
     // Cleared on every toggle and collapse, so the dock always opens at its initial height.
@@ -249,9 +247,7 @@ impl Shell {
         let tab_area = cx.new(|cx| TabArea::new(workspace.clone(), window, cx));
         let tree = sidebar.read(cx).tree().clone();
         tab_area.update(cx, |a, _| a.set_empty_focus(tree));
-        let env_selector = cx.new(|cx| EnvSelector::new(workspace.clone(), window, cx));
-        let global_env_selector =
-            cx.new(|cx| GlobalEnvSelector::new(workspace.clone(), window, cx));
+        let env_picker = cx.new(|cx| EnvPicker::new(workspace.clone(), window, cx));
         let autosave = cx.new(|cx| Autosave::new(workspace.clone(), Some(tab_area.clone()), cx));
         let log = crate::log_feed::ensure(cx);
         let dock = cx.new(|cx| ConsoleDock::new(log, window, cx));
@@ -363,10 +359,9 @@ impl Shell {
                 this.cache_missing_recent_names(cx);
                 cx.notify();
             }),
-            // A squeezed environment select leaves the Tab order and takes its focus with it,
-            // as the global select does when its button replaces it.
-            cx.observe_in(&env_selector, window, |this, selector, window, cx| {
-                let squeezed = selector.read(cx).squeezed();
+            // A squeezed environment picker leaves the Tab order and takes its focus with it.
+            cx.observe_in(&env_picker, window, |this, picker, window, cx| {
+                let squeezed = picker.read(cx).squeezed();
                 if squeezed != this.env_squeezed {
                     this.env_squeezed = squeezed;
                     cx.defer_in(window, Self::take_stranded_focus);
@@ -569,8 +564,7 @@ impl Shell {
             sidebar,
             tab_area,
             autosave,
-            env_selector,
-            global_env_selector,
+            env_picker,
             sidebar_visible: true,
             dock,
             dock_split,
@@ -676,9 +670,9 @@ impl Shell {
         self.dock_open
     }
 
-    /// The title bar's environment selector.
-    pub fn env_selector(&self) -> &Entity<EnvSelector> {
-        &self.env_selector
+    /// The title bar's environment picker.
+    pub fn env_picker(&self) -> &Entity<EnvPicker> {
+        &self.env_picker
     }
 
     /// The colour of the stripe drawn along the window's top edge, if any.
@@ -687,11 +681,6 @@ impl Shell {
         let root = workspace.current_root()?;
         let name = workspace.selected_environment(&root, cx)?;
         crate::env_color::env_fill(workspace.environment_color(&root, &name, cx).as_deref())
-    }
-
-    /// The title bar's global environment picker.
-    pub fn global_env_selector(&self) -> &Entity<GlobalEnvSelector> {
-        &self.global_env_selector
     }
 
     /// Whether the sidebar panel is shown; hiding it is not saved in the session.
@@ -2202,10 +2191,9 @@ impl Shell {
             .child(view)
     }
 
-    // Narrowing order: branch label, collection name to its floor, global select (then its
-    // button), project select.
-    // The left group outweighs the selects' group, so they yield only once it is at its floor.
-    const GLOBAL_ENV_SHRINK: f32 = 1000.;
+    // Narrowing order: branch label, collection name to its floor, then the environment
+    // picker. The left group outweighs the picker's group, so it yields only once the left
+    // group is at its floor.
     const PROJECT_ENV_SHRINK: f32 = 1.;
     const LEFT_GROUP_SHRINK: f32 = 1000.;
 
@@ -2987,28 +2975,20 @@ impl Shell {
                             .pr(style::SPACE_1)
                             .gap(style::SPACE_1)
                             .child(Self::env_slot(
-                                self.env_selector.clone(),
+                                self.env_picker.clone(),
                                 cramped,
                                 Self::PROJECT_ENV_SHRINK,
                             ))
-                            // Too little room for a select to read, but the global dialog keeps
-                            // a way in from the bar, as an icon that never shrinks.
-                            .map(|row| {
-                                if global_button {
-                                    row.child(no_window_move(div().flex_none().child(icon_button(
-                                        "global-environments",
-                                        GLOBAL_ENV_ICON,
-                                        commands::label("environment.manage_globals"),
-                                        Some(&OpenGlobalEnvironments),
-                                        cx,
-                                    ))))
-                                } else {
-                                    row.child(Self::env_slot(
-                                        self.global_env_selector.clone(),
-                                        cramped,
-                                        Self::GLOBAL_ENV_SHRINK,
-                                    ))
-                                }
+                            // Too little room for the picker to read, but the global dialog
+                            // keeps a way in from the bar, as an icon that never shrinks.
+                            .when(global_button, |row| {
+                                row.child(no_window_move(div().flex_none().child(icon_button(
+                                    "global-environments",
+                                    GLOBAL_ENV_ICON,
+                                    commands::label("environment.manage_globals"),
+                                    Some(&OpenGlobalEnvironments),
+                                    cx,
+                                ))))
                             })
                             // A narrow bar has no room for it; the palette still lists the command.
                             .children((!narrow).then(|| {
@@ -3294,7 +3274,7 @@ impl Render for Shell {
                 }
             }))
             .on_action(cx.listener(|this, _: &ImportEnvironment, window, cx| {
-                this.env_selector.update(cx, |s, cx| s.import(window, cx))
+                this.env_picker.update(cx, |s, cx| s.import(window, cx))
             }))
             .on_action(cx.listener(|this, _: &ExportEnvironment, window, cx| {
                 this.export_environment(window, cx)
@@ -3511,14 +3491,13 @@ impl Render for Shell {
             .on_action(cx.listener(to_tabs(TabArea::previous_section)))
             .on_action(cx.listener(to_tabs(TabArea::focus_response)))
             .on_action(
-                // A squeezed select is hidden and takes no focus, so the command opens the
+                // A squeezed picker is hidden and takes no focus, so the command opens the
                 // environments tab, as the bar's environments button beside it does.
                 cx.listener(|this, _: &OpenEnvironmentSelector, window, cx| {
-                    if this.env_selector.read(cx).squeezed() {
+                    if this.env_picker.read(cx).squeezed() {
                         return this.open_environments(window, cx);
                     }
-                    this.env_selector
-                        .update(cx, |s, cx| s.open_menu(window, cx))
+                    this.env_picker.update(cx, |s, cx| s.open_menu(window, cx))
                 }),
             )
             // Files from the desktop: the overlay shows while they hover. A drag of the

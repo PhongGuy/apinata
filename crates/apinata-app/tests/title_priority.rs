@@ -1,7 +1,7 @@
 //! The title bar's controls give way in a fixed order as the window narrows, and never
 //! overlap or leave the window: branch label, then the collection name down to its floor, then
-//! (below the cramped width) the global environment select, then the project one. The app menu
-//! and the manage-environments button never give way.
+//! (below the cramped width) the environment picker. The app menu and the manage-environments
+//! button never give way.
 
 use crate::git_support;
 use crate::support;
@@ -14,11 +14,10 @@ use gpui_kit::{AppContext as _, TestAppContext, VisualTestContext, px, size};
 use support::*;
 
 const NAME: &str = "A collection with a rather long descriptive name";
-const ORDER: [&str; 6] = [
+const ORDER: [&str; 5] = [
     "collection-switcher",
     "git-label",
     "env-control",
-    "global-env-selector",
     "environments",
     "app-menu",
 ];
@@ -68,8 +67,8 @@ fn long_named_changed(cx: &mut TestAppContext, sb: &Sandbox) -> (tempfile::TempD
 }
 
 // Sweeps the window width from 1500 px down to `lowest` at `zoom`, checking every stage.
-// `reached` says which stages the sweep must hit: the selects give way only in a narrow bar.
-fn sweep(cx: &mut TestAppContext, zoom: f32, lowest: u32, reached: [bool; 3]) {
+// `reached` says which stages the sweep must hit: the picker gives way only in a narrow bar.
+fn sweep(cx: &mut TestAppContext, zoom: f32, lowest: u32, reached: [bool; 2]) {
     let sb = Sandbox::new();
     let (_col, s) = long_named_changed(cx, &sb);
     let wide = edges(cx, &s, 1600., zoom);
@@ -78,12 +77,12 @@ fn sweep(cx: &mut TestAppContext, zoom: f32, lowest: u32, reached: [bool; 3]) {
     let min = at_zoom(ENV_CONTROL_MIN, zoom).as_f32();
     let floor = at_zoom(TITLE_NAME_FLOOR, zoom).as_f32() + 2. * at_zoom(SPACE_1, zoom).as_f32();
     let sliver = 6.;
-    let mut seen = [false; 3];
+    let mut seen = [false; 2];
     for w in (lowest..=1500).rev().step_by(20) {
         let w = w as f32;
         let e = edges(cx, &s, w, zoom);
         let at = |ix: usize| width(&e, ix);
-        let (name, branch, env, global) = (at(0), at(1), at(2), at(3));
+        let (name, branch, env) = (at(0), at(1), at(2));
         // Nothing leaves the window, and the menu keeps room for its ring.
         for (id, (l, r)) in ORDER.iter().zip(&e) {
             assert!(
@@ -92,7 +91,7 @@ fn sweep(cx: &mut TestAppContext, zoom: f32, lowest: u32, reached: [bool; 3]) {
             );
         }
         assert!(
-            e[5].1 <= w - at_zoom(SPACE_1, zoom).as_f32(),
+            e[4].1 <= w - at_zoom(SPACE_1, zoom).as_f32(),
             "{w}: no ring room at the menu"
         );
         // Nothing overlaps its neighbour (a collapsed control takes no room to overlap).
@@ -104,32 +103,28 @@ fn sweep(cx: &mut TestAppContext, zoom: f32, lowest: u32, reached: [bool; 3]) {
             );
         }
         // The two buttons never give way.
-        assert_eq!(at(4), width(&wide, 4), "{w}: manage-environments shrank");
-        assert_eq!(at(5), width(&wide, 5), "{w}: the app menu shrank");
-        // The order: branch, name to its floor, global select, project select.
+        assert_eq!(at(3), width(&wide, 3), "{w}: manage-environments shrank");
+        assert_eq!(at(4), width(&wide, 4), "{w}: the app menu shrank");
+        // The order: branch, name to its floor, then the picker.
         if branch > sliver {
             assert!(
                 name >= natural_name - 1.,
                 "{w}: name cut before the branch: {e:?}"
             );
         }
-        if global < min - 1. {
+        if env < min - 1. {
             assert!(
                 branch <= sliver,
-                "{w}: selects shrank before the branch: {e:?}"
+                "{w}: the picker shrank before the branch: {e:?}"
             );
             assert!(
                 name <= floor + 1.,
-                "{w}: selects shrank before the name: {e:?}"
+                "{w}: the picker shrank before the name: {e:?}"
             );
             seen[0] = true;
         }
         if branch > sliver {
             seen[1] = true;
-        }
-        if env < min - 1. {
-            assert!(global <= sliver, "{w}: project select before global: {e:?}");
-            seen[2] = true;
         }
     }
     assert_eq!(seen, reached, "the sweep reached the wrong stages");
@@ -137,12 +132,12 @@ fn sweep(cx: &mut TestAppContext, zoom: f32, lowest: u32, reached: [bool; 3]) {
 
 #[gpui_kit::test]
 fn the_title_bar_gives_way_in_order_without_overlap_at_200_percent(cx: &mut TestAppContext) {
-    sweep(cx, 2.0, 240, [true; 3]);
+    sweep(cx, 2.0, 240, [true; 2]);
 }
 
 #[gpui_kit::test]
 fn the_title_bar_gives_way_in_order_without_overlap_at_100_percent(cx: &mut TestAppContext) {
-    sweep(cx, 1.0, 320, [false, true, false]);
+    sweep(cx, 1.0, 320, [false, true]);
 }
 
 fn unchanged_long_named(cx: &mut TestAppContext, sb: &Sandbox) -> (tempfile::TempDir, Started) {

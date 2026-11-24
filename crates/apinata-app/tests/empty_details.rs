@@ -209,14 +209,14 @@ fn a_request_dragged_onto_the_empty_row_moves_into_the_folder(cx: &mut TestAppCo
     assert!(!h.root.join("health.yml").exists());
 }
 
-// With nothing open the collection's environment select and Manage environments are locked,
-// and each tip says why.
+// With nothing open Manage environments is locked and the picker's tip says why its collection
+// section is missing; the picker itself stays usable for the global environments.
 #[gpui_kit::test]
 fn with_nothing_open_the_environment_controls_are_locked(cx: &mut TestAppContext) {
     use apinata_app::shell::NO_COLLECTION_ENV_TIP;
     let s = started_blank(cx, blank_data_dir());
     cx.update_window(s.win, |_, w, _| {
-        assert_eq!(w.find("env-select").disabled(), Some(true), "select");
+        assert_ne!(w.find("env-select").disabled(), Some(true), "picker");
         let manage = w.find("environments");
         assert_eq!(manage.disabled(), Some(true), "Manage environments");
         assert_eq!(manage.description(), Some(NO_COLLECTION_ENV_TIP));
@@ -270,27 +270,14 @@ fn the_empty_row_sits_at_the_indent_of_the_folders_children(cx: &mut TestAppCont
     .unwrap();
 }
 
-// The locked environment select dims as Manage environments beside it does; a high-contrast
-// theme keeps full strength, where the muted text alone says it is locked.
+// With nothing open the picker lists only the global environments and the global action.
 #[gpui_kit::test]
-fn with_nothing_open_the_environment_select_looks_locked(cx: &mut TestAppContext) {
-    use apinata_app::style::DISABLED_OPACITY;
-    use apinata_app::theme::{DARK, HC_DARK, LIGHT};
+fn with_nothing_open_the_picker_offers_only_the_globals(cx: &mut TestAppContext) {
+    use apinata_app::env_picker::{ACTIONS_GROUP, GLOBAL_GROUP, manage_global_environments};
     let s = started_blank(cx, blank_data_dir());
-    let select = s.shell.read_with(cx, |sh, _| sh.env_selector().clone());
-    for (name, want) in [
-        (LIGHT, DISABLED_OPACITY),
-        (DARK, DISABLED_OPACITY),
-        (HC_DARK, 1.),
-    ] {
-        use_theme(cx, name);
-        frame(cx, s.win);
-        let shown = select.read_with(cx, |e, cx| e.select_opacity(cx));
-        assert_eq!(shown, want, "{name}");
-    }
-    let col = collection();
-    let open = started(cx, &col);
-    let select = open.shell.read_with(cx, |sh, _| sh.env_selector().clone());
-    use_theme(cx, LIGHT);
-    assert_eq!(select.read_with(cx, |e, cx| e.select_opacity(cx)), 1.);
+    let picker = s.shell.read_with(cx, |sh, _| sh.env_picker().clone());
+    let sections = picker.read_with(cx, |p, cx| p.sections(cx));
+    let titles: Vec<&str> = sections.iter().map(|(t, _)| t.as_ref()).collect();
+    assert_eq!(titles, [GLOBAL_GROUP, ACTIONS_GROUP]);
+    assert_eq!(sections[1].1, [manage_global_environments()]);
 }

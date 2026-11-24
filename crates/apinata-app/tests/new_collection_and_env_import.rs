@@ -2,9 +2,7 @@
 
 use crate::support;
 
-use apinata_app::env_selector::{
-    IMPORT_ENVIRONMENT, MANAGE_ENVIRONMENTS, NO_ENVIRONMENT, option_id,
-};
+use apinata_app::env_picker::{IMPORT_ENVIRONMENT, MANAGE_ENVIRONMENTS, NO_ENVIRONMENT, option_id};
 use apinata_app::session::Session;
 use apinata_app::shell::Shell;
 use gpui_kit::component::WindowExt as _;
@@ -61,7 +59,7 @@ fn dialog(cx: &mut TestAppContext, win: AnyWindowHandle) -> bool {
 
 /// Chooses the environment dropdown's import entry, as a click on it does.
 fn import_env(cx: &mut TestAppContext, win: AnyWindowHandle, view: &Entity<Shell>) {
-    let sel = view.read_with(cx, |v, _| v.env_selector().clone());
+    let sel = view.read_with(cx, |v, _| v.env_picker().clone());
     cx.update_window(win, |_, w, cx| {
         sel.update(cx, |s, cx| s.choose(IMPORT_ENVIRONMENT, w, cx))
     })
@@ -152,12 +150,12 @@ fn chosen_environment_files_are_imported(cx: &mut TestAppContext) {
             "{name}"
         );
     }
-    let sel = view.read_with(cx, |v, _| v.env_selector().clone());
+    let sel = view.read_with(cx, |v, _| v.env_picker().clone());
     let report = sel
         .read_with(cx, |s, _| s.last_import().cloned())
         .expect("imported");
     assert_eq!(report.environments, ["dev", "stage"]);
-    assert_eq!(sel.read_with(cx, |s, cx| s.items(cx)).len(), 3);
+    assert_eq!(sel.read_with(cx, |s, cx| s.collection_items(cx)).len(), 3);
     assert!(!dialog(cx, win), "no notes, no report");
 }
 
@@ -209,7 +207,7 @@ fn open_in_the_import_toast_opens_the_environment_editor(cx: &mut TestAppContext
 
 #[test]
 fn the_import_toast_counts_variables_and_secrets() {
-    use apinata_app::env_selector::imported_text;
+    use apinata_app::env_picker::imported_text;
     let one = vec!["PM Env".to_owned()];
     assert_eq!(
         imported_text(&one, 2, 1),
@@ -243,7 +241,7 @@ fn a_file_that_is_not_an_environment_imports_nothing(cx: &mut TestAppContext) {
     choose_files(cx, vec![bad, stage]);
     assert!(dialog(cx, win));
     assert!(!col.path().join("environments/stage.yml").exists());
-    let sel = view.read_with(cx, |v, _| v.env_selector().clone());
+    let sel = view.read_with(cx, |v, _| v.env_picker().clone());
     assert!(sel.read_with(cx, |s, _| s.last_import().is_none()));
 }
 
@@ -260,7 +258,7 @@ fn a_write_failing_after_another_keeps_what_was_written(cx: &mut TestAppContext)
     choose_files(cx, vec![stage, dots]);
     assert!(col.path().join("environments/stage.yml").is_file());
     assert!(dialog(cx, win));
-    let sel = view.read_with(cx, |v, _| v.env_selector().clone());
+    let sel = view.read_with(cx, |v, _| v.env_picker().clone());
     let report = sel
         .read_with(cx, |s, _| s.last_import().cloned())
         .expect("stage was written");
@@ -305,20 +303,24 @@ fn import_environment_without_a_collection_does_nothing(cx: &mut TestAppContext)
 fn the_environment_dropdown_ends_with_import(cx: &mut TestAppContext) {
     let col = collection();
     let (_files, _win, view) = shell(cx, Some(&col));
-    let sel = view.read_with(cx, |v, _| v.env_selector().clone());
-    let listed = sel.read_with(cx, |s, _| s.listed().to_vec());
-    let items = sel.read_with(cx, |s, cx| s.items(cx));
-    assert_eq!(listed.last().map(|s| s.as_ref()), Some(IMPORT_ENVIRONMENT));
-    assert_eq!(listed[listed.len() - 2].as_ref(), MANAGE_ENVIRONMENTS);
-    assert_eq!(&listed[..listed.len() - 2], &items[..]);
+    let sel = view.read_with(cx, |v, _| v.env_picker().clone());
+    let listed = listed(cx, &sel);
+    let at = |item: &str| listed.iter().position(|i| i.as_ref() == item);
+    let (manage, import) = (
+        at(MANAGE_ENVIRONMENTS).unwrap(),
+        at(IMPORT_ENVIRONMENT).unwrap(),
+    );
+    assert_eq!(import, manage + 1, "{listed:?}");
+    let envs = sel.read_with(cx, |s, cx| s.collection_items(cx));
+    assert_eq!(&listed[..envs.len()], &envs[..]);
     assert!(!IMPORT_ENVIRONMENT.to_lowercase().contains("bruno"));
 }
 
 #[gpui_kit::test]
 fn without_a_collection_the_dropdown_offers_no_import(cx: &mut TestAppContext) {
     let (_files, _win, view) = shell(cx, None);
-    let sel = view.read_with(cx, |v, _| v.env_selector().clone());
-    let listed = sel.read_with(cx, |s, _| s.listed().to_vec());
+    let sel = view.read_with(cx, |v, _| v.env_picker().clone());
+    let listed = listed(cx, &sel);
     assert!(
         listed.iter().all(|i| i.as_ref() != IMPORT_ENVIRONMENT),
         "{listed:?}"
@@ -339,10 +341,10 @@ fn choosing_import_keeps_the_selected_environment(cx: &mut TestAppContext) {
     import_env(cx, win, &view);
     choose_files(cx, vec![stage]);
     assert!(col.path().join("environments/stage.yml").is_file());
-    let sel = view.read_with(cx, |v, _| v.env_selector().clone());
+    let sel = view.read_with(cx, |v, _| v.env_picker().clone());
     assert_eq!(
-        sel.read_with(cx, |s, _| s.shown()),
-        Some(gpui_kit::SharedString::from(NO_ENVIRONMENT)),
+        sel.read_with(cx, |s, cx| s.label(cx)),
+        NO_ENVIRONMENT,
         "the import entry is never shown as selected"
     );
     let selected = view.read_with(cx, |v, cx| {
@@ -367,43 +369,34 @@ fn picking_import_in_the_select_keeps_the_previous_environment(cx: &mut TestAppC
         w.select_environment(col.path(), Some("dev".into()), cx)
     });
     frame(cx, win);
-    let sel = view.read_with(cx, |v, _| v.env_selector().clone());
-    assert_eq!(sel.read_with(cx, |s, _| s.shown()).as_deref(), Some("dev"));
-    let select = sel.read_with(cx, |s, _| s.select().clone());
-    // What a click on the entry does: the kit moves its cursor there, then confirms it.
-    cx.update_window(win, |_, w, cx| {
-        select.update(cx, |s, cx| {
-            s.set_selected_value(&gpui_kit::SharedString::from(IMPORT_ENVIRONMENT), w, cx)
-        })
-    })
-    .unwrap();
+    let sel = view.read_with(cx, |v, _| v.env_picker().clone());
+    assert_eq!(sel.read_with(cx, |s, cx| s.label(cx)), "dev");
     cx.update_window(win, |_, w, cx| w.click("env-select", cx))
         .unwrap();
     frame(cx, win);
-    cx.simulate_keystrokes(win, "enter");
+    cx.update_window(win, |_, w, cx| {
+        w.within("popup-menu")
+            .click(option_id(IMPORT_ENVIRONMENT), cx)
+    })
+    .unwrap();
     cx.run_until_parked();
     assert!(cx.did_prompt_for_paths(), "the import prompt opened");
     cx.simulate_path_prompt_response(|_| None);
     cx.run_until_parked();
     frame(cx, win);
-    let listed = sel.read_with(cx, |s, _| s.listed().to_vec());
-    let dev = listed.iter().position(|i| i.as_ref() == "dev").unwrap();
-    let (value, index) = select.read_with(cx, |s, cx| {
-        (s.selected_value().cloned(), s.selected_index(cx))
-    });
-    assert_eq!(
-        value.as_deref(),
-        Some("dev"),
-        "the select's value is dev again"
-    );
-    assert_eq!(
-        index.map(|ix| ix.row),
-        Some(dev),
-        "and so is the row it shows"
-    );
-    assert_eq!(sel.read_with(cx, |s, _| s.shown()).as_deref(), Some("dev"));
+    assert_eq!(sel.read_with(cx, |s, cx| s.label(cx)), "dev");
+    assert_eq!(sel.read_with(cx, |s, cx| s.checked(cx).0), "dev");
     let chosen = ws.read_with(cx, |w, cx| w.selected_environment(col.path(), cx));
     assert_eq!(chosen.as_deref(), Some("dev"));
+}
+
+// Every row of the picker's menu, sections in order.
+fn listed(
+    cx: &mut TestAppContext,
+    sel: &gpui_kit::Entity<apinata_app::env_picker::EnvPicker>,
+) -> Vec<gpui_kit::SharedString> {
+    let sections = sel.read_with(cx, |s, cx| s.sections(cx));
+    sections.into_iter().flat_map(|(_, rows)| rows).collect()
 }
 
 #[test]
@@ -441,8 +434,8 @@ fn dropdown_rows_are_observed_and_a_click_chooses_one(cx: &mut TestAppContext) {
     cx.update_window(win, |_, w, cx| w.click("env-option-prod", cx))
         .unwrap();
     frame(cx, win);
-    let sel = view.read_with(cx, |v, _| v.env_selector().clone());
-    assert_eq!(sel.read_with(cx, |s, _| s.shown()).as_deref(), Some("prod"));
+    let sel = view.read_with(cx, |v, _| v.env_picker().clone());
+    assert_eq!(sel.read_with(cx, |s, cx| s.label(cx)), "prod");
     let ws = view.read_with(cx, |v, _| v.workspace().clone());
     let chosen = ws.read_with(cx, |w, cx| {
         w.current_root()

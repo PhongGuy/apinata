@@ -87,12 +87,11 @@ pub fn one_changed(cx: &mut TestAppContext, sb: &Sandbox) -> (tempfile::TempDir,
     (col, s)
 }
 
-const CONTROLS: [(&str, &str); 10] = [
+const CONTROLS: [(&str, &str); 9] = [
     ("title-bar", "git-branch"),
     ("title-bar", "git-changes"),
     ("title-bar", "collection-switcher"),
     ("title-bar", "env-select"),
-    ("title-bar", "global-env-select"),
     ("title-bar", "environments"),
     ("title-bar", "app-menu"),
     ("status-bar", "toggle-sidebar"),
