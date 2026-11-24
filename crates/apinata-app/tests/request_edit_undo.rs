@@ -1956,9 +1956,9 @@ fn script_race(phase: apinata_core::ScriptPhase) -> SectionRace {
             ),
             _ => (
                 "info:\n  name: h\n  type: http\n  seq: 7\nhttp:\n  method: GET\n  url: http://x\nruntime:\n  scripts:\n    - type: before-request\n      code: a()\n    - type: after-response\n      code: a()\n    - type: tests\n      code: |-\n        x()\n        b()\n",
-                Section::Tests,
+                Section::Script,
                 |o, now| o.scripts.tests != now.scripts.tests,
-                |cx, ed, win| script_edit(cx, ed.read(cx).tests_script().clone(), Tests, win),
+                |cx, ed, win| script_edit(cx, ed.read(cx).script().clone(), Tests, win),
             ),
         };
     SectionRace {

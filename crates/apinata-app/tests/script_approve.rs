@@ -101,14 +101,15 @@ fn a_script_loaded_from_the_file_is_not_approved_by_saving(cx: &mut TestAppConte
     let s = started(cx, &col);
     let (win, ed) = editor_for(cx, &s.ws, &s.root, "a.yml", false);
     cx.update_window(win, |_, w, cx| {
-        w.click(("section", Section::Tests as usize), cx)
+        w.click(("section", Section::Script as usize), cx);
+        w.click(("script-tab", 1usize), cx);
     })
     .unwrap();
     frame(cx, win);
     replace_code(
         cx,
         win,
-        Some("tests-section"),
+        Some("script-tests"),
         "script-tests-code",
         "test('t', () => {})",
     );

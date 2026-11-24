@@ -28,7 +28,7 @@ fn rig(cx: &mut TestAppContext) -> Rig {
     let (_state, ws, root) = open_dir(cx, &dir);
     let (win, ed) = editor_for(cx, &ws, &root, "a.yml", false);
     let code = ed.read_with(cx, |e, cx| {
-        e.tests_script()
+        e.script()
             .read(cx)
             .code(ScriptPhase::Tests)
             .unwrap()
@@ -114,7 +114,7 @@ fn check_one_step(cx: &mut TestAppContext, before: &str, at: usize, expect_prefi
     assert!(after.contains(s.code), "{after:?}");
     assert_eq!(r.selected(cx), s.select);
     assert!(view_of(cx, &r.ws, &r.root, "a.yml").dirty);
-    assert_eq!(r.ed.read_with(cx, |e, _| e.section()), Section::Tests);
+    assert_eq!(r.ed.read_with(cx, |e, _| e.section()), Section::Script);
 
     r.editor_undo(cx);
     assert_eq!(r.text(cx), before, "one undo must restore the original");
@@ -197,39 +197,24 @@ fn a_selection_ending_at_column_zero_belongs_to_the_block_of_its_last_character(
     assert_eq!(got, format!("a\nb\n{code}\n\nc"));
 }
 
-// Clicks `first` then `second` in the section's own editor; returns the text and checks that
-// each click was one undo step and the second click's placeholder is selected.
-fn two_clicks(cx: &mut TestAppContext, section: Section, ids: [&str; 2]) {
+// Clicks `first` then `second` in the `phase` editor's own row; returns the text and checks
+// that each click was one undo step and the second click's placeholder is selected.
+fn two_clicks(cx: &mut TestAppContext, phase: ScriptPhase, ids: [&str; 2]) {
     let r = rig(cx);
-    show_section(&r, cx, section);
+    show_phase(&r, cx, phase);
     let (a, b) = (snip(ids[0]), snip(ids[1]));
-    click_id(&r, cx, &format!("snippet-{}", a.id));
-    click_id(&r, cx, &format!("snippet-{}", b.id));
-    let editor = r.ed.read_with(cx, |e, cx| match section {
-        Section::Tests => e
-            .tests_script()
-            .read(cx)
-            .code(ScriptPhase::Tests)
-            .unwrap()
-            .clone(),
-        _ => e
-            .script()
-            .read(cx)
-            .code(ScriptPhase::PreRequest)
-            .unwrap()
-            .clone(),
-    });
+    click_in(&r, cx, phase, &format!("snippet-{}", a.id));
+    click_in(&r, cx, phase, &format!("snippet-{}", b.id));
+    let editor =
+        r.ed.read_with(cx, |e, cx| e.script().read(cx).code(phase).unwrap().clone());
     let text = editor.read_with(cx, |c, _| c.value().to_string());
     assert_eq!(text, format!("{}\n{}", a.code, b.code));
     let sel = editor.read_with(cx, |c, _| c.value()[c.selected_range()].to_string());
     assert_eq!(sel, b.select);
-    let id = match section {
-        Section::Tests => "script-tests-code",
-        _ => "script-pre-request-code",
-    };
+    let id = format!("script-{}-code", phase.as_str());
     for want in [a.code.to_string(), String::new()] {
         cx.update_window(r.win, |_, w, cx| {
-            w.click(id, cx);
+            w.click(id.clone(), cx);
             w.press(&secondary("z"), cx);
         })
         .unwrap();
@@ -240,19 +225,19 @@ fn two_clicks(cx: &mut TestAppContext, section: Section, ids: [&str; 2]) {
 
 #[gpui_kit::test]
 fn two_tests_snippets_in_a_row_stay_intact(cx: &mut TestAppContext) {
-    two_clicks(cx, Section::Tests, ["status-200", "time-under"]);
-    two_clicks(cx, Section::Tests, ["body-contains", "json-field"]);
+    two_clicks(cx, ScriptPhase::Tests, ["status-200", "time-under"]);
+    two_clicks(cx, ScriptPhase::Tests, ["body-contains", "json-field"]);
 }
 
 #[gpui_kit::test]
 fn two_script_snippets_in_a_row_stay_intact(cx: &mut TestAppContext) {
-    two_clicks(cx, Section::Script, ["set-header", "set-var"]);
+    two_clicks(cx, ScriptPhase::PreRequest, ["set-header", "set-var"]);
 }
 
 #[gpui_kit::test]
 fn a_snippet_click_focuses_the_editor_and_typing_replaces_the_placeholder(cx: &mut TestAppContext) {
     let r = rig(cx);
-    show_section(&r, cx, Section::Tests);
+    show_phase(&r, cx, ScriptPhase::Tests);
     click_id(&r, cx, "snippet-status-200");
     let focused = cx
         .update_window(r.win, |_, w, cx| {
@@ -297,18 +282,18 @@ fn the_request_level_undo_also_takes_the_insert_back_in_one_step(cx: &mut TestAp
 
 #[gpui_kit::test]
 fn a_phase_the_section_lacks_inserts_nothing(cx: &mut TestAppContext) {
-    let r = rig(cx);
+    let (win, host) = host_section(cx, |w, cx| {
+        apinata_app::script_section::ScriptSection::new(&[ScriptPhase::Tests], w, cx)
+    });
+    let view = host.read_with(cx, |h, _| h.view.clone());
     let ok = cx
-        .update_window(r.win, |_, w, cx| {
-            r.ed.update(cx, |e, cx| {
-                e.tests_script().update(cx, |s, cx| {
-                    s.insert_snippet(ScriptPhase::PreRequest, snip("set-var"), w, cx)
-                })
+        .update_window(win, |_, w, cx| {
+            view.update(cx, |s, cx| {
+                s.insert_snippet(ScriptPhase::PreRequest, snip("set-var"), w, cx)
             })
         })
         .unwrap();
     assert!(!ok);
-    assert_eq!(r.text(cx), "");
 }
 
 #[gpui_kit::test]
@@ -340,14 +325,37 @@ fn show_section(r: &Rig, cx: &mut TestAppContext, section: Section) {
     frame(cx, r.win);
 }
 
+// Opens the Scripts tab on the sub-tab holding the `phase` editor.
+fn show_phase(r: &Rig, cx: &mut TestAppContext, phase: ScriptPhase) {
+    r.ed.update(cx, |e, cx| {
+        e.show(Section::Script, cx);
+        e.script().update(cx, |s, cx| s.show(phase, cx));
+    });
+    frame(cx, r.win);
+}
+
 fn click_id(r: &Rig, cx: &mut TestAppContext, id: &str) {
-    let id = id.to_string();
+    click_in(r, cx, ScriptPhase::Tests, id);
+}
+
+// Clicks `id` in the row of the `phase` editor, since stacked editors may offer the same snippet.
+fn click_in(r: &Rig, cx: &mut TestAppContext, phase: ScriptPhase, id: &str) {
+    let (scope, id) = (format!("script-{}", phase.as_str()), id.to_string());
     cx.update_window(r.win, |_, w, cx| {
         w.render_frame(cx);
-        w.click(id, cx)
+        w.within(scope).click(id, cx)
     })
     .unwrap();
     cx.run_until_parked();
+}
+
+fn present_in(r: &Rig, cx: &mut TestAppContext, phase: ScriptPhase, id: String) -> bool {
+    let scope = format!("script-{}", phase.as_str());
+    cx.update_window(r.win, |_, w, cx| {
+        w.render_frame(cx);
+        w.within(scope).try_find(id).is_some()
+    })
+    .unwrap()
 }
 
 #[gpui_kit::test]
@@ -357,7 +365,7 @@ fn each_tests_snippet_has_a_button_that_inserts_its_code(cx: &mut TestAppContext
         .filter(|s| s.phases.contains(&apinata_core::SnippetPhase::Tests))
     {
         let r = rig(cx);
-        show_section(&r, cx, Section::Tests);
+        show_phase(&r, cx, ScriptPhase::Tests);
         click_id(&r, cx, &format!("snippet-{}", s.id));
         assert_eq!(r.text(cx), s.code, "snippet {}", s.id);
         assert_eq!(r.selected(cx), s.select, "snippet {}", s.id);
@@ -392,7 +400,8 @@ fn the_script_section_offers_the_buttons_of_the_shown_phase(cx: &mut TestAppCont
     frame(cx, r.win);
     for id in script_snippets().iter().map(|s| s.id) {
         let want = post_ids.contains(&id);
-        assert_eq!(present(cx, r.win, format!("snippet-{id}")), want, "{id}");
+        let shown = present_in(&r, cx, ScriptPhase::PostResponse, format!("snippet-{id}"));
+        assert_eq!(shown, want, "{id}");
     }
 }
 
@@ -400,7 +409,7 @@ fn the_script_section_offers_the_buttons_of_the_shown_phase(cx: &mut TestAppCont
 fn a_focused_snippet_button_inserts_on_enter_and_space(cx: &mut TestAppContext) {
     for key in ["enter", "space"] {
         let r = rig(cx);
-        show_section(&r, cx, Section::Tests);
+        show_phase(&r, cx, ScriptPhase::Tests);
         tab_to(cx, r.win, "snippet-status-200");
         cx.update_window(r.win, |_, w, cx| w.press(key, cx))
             .unwrap();
@@ -426,16 +435,10 @@ fn placeholder_after_end_insert(
     let r = rig(cx);
     gpui_kit::VisualTestContext::from_window(r.win, cx)
         .simulate_resize(gpui_kit::size(gpui_kit::px(1000.), gpui_kit::px(height)));
-    let (section, view) = match phase {
-        ScriptPhase::Tests => (
-            Section::Tests,
-            r.ed.read_with(cx, |e, _| e.tests_script().clone()),
-        ),
-        _ => (
-            Section::Script,
-            r.ed.read_with(cx, |e, _| e.script().clone()),
-        ),
-    };
+    let (section, view) = (
+        Section::Script,
+        r.ed.read_with(cx, |e, _| e.script().clone()),
+    );
     let code = view.read_with(cx, |s, _| s.code(phase).unwrap().clone());
     cx.update_window(r.win, |_, w, cx| {
         r.ed.update(cx, |e, cx| e.show(section, cx));
@@ -478,13 +481,13 @@ fn placeholder_after_end_insert(
     assert!(ok);
     cx.run_until_parked();
     let id = format!("script-{}-code", phase.as_str());
+    // The placeholder's line as drawn: the caret, centred in it, grown to the line's height.
     let (top, bottom) = cx
-        .update_window(r.win, |_, w, cx| {
-            let ed = w.find(id.clone()).bounds();
+        .update_window(r.win, |_, _, cx| {
+            let caret = view.read(cx).caret(cx).expect("laid out");
             code.read_with(cx, |c, _| {
-                let line = c.value()[..c.selected_range().start].matches('\n').count();
                 let lh = f32::from(c.line_height().expect("laid out"));
-                let top = f32::from(ed.top()) + f32::from(c.scroll_offset().y) + line as f32 * lh;
+                let top = f32::from(caret.top()) - (lh - f32::from(caret.size.height)) / 2.;
                 (top, top + lh)
             })
         })
@@ -555,7 +558,7 @@ fn a_snippet_follow_does_not_outlive_leaving_the_section(cx: &mut TestAppContext
     let r = rig(cx);
     gpui_kit::VisualTestContext::from_window(r.win, cx)
         .simulate_resize(gpui_kit::size(gpui_kit::px(1000.), gpui_kit::px(400.)));
-    show_section(&r, cx, Section::Tests);
+    show_phase(&r, cx, ScriptPhase::Tests);
     let long: String = (0..120).map(|i| format!("// line {i}\n")).collect();
     r.seed(cx, &long, long.len());
     let before = cx
@@ -571,7 +574,7 @@ fn a_snippet_follow_does_not_outlive_leaving_the_section(cx: &mut TestAppContext
     })
     .unwrap();
     frame(cx, r.win);
-    show_section(&r, cx, Section::Tests);
+    show_phase(&r, cx, ScriptPhase::Tests);
     frame(cx, r.win);
     let after = cx
         .update_window(r.win, |_, w, _| w.find("script-tests-code").bounds().top())
@@ -587,7 +590,7 @@ fn snippet_buttons_take_the_secondary_button_fill(cx: &mut TestAppContext) {
     for theme in ["Apinata Dark", "Apinata High Contrast Dark"] {
         let r = rig(cx);
         use_theme(cx, theme);
-        show_section(&r, cx, Section::Tests);
+        show_phase(&r, cx, ScriptPhase::Tests);
         frame(cx, r.win);
         let button = cx.update(|cx| cx.theme().button);
         assert!(

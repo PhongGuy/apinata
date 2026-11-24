@@ -74,7 +74,6 @@ fn every_section_shows_its_own_view(cx: &mut TestAppContext) {
         (Section::Vars, "vars"),
         (Section::Script, "script"),
         (Section::Assertions, "assertions"),
-        (Section::Tests, "tests"),
         (Section::Docs, "docs"),
         (Section::Settings, "settings"),
     ];

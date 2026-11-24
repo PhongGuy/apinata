@@ -125,11 +125,11 @@ fn never_cut(
 // no section tab as a sliver at the left edge.
 #[gpui_kit::test]
 fn side_by_side_choosing_a_later_section_never_cuts_a_tab(cx: &mut TestAppContext) {
-    let picks = [Section::Settings, Section::Tests];
+    let picks = [Section::Settings, Section::Docs];
     let scrolled = never_cut(
         cx,
         Orientation::Horizontal,
-        (900..=1600).rev().step_by(20),
+        (600..=1600).rev().step_by(20),
         800.,
         &picks,
     );
@@ -139,7 +139,7 @@ fn side_by_side_choosing_a_later_section_never_cuts_a_tab(cx: &mut TestAppContex
 // Stacked in a window about 800 px wide, choosing a later section leaves no tab cut.
 #[gpui_kit::test]
 fn stacked_at_800_choosing_a_later_section_never_cuts_a_tab(cx: &mut TestAppContext) {
-    let picks = [Section::Settings, Section::Tests];
+    let picks = [Section::Settings, Section::Docs];
     let scrolled = never_cut(
         cx,
         Orientation::Vertical,

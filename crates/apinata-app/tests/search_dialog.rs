@@ -395,27 +395,17 @@ fn a_stale_answer_is_dropped() {
 
 #[test]
 fn hits_pick_the_section_that_holds_them() {
-    let section = |f, k: Option<&str>| section_for(f, k);
-    assert_eq!(section(SearchField::Name, None), None);
-    assert_eq!(section(SearchField::Url, None), None);
+    assert_eq!(section_for(SearchField::Name), None);
+    assert_eq!(section_for(SearchField::Url), None);
     assert_eq!(
-        section(SearchField::HeaderValue, Some("X")),
+        section_for(SearchField::HeaderValue),
         Some(Section::Headers)
     );
-    assert_eq!(
-        section(SearchField::PathParam, Some("id")),
-        Some(Section::Params)
-    );
-    assert_eq!(section(SearchField::Body, None), Some(Section::Body));
-    assert_eq!(
-        section(SearchField::Script, Some("pre-request")),
-        Some(Section::Script)
-    );
-    assert_eq!(
-        section(SearchField::Script, Some("tests")),
-        Some(Section::Tests)
-    );
-    assert_eq!(section(SearchField::Docs, None), Some(Section::Docs));
+    assert_eq!(section_for(SearchField::PathParam), Some(Section::Params));
+    assert_eq!(section_for(SearchField::Body), Some(Section::Body));
+    // Every script slot, the tests among them, lives under the Scripts tab.
+    assert_eq!(section_for(SearchField::Script), Some(Section::Script));
+    assert_eq!(section_for(SearchField::Docs), Some(Section::Docs));
 }
 
 #[gpui_kit::test]

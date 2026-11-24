@@ -12,6 +12,9 @@ use gpui_kit::{AppContext as _, Bounds, Pixels, TestAppContext, px, size};
 use support::*;
 
 const JSON: &str = "info:\n  name: a\n  type: http\n  seq: 1\nhttp:\n  method: POST\n  url: http://x/0\n  body:\n    type: json\n    data: '{\"a\": 1}'\ndocs: notes\n";
+// A tests script opens the Scripts tab on Post-response, where the tests editor stacks under
+// the post-response one.
+const TESTED: &str = "info:\n  name: a\n  type: http\n  seq: 1\nhttp:\n  method: POST\n  url: http://x/0\n  body:\n    type: json\n    data: '{\"a\": 1}'\nruntime:\n  scripts:\n    - type: tests\n      code: t()\n";
 const GRAPHQL: &str = "info:\n  name: g\n  type: graphql\n  seq: 2\ngraphql:\n  method: POST\n  url: http://x/gql\n  body:\n    query: \"{ me }\"\n";
 
 // Resizes the window and sets the response's side, then draws twice so the layout settles.
@@ -80,11 +83,11 @@ fn cases() -> [(
             &["script-pre-request-code"],
         ),
         (
-            JSON,
-            Section::Tests,
-            "tests",
-            "tests",
-            &["script-tests-code"],
+            TESTED,
+            Section::Script,
+            "script",
+            "script",
+            &["script-post-response-code", "script-tests-code"],
         ),
         (JSON, Section::Docs, "docs", "docs-mode", &["docs-preview"]),
     ]
@@ -140,7 +143,7 @@ fn code_editors_keep_their_minimum_in_a_short_pane(cx: &mut TestAppContext) {
         let pane = bounds(cx, &s, "section-body");
         let content = bounds(cx, &s, wrapper);
         let floor = match section {
-            Section::Script | Section::Tests => SCRIPT_EDITOR_MIN_HEIGHT,
+            Section::Script => SCRIPT_EDITOR_MIN_HEIGHT,
             _ => EDITOR_MIN_HEIGHT,
         };
         let least = px_of(cx, &s, floor);
@@ -206,18 +209,18 @@ fn fitting_heights(cx: &mut TestAppContext, section: Section, wrapper: &'static 
         .collect()
 }
 
+// A sub-tab with one script editor fits wherever the body does; Post-response stacks two
+// editors at their minimum, so it scrolls sooner.
 #[gpui_kit::test]
-fn script_and_tests_fit_wherever_the_body_editor_fits(cx: &mut TestAppContext) {
+fn one_script_editor_fits_wherever_the_body_editor_fits(cx: &mut TestAppContext) {
     let body = fitting_heights(cx, Section::Body, "body");
     assert!(!body.is_empty(), "the body fits at no height");
-    for (section, wrapper) in [(Section::Script, "script"), (Section::Tests, "tests")] {
-        let fits = fitting_heights(cx, section, wrapper);
-        let missing: Vec<_> = body.iter().filter(|h| !fits.contains(h)).collect();
-        assert!(
-            missing.is_empty(),
-            "{section:?} scrolls at window heights {missing:?} where the body fits"
-        );
-    }
+    let fits = fitting_heights(cx, Section::Script, "script");
+    let missing: Vec<_> = body.iter().filter(|h| !fits.contains(h)).collect();
+    assert!(
+        missing.is_empty(),
+        "Pre-request scrolls at window heights {missing:?} where the body fits"
+    );
 }
 
 // The smallest stacked window height, on a 10 px step, where `wrapper` fits its pane.

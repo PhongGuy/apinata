@@ -134,14 +134,13 @@ pub enum Section {
     Vars,
     Script,
     Assertions,
-    Tests,
     Docs,
     Settings,
 }
 
 impl Section {
     /// Every section, in tab order.
-    pub const ALL: [Section; 10] = [
+    pub const ALL: [Section; 9] = [
         Section::Params,
         Section::Body,
         Section::Headers,
@@ -149,7 +148,6 @@ impl Section {
         Section::Vars,
         Section::Script,
         Section::Assertions,
-        Section::Tests,
         Section::Docs,
         Section::Settings,
     ];
@@ -162,9 +160,8 @@ impl Section {
             Section::Headers => "Headers",
             Section::Auth => "Auth",
             Section::Vars => "Vars",
-            Section::Script => "Script",
+            Section::Script => "Scripts",
             Section::Assertions => "Assertions",
-            Section::Tests => "Tests",
             Section::Docs => "Docs",
             Section::Settings => "Settings",
         }
@@ -250,7 +247,6 @@ pub struct RequestEditor {
     settings: Entity<SettingsSection>,
     docs: Entity<DocsSection>,
     script: Entity<ScriptSection>,
-    tests_script: Entity<ScriptSection>,
     send_model: Entity<SendModel>,
     // The Send, Cancel and Stop buttons swap inside this focus scope, and the last one drawn.
     slot_focus: FocusHandle,
@@ -500,7 +496,11 @@ impl RequestEditor {
         let docs = cx.new(|cx| DocsSection::new(window, cx));
         let script = cx.new(|cx| {
             ScriptSection::new(
-                &[ScriptPhase::PreRequest, ScriptPhase::PostResponse],
+                &[
+                    ScriptPhase::PreRequest,
+                    ScriptPhase::PostResponse,
+                    ScriptPhase::Tests,
+                ],
                 window,
                 cx,
             )
@@ -511,7 +511,6 @@ impl RequestEditor {
         {
             script.update(cx, |s, cx| s.show(side, cx));
         }
-        let tests_script = cx.new(|cx| ScriptSection::new(&[ScriptPhase::Tests], window, cx));
         let send_model = cx.new(|_| SendModel::new(workspace.clone()));
         let history_target: HistoryTarget = {
             let ws = workspace.clone();
@@ -703,13 +702,16 @@ impl RequestEditor {
                 &response_body,
                 window,
                 |this, _, e: &crate::body_view::SchemaTest, window, cx| {
-                    let current = this.tests_script.read(cx).texts(cx).concat();
+                    let tests = this.script.read(cx).code(ScriptPhase::Tests).cloned();
+                    let current = tests.map(|c| c.read(cx).value().to_string());
+                    let current = current.unwrap_or_default();
                     let Some(text) = apinata_core::schema_test_script(&current, &e.0) else {
                         return;
                     };
-                    this.show(Section::Tests, cx);
+                    this.show(Section::Script, cx);
                     this.script_step = Some(text.clone());
-                    let added = this.tests_script.update(cx, |s, cx| {
+                    let added = this.script.update(cx, |s, cx| {
+                        s.show(ScriptPhase::Tests, cx);
                         s.append_text(ScriptPhase::Tests, &text, window, cx)
                     });
                     // Nothing was emitted without an editor, so the mark must not linger.
@@ -739,19 +741,9 @@ impl RequestEditor {
             cx.subscribe_in(&script, window, move |this, _, e, _, cx| {
                 on_edit(this, e, false, cx)
             }),
-            cx.subscribe_in(&tests_script, window, move |this, _, e, _, cx| {
-                on_edit(this, e, false, cx)
-            }),
             cx.subscribe_in(&script, window, |this, _, e: &SnippetChosen, window, cx| {
                 this.insert_snippet(e.0, e.1, window, cx);
             }),
-            cx.subscribe_in(
-                &tests_script,
-                window,
-                |this, _, e: &SnippetChosen, window, cx| {
-                    this.insert_snippet(e.0, e.1, window, cx);
-                },
-            ),
             cx.subscribe(&script, |this, _, e: &SideChosen, cx| {
                 let ws = this.workspace.clone();
                 if let Some((root, item)) = target_of(&ws, this.tab, cx) {
@@ -794,7 +786,6 @@ impl RequestEditor {
             settings,
             docs,
             script,
-            tests_script,
             send_model,
             slot_focus: cx.focus_handle(),
             section_body_focus: cx.focus_handle(),
@@ -926,9 +917,7 @@ impl RequestEditor {
         }
         self.marked = shown.as_ref().map_or_else(Weak::new, Arc::downgrade);
         let notes = shown.as_deref().map(script_error_notes).unwrap_or_default();
-        for section in [&self.script, &self.tests_script] {
-            section.update(cx, |s, cx| s.set_errors(&notes, cx));
-        }
+        self.script.update(cx, |s, cx| s.set_errors(&notes, cx));
     }
 
     /// The model sending this tab's request.
@@ -1139,14 +1128,9 @@ impl RequestEditor {
         &self.docs
     }
 
-    /// The Script section: the pre-request and post-response editors.
+    /// The Scripts section: the pre-request, post-response and tests editors.
     pub fn script(&self) -> &Entity<ScriptSection> {
         &self.script
-    }
-
-    /// The Tests section's editor.
-    pub fn tests_script(&self) -> &Entity<ScriptSection> {
-        &self.tests_script
     }
 
     /// Inserts `snippet` at the caret of the `phase` script editor, one undo step like the
@@ -1158,14 +1142,11 @@ impl RequestEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        let (section, view) = match phase {
-            ScriptPhase::Tests => (Section::Tests, self.tests_script.clone()),
-            _ => (Section::Script, self.script.clone()),
-        };
+        let view = self.script.clone();
         let Some(text) = view.read(cx).snippet_text(phase, snippet, cx) else {
             return false;
         };
-        self.show(section, cx);
+        self.show(Section::Script, cx);
         view.update(cx, |s, cx| s.show(phase, cx));
         self.script_step = Some(text);
         let added = view.update(cx, |s, cx| s.insert_snippet(phase, snippet, window, cx));
@@ -1347,7 +1328,6 @@ impl RequestEditor {
         // Scripts are only history steps when appended, so a redone one is the user's own text.
         if let (false, Edit::Script(phase, text)) = (undo, &edit) {
             self.script.update(cx, |s, _| s.expect_redo(*phase, text));
-            (self.tests_script).update(cx, |s, _| s.expect_redo(*phase, text));
         }
         let section = table_section(field);
         if let Some(table) = section.and_then(|s| self.table(s).cloned()) {
@@ -1523,8 +1503,8 @@ impl RequestEditor {
     }
 
     /// What a marked section's dot says when hovered: Body with a body, Auth with a mode of
-    /// its own other than No Auth, Script with a pre-request or post-response script, Tests
-    /// with a tests script, Docs with docs, Settings with a setting off its default or a tag;
+    /// its own other than No Auth, Scripts with a pre-request, post-response or tests script,
+    /// Docs with docs, Settings with a setting off its default or a tag;
     /// `None` when unmarked. Inherited and default values never mark a section.
     pub fn section_mark(&self, section: Section, cx: &App) -> Option<SharedString> {
         let view = self.view(cx)?;
@@ -1542,16 +1522,15 @@ impl RequestEditor {
                 };
             }
             Section::Script => {
-                !view.scripts.pre_request.is_empty() || !view.scripts.post_response.is_empty()
+                let s = &view.scripts;
+                !s.pre_request.is_empty() || !s.post_response.is_empty() || !s.tests.is_empty()
             }
-            Section::Tests => !view.scripts.tests.is_empty(),
             Section::Docs => !view.docs.trim().is_empty(),
             Section::Settings => custom_settings(&view.settings) || !view.tags.is_empty(),
             _ => false,
         };
         let words = match section {
             Section::Body => "Has a body",
-            Section::Tests => "Has tests",
             Section::Docs => "Has docs",
             Section::Settings => "Has custom settings",
             _ => "Has a script",
@@ -1591,9 +1570,7 @@ impl RequestEditor {
     /// The script and test texts the user typed here, never text loaded from the file:
     /// what a save of this editor vouches for.
     pub fn typed_scripts(&self, cx: &App) -> Vec<String> {
-        let mut texts = self.script.read(cx).typed_texts(cx);
-        texts.extend(self.tests_script.read(cx).typed_texts(cx));
-        texts
+        self.script.read(cx).typed_texts(cx)
     }
 
     /// Whether an OAuth secret is typed here but not yet sent.
@@ -1786,7 +1763,7 @@ impl RequestEditor {
     }
 
     // Notes the snapshot behind the fields this refresh loads, which are the idle ones; the
-    // Script section loads both of its phases or neither.
+    // two scripts load both or neither.
     fn note_loaded(&mut self, root: &Path, cx: &App) {
         let Some(seq) = self.workspace.read(cx).snapshot(root, cx).map(|s| s.seq) else {
             return;
@@ -1982,7 +1959,6 @@ impl RequestEditor {
         ui::end_input_run(&self.url, window, cx);
         self.auth.update(cx, |a, cx| a.end_typing(window, cx));
         self.script.update(cx, |s, cx| s.end_typing(window, cx));
-        (self.tests_script).update(cx, |s, cx| s.end_typing(window, cx));
         self.settings.update(cx, |s, cx| s.end_typing(window, cx));
         let graphql = self.graphql.read(cx);
         let editors = [
@@ -2090,15 +2066,18 @@ impl RequestEditor {
         if !self.busy(Field::Docs, cx) {
             self.docs.update(cx, |s, cx| s.load(&view.docs, window, cx));
         }
-        // The Script section loads whole, so an edit in flight in either editor holds it back.
+        // The two scripts load together, so an edit in flight in either holds both back; the
+        // tests load on their own.
+        let mut phases = Vec::new();
         if !self.busy(Field::ScriptPreRequest, cx) && !self.busy(Field::ScriptPostResponse, cx) {
-            self.script
-                .update(cx, |s, cx| s.load(&view.scripts, window, cx));
+            phases.extend([ScriptPhase::PreRequest, ScriptPhase::PostResponse]);
         }
         if !self.busy(Field::ScriptTests, cx) {
-            self.tests_script
-                .update(cx, |s, cx| s.load(&view.scripts, window, cx));
+            phases.push(ScriptPhase::Tests);
         }
+        self.script.update(cx, |s, cx| {
+            s.load_phases(&view.scripts, &phases, window, cx)
+        });
     }
 }
 
@@ -3923,7 +3902,6 @@ impl RequestEditor {
         }
         // Leaving the script sections ends the follow, so coming back never jumps the body.
         let view = match self.section {
-            Section::Tests => &self.tests_script,
             Section::Script => &self.script,
             _ => {
                 self.snippet_follow = 0;
@@ -4045,14 +4023,13 @@ impl RequestEditor {
             Section::Vars => ("vars", self.vars.clone().into()),
             Section::Script => ("script", self.script.clone().into()),
             Section::Assertions => ("assertions", self.assertions.clone().into()),
-            Section::Tests => ("tests", self.tests_script.clone().into()),
             Section::Docs => ("docs", self.docs.clone().into()),
             Section::Settings => ("settings", self.settings.clone().into()),
         };
         // Code-editing sections grow into the pane so their editors can fill it.
         let fills = matches!(
             self.section,
-            Section::Body | Section::Script | Section::Tests | Section::Docs
+            Section::Body | Section::Script | Section::Docs
         );
         let notice = (self.section == Section::Body)
             .then(|| self.content_type_notice(cx))
