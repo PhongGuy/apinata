@@ -2073,15 +2073,6 @@ pub(crate) fn more_button(
         .dropdown_menu_with_anchor(Anchor::TopRight, move |m, _, _| menu(m))
 }
 
-/// The header's Duplicate, off while `locked` by unsaved edits, with the reason as its tip.
-pub(crate) fn duplicate_button(id: &'static str, locked: bool, cx: &App) -> Button {
-    Button::new(id)
-        .solid_ring(cx)
-        .label("Duplicate")
-        .lock(locked, cx)
-        .when(locked, |b| b.tooltip(RENAME_LOCKED_REASON))
-}
-
 /// The header's Discard changes, live only while there are `edits` to drop.
 pub(crate) fn discard_button(id: &'static str, edits: bool, cx: &App) -> Button {
     Button::new(id)
@@ -2133,10 +2124,10 @@ fn locked_label(
         .child(label)
 }
 
-// Rename and Duplicate, shared by the "…" menu and a list entry's menu. Each runs through
-// `run`, which picks the environment it acts on. Locked, both are disabled entries whose
-// content names why, since a kit tooltip has no test hook of its own.
-fn rename_and_duplicate(
+// Rename and Duplicate, shared by both editors' "…" menus and list entry menus. Each runs
+// through `run`, which picks the environment it acts on. Locked, both are disabled entries
+// whose content names why, since a kit tooltip has no test hook of its own.
+pub(crate) fn rename_and_duplicate(
     menu: PopupMenu,
     locked: bool,
     run: impl Fn(Act, &mut Window, &mut App) + Clone + 'static,
@@ -2162,7 +2153,7 @@ fn rename_and_duplicate(
 
 /// What a menu entry asks of the environment it was opened on.
 #[derive(Clone, Copy)]
-enum Act {
+pub(crate) enum Act {
     Rename,
     Duplicate,
     Color(Option<&'static str>),
@@ -2196,18 +2187,15 @@ fn env_menu(menu: PopupMenu, editor: Entity<EnvEditor>, locked: bool) -> PopupMe
         .item(delete)
 }
 
-// A list entry's menu: Rename, Duplicate, the colour presets as a submenu, then Delete, each
-// acting on `name`, which it selects first.
-fn row_menu(
+// A list entry's menu in either editor: Rename, Duplicate, the colour presets as a submenu,
+// then Delete, each handed to `run`, which acts on the entry the menu was opened on.
+pub(crate) fn row_menu(
     menu: PopupMenu,
-    (editor, name): (Entity<EnvEditor>, String),
     locked: bool,
+    run: impl Fn(Act, &mut Window, &mut App) + Clone + 'static,
     window: &mut Window,
     cx: &mut Context<PopupMenu>,
 ) -> PopupMenu {
-    let run = move |act, window: &mut Window, cx: &mut App| {
-        editor.update(cx, |e, cx| e.on_entry(&name, act, window, cx))
-    };
     let (color, delete) = (run.clone(), run.clone());
     rename_and_duplicate(menu, locked, run)
         .submenu("Color", window, cx, move |sub, _, _| {
@@ -2284,7 +2272,7 @@ fn view_edit(view: &EnvView, edit: &Edit) -> Option<Edit> {
 }
 
 // A list entry's colour as a thin bar the height of a checkbox, or a bar's space without one.
-fn color_bar(fill: Option<Hsla>) -> AnyElement {
+pub(crate) fn color_bar(fill: Option<Hsla>) -> AnyElement {
     let bar = div()
         .flex_none()
         .w(style::ENV_STRIPE_HEIGHT)
@@ -2423,8 +2411,11 @@ impl Render for EnvEditor {
                     } else {
                         dirty.contains(&name)
                     };
-                    let entry = (editor.clone(), name);
-                    move |menu, window, cx| row_menu(menu, entry.clone(), row_locked, window, cx)
+                    let editor = editor.clone();
+                    let run = move |act, window: &mut Window, cx: &mut App| {
+                        editor.update(cx, |e, cx| e.on_entry(&name, act, window, cx))
+                    };
+                    move |menu, window, cx| row_menu(menu, row_locked, run.clone(), window, cx)
                 });
             items.push(
                 Followed::new(("env-item-follow", ix), &self.follow, item).into_any_element(),

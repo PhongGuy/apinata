@@ -31,8 +31,11 @@ impl Global for SchemaExecutor {}
 /// change rebuilds them over the same jar only when a network preference moved.
 struct Installed {
     jar: Arc<CookieJar>,
-    /// `None` until an install succeeds, so a failed one is retried on the next change.
+    /// `None` until an install succeeds.
     built_from: Option<NetworkPrefs>,
+    /// The preferences the newest install failed on, cleared by the next success, so only a
+    /// network change retries it.
+    failed: Option<NetworkPrefs>,
 }
 
 impl Global for Installed {}
@@ -196,13 +199,38 @@ pub fn install_with_password(
     jar: Arc<CookieJar>,
     cx: &mut App,
 ) -> Result<Vec<String>, String> {
-    let built_from = cx
+    let (built_from, failed) = cx
         .try_global::<Installed>()
-        .and_then(|i| i.built_from.clone());
+        .map(|i| (i.built_from.clone(), i.failed.clone()))
+        .unwrap_or_default();
     cx.set_global(Installed {
         jar: Arc::clone(&jar),
         built_from,
+        failed,
     });
+    let result = build_executors(settings, password, jar, cx);
+    let installed = cx.global_mut::<Installed>();
+    match &result {
+        Ok(_) => {
+            installed.built_from = Some(NetworkPrefs::of(settings));
+            installed.failed = None;
+        }
+        Err(_) => installed.failed = Some(NetworkPrefs::of(settings)),
+    }
+    result
+}
+
+// Builds the three executors from `settings` and sets their globals, or leaves the old ones.
+fn build_executors(
+    settings: &Settings,
+    password: Option<String>,
+    jar: Arc<CookieJar>,
+    cx: &mut App,
+) -> Result<Vec<String>, String> {
+    #[cfg(test)]
+    if tests::attempt() {
+        return Err("forced by the test".to_owned());
+    }
     let mut notes = Vec::new();
     let network = network_settings(settings, password).or_else(|reason| {
         let what = match settings.proxy.mode {
@@ -230,7 +258,6 @@ pub fn install_with_password(
     cx.set_global(SharedExecutor(Arc::new(exec)));
     cx.set_global(SchemaExecutor(Arc::new(schema)));
     cx.set_global(UnloggedExecutor(Arc::new(unlogged)));
-    cx.global_mut::<Installed>().built_from = Some(NetworkPrefs::of(settings));
     Ok(notes)
 }
 
@@ -239,9 +266,16 @@ pub fn install_with_password(
 pub fn follow(settings: &Entity<Persisted<Settings>>, store: Arc<dyn SecretStore>, cx: &mut App) {
     cx.observe(settings, move |settings, cx| {
         let now = settings.read(cx).get().clone();
-        // A rebuild still waiting on its password read already heads for these settings.
+        // A rebuild still waiting on its password read already heads for these settings, and
+        // a failed install is retried only once a network preference moves off it.
         let pending = cx.try_global::<Rebuilds>().and_then(|r| r.pending.clone());
-        let target = pending.or_else(|| cx.try_global::<Installed>()?.built_from.clone());
+        let target = pending.or_else(|| {
+            let installed = cx.try_global::<Installed>()?;
+            installed
+                .failed
+                .clone()
+                .or_else(|| installed.built_from.clone())
+        });
         let installed = cx.has_global::<Installed>();
         if installed && target != Some(NetworkPrefs::of(&now)) {
             rebuild(now, Arc::clone(&store), cx);
@@ -289,7 +323,14 @@ pub fn read_password_then(
     let generation = claim(pending.map(NetworkPrefs::of), cx);
     let read = crate::blocking::off_thread(move || store.get(&proxy_password_key()));
     cx.spawn(async move |cx| {
+        // A read whose thread died lands nothing, but must still stop marking its target as
+        // on the way, or a write back to those settings would wait on it forever.
         let Ok(result) = read.recv().await else {
+            cx.update(|cx| {
+                if is_newest(generation, cx) {
+                    cx.default_global::<Rebuilds>().pending = None;
+                }
+            });
             return;
         };
         cx.update(|cx| {
@@ -384,4 +425,62 @@ pub fn schema(cx: &App) -> Option<Arc<Executor>> {
 pub fn unlogged(cx: &App) -> Option<Arc<Executor>> {
     cx.try_global::<UnloggedExecutor>()
         .map(|s| Arc::clone(&s.0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{follow, install};
+    use crate::persisted::Persisted;
+    use crate::settings::{ProxyMode, Settings};
+    use apinata_core::MemoryStore;
+    use gpui_kit::{AppContext as _, Entity, TestAppContext};
+    use std::cell::Cell;
+    use std::sync::Arc;
+
+    thread_local! {
+        static ATTEMPTS: Cell<u32> = const { Cell::new(0) };
+        static FAIL: Cell<bool> = const { Cell::new(false) };
+    }
+
+    // Counts an install attempt and says whether the test wants it to fail.
+    pub(super) fn attempt() -> bool {
+        ATTEMPTS.set(ATTEMPTS.get() + 1);
+        FAIL.get()
+    }
+
+    fn edit(
+        cx: &mut TestAppContext,
+        settings: &Entity<Persisted<Settings>>,
+        f: impl FnOnce(&mut Settings),
+    ) {
+        settings.update(cx, |p, cx| p.update(cx, f));
+        cx.run_until_parked();
+    }
+
+    // Installs are refused once a network preference moves; a write that moves none must not
+    // try the same failed install again, while a further network change still does.
+    #[gpui_kit::test]
+    fn an_unrelated_write_after_a_failed_install_does_not_rebuild(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let mut start = Settings::default();
+        start.proxy.mode = ProxyMode::Off;
+        let settings = cx.new(|_| Persisted::new(start.clone(), dir.path().join("settings.json")));
+        cx.update(|cx| {
+            install(&start, &MemoryStore::new(), cx).unwrap();
+            follow(&settings, Arc::new(MemoryStore::new()), cx);
+        });
+        FAIL.set(true);
+        ATTEMPTS.set(0);
+        edit(cx, &settings, |s| s.insecure = !s.insecure);
+        assert_eq!(ATTEMPTS.get(), 1, "the network change tried an install");
+        edit(cx, &settings, |s| s.wrap_editors = !s.wrap_editors);
+        assert_eq!(
+            ATTEMPTS.get(),
+            1,
+            "an unrelated write retried the failed install"
+        );
+        edit(cx, &settings, |s| s.max_body_bytes = Some(1));
+        assert_eq!(ATTEMPTS.get(), 2, "a further network change did not retry");
+        FAIL.set(false);
+    }
 }

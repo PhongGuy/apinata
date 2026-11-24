@@ -11,7 +11,7 @@ use apinata_core::EnvVariable;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Escape, Input, InputEvent, InputState};
-use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
+use gpui_kit::component::menu::{ContextMenuExt as _, PopupMenu, PopupMenuItem};
 use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::prelude::*;
@@ -22,8 +22,8 @@ use gpui_kit::{
 
 use crate::banner::{self, Banner, Choice};
 use crate::dialog_guard::{self, Guard, GuardRef, SaveOutcome};
-use crate::env_color::{dot_or_space, env_fill};
-use crate::env_editor;
+use crate::env_color::env_fill;
+use crate::env_editor::{self, Act};
 use crate::env_table::{
     DUPLICATE_SECRET_NAMES, EnvTableEvent, EnvVarTable, env_rows, env_vars_from, secret_records,
     secrets_collide,
@@ -38,10 +38,12 @@ use crate::workspace::{GlobalOp, Workspace};
 
 /// The "…" menu's Rename entry.
 pub const GLOBAL_ENV_MENU_RENAME: usize = 0;
+/// The "…" menu's Duplicate entry.
+pub const GLOBAL_ENV_MENU_DUPLICATE: usize = 1;
 /// The "…" menu's entry exporting every global environment to a folder.
-pub const GLOBAL_ENV_MENU_EXPORT_ALL: usize = 1;
-/// The "…" menu's Delete entry, after the separator at 2.
-pub const GLOBAL_ENV_MENU_DELETE: usize = 3;
+pub const GLOBAL_ENV_MENU_EXPORT_ALL: usize = 2;
+/// The "…" menu's Delete entry, after the separator at 3.
+pub const GLOBAL_ENV_MENU_DELETE: usize = 4;
 
 /// The empty pane's line on what a global environment is for.
 pub const GLOBAL_ENV_ABOUT: &str = "Global variables apply to every collection.";
@@ -1099,8 +1101,8 @@ impl GlobalEnvEditor {
         let names = self.names(cx);
         // With nothing listed the empty pane's button is the one way to add, so New hides.
         let listed = !names.is_empty();
-        // Coloured environments carry a dot, as in the collection editor's list; the others
-        // keep a dot's space so the names line up.
+        // Coloured environments carry a bar, as in the collection editor's list; the others
+        // keep a bar's space so the names line up.
         let fills: Vec<_> = {
             let globals = self.workspace.read(cx).globals();
             (names.iter())
@@ -1113,6 +1115,8 @@ impl GlobalEnvEditor {
                 .collect()
         };
         let dotted = fills.iter().any(Option::is_some);
+        let edits = self.has_edits(cx);
+        let editor = cx.entity();
         for (ix, (name, fill)) in names.into_iter().zip(fills).enumerate() {
             let chosen = self.selected.as_deref() == Some(name.as_str());
             // Rename edits the name in its row's place, as the collection editor's does.
@@ -1134,9 +1138,7 @@ impl GlobalEnvEditor {
                 .cursor_pointer()
                 .gap(style::SPACE_1)
                 .when(chosen, |row| row.bg(active))
-                .when(dotted, |row| {
-                    row.child(dot_or_space("global-env-item-dot", fill))
-                })
+                .when(dotted, |row| row.child(env_editor::color_bar(fill)))
                 .child(
                     div()
                         .id(("global-env-item-name", ix))
@@ -1156,10 +1158,28 @@ impl GlobalEnvEditor {
                             .child(Icon::new(IconName::Check).small().text_color(muted)),
                     )
                 })
-                .on_click(cx.listener(move |e, _, window, cx| {
+                // A second click of a double-click renames the entry the first one selected.
+                .on_click(cx.listener({
                     let name = name.clone();
-                    e.after_asking(window, cx, move |e, window, cx| e.choose(&name, window, cx))
-                }));
+                    move |e, event: &gpui_kit::ClickEvent, window, cx| {
+                        if event.click_count() > 1 && e.selected.as_deref() == Some(&*name) {
+                            return e.rename_entry(window, cx);
+                        }
+                        let name = name.clone();
+                        e.after_asking(window, cx, move |e, window, cx| e.choose(&name, window, cx))
+                    }
+                }))
+                .context_menu({
+                    // Only the selected entry holds edits, so only it can be locked.
+                    let row_locked = chosen && edits;
+                    let editor = editor.clone();
+                    let run = move |act, window: &mut Window, cx: &mut App| {
+                        editor.update(cx, |e, cx| e.on_entry(&name, act, window, cx))
+                    };
+                    move |menu, window, cx| {
+                        env_editor::row_menu(menu, row_locked, run.clone(), window, cx)
+                    }
+                });
             items.push(item.into_any_element());
         }
         // A new name, or a rename whose row is not listed yet, is typed at the list's end.
@@ -1361,22 +1381,17 @@ impl Render for GlobalEnvEditor {
         let this = cx.entity();
         let more = env_editor::more_button(
             "global-env-more",
-            move |menu| global_menu(menu, this.clone()),
+            move |menu| global_menu(menu, this.clone(), edits),
             cx,
         );
-        // The collection editor's header: the name, the "…" menu, then Duplicate, Discard
-        // changes and Save. A focused header button takes Enter as its press, not the dialog's.
+        // The collection editor's header: the name, the "…" menu, then Discard changes and
+        // Save. A focused header button takes Enter as its press, not the dialog's.
         let header = env_editor::pane_header(
             "global-env-title",
             self.selected.clone().unwrap_or_default(),
         )
         .key_context(ui::DIALOG_FOOTER_CONTEXT)
         .child(Followed::new("global-env-more-follow", &self.follow, more))
-        .child(followed(
-            "global-env-duplicate-follow",
-            env_editor::duplicate_button("global-env-duplicate", edits, cx)
-                .on_click(cx.listener(|e, _, window, cx| e.duplicate(window, cx))),
-        ))
         .child(followed(
             "global-env-discard-follow",
             env_editor::discard_button("global-env-discard", edits, cx)
@@ -1529,21 +1544,63 @@ impl Render for GlobalEnvEditor {
     }
 }
 
-// The "…" menu's entries, in the order of the `GLOBAL_ENV_MENU_*` indices.
-fn global_menu(menu: PopupMenu, editor: Entity<GlobalEnvEditor>) -> PopupMenu {
-    let (rename, export_all) = (editor.clone(), editor.clone());
-    menu.item(PopupMenuItem::new("Rename").on_click(move |_, window, cx| {
-        rename.update(cx, |e, cx| e.start_naming(Naming::Rename, window, cx))
-    }))
-    .item(
-        PopupMenuItem::new("Export all to Postman…")
-            .on_click(move |_, window, cx| export_all.update(cx, |e, cx| e.export_all(window, cx))),
-    )
-    .separator()
-    .item(
-        env_editor::delete_entry("global-env-menu-delete")
-            .on_click(move |_, window, cx| editor.update(cx, |e, cx| e.ask_delete(window, cx))),
-    )
+// The "…" menu's entries, in the order of the `GLOBAL_ENV_MENU_*` indices; Rename and
+// Duplicate are off while the selected environment has unsaved `edits`.
+fn global_menu(menu: PopupMenu, editor: Entity<GlobalEnvEditor>, edits: bool) -> PopupMenu {
+    let run = {
+        let editor = editor.clone();
+        move |act, window: &mut Window, cx: &mut App| {
+            editor.update(cx, |e, cx| e.act(act, window, cx))
+        }
+    };
+    let export_all = editor.clone();
+    env_editor::rename_and_duplicate(menu, edits, run)
+        .item(
+            PopupMenuItem::new("Export all to Postman…").on_click(move |_, window, cx| {
+                export_all.update(cx, |e, cx| e.export_all(window, cx))
+            }),
+        )
+        .separator()
+        .item(
+            env_editor::delete_entry("global-env-menu-delete")
+                .on_click(move |_, window, cx| editor.update(cx, |e, cx| e.ask_delete(window, cx))),
+        )
+}
+
+impl GlobalEnvEditor {
+    // Runs a menu's `act` on the selected environment.
+    fn act(&mut self, act: Act, window: &mut Window, cx: &mut Context<Self>) {
+        match act {
+            Act::Rename => self.start_naming(Naming::Rename, window, cx),
+            Act::Duplicate => self.duplicate(window, cx),
+            Act::Color(hex) => self.pick(hex, window, cx),
+            Act::Delete => self.ask_delete(window, cx),
+        }
+    }
+
+    // Runs `act` on the list entry `name`, choosing it first as a click on its row would.
+    fn on_entry(&mut self, name: &str, act: Act, window: &mut Window, cx: &mut Context<Self>) {
+        let run = move |e: &mut Self, window: &mut Window, cx: &mut Context<Self>| match act {
+            Act::Rename => e.rename_entry(window, cx),
+            act => e.act(act, window, cx),
+        };
+        if self.selected.as_deref() == Some(name) {
+            return run(self, window, cx);
+        }
+        let name = name.to_owned();
+        self.after_asking(window, cx, move |e, window, cx| {
+            e.choose(&name, window, cx);
+            run(e, window, cx)
+        });
+    }
+
+    // Opens the in-place rename of the selected entry; an open field or unsaved edits leave
+    // it as it is.
+    fn rename_entry(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.naming != Some(Naming::Rename) && !self.has_edits(cx) {
+            self.start_naming(Naming::Rename, window, cx);
+        }
+    }
 }
 
 // Two panes need more room than the default width, but never more than the window.
