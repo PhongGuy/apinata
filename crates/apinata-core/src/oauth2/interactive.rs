@@ -47,7 +47,11 @@ pub(crate) async fn sign_in(
     };
     let (listener, redirect_uri) = match plan {
         CallbackPlan::Listen { bind, redirect } => {
-            let listener = Listener::bind(bind, &redirect).await?;
+            // A callback with another state is refused and the wait goes on, so a stray or
+            // forged request cannot end the sign-in.
+            let listener = Listener::bind(bind, &redirect)
+                .await?
+                .expect_state(state.clone());
             let redirect_uri = listener.redirect_uri().to_owned();
             (Some(listener), redirect_uri)
         }
