@@ -457,8 +457,7 @@ fn the_list_ring_clears_the_scrollbar(cx: &mut TestAppContext) {
             let colour = cx.theme().ring.to_rgb();
             let scale = w.scale_factor();
             let list = w.find(LIST).bounds();
-            let right = w
-                .painted_quads()
+            let right = crate::support::whole_quads(w)
                 .into_iter()
                 .filter(|q| {
                     let c = q.border_color.to_rgb();

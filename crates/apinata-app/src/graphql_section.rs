@@ -251,7 +251,7 @@ impl GraphqlSection {
                 return None;
             }
             let (mut caret, _) = state.cursor_layout()?;
-            caret.origin.y += state.text_bounds()?.origin.y - state.input_bounds().origin.y;
+            caret.origin.y += state.scroll_offset().y;
             let drawn = state.input_bounds().intersects(&caret).then_some(caret);
             Some(Caret {
                 drawn,

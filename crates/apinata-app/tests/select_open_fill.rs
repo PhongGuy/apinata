@@ -54,7 +54,7 @@ fn fills_over_button(cx: &mut TestAppContext, win: AnyWindowHandle) -> Vec<Hsla>
         let scale = w.scale_factor();
         let b = w.find("sel").bounds();
         let (l, t) = (b.left().as_f32() * scale, b.top().as_f32() * scale);
-        w.painted_quads()
+        crate::support::whole_quads(w)
             .into_iter()
             .filter(|q| {
                 (q.bounds.origin.x.0 - l).abs() < 1. && (q.bounds.origin.y.0 - t).abs() < 1.

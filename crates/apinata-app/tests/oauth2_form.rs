@@ -353,7 +353,7 @@ fn looks(cx: &mut TestAppContext, win: AnyWindowHandle, id: &'static str) -> Vec
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
         let at = w.find(id).bounds().scale(w.scale_factor());
-        w.painted_quads()
+        crate::support::whole_quads(w)
             .iter()
             .filter(|q| q.bounds == at)
             .map(|q| format!("{:?} {:?}", q.border_color, q.border_widths.left))

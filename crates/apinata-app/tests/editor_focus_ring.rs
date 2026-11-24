@@ -31,7 +31,7 @@ fn ring_quads(cx: &mut TestAppContext, win: AnyWindowHandle, id: &'static str) -
         let b = w.find(id).bounds();
         let (l, t) = (b.left().as_f32() * scale, b.top().as_f32() * scale);
         let (r, bt) = (b.right().as_f32() * scale, b.bottom().as_f32() * scale);
-        w.painted_quads()
+        crate::support::whole_quads(w)
             .into_iter()
             .filter(|q| {
                 let (x, y) = (q.bounds.origin.x.0, q.bounds.origin.y.0);
