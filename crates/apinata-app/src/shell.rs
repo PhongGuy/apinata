@@ -171,8 +171,8 @@ pub const APP_MENU_TIP_ID: &str = "app-menu-tip";
 /// The status bar's console toggle icon: a terminal, so it reads apart from the layout toggle.
 pub const CONSOLE_ICON: IconName = IconName::SquareTerminal;
 
-// The no-collection state's icon, decoded once rather than on every frame.
-static APP_ICON: LazyLock<Arc<Image>> = LazyLock::new(|| {
+// The app icon the no-collection state and About show, decoded once rather than on every frame.
+pub(crate) static APP_ICON: LazyLock<Arc<Image>> = LazyLock::new(|| {
     let png = include_bytes!("../../../assets/icon/generated/png/64x64.png");
     Arc::new(Image::from_bytes(ImageFormat::Png, png.to_vec()))
 });

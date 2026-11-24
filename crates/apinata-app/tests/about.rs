@@ -115,3 +115,34 @@ fn close_and_escape_each_close_the_dialog(cx: &mut TestAppContext) {
     press_key(cx, s.win, "escape");
     assert!(!dialog_open(cx, &s), "Escape closes the dialog");
 }
+
+// Everything sits on the dialog's centre line under the app icon: each line is only as wide
+// as its text, so a left-aligned line would show off centre.
+#[gpui_kit::test]
+fn the_content_is_centred_under_the_app_icon(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_about(cx, &s);
+    cx.update_window(s.win, |_, w, cx| {
+        w.render_frame(cx);
+        let body = w.find("about-dialog").bounds();
+        let icon = w.find("about-icon").bounds();
+        for id in [
+            "about-icon",
+            "about-version",
+            "about-licence",
+            "about-repository",
+            "about-issues",
+        ] {
+            let b = w.find(id).bounds();
+            assert!(b.size.width < body.size.width, "{id} is {b:?} in {body:?}");
+            let off = (b.center().x - body.center().x).abs();
+            assert!(off < gpui_kit::px(1.), "{id} is {off:?} off centre");
+            assert!(
+                id == "about-icon" || b.top() >= icon.bottom(),
+                "{id} is under the icon"
+            );
+        }
+    })
+    .unwrap();
+}
