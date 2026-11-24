@@ -1216,11 +1216,15 @@ impl NetworkSection {
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let place = self.place();
+        // A move names its row as the file holds it, where drafts take no place.
+        let mut filed = 0;
         let rows = self
             .certs
             .iter()
             .enumerate()
             .map(|(ix, row)| {
+                let file_row = filed;
+                filed += usize::from(!row.draft);
                 // A draft is not in the file yet, so its passphrase has no home to name.
                 let hint = (!row.draft)
                     .then(|| {
@@ -1230,7 +1234,7 @@ impl NetworkSection {
                             &row.cert.passphrase,
                             None,
                             &place,
-                            Some(self.mover(NetworkSlot::Passphrase(ix), cx)),
+                            Some(self.mover(NetworkSlot::Passphrase(file_row), cx)),
                             cx,
                         )
                     })

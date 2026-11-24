@@ -983,3 +983,155 @@ fn the_fitted_path_cover_is_opaque_in_every_theme(cx: &mut TestAppContext) {
         .unwrap();
     }
 }
+
+// The cert row `row`'s passphrase input.
+fn passphrase_input(
+    cx: &mut TestAppContext,
+    host: &Host,
+    row: usize,
+) -> Entity<gpui_kit::component::input::InputState> {
+    use apinata_app::network_section::CertField;
+    let s = host.read_with(cx, |h, _| h.view.clone());
+    s.read_with(cx, |s, _| s.cert_input(row, CertField::Passphrase).cloned())
+        .expect("a row")
+}
+
+#[gpui_kit::test]
+fn a_move_on_a_row_after_an_open_draft_names_its_file_row(cx: &mut TestAppContext) {
+    let mut network = CollectionNetwork::default();
+    network.certificates = vec![apinata_core::ClientCertificate::pem(
+        "a.test", "c.pem", "k.pem",
+    )];
+    let (win, host) = section(cx, network);
+    cx.update_window(win, |_, w, _| w.activate_window())
+        .unwrap();
+    for _ in 0..2 {
+        cx.update_window(win, |_, w, cx| w.click("cert-add", cx))
+            .unwrap();
+        frame(cx, win);
+    }
+    // Row 2 completes while row 1 stays an open draft, so row 2 is the file's second row.
+    type_at_end(cx, win, None, ("cert-domain", 2usize), "c.test");
+    type_at_end(cx, win, None, ("cert-file", 2usize), "c2.pem");
+    type_at_end(cx, win, None, ("cert-key", 2usize), "k2.pem");
+    type_at_end(cx, win, None, ("cert-passphrase", 2usize), "pp");
+    cx.update_window(win, |_, w, cx| w.press("enter", cx))
+        .unwrap();
+    frame(cx, win);
+    assert!(
+        present(cx, win, ("cert-domain", 1usize)),
+        "row 1 is a draft"
+    );
+    cx.update_window(win, |_, w, cx| {
+        w.click(("cert-passphrase-move", 2usize), cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+    let last = host.read_with(cx, |h, _| h.edits.last().cloned());
+    assert!(
+        matches!(
+            last,
+            Some(Edit::MoveNetworkSecret(NetworkSlot::Passphrase(1)))
+        ),
+        "{last:?}"
+    );
+}
+
+#[gpui_kit::test]
+fn a_move_sends_the_other_fields_typing_first(cx: &mut TestAppContext) {
+    let mut cert = apinata_core::ClientCertificate::pem("a.test", "c.pem", "k.pem");
+    cert.passphrase = "{{old}}".into();
+    let mut network = with_proxy(custom("http", "proxy.local", Some(("u", "pw"))));
+    network.certificates = vec![cert];
+    let (win, host) = section(cx, network);
+    let pass = passphrase_input(cx, &host, 0);
+    cx.update_window(win, |_, w, cx| {
+        pass.update(cx, |i, cx| i.set_value("{{new}}".to_string(), w, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+    let before = edit_count(cx, &host);
+    cx.update_window(win, |_, w, cx| w.click("proxy-password-move", cx))
+        .unwrap();
+    cx.run_until_parked();
+    let sent = host.read_with(cx, |h, _| h.edits[before..].to_vec());
+    match sent.as_slice() {
+        [
+            Edit::ClientCertificates(certs),
+            Edit::MoveNetworkSecret(NetworkSlot::ProxyPassword),
+        ] => assert_eq!(certs[0].passphrase, "{{new}}"),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[gpui_kit::test]
+fn a_reveal_ends_when_a_reload_changes_the_value(cx: &mut TestAppContext) {
+    let (win, host) = section(
+        cx,
+        with_proxy(custom("http", "proxy.local", Some(("u", "pw1")))),
+    );
+    let s = host.read_with(cx, |h, _| h.view.clone());
+    let password = s.read_with(cx, |s, _| s.input(NetworkField::Password).clone());
+    let masked =
+        |cx: &mut TestAppContext| password.read_with(cx, |i, _| i.presentation().is_masked());
+    assert!(masked(cx));
+    // The field's eye reveals the value, and the reveal holds while the value stays.
+    cx.update_window(win, |_, w, cx| {
+        password.update(cx, |i, cx| i.set_masked(false, w, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+    assert!(!masked(cx));
+    cx.update_window(win, |_, w, cx| {
+        let network = with_proxy(custom("http", "proxy.local", Some(("u", "pw2"))));
+        s.update(cx, |s, cx| s.load(&network, w, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+    assert!(masked(cx), "a reloaded value is masked again");
+    // A move's reference shows, and a value restored over it is masked again.
+    let reference = "{{process.env.APINATA_PROXY_PASSWORD}}";
+    cx.update_window(win, |_, w, cx| {
+        let network = with_proxy(custom("http", "proxy.local", Some(("u", reference))));
+        s.update(cx, |s, cx| s.load(&network, w, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+    assert!(!masked(cx), "a reference shows");
+    cx.update_window(win, |_, w, cx| {
+        let network = with_proxy(custom("http", "proxy.local", Some(("u", "pw2"))));
+        s.update(cx, |s, cx| s.load(&network, w, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+    assert!(
+        masked(cx),
+        "a literal restored over the reference is masked"
+    );
+}
+
+#[gpui_kit::test]
+fn a_revealed_passphrase_is_masked_again_after_a_reload(cx: &mut TestAppContext) {
+    let cert = |pass: &str| {
+        let mut cert = apinata_core::ClientCertificate::pem("a.test", "c.pem", "k.pem");
+        cert.passphrase = pass.into();
+        let mut network = CollectionNetwork::default();
+        network.certificates = vec![cert];
+        network
+    };
+    let (win, host) = section(cx, cert("pp1"));
+    let s = host.read_with(cx, |h, _| h.view.clone());
+    let pass = passphrase_input(cx, &host, 0);
+    cx.update_window(win, |_, w, cx| {
+        pass.update(cx, |i, cx| i.set_masked(false, w, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+    assert!(!pass.read_with(cx, |i, _| i.presentation().is_masked()));
+    cx.update_window(win, |_, w, cx| {
+        s.update(cx, |s, cx| s.load(&cert("pp2"), w, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+    assert!(pass.read_with(cx, |i, _| i.presentation().is_masked()));
+}
