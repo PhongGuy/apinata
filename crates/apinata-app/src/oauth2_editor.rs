@@ -83,17 +83,16 @@ const FIELDS: [OAuth2Field; 13] = [
 ];
 
 impl OAuth2Field {
-    // The short example a plain field shows while empty; secrets and fields whose value
-    // follows from the others show none.
-    fn example(self) -> Option<&'static str> {
+    // What a required plain field holds, shown while it is empty; a description rather than
+    // a sample value, so an empty field never reads as filled in. Optional fields show none,
+    // except the header prefix, whose hint below says an empty one sends the token bare.
+    fn description(self) -> Option<&'static str> {
         match self {
-            OAuth2Field::AuthorizationUrl => Some("https://auth.example.com/authorize"),
-            OAuth2Field::AccessTokenUrl => Some("https://auth.example.com/token"),
+            OAuth2Field::AuthorizationUrl => Some("Authorization endpoint URL"),
+            OAuth2Field::AccessTokenUrl => Some("Token endpoint URL"),
             OAuth2Field::CallbackUrl => Some("Redirect URL registered with the provider"),
-            OAuth2Field::ClientId => Some("my-app"),
-            OAuth2Field::Username => Some("jdoe"),
-            OAuth2Field::Scope => Some("read write"),
-            OAuth2Field::State => Some("Random text checked on return"),
+            OAuth2Field::ClientId => Some("Client ID issued by the provider"),
+            OAuth2Field::Username => Some("Account username"),
             OAuth2Field::HeaderPrefix => Some("Bearer"),
             _ => None,
         }
@@ -317,7 +316,7 @@ impl OAuth2Editor {
             .map(|f| {
                 cx.new(|cx| {
                     let state = InputState::new(window, cx).masked(f.masked());
-                    match f.example() {
+                    match f.description() {
                         Some(hint) => state.placeholder(hint),
                         None => state,
                     }
