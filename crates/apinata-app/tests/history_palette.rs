@@ -255,6 +255,39 @@ fn a_long_request_name_leaves_the_target_and_detail_visible(cx: &mut TestAppCont
     .unwrap();
 }
 
+// The status sits in a cell of its own, so it takes its colour while the age stays muted.
+#[gpui_kit::test]
+fn each_row_shows_its_status_apart_from_the_age(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = seeded(cx, &col);
+    open_history_palette(cx, &s);
+    let cells: Vec<(String, String)> = cx
+        .update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            (0..3usize)
+                .map(|r| {
+                    let mut label = |id: (&'static str, usize)| {
+                        w.within("history-palette")
+                            .find(id)
+                            .label()
+                            .map(str::to_owned)
+                            .unwrap()
+                    };
+                    (label(("history-status", r)), label(("history-detail", r)))
+                })
+                .collect()
+        })
+        .unwrap();
+    let statuses: Vec<&str> = cells.iter().map(|(s, _)| s.as_str()).collect();
+    assert_eq!(statuses, ["203", "202", "201"]);
+    for (status, detail) in &cells {
+        assert!(
+            detail.starts_with(&format!("{status} · ")),
+            "the cell keeps its whole label: {detail}"
+        );
+    }
+}
+
 // One Escape closes the History dialog even with a query typed.
 #[gpui_kit::test]
 fn escape_closes_the_history_palette_with_a_query_typed(cx: &mut TestAppContext) {

@@ -281,7 +281,7 @@ async fn a_reset_mid_body_keeps_an_event_stream_and_fails_a_plain_body() {
         .send_streaming(&req(&s, None), &CancelHandle::new(), StreamOptions::new())
         .await
         .unwrap_err();
-    assert!(matches!(err, ExecError::Transport { .. }), "{err:?}");
+    assert!(matches!(err, ExecError::BodyCut { .. }), "{err:?}");
 }
 
 #[tokio::test]

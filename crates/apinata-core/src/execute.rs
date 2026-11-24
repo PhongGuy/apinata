@@ -310,6 +310,30 @@ pub enum NtlmCause {
     Random,
 }
 
+/// The head of a response whose body was cut short, and how much of the body arrived.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct CutBody {
+    /// The status that arrived.
+    pub status: u16,
+    /// The headers that arrived, as the wire sent them.
+    pub headers: Vec<(String, String)>,
+    /// The body bytes that came over the wire before it was cut, still encoded.
+    pub received: u64,
+    /// The `Content-Length` the server promised; `None` when it sent none.
+    pub expected: Option<u64>,
+}
+
+impl CutBody {
+    /// `10 of 100 bytes`, or `10 bytes` when no length was promised.
+    pub fn count(&self) -> String {
+        match self.expected {
+            Some(expected) => format!("{} of {expected} bytes", self.received),
+            None => format!("{} bytes", self.received),
+        }
+    }
+}
+
 /// Why a request could not be sent or its response not read.
 #[derive(Debug, Clone, thiserror::Error)]
 #[non_exhaustive]
@@ -384,6 +408,22 @@ pub enum ExecError {
     Transport {
         /// The URL of the hop that failed.
         url: String,
+        /// The underlying error.
+        message: String,
+    },
+    /// The response's status and headers arrived but the connection failed before the whole
+    /// body did. The send still fails; the head is kept so a front end can show it.
+    #[error(
+        "{url}: status {}, but the body was cut short after {}: {message}",
+        cut.status,
+        cut.count()
+    )]
+    #[non_exhaustive]
+    BodyCut {
+        /// The URL of the hop whose body was cut.
+        url: String,
+        /// The head that arrived and how much of the body did, boxed to keep the error small.
+        cut: Box<CutBody>,
         /// The underlying error.
         message: String,
     },
@@ -501,6 +541,27 @@ impl ExecError {
     pub fn transport(url: impl Into<String>, message: impl Into<String>) -> Self {
         Self::Transport {
             url: url.into(),
+            message: message.into(),
+        }
+    }
+
+    /// Builds a `BodyCut` error for the hop at `url`, whose head arrived but whose body did not.
+    pub fn body_cut(
+        url: impl Into<String>,
+        status: u16,
+        headers: Vec<(String, String)>,
+        received: u64,
+        expected: Option<u64>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self::BodyCut {
+            url: url.into(),
+            cut: Box::new(CutBody {
+                status,
+                headers,
+                received,
+                expected,
+            }),
             message: message.into(),
         }
     }
@@ -1285,8 +1346,23 @@ impl Executor {
             }
             let transport =
                 |e: reqwest::Error| classify(&url, proxy.as_ref(), followed as usize, e);
-            let body_fail = |e: BodyError| match e {
-                BodyError::Wire(e) => transport(e),
+            // A connection lost mid-body keeps the head that arrived; a body that does not
+            // decode, or a failure classified as something else, stays as it was.
+            let body_fail = |fail: BodyFail, status: StatusCode, head: &HeaderMap| match fail.error
+            {
+                BodyError::Wire(e) => match transport(e) {
+                    ExecError::Transport { url, message } => ExecError::body_cut(
+                        url,
+                        status.as_u16(),
+                        lossy(head),
+                        fail.received,
+                        head.get(CONTENT_LENGTH)
+                            .and_then(|v| v.to_str().ok())
+                            .and_then(|v| v.trim().parse().ok()),
+                        message,
+                    ),
+                    other => other,
+                },
                 BodyError::Decode(e) => ExecError::transport(
                     redact_url(url.as_str()),
                     format!("could not decode the response body: {e}"),
@@ -1597,7 +1673,7 @@ impl Executor {
                         ))
                         .await
                         .ok_or_else(timed_out)?
-                        .map_err(body_fail)?;
+                        .map_err(|f| body_fail(f, status, &hop_headers))?;
                     BodyRead {
                         end: Some(refused(why)),
                         ..read
@@ -1703,7 +1779,7 @@ impl Executor {
                     .map_err(|e| match e {
                         ReadFail::Timeout => timed_out(),
                         ReadFail::Idle => ExecError::timeout(redact_url(url.as_str())),
-                        ReadFail::Body(e) => body_fail(e),
+                        ReadFail::Body(f) => body_fail(f, status, &hop_headers),
                         ReadFail::Stopped => ExecError::Transport {
                             url: redact_url(url.as_str()),
                             message: "stopped before the whole body was saved".to_owned(),
@@ -1721,7 +1797,7 @@ impl Executor {
                     ))
                     .await
                     .ok_or_else(timed_out)?
-                    .map_err(body_fail)?,
+                    .map_err(|f| body_fail(f, status, &hop_headers))?,
             };
             let BodyRead {
                 bytes,
@@ -1882,11 +1958,11 @@ impl Executor {
 
 /// Reads a hop's decoded body chunk by chunk, keeping at most `limit` bytes. Past the limit
 /// reading stops and the dropped response closes the connection.
-async fn read_body(mut res: WireBody, limit: Option<u64>) -> Result<BodyRead, BodyError> {
+async fn read_body(mut res: WireBody, limit: Option<u64>) -> Result<BodyRead, BodyFail> {
     let mut body = Vec::new();
     let mut size = 0u64;
     let mut truncated = false;
-    while let Some(chunk) = res.chunk().await? {
+    while let Some(chunk) = res.chunk().await.map_err(|e| BodyFail::new(e, &res))? {
         size += chunk.len() as u64;
         if let Some(limit) = limit {
             let room =
@@ -1907,6 +1983,21 @@ async fn read_body(mut res: WireBody, limit: Option<u64>) -> Result<BodyRead, Bo
         end: None,
         file: None,
     })
+}
+
+/// A body read that failed, with the wire bytes that had arrived by then.
+struct BodyFail {
+    error: BodyError,
+    received: u64,
+}
+
+impl BodyFail {
+    fn new(error: BodyError, res: &WireBody) -> BodyFail {
+        BodyFail {
+            error,
+            received: res.wire_size(),
+        }
+    }
 }
 
 /// What a hop's body read produced.
@@ -2025,7 +2116,7 @@ enum ReadFail {
     Timeout,
     /// A saved plain body sent nothing for the idle window.
     Idle,
-    Body(BodyError),
+    Body(BodyFail),
     /// Stop ended a plain body that was being saved, so there is no whole body to commit.
     Stopped,
     /// Writing the body file at this path failed.
@@ -2196,7 +2287,7 @@ async fn read_streaming(
                 Err(BodyError::Decode(e)) if event_stream => {
                     break Some(StreamEnd::Error(format!("could not decode the response body: {e}")));
                 }
-                Err(e) => return Err(ReadFail::Body(e)),
+                Err(e) => return Err(ReadFail::Body(BodyFail::new(e, &res))),
             },
         }
     };

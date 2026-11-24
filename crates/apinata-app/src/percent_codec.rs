@@ -2,8 +2,11 @@
 //! and the field's right-click menu.
 
 use apinata_core::{percent_decode, percent_encode, widen_to_placeholders};
+use gpui_kit::base::input::InputContextMenuCapabilities;
 use gpui_kit::component::WindowExt as _;
-use gpui_kit::component::input::{Copy, Cut, InputState, Paste, SelectAll};
+use gpui_kit::component::input::{
+    Copy, Cut, GoToDefinition, InputState, Paste, SelectAll, ToggleCodeActions,
+};
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::prelude::*;
 use gpui_kit::{Action, App, Entity, Focusable as _, WeakEntity, Window, actions};
@@ -89,20 +92,10 @@ pub fn codec_entries(input: &InputState) -> Vec<(&'static str, bool)> {
 /// The kit's own Cut, Copy, Paste and Select All, then the two commands when `input` applies,
 /// disabled while nothing is selected.
 pub fn input_menu(menu: NativeMenu, input: &InputState, cx: &App) -> NativeMenu {
-    let caps = input.context_menu_capabilities();
-    let editable = !caps.is_disabled() && !caps.is_readonly();
+    let menu = edit_entries(menu, &input.context_menu_capabilities(), cx);
     let item = |menu: NativeMenu, label: &'static str, off: bool, action: Box<dyn Action>| {
         menu.menu_with_disabled(ui::native_menu_label(label, off, cx), off, action)
     };
-    let menu = item(
-        menu,
-        "Cut",
-        !(editable && caps.is_copyable()),
-        Box::new(Cut),
-    );
-    let menu = item(menu, "Copy", !caps.is_copyable(), Box::new(Copy));
-    let menu = item(menu, "Paste", !editable, Box::new(Paste));
-    let menu = menu.separator().menu("Select All", Box::new(SelectAll));
     if !applies(input) {
         return menu;
     }
@@ -114,6 +107,34 @@ pub fn input_menu(menu: NativeMenu, input: &InputState, cx: &App) -> NativeMenu 
         Box::new(PercentEncode),
     );
     item(menu, "Percent-decode", off, Box::new(PercentDecode))
+}
+
+/// The entries the kit's own menu gives a field with `caps`: a code editor's Go to Definition
+/// and Show Code Actions, then Cut, Copy, Paste and Select All.
+pub fn edit_entries(menu: NativeMenu, caps: &InputContextMenuCapabilities, cx: &App) -> NativeMenu {
+    let enabled = !caps.is_disabled();
+    let editable = enabled && !caps.is_readonly();
+    let item = |menu: NativeMenu, label: &'static str, off: bool, action: Box<dyn Action>| {
+        menu.menu_with_disabled(ui::native_menu_label(label, off, cx), off, action)
+    };
+    let menu = match caps.is_code_editor() {
+        true => {
+            let off = !(enabled && caps.has_definition());
+            let menu = item(menu, "Go to Definition", off, Box::new(GoToDefinition));
+            let off = !(editable && caps.has_code_actions());
+            item(menu, "Show Code Actions", off, Box::new(ToggleCodeActions)).separator()
+        }
+        false => menu,
+    };
+    let menu = item(
+        menu,
+        "Cut",
+        !(editable && caps.is_copyable()),
+        Box::new(Cut),
+    );
+    let menu = item(menu, "Copy", !caps.is_copyable(), Box::new(Copy));
+    let menu = item(menu, "Paste", !editable, Box::new(Paste));
+    menu.separator().menu("Select All", Box::new(SelectAll))
 }
 
 // The handler runs inside the window's dispatch, so the edit waits until that ends. That
