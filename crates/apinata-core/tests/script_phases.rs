@@ -2,7 +2,9 @@
 
 use crate::script_support;
 
-use apinata_core::{Outcome, RunError, ScriptOptions, ScriptPhase, Warning};
+use apinata_core::{
+    Outcome, RunError, ScriptOptions, ScriptPhase, Verdict, Warning, own_script_line,
+};
 use script_support::*;
 use std::time::{Duration, Instant};
 use wiremock::matchers::path;
@@ -93,13 +95,14 @@ async fn a_throwing_pre_request_script_sends_nothing() {
             message,
             ..
         }) => {
-            assert_eq!(message, "this request's script, line 2: Error: stop")
+            assert_eq!(message, "this request's script, line 2: Error: stop");
+            assert_eq!(own_script_line(message), Some(2));
         }
         other => panic!("{other:?}"),
     }
     assert_eq!(
         result.error.as_ref().map(ToString::to_string).as_deref(),
-        Some("pre-request script error, this request's script, line 2: Error: stop")
+        Some("Pre-request script error, this request's script, line 2: Error: stop")
     );
     assert_eq!(tests(&result), ["pre-request early: pass"]);
     assert_eq!(
@@ -130,6 +133,12 @@ async fn a_throwing_post_response_script_fails_and_tests_still_run() {
         ]
     );
     assert!(result.tests[0].script_error);
+    match &result.tests[0].verdict {
+        Verdict::Fail { detail, .. } => {
+            assert_eq!(own_script_line(detail.as_deref().unwrap()), Some(1))
+        }
+        other => panic!("{other:?}"),
+    }
     // The error also reaches the console, so its error filter finds it under its phase.
     assert_eq!(
         console_phases(&result),
@@ -139,6 +148,53 @@ async fn a_throwing_post_response_script_fails_and_tests_still_run() {
     assert_eq!(
         (report.summary.passed_tests, report.summary.failed_tests),
         (1, 0)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_folder_script_error_names_no_line_of_the_request() {
+    let s = server().await;
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        (
+            "f/folder.yml",
+            &folder(&script(
+                "after-response",
+                "console.log(1);\nthrow new Error('f')",
+            )),
+        ),
+        (
+            "f/r.yml",
+            &scripted(
+                "R",
+                &format!("{}/ok", s.uri()),
+                &script("tests", "test('t', () => {})"),
+                "",
+            ),
+        ),
+    ]);
+    let result = send(dir.path(), "f/r.yml", on()).await;
+    let detail = match &result.tests[0].verdict {
+        Verdict::Fail { detail, .. } => detail.clone().unwrap(),
+        other => panic!("{other:?}"),
+    };
+    assert!(detail.contains(", line 2: "), "{detail}");
+    assert_eq!(own_script_line(&detail), None);
+}
+
+#[test]
+fn own_script_line_reads_the_request_s_own_script_and_tests() {
+    assert_eq!(
+        own_script_line("this request's tests, line 12: AssertionError: x"),
+        Some(12)
+    );
+    assert_eq!(
+        own_script_line("this request's script: Error: no line"),
+        None
+    );
+    assert_eq!(
+        own_script_line("this request's script is not approved; approve it"),
+        None
     );
 }
 

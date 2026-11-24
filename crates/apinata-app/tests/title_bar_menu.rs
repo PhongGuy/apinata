@@ -2,11 +2,16 @@
 
 use crate::support;
 
-use apinata_app::app_menu::{app_menu_groups, app_menu_index, app_menu_items};
+use apinata_app::app_menu::{
+    EXPORT_COMMANDS, EXPORT_MENU, app_menu_disabled_reasons, app_menu_groups, app_menu_index,
+    app_menu_items, app_menu_rows,
+};
+use apinata_app::commands::registry;
 use apinata_app::keymap::{NewRequest, bindings};
 use apinata_app::shell::{
-    ImportCollection, ImportEnvironment, NewCollection, OpenCollection, OpenCookies,
-    OpenGlobalEnvironments,
+    ExportCollection, ExportCollectionHtml, ExportCollectionOpenApi,
+    ExportCollectionPostmanKeepScripts, ImportCollection, ImportEnvironment, NewCollection,
+    OpenCollection, OpenCookies, OpenGlobalEnvironments,
 };
 use apinata_app::style::{ENV_CONTROL_WIDTH, at_zoom};
 use gpui_kit::component::WindowExt as _;
@@ -224,15 +229,113 @@ fn separators_split_the_open_menu_into_its_groups(cx: &mut TestAppContext) {
         })
         .unwrap();
     let mut want: Vec<Option<String>> = Vec::new();
-    for (i, group) in app_menu_groups().iter().enumerate() {
+    for (i, group) in app_menu_rows().iter().enumerate() {
         if i > 0 {
             want.push(Some(String::new()));
         }
-        want.extend(group.iter().map(|(l, _)| Some(l.to_string())));
+        want.extend(group.iter().map(|l| Some(l.to_string())));
     }
     want.resize(40, None);
     assert_eq!(rows, want);
-    assert_eq!(app_menu_index(&OpenCookies), Some(25));
+    assert_eq!(app_menu_index(&OpenCookies), Some(22));
+}
+
+// The four exports fold into one Export row, at the place the first of them held.
+#[test]
+fn the_app_menu_folds_the_exports_into_one_row() {
+    let rows = app_menu_rows();
+    assert_eq!(
+        rows[0],
+        [
+            "Open collection…",
+            "Close collection",
+            "New collection…",
+            "Import collection…",
+            "Import curl…",
+            EXPORT_MENU,
+            "Run collection",
+            "Collection settings",
+        ]
+    );
+    assert_eq!(rows.iter().flatten().count(), 26);
+    let export_row = app_menu_index(&ExportCollection).expect("in the app menu");
+    let exports: [&dyn Action; 4] = [
+        &ExportCollection,
+        &ExportCollectionPostmanKeepScripts,
+        &ExportCollectionOpenApi,
+        &ExportCollectionHtml,
+    ];
+    for action in exports {
+        assert_eq!(
+            app_menu_index(action),
+            Some(export_row),
+            "{}",
+            action.name()
+        );
+    }
+    assert_eq!(export_row, 5);
+}
+
+// With only the scratch pad open the whole Export row greys out, saying why.
+#[test]
+fn the_export_row_greys_out_without_a_collection() {
+    let off = app_menu_disabled_reasons(true, true, true);
+    assert!(
+        off.contains(&(EXPORT_MENU, "Open a collection to use this")),
+        "{off:?}"
+    );
+    let on = app_menu_disabled_reasons(false, true, true);
+    assert!(!on.iter().any(|(l, _)| *l == EXPORT_MENU), "{on:?}");
+}
+
+// The Export row opens a submenu of the four exports by their registry names; one runs.
+#[gpui_kit::test]
+fn the_app_menu_exports_from_its_submenu(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    let cmds = registry();
+    let want: Vec<String> = EXPORT_COMMANDS
+        .iter()
+        .map(|id| {
+            cmds.iter()
+                .find(|c| c.id == *id)
+                .expect(id)
+                .label
+                .to_owned()
+        })
+        .collect();
+    cx.update_window(s.win, |_, w, cx| {
+        w.within("title-bar").click("app-menu", cx)
+    })
+    .unwrap();
+    frame(cx, s.win);
+    let ix = app_menu_index(&ExportCollectionOpenApi).unwrap();
+    cx.update_window(s.win, |_, w, cx| w.within("popup-menu").click(ix, cx))
+        .unwrap();
+    frame(cx, s.win);
+    let shown: Vec<String> = cx
+        .update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            let sub = w.within("submenu");
+            (0..8usize)
+                .filter_map(|ix| sub.try_find(ix).and_then(|e| e.label().map(str::to_owned)))
+                .collect()
+        })
+        .unwrap();
+    assert_eq!(shown, want);
+    assert!(
+        !cx.did_prompt_for_new_path(),
+        "opening the submenu exports nothing"
+    );
+    cx.update_window(s.win, |_, w, cx| w.within("submenu").click(2usize, cx))
+        .unwrap();
+    cx.run_until_parked();
+    assert!(
+        cx.did_prompt_for_new_path(),
+        "the OpenAPI entry asks where to save"
+    );
+    cx.simulate_new_path_selection(|_| None);
+    cx.run_until_parked();
 }
 
 // The git entries sit together in the drawn menu, set apart by a separator on each side.

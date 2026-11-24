@@ -8,6 +8,9 @@ use std::rc::Rc;
 use apinata_core::import::{ImportReport, ImportedEnvironment, parse_environments};
 use gpui_kit::assets::IconName;
 use gpui_kit::base::actions::SelectDown;
+use gpui_kit::component::WindowExt as _;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::notification::Notification;
 use gpui_kit::component::select::{Select, SelectEvent, SelectItem, SelectState};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -23,6 +26,7 @@ use crate::env_color::{PickerGroups, picker_row, scoped};
 use crate::shell::NO_COLLECTION_ENV_TIP;
 use crate::style::{ENV_CONTROL_SHOWN_FROM, ENV_CONTROL_WIDTH, resolve};
 use crate::tabs::TabKind;
+use crate::ui::SolidRing as _;
 use crate::ui::ring_overlay;
 use crate::workspace::Workspace;
 
@@ -264,6 +268,9 @@ impl EnvSelector {
                     return;
                 }
             };
+            let variables = envs.iter().flat_map(|e| &e.variables);
+            let secrets = variables.clone().filter(|v| v.secret).count();
+            let text_counts = (variables.count(), secrets);
             // One at a time, so a write that fails stops the rest and keeps what was written.
             let mut merged = ImportReport::default();
             let mut error = None;
@@ -288,6 +295,11 @@ impl EnvSelector {
             let _ = this.update_in(cx, |this, window, cx| {
                 if !merged.notes.is_empty() {
                     crate::import_report::open("Import report", &merged, window, cx);
+                } else if error.is_none() && !merged.environments.is_empty() {
+                    let (variables, secrets) = text_counts;
+                    let text = imported_text(&merged.environments, variables, secrets);
+                    let toast = imported_toast(this.workspace.clone(), root, &merged, text);
+                    window.push_notification(toast, cx);
                 }
                 if let Some(message) = error {
                     failed(message, window, cx);
@@ -483,4 +495,84 @@ fn failed(message: String, window: &mut Window, cx: &mut App) {
             .title("Could not import environment")
             .description(text.clone())
     });
+}
+
+/// The toast after a clean environment import: the one name or how many environments, then
+/// the variable count and how many secrets were kept out of the files.
+pub fn imported_text(names: &[String], variables: usize, secrets: usize) -> String {
+    let what = match names {
+        [one] => one.clone(),
+        many => format!("{} environments", many.len()),
+    };
+    let plural = |n: usize, word: &str| format!("{n} {word}{}", if n == 1 { "" } else { "s" });
+    let mut counts = plural(variables, "variable");
+    if secrets > 0 {
+        counts.push_str(&format!(
+            ", {} kept out of the file",
+            plural(secrets, "secret")
+        ));
+    }
+    format!("Imported {what} ({counts})")
+}
+
+struct ImportedToast;
+
+// The toast a clean import shows instead of a report. Use it selects the environment when one
+// was imported, under the name it was written as; Open shows the environment editor.
+fn imported_toast(
+    workspace: Entity<Workspace>,
+    root: PathBuf,
+    report: &ImportReport,
+    text: String,
+) -> Notification {
+    let single = match report.environments.as_slice() {
+        [one] => Some(one.clone()),
+        _ => None,
+    };
+    let open: Rc<dyn Fn(&mut App)> = {
+        let (workspace, root) = (workspace.clone(), root.clone());
+        Rc::new(move |cx: &mut App| {
+            workspace.update(cx, |w, cx| {
+                w.open_settings(&root, TabKind::Environments, cx);
+            });
+        })
+    };
+    let toast = Notification::new().id::<ImportedToast>().message(text);
+    let open_button = move |open: Rc<dyn Fn(&mut App)>, this: Entity<Notification>, cx: &App| {
+        Button::new("env-import-open")
+            .solid_ring(cx)
+            .ghost()
+            .label("Open")
+            .on_click(move |_, window, cx| {
+                open(cx);
+                this.update(cx, |n, cx| n.dismiss(window, cx));
+            })
+    };
+    let Some(name) = single else {
+        return toast
+            .action(move |_, _, cx| open_button(Rc::clone(&open), cx.entity(), cx))
+            .autohide(true);
+    };
+    let use_it = Rc::new(move |cx: &mut App| {
+        workspace.update(cx, |w, cx| {
+            w.select_environment(&root, Some(name.clone()), cx)
+        });
+    });
+    toast
+        .content(move |_, _, cx| {
+            let button = open_button(Rc::clone(&open), cx.entity(), cx);
+            h_flex().pt_2().child(button).into_any_element()
+        })
+        .action(move |_, _, cx| {
+            let (use_it, this) = (Rc::clone(&use_it), cx.entity());
+            Button::new("env-import-use")
+                .solid_ring(cx)
+                .ghost()
+                .label("Use it")
+                .on_click(move |_, window, cx| {
+                    use_it(cx);
+                    this.update(cx, |n, cx| n.dismiss(window, cx));
+                })
+        })
+        .autohide(true)
 }

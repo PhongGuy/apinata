@@ -693,10 +693,18 @@ fn global_environments_from_the_picker_closed_by_its_x_return_to_the_picker(
 fn enabled_menu_row(action: &dyn gpui_kit::Action) -> usize {
     let off = apinata_app::app_menu::app_menu_disabled(false, false, false);
     let items = apinata_app::app_menu::app_menu_items();
-    let ix = (items.iter())
-        .position(|(_, a)| a.partial_eq(action))
+    let (label, _) = (items.iter())
+        .find(|(_, a)| a.partial_eq(action))
         .expect("in the app menu");
-    items[..ix].iter().filter(|(l, _)| !off.contains(l)).count()
+    let rows: Vec<&str> = apinata_app::app_menu::app_menu_rows()
+        .into_iter()
+        .flatten()
+        .collect();
+    let ix = rows
+        .iter()
+        .position(|l| l == label)
+        .expect("a top-level row");
+    rows[..ix].iter().filter(|l| !off.contains(l)).count()
 }
 
 // The keyboard path: Tab to the app menu, arrow down to its Runtime variables row, Enter, then

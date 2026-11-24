@@ -91,7 +91,7 @@ async fn failures_resolve_rather_than_reject() {
     mounted(&s, "/main", 1).await;
     mounted(&s, "/boom", 0).await;
     mounted(&s, "/skip", 0).await;
-    let code = "const boom = await bru.runRequest('boom');\nconst undef = await bru.runRequest('undef');\nconst down = await bru.runRequest('down');\nconst skip = await bru.runRequest('skip');\nconsole.log(boom.message.startsWith('pre-request script error') && boom.message.includes('boom'));\nconsole.log(undef.message);\nconsole.log(down.status === undefined, typeof down.error, 'message' in down);\nconsole.log(skip.message);";
+    let code = "const boom = await bru.runRequest('boom');\nconst undef = await bru.runRequest('undef');\nconst down = await bru.runRequest('down');\nconst skip = await bru.runRequest('skip');\nconsole.log(boom.message.startsWith('Pre-request script error') && boom.message.includes('boom'));\nconsole.log(undef.message);\nconsole.log(down.status === undefined, typeof down.error, 'message' in down);\nconsole.log(skip.message);";
     let dir = write_tree(&[
         ("opencollection.yml", ROOT),
         (

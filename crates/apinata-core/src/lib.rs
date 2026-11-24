@@ -215,9 +215,9 @@ pub use git::{
     LineKind, Pulled, Pushed, REPO_LOCK_WAIT, RebasePulled, RemoteBranch, RemoteHost, RepoBusy,
     RepoLock, RepoStatus, Section, StageState, SwitchError, Switched, SyncDirection, SyncError,
     SyncTargets, Upstream, branches, clone_repo, collection_status, collection_status_with, commit,
-    commit_all, default_folder_name, discard_changes, fetch, file_diff, file_diff_with,
-    ignore_dotenv, is_dirty, proxy_host, pull, pull_reporting, push, rebase_pull, redact_url,
-    redact_url_userinfo, remote_branches, remote_host, remote_tip, remotes, repo_lock,
+    commit_all, create_branch, default_folder_name, discard_changes, fetch, file_diff,
+    file_diff_with, ignore_dotenv, is_dirty, proxy_host, pull, pull_reporting, push, rebase_pull,
+    redact_url, redact_url_userinfo, remote_branches, remote_host, remote_tip, remotes, repo_lock,
     set_identity, squash_unpushed, stage, switch_branch, switch_to_remote, sync_targets,
     text_hunks, tracking_tip, unpushed, unstage, validate_clone_url, validate_folder_name,
 };
@@ -297,13 +297,14 @@ pub use response::{CookieOrigin, HOP_BODY_LIMIT, Hop, Response, SentRequest};
 pub use results_report::ResultsReport;
 pub use runner::{
     Outcome, RecheckRefused, RequestResult, RunError, RunEvent, RunOptions, RunPlan, RunReport,
-    SelectError, StatusRule, Summary, recheck_assertions, rerun_slots, run, send_one,
+    RunStop, SelectError, StatusRule, Summary, recheck_assertions, rerun_slots, run, send_one,
 };
 pub use runtime_vars::{RuntimeVar, RuntimeVars};
 pub use schema_test::schema_test_script;
 pub use script::{
     ConsoleEntry, ConsoleLevel, ExecutionMode, ScriptOptions, ScriptPhase, ScriptText,
-    ScriptTextKind, TestOutcome, plan_script_texts, plan_script_texts_across, script_texts,
+    ScriptTextKind, TestOutcome, own_script_line, plan_script_texts, plan_script_texts_across,
+    script_texts,
 };
 pub use script_snippets::{Snippet, SnippetPhase, script_snippets};
 pub use script_trust::{ScriptDecision, ScriptTrust, script_hash};

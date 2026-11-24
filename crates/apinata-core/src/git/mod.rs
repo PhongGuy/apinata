@@ -27,8 +27,8 @@ pub use rebase::{ConflictKind, ConflictPath, RebasePulled, rebase_pull};
 mod run;
 mod stream;
 pub use branch::{
-    Branch, FetchError, RemoteBranch, SwitchError, Switched, Upstream, branches, fetch,
-    remote_branches, remotes, switch_branch, switch_to_remote,
+    Branch, FetchError, RemoteBranch, SwitchError, Switched, Upstream, branches, create_branch,
+    fetch, remote_branches, remotes, switch_branch, switch_to_remote,
 };
 pub use clone::{CloneError, CloneProgress, CloneRequest, clone_repo};
 pub use stream::CancelFlag;

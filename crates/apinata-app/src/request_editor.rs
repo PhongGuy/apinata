@@ -40,7 +40,7 @@ use crate::auth_section::{AuthMode, AuthSection};
 use crate::banner::{self, Banner, Choice};
 use crate::body_section::BodySection;
 use crate::cached_part::{Same, Slot};
-use crate::command::{Command, Edit, Field, Notice, NoticeKind, Target};
+use crate::command::{Command, Edit, Field, Notice, NoticeKind, SecretRef, Target};
 use crate::confirm;
 use crate::default_headers_section::DefaultHeadersSection;
 use crate::edit_history::EditHistory;
@@ -58,7 +58,7 @@ use crate::last_response::ResponseStore;
 use crate::paste_notes;
 use crate::request_chrome::{Chrome, ChromePart};
 use crate::response_pane::{HistoryTarget, ResponsePane, response_strip};
-use crate::script_section::{ScriptSection, SideChosen, SnippetChosen};
+use crate::script_section::{ScriptSection, SideChosen, SnippetChosen, script_error_notes};
 use crate::scroll_follow::FocusFollow;
 use crate::section::SectionEdit;
 use crate::send_model::{Restored, SendModel, SendState};
@@ -259,6 +259,8 @@ pub struct RequestEditor {
     slot_kind: Cell<u8>,
     // The last live result seen, so each successful send refreshes the token panel once.
     last_result: Weak<RequestResult>,
+    // The result whose script errors the script editors mark now.
+    marked: Weak<RequestResult>,
     response: Entity<ResponsePane>,
     split: Entity<ResizableState>,
     split_axis: Orientation,
@@ -303,6 +305,8 @@ pub struct RequestEditor {
     // The generated test text just appended; its edit is an undo step, unlike script typing.
     script_step: Option<String>,
     sent: HashMap<u64, Section>,
+    // Moves to a secret awaiting the name the actor takes, by command id.
+    moves: HashMap<u64, PendingMove>,
     // The snapshots each field's controls loaded; its edits are built from that content.
     loaded: LoadStamps<Field>,
     // Set while a table change is sent whose rows the table no longer shows.
@@ -528,6 +532,7 @@ impl RequestEditor {
             // The URL bar swaps Send and Cancel as the model starts and stops sending.
             cx.observe(&send_model, |this, _, cx| {
                 this.clear_notice_after_send(cx);
+                this.mark_script_errors(cx);
                 cx.notify()
             }),
             cx.observe_in(&workspace, window, |this, _, window, cx| {
@@ -795,6 +800,7 @@ impl RequestEditor {
             section_body_focus: cx.focus_handle(),
             slot_kind: Cell::new(0),
             last_result: Weak::new(),
+            marked: Weak::new(),
             response,
             split,
             split_axis,
@@ -827,6 +833,7 @@ impl RequestEditor {
             checkpoint: None,
             script_step: None,
             sent: HashMap::new(),
+            moves: HashMap::new(),
             loaded: LoadStamps::default(),
             lagging: false,
             pasted: None,
@@ -899,6 +906,28 @@ impl RequestEditor {
         self.last_result = Arc::downgrade(result);
         if ok {
             refresh_token_panel(&self.auth, cx);
+        }
+    }
+
+    // Marks the script errors of the result on show in the script editors, once per result;
+    // anything but a finished result clears them.
+    fn mark_script_errors(&mut self, cx: &mut Context<Self>) {
+        let shown = match self.send_model.read(cx).state() {
+            SendState::Done(result) => Some(Arc::clone(result)),
+            _ => None,
+        };
+        let same = match (&shown, self.marked.upgrade()) {
+            (Some(now), Some(before)) => Arc::ptr_eq(now, &before),
+            (None, None) => true,
+            _ => false,
+        };
+        if same {
+            return;
+        }
+        self.marked = shown.as_ref().map_or_else(Weak::new, Arc::downgrade);
+        let notes = shown.as_deref().map(script_error_notes).unwrap_or_default();
+        for section in [&self.script, &self.tests_script] {
+            section.update(cx, |s, cx| s.set_errors(&notes, cx));
         }
     }
 
@@ -1647,8 +1676,27 @@ impl RequestEditor {
             return;
         };
         match edit {
-            // The secret move rewrites values the history cannot restore.
-            Edit::MoveAuthSecrets | Edit::MoveToSecret(_) => {}
+            // The OAuth 2.0 move rewrites values the history cannot restore.
+            Edit::MoveAuthSecrets => {}
+            // A move to a secret becomes a step once the actor reports the name it took.
+            // Stamped as sent at once, so a step taken while it is on its way finds the field
+            // moved on.
+            Edit::MoveToSecret { ref slotted, .. } => {
+                let before = self.auth_before(&edit, cx);
+                let slotted = (**slotted).clone();
+                let stamp = self.history.note_sent(&edit);
+                if let Some(id) = self.dispatch(edit, section, item, cx)
+                    && let Some(before) = before
+                {
+                    let pending = PendingMove {
+                        before,
+                        slotted,
+                        stamp,
+                    };
+                    self.moves.insert(id, pending);
+                }
+                return;
+            }
             // Script keystrokes stay with the code editor's own undo, unless they follow a script
             // step: then they are a typing run of their own, so undo takes the typing and the
             // step apart instead of dropping the step as stale.
@@ -1681,7 +1729,7 @@ impl RequestEditor {
         section: Option<Section>,
         item: ItemPath,
         cx: &mut Context<Self>,
-    ) {
+    ) -> Option<u64> {
         let auth = edit.field() == Field::Auth;
         if auth {
             self.auth.update(cx, |a, cx| a.set_notice(None, cx));
@@ -1690,11 +1738,51 @@ impl RequestEditor {
             target: Target::Request(item),
             edit,
         };
-        self.send_command(command, section, cx);
+        let id = self.send_command(command, section, cx);
         // The panel's plan queues behind the edit, so it reads the edited auth.
         if auth {
             refresh_token_panel(&self.auth, cx);
         }
+        id
+    }
+
+    // The auth a move to a secret starts from, as the history knows it.
+    fn auth_before(&mut self, edit: &Edit, cx: &App) -> Option<AuthSpec> {
+        let view = self.view(cx)?;
+        let read = |e: &Edit| view_edit(&view, e);
+        let busy = self.busy(Field::Auth, cx);
+        edit_track::rebase(&mut self.history, busy, &read, edit);
+        match edit_track::prior_of(&self.history, &read, edit)? {
+            Edit::Auth(auth) => Some(auth),
+            _ => None,
+        }
+    }
+
+    // Records the move command `id` made as one step, now that the actor named its secret:
+    // undo returns the literal and drops the held value, redo moves it under the same name.
+    // A later auth edit sent meanwhile has moved the field on, so the move stays unrecorded.
+    fn record_move(&mut self, id: u64, reference: &SecretRef) {
+        let Some(PendingMove {
+            before,
+            slotted,
+            stamp,
+        }) = self.moves.remove(&id)
+        else {
+            return;
+        };
+        if self.history.sent_stamp(Field::Auth) != Some(stamp) {
+            return;
+        }
+        let undo = Edit::ReturnFromSecret {
+            auth: Box::new(before),
+            reference: reference.clone(),
+        };
+        let redo = Edit::MoveToSecret {
+            slotted: Box::new(slotted),
+            pinned: Some(reference.clone()),
+        };
+        self.history.record(undo, redo, None);
+        self.history.bind(Some(id));
     }
 
     // Notes the snapshot behind the fields this refresh loads, which are the idle ones; the
@@ -1775,6 +1863,7 @@ impl RequestEditor {
     fn delivered(&mut self, root: &Path, acked: u64, cx: &App) {
         if self.target(cx).is_some_and(|(ours, _)| ours == root) {
             self.sent.retain(|&id, _| id > acked);
+            self.moves.retain(|&id, _| id > acked);
             self.history.settle(acked);
         }
     }
@@ -1786,6 +1875,10 @@ impl RequestEditor {
             return;
         }
         for notice in notices {
+            match &notice.kind {
+                NoticeKind::MovedToSecret(reference) => self.record_move(notice.command, reference),
+                _ => _ = self.moves.remove(&notice.command),
+            }
             let Some(section) = self.sent.remove(&notice.command) else {
                 continue;
             };
@@ -2066,7 +2159,9 @@ fn view_edit(view: &RequestView, edit: &Edit) -> Option<Edit> {
         Edit::Assertions(_) => Edit::Assertions(view.assertions.clone()),
         Edit::Body(_) => Edit::Body(view.body.clone()),
         Edit::Method(_) => Edit::Method(view.method.clone()),
-        Edit::Auth(_) => Edit::Auth(view.auth.clone()),
+        Edit::Auth(_) | Edit::MoveToSecret { .. } | Edit::ReturnFromSecret { .. } => {
+            Edit::Auth(view.auth.clone())
+        }
         Edit::Script(phase, _) => Edit::Script(*phase, view.scripts.get(*phase).to_string()),
         _ => return None,
     })
@@ -2084,6 +2179,16 @@ fn body_typing(before: &Edit, edit: &Edit) -> bool {
     };
     let form = |b: &BodySpec| matches!(b, BodySpec::FormUrlEncoded(_) | BodySpec::Multipart(_));
     std::mem::discriminant(old) == std::mem::discriminant(new) && !form(new)
+}
+
+// A move to a secret sent and not yet named by the actor.
+struct PendingMove {
+    // The auth before the move, as the history knew it.
+    before: AuthSpec,
+    // The auth sent, with the moved field marked.
+    slotted: AuthSpec,
+    // The stamp the move left on the auth field; any later auth send changes it.
+    stamp: u64,
 }
 
 /// Each parent folder as (segment, folder path), then the request's display name.

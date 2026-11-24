@@ -65,16 +65,52 @@ fn the_collection_menu_is_split_into_groups(cx: &mut TestAppContext) {
                 "Collection settings",
                 "Start mock server"
             ]),
-            some(&[
-                MenuEntry::ExportPostman.label(),
-                MenuEntry::ExportPostmanKeepScripts.label(),
-                MenuEntry::ExportOpenApi.label(),
-                MenuEntry::ExportHtml.label(),
-            ]),
+            some(&[apinata_app::app_menu::EXPORT_MENU]),
             some(&["Show in file manager", "Open in terminal"]),
             some(&["Collapse all", "Expand all"]),
             some(&["Rename", "Close collection"]),
         ]
+    );
+}
+
+// The collection row's Export row opens the four exports, named as the app menu's submenu
+// names them; opening it runs none of them.
+#[gpui_kit::test]
+fn the_collection_menu_exports_from_one_submenu(cx: &mut TestAppContext) {
+    use apinata_app::app_menu::{EXPORT_COMMANDS, EXPORT_MENU};
+    use apinata_app::sidebar::menu::menu_entries;
+    use apinata_app::sidebar::model::NodeKind;
+    let cmds = registry();
+    let want: Vec<String> = EXPORT_COMMANDS
+        .iter()
+        .map(|id| {
+            cmds.iter()
+                .find(|c| c.id == *id)
+                .expect(id)
+                .label
+                .to_owned()
+        })
+        .collect();
+    let exports: Vec<String> = menu_entries(NodeKind::Collection)
+        .iter()
+        .filter(|e| e.is_export())
+        .map(|e| e.label().to_owned())
+        .collect();
+    assert_eq!(exports, want);
+    let h = open_sidebar(cx);
+    open_menu(cx, h.win, "");
+    click_menu(cx, h.win, EXPORT_MENU);
+    frame(cx, h.win);
+    let shown = cx
+        .update_window(h.win, |_, w, cx| {
+            w.render_frame(cx);
+            submenu_labels(w)
+        })
+        .unwrap();
+    assert_eq!(shown, want);
+    assert!(
+        !cx.did_prompt_for_new_path(),
+        "opening the submenu exports nothing"
     );
 }
 

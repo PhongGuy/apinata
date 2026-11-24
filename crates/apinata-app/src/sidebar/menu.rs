@@ -124,6 +124,15 @@ impl MenuEntry {
         }
     }
 
+    /// Whether the entry is one of the exports, which the menu folds into its Export submenu.
+    pub fn is_export(self) -> bool {
+        use MenuEntry as E;
+        matches!(
+            self,
+            E::ExportPostman | E::ExportPostmanKeepScripts | E::ExportOpenApi | E::ExportHtml
+        )
+    }
+
     /// Whether the entry destroys what it acts on, so the menu draws it in the danger colour.
     pub fn is_destructive(self) -> bool {
         self == MenuEntry::Delete

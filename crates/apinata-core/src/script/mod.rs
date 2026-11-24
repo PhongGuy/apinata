@@ -35,6 +35,7 @@ use crate::CancelHandle;
 use crate::assertion::Verdict;
 use crate::script_trust::script_hash;
 pub(crate) use engine::Segment;
+pub use engine::own_script_line;
 use engine::{Failure, RawVerdict};
 use host::HostState;
 pub use texts::{
@@ -60,6 +61,16 @@ impl ScriptPhase {
             ScriptPhase::PreRequest => "pre-request",
             ScriptPhase::PostResponse => "post-response",
             ScriptPhase::Tests => "tests",
+        }
+    }
+
+    /// How errors name this phase's script: `Pre-request script`, `Post-response script` or
+    /// `Test script`.
+    pub(crate) fn script_label(self) -> &'static str {
+        match self {
+            ScriptPhase::PreRequest => "Pre-request script",
+            ScriptPhase::PostResponse => "Post-response script",
+            ScriptPhase::Tests => "Test script",
         }
     }
 
@@ -325,10 +336,7 @@ impl Record {
         if segments.is_empty() {
             return PhaseEnd::Ran;
         }
-        let label = match phase {
-            ScriptPhase::PostResponse => "Post-response script",
-            _ => "Test script",
-        };
+        let label = phase.script_label();
         // Fail closed: one unapproved segment keeps the whole phase from running, since later
         // segments may depend on what it would have set.
         if let Some(denied) = segments.iter().find(|s| !opts.allows(&s.code)) {
