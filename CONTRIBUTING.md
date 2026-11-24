@@ -3,6 +3,24 @@
 This is the developer guide; the user-facing page is [README.md](README.md),
 and every command, flag and setting is in [GUIDE.md](GUIDE.md).
 
+## Sending a change
+
+Issues and pull requests from anyone are welcome, and a first pull request is
+fine. You don't need to ask before fixing a typo or a small bug. For anything
+bigger, open or comment on an issue first so we can agree on the design before
+you build it.
+
+Before I merge, I check that:
+
+- the pull request makes one change, with `Closes #N` for its issue;
+- new behaviour or a fix comes with a test that fails without it;
+- `make check` passes (`cargo fmt --check`, clippy with warnings as errors, and
+  the tests), and CI is green.
+
+If something is missing, I'll say exactly what and help get the pull request
+over the line. The steps are under
+[Issues and pull requests](#issues-and-pull-requests).
+
 ## Requirements
 
 - Rust 1.99 or newer (the `rust-version` in `Cargo.toml`), with `rustfmt` and
