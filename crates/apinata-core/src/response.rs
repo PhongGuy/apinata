@@ -147,6 +147,30 @@ impl Hop {
     }
 }
 
+/// A request that went out and got no answer: the hop a failed send was waiting on.
+#[derive(Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct SentRequest {
+    /// The method sent.
+    pub method: String,
+    /// The URL sent to.
+    pub url: String,
+    /// The headers sent, as [`Hop::request_headers`] has them.
+    pub headers: Vec<(String, String)>,
+}
+
+// Like Hop's Debug: the redacted URL and header names only.
+impl fmt::Debug for SentRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let names: Vec<&str> = self.headers.iter().map(|(name, _)| name.as_str()).collect();
+        f.debug_struct("SentRequest")
+            .field("method", &self.method)
+            .field("url", &redact_url(&self.url))
+            .field("headers", &names)
+            .finish()
+    }
+}
+
 /// How many bytes of each hop's request body a [`Hop`] keeps.
 pub const HOP_BODY_LIMIT: usize = 64 * 1024;
 

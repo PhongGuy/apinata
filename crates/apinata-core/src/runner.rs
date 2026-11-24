@@ -14,7 +14,7 @@ use crate::post_response::{VarOutcome, apply_post_response_vars_with};
 use crate::prompt::missing_labels;
 use crate::request::RequestFile;
 use crate::resolve::{ResolvedRequest, Warning, prepare, resolve_prepared};
-use crate::response::{CookieOrigin, Response};
+use crate::response::{CookieOrigin, Hop, Response, SentRequest};
 use crate::retry::{Retry, RetryHook, send_with_retries};
 use crate::script::expr::Expressions;
 use crate::script::host::HostState;
@@ -636,6 +636,13 @@ pub struct RequestResult {
     pub warnings: Vec<Warning>,
     /// The response, when one arrived.
     pub response: Option<Response>,
+    /// The hops a send that got no response completed, in order; an answered send keeps its
+    /// hops on the response's timeline instead.
+    pub timeline: Vec<Hop>,
+    /// The request a send that got no response was still waiting on when it failed.
+    pub unanswered: Option<SentRequest>,
+    /// The credentials a send that got no response placed, for redaction.
+    failed_derived: Vec<String>,
     /// Each post-response variable and what became of it; empty when no response arrived.
     pub post_response_vars: Vec<VarOutcome>,
     /// Each enabled assertion and its verdict, when a response arrived.
@@ -691,6 +698,9 @@ impl fmt::Debug for RequestResult {
             .field("last_attempt_error", &self.last_attempt_error)
             .field("warnings", &self.warnings)
             .field("response", &self.response)
+            .field("timeline", &self.timeline)
+            .field("unanswered", &self.unanswered)
+            .field("failed_derived", &self.failed_derived.len())
             .field("post_response_vars", &self.post_response_vars)
             .field("assertions", &self.assertions)
             .field("tests", &self.tests)
@@ -1464,11 +1474,8 @@ async fn send_at(
     // it as the console dock does.
     result.log_values = log_values(request, ctx);
     result.log_values.extend(record.substituted);
-    if let Some(response) = &result.response {
-        result
-            .log_values
-            .extend_from_slice(response.derived_credentials());
-    }
+    let derived = result.derived_credentials().to_vec();
+    result.log_values.extend(derived);
     result
         .log_values
         .extend_from_slice(&result.script_sensitive);
@@ -1657,6 +1664,9 @@ async fn exchange(
     result
         .warnings
         .extend(done.pac.into_iter().map(Warning::ProxyAutoConfig));
+    result.timeline = done.failed.timeline;
+    result.unanswered = done.failed.unanswered;
+    result.failed_derived = done.failed.derived;
     if let Ok(response) = &done.sent {
         result.warnings.extend(response.warnings().iter().cloned());
     }
@@ -1968,6 +1978,9 @@ impl RequestResult {
             error: None,
             warnings: Vec::new(),
             response,
+            timeline: Vec::new(),
+            unanswered: None,
+            failed_derived: Vec::new(),
             post_response_vars: Vec::new(),
             assertions,
             tests: Vec::new(),
@@ -1999,6 +2012,9 @@ impl RequestResult {
             error: None,
             warnings: Vec::new(),
             response: None,
+            timeline: Vec::new(),
+            unanswered: None,
+            failed_derived: Vec::new(),
             post_response_vars: Vec::new(),
             assertions: Vec::new(),
             tests: Vec::new(),
@@ -2037,12 +2053,12 @@ impl RequestResult {
         &self.script_sensitive
     }
 
-    /// The values the executor computed for this send (signatures, nonces, tokens); empty when
-    /// the send produced no response.
+    /// The values the executor computed for this send (signatures, nonces, tokens), the
+    /// response's or, when none arrived, the failed send's.
     pub fn derived_credentials(&self) -> &[String] {
         self.response
             .as_ref()
-            .map_or(&[], Response::derived_credentials)
+            .map_or(&self.failed_derived, Response::derived_credentials)
     }
 
     /// `text` with every value the session log hides for this send replaced by `[redacted]`,

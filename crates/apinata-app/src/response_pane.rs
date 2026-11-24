@@ -15,9 +15,9 @@ use apinata_core::sse::{self, SseEvent};
 use apinata_core::{
     AssertionOutcome, BodyState, Comparison, ConnectCause, ConnectHint, ConsoleEntry, ConsoleLevel,
     CookieInfo, CookieOutcome, CookieRejection, ExecError, HOP_BODY_LIMIT, ItemPath, OAuth2Error,
-    Outcome, RequestResult, ResolveError, Response, RunError, ScriptPhase, TestOutcome,
-    UndefinedHint, Verdict, header_description, is_credential_header, is_credential_name,
-    mask_response_header,
+    Outcome, RequestResult, ResolveError, Response, RunError, ScriptPhase, SentRequest,
+    TestOutcome, UndefinedHint, Verdict, header_description, is_credential_header,
+    is_credential_name, mask_response_header,
 };
 use gpui_kit::base::{ObservedElement, SelectableText};
 use gpui_kit::component::WindowExt as _;
@@ -1564,11 +1564,23 @@ impl ResponsePane {
         Some(view)
     }
 
+    // Whether the tab body shows the Body tab, which a stale Events tab reads as.
+    fn body_tab_shown(&self) -> bool {
+        match self.tab {
+            ResponseTab::Body => true,
+            ResponseTab::Events => !self.events_tab,
+            _ => false,
+        }
+    }
+
     /// The banner under the tab strip for a subscription that failed with a response (a refused
-    /// handshake's page, or a transcript its socket ended); `None` for anything else.
+    /// handshake's page, or a transcript its socket ended), or for a send that failed after
+    /// sending while a tab other than Body is open; `None` for anything else.
     pub fn stream_error(&self, cx: &App) -> Option<ErrorView> {
         let r = match self.send.read(cx).state() {
             SendState::Done(r) if is_stream_error(r) => r,
+            // Off the Body tab, a failed send's tabs keep the failure in view.
+            SendState::Done(r) if sent_without_response(r) && !self.body_tab_shown() => r,
             _ => return None,
         };
         let mut view = self.done_error(r, cx)?;
@@ -2760,6 +2772,30 @@ impl ResponsePane {
                     window.dispatch_action(ShowRequestSettings.boxed_clone(), cx)
                 })
         });
+        // After a failed send that sent something, links to the tabs that show it.
+        let sent = done(self.send.read(cx)).is_some_and(|r| sent_without_response(&r));
+        let sent_links = sent.then(|| {
+            let link = |id: &'static str, label: &'static str, tab: ResponseTab| {
+                Button::new(id)
+                    .solid_ring(cx)
+                    .link()
+                    .small()
+                    .label(label)
+                    .on_click(cx.listener(move |p, _, _, cx| p.set_tab(tab, cx)))
+            };
+            h_flex()
+                .gap(style::SPACE_2)
+                .child(link(
+                    "response-error-timeline",
+                    "Timeline",
+                    ResponseTab::Timeline,
+                ))
+                .child(link(
+                    "response-error-console",
+                    "Console",
+                    ResponseTab::Console,
+                ))
+        });
         let details = view.message.clone().filter(|_| open).map(|text| {
             div()
                 .id("response-error-details")
@@ -2799,6 +2835,7 @@ impl ResponsePane {
                     .child(sentence)
             }))
             .children(settings)
+            .children(sent_links)
             .children(toggle)
             .children(details)
             .child(
@@ -3145,7 +3182,6 @@ impl ResponsePane {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let response = result.response.as_ref();
         // A tab the strip no longer lists (Events on a plain response) reads as Body.
         let tab = match self.tab {
             ResponseTab::Events if !self.events_tab => ResponseTab::Body,
@@ -3193,7 +3229,7 @@ impl ResponsePane {
             ResponseTab::Headers => self.headers_list(result, cx),
             ResponseTab::Cookies => self.cookies_list(result, cx),
             ResponseTab::Timeline => {
-                let hops = response.map(|r| r.timeline()).unwrap_or_default();
+                let hops = shown_hops(result);
                 let (masks, revealed) = self.timeline_masks(result);
                 let shown_root = self.send.read(cx).root().map(Path::to_path_buf);
                 let named_reveals: BTreeSet<String> = (cx.try_global::<NamedReveals>())
@@ -3441,6 +3477,16 @@ impl ResponsePane {
                                     &mask.response_named,
                                     cx,
                                 ))
+                        }))
+                        .children(masks.get(hops.len()).and_then(|mask| {
+                            self.unanswered_entry(
+                                result,
+                                (hops.len(), mask),
+                                &revealed,
+                                &named_reveals,
+                                &follow,
+                                cx,
+                            )
                         })),
                 )
             }
@@ -3637,15 +3683,14 @@ impl ResponsePane {
             None => true,
         };
         if fresh {
-            let hops = r
-                .response
-                .as_ref()
-                .map(|resp| resp.timeline())
-                .unwrap_or_default();
             let headers = r.response.as_ref().map(|resp| resp.headers());
+            // The unanswered request of a failed send follows its hops, at the next index.
+            let unanswered = r.unanswered.as_ref().map(|sent| sent_masks(r, sent));
             *cache = Some(ResultMasks {
                 result: Arc::downgrade(r),
-                hops: hops.iter().map(|h| hop_masks(r, h)).collect(),
+                hops: (shown_hops(r).iter().map(|h| hop_masks(r, h)))
+                    .chain(unanswered)
+                    .collect(),
                 headers: (headers.unwrap_or_default().iter())
                     .map(|(name, value)| Masked {
                         hidden: r.redact_header(name, value),
@@ -3692,6 +3737,91 @@ impl ResponsePane {
                 (name.clone(), value.clone(), mask.eye().then_some(on), false)
             })
             .collect()
+    }
+
+    // The Timeline's last entry after a failed send: the request that got no answer, its
+    // headers masked and revealed as a hop's are, at index `ix` after the completed hops.
+    fn unanswered_entry(
+        &self,
+        r: &RequestResult,
+        (ix, mask): (usize, &HopMasks),
+        revealed: &BTreeSet<RevealKey>,
+        named_reveals: &BTreeSet<String>,
+        follow: &FocusFollow,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let sent = r.unanswered.as_ref()?;
+        let row_on = |row: usize| match mask.request_named.get(row).and_then(Option::as_ref) {
+            Some(name) => named_reveals.contains(name),
+            None => revealed.contains(&(ix, Field::RequestHeader, row)),
+        };
+        let shown: Vec<(String, String)> = (sent.headers.iter().zip(&mask.request_headers))
+            .enumerate()
+            .map(|(row, ((name, _), m))| {
+                let value = if row_on(row) { &m.revealed } else { &m.hidden };
+                (name.clone(), value.clone())
+            })
+            .collect();
+        let flags: Vec<Option<bool>> = (mask.request_headers.iter().enumerate())
+            .map(|(row, m)| m.eye().then(|| row_on(row)))
+            .collect();
+        let url = match revealed.contains(&(ix, Field::Url, 0)) {
+            true => &mask.url.revealed,
+            false => &mask.url.hidden,
+        };
+        let line = format!("{} {url} · No response", sent.method);
+        let pane = cx.entity();
+        let keys = mask.request_named.clone();
+        let table = header_table(
+            [
+                "unanswered-request-header",
+                "unanswered-request-header-name",
+                "unanswered-request-header-value",
+            ],
+            &shown,
+        )
+        .on_reveal(
+            (
+                "unanswered-request-header-eye",
+                "unanswered-request-header-reveal",
+                "unanswered-request-header-hide",
+            ),
+            flags,
+            move |row, _, cx| {
+                let key = keys.get(row).cloned().flatten();
+                pane.update(cx, |p, cx| match key {
+                    Some(name) => p.toggle_named_reveal(name, cx),
+                    None => p.toggle_reveal((ix, Field::RequestHeader, row), cx),
+                });
+            },
+        )
+        .follow(follow);
+        let muted = cx.theme().muted_foreground;
+        Some(
+            v_flex()
+                .id("unanswered")
+                .test_support()
+                .w_full()
+                .child(
+                    div()
+                        .id("unanswered-line")
+                        .test_support()
+                        .min_w_0()
+                        .aria_label(line.clone())
+                        .child(line),
+                )
+                .child(
+                    div()
+                        .id("unanswered-request-heading")
+                        .test_support()
+                        .pt(style::SPACE_1)
+                        .text_size(style::TEXT_SMALL)
+                        .text_color(muted)
+                        .child("Request headers"),
+                )
+                .child(table)
+                .into_any_element(),
+        )
     }
 
     // The jar's cookies for the shown host with each value masked unless revealed, and the
@@ -3923,39 +4053,7 @@ fn hop_line(h: &apinata_core::Hop, url: &str) -> String {
 // Each of the hop's values masked as the session log masks the same exchange, and as shown
 // once revealed. A reveal still hides the handshake credentials.
 fn hop_masks(r: &RequestResult, h: &apinata_core::Hop) -> HopMasks {
-    let header = |pairs: &[(String, String)]| -> Vec<Masked> {
-        pairs
-            .iter()
-            .map(|(name, value)| {
-                // The console hides a credential header whole, so the Timeline does too. The
-                // other handshake headers keep their scheme. Neither can be revealed.
-                if is_credential_header(name) && is_handshake_header(name) {
-                    let text = r.redact_header(name, value);
-                    return Masked {
-                        hidden: text.clone(),
-                        revealed: text,
-                    };
-                }
-                // A name that says credential hides even a literal no secret list knows.
-                if is_named_credential(name, value) {
-                    return Masked {
-                        hidden: NAME_MASK.to_owned(),
-                        revealed: value.clone(),
-                    };
-                }
-                let one = |text: &str| mask_handshake(name, text);
-                let redacted = if is_handshake_header(name) {
-                    r.redact(value)
-                } else {
-                    r.redact_header(name, value)
-                };
-                Masked {
-                    hidden: one(&redacted),
-                    revealed: one(value),
-                }
-            })
-            .collect()
-    };
+    let header = |pairs: &[(String, String)]| header_masks(r, pairs);
     HopMasks {
         url: Masked {
             hidden: r.redact_url(&h.url),
@@ -3970,6 +4068,57 @@ fn hop_masks(r: &RequestResult, h: &apinata_core::Hop) -> HopMasks {
         response_headers: header(&h.response_headers),
         response_named: named(&h.response_headers),
     }
+}
+
+// The request a failed send left unanswered, masked as a hop's request is; it has no body or
+// response to show.
+fn sent_masks(r: &RequestResult, sent: &SentRequest) -> HopMasks {
+    HopMasks {
+        url: Masked {
+            hidden: r.redact_url(&sent.url),
+            revealed: sent.url.clone(),
+        },
+        request_headers: header_masks(r, &sent.headers),
+        request_named: named(&sent.headers),
+        request_body: None,
+        response_headers: Vec::new(),
+        response_named: Vec::new(),
+    }
+}
+
+// Each header value as the Timeline shows it and once revealed.
+fn header_masks(r: &RequestResult, pairs: &[(String, String)]) -> Vec<Masked> {
+    pairs
+        .iter()
+        .map(|(name, value)| {
+            // The console hides a credential header whole, so the Timeline does too. The
+            // other handshake headers keep their scheme. Neither can be revealed.
+            if is_credential_header(name) && is_handshake_header(name) {
+                let text = r.redact_header(name, value);
+                return Masked {
+                    hidden: text.clone(),
+                    revealed: text,
+                };
+            }
+            // A name that says credential hides even a literal no secret list knows.
+            if is_named_credential(name, value) {
+                return Masked {
+                    hidden: NAME_MASK.to_owned(),
+                    revealed: value.clone(),
+                };
+            }
+            let one = |text: &str| mask_handshake(name, text);
+            let redacted = if is_handshake_header(name) {
+                r.redact(value)
+            } else {
+                r.redact_header(name, value)
+            };
+            Masked {
+                hidden: one(&redacted),
+                revealed: one(value),
+            }
+        })
+        .collect()
 }
 
 // Whether the Timeline masks header `name` for its name, with a reveal kept by name. A handshake
@@ -5754,12 +5903,19 @@ impl Render for ResponsePane {
             }
             // With no response there is nothing for the tabs to show, so the error stands alone
             // under the History dropdown.
-            (SendState::Done(result), Some(e)) if result.response.is_none() => {
+            // A failed send that sent something keeps this whole view on Body, so a short pane
+            // still reaches Retry; its links open the tabs that show what was sent.
+            (SendState::Done(result), Some(e))
+                if result.response.is_none()
+                    && (!sent_without_response(result) || self.body_tab_shown()) =>
+            {
                 self.under_history(self.error_element(e, cx), cx)
             }
             (SendState::Done(result), _) => {
                 let result = Arc::clone(result);
-                let facts = self.status_line(&result, window, cx);
+                // A failed send has no status to show, so History stands alone on the right.
+                let facts =
+                    (self.status_line(&result, window, cx)).or_else(|| self.history_button(cx));
                 let header = self.header_row(facts, window, cx);
                 // Below the full-width strip the content takes the ring room the strip's spacer
                 // gives the first tab, so it lines up with the request column's content.
@@ -6266,6 +6422,21 @@ fn is_event_stream_response(r: &Response) -> bool {
 }
 
 // Whether a finished run is a subscription that failed but still has a response to show.
+// The hops the Timeline lists: the response's, or those a send with no response completed.
+fn shown_hops(r: &RequestResult) -> &[apinata_core::Hop] {
+    r.response
+        .as_ref()
+        .map_or(&r.timeline, |resp| resp.timeline())
+}
+
+// Whether a send that failed with no response still put something on the wire to show; a
+// cancel stays a plain notice.
+fn sent_without_response(r: &RequestResult) -> bool {
+    r.response.is_none()
+        && !matches!(r.outcome, Outcome::Cancelled | Outcome::Skipped)
+        && (!r.timeline.is_empty() || r.unanswered.is_some())
+}
+
 fn is_stream_error(r: &RequestResult) -> bool {
     r.response.is_some() && matches!(r.error, Some(RunError::Subscription { .. }))
 }
