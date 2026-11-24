@@ -97,9 +97,7 @@ fn the_toggle_opens_a_typed_field_and_closing_restores(cx: &mut TestAppContext) 
     cx.run_until_parked();
     assert_eq!(text(cx, &view), "[\n  8\n]");
     assert!(!present(cx, win, "body-edit"), "no editing a filtered view");
-    cx.update_window(win, |_, w, cx| w.click("body-raw", cx))
-        .unwrap();
-    cx.run_until_parked();
+    choose_format(cx, win, "Raw");
     assert_eq!(view.read_with(cx, |v, _| v.mode()), BodyMode::Raw);
     assert_eq!(text(cx, &view), "[\n  8\n]", "the same in raw");
     cx.update_window(win, |_, w, cx| w.click("body-filter", cx))
