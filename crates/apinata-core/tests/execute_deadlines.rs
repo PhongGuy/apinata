@@ -309,3 +309,95 @@ async fn a_stalled_body_names_the_limit_too() {
         .expect_err("times out");
     assert_eq!(limits(&err), (Some(Duration::from_millis(300)), None));
 }
+
+#[tokio::test]
+async fn a_later_redirect_hop_carries_the_limit_that_ran_out() {
+    use wiremock::matchers::path;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let s = MockServer::start().await;
+    Mock::given(path("/"))
+        .respond_with(ResponseTemplate::new(302).insert_header("location", "/slow"))
+        .mount(&s)
+        .await;
+    Mock::given(path("/slow"))
+        .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_secs(3)))
+        .mount(&s)
+        .await;
+    let url = format!("{}/", s.uri());
+    let own = "settings:\n  timeout: 300\n";
+    let err = executor()
+        .send(&resolved_one("GET", &url, "", own))
+        .await
+        .expect_err("times out");
+    assert_eq!(limits(&err), (Some(Duration::from_millis(300)), None));
+    let cap = Duration::from_millis(300);
+    let err = capped(300)
+        .send(&resolved_one("GET", &url, "", ""))
+        .await
+        .expect_err("times out");
+    assert_eq!(limits(&err), (Some(cap), Some(cap)));
+}
+
+/// Challenges a request without credentials at once, and answers one with them after 3 s.
+async fn slow_digest_retry() -> wiremock::MockServer {
+    use wiremock::matchers::{header_exists, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let s = MockServer::start().await;
+    Mock::given(path("/d"))
+        .and(header_exists("authorization"))
+        .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_secs(3)))
+        .with_priority(1)
+        .mount(&s)
+        .await;
+    Mock::given(path("/d"))
+        .respond_with(
+            ResponseTemplate::new(401)
+                .insert_header("www-authenticate", r#"Digest realm="r", nonce="n0""#),
+        )
+        .mount(&s)
+        .await;
+    s
+}
+
+#[tokio::test]
+async fn a_digest_retry_carries_the_limit_that_ran_out() {
+    let s = slow_digest_retry().await;
+    let url = format!("{}/d", s.uri());
+    let digest = "  auth:\n    type: digest\n    username: u\n    password: p\n";
+    let own = "settings:\n  timeout: 300\n";
+    let err = executor()
+        .send(&resolved_one("GET", &url, digest, own))
+        .await
+        .expect_err("times out");
+    assert_eq!(limits(&err), (Some(Duration::from_millis(300)), None));
+    let cap = Duration::from_millis(300);
+    let err = capped(300)
+        .send(&resolved_one("GET", &url, digest, ""))
+        .await
+        .expect_err("times out");
+    assert_eq!(limits(&err), (Some(cap), Some(cap)));
+}
+
+#[tokio::test]
+async fn an_ntlm_probe_leg_carries_the_limit_that_ran_out() {
+    let port = server(
+        Duration::from_secs(3),
+        "HTTP/1.1 200 OK\r\n\r\n".into(),
+        |_| async {},
+    )
+    .await;
+    let url = format!("http://127.0.0.1:{port}/");
+    let ntlm = "  auth:\n    type: ntlm\n    username: u\n    password: p\n    domain: D\n";
+    let own = "settings:\n  timeout: 300\n";
+    let err = executor()
+        .send(&resolved_one("GET", &url, ntlm, own))
+        .await
+        .expect_err("times out");
+    assert_eq!(limits(&err), (Some(Duration::from_millis(300)), None));
+    let cap = Duration::from_millis(300);
+    let err = capped(300)
+        .send(&resolved_one("GET", &url, ntlm, ""))
+        .await
+        .expect_err("times out");
+    assert_eq!(limits(&err), (Some(cap), Some(cap)));
+}
