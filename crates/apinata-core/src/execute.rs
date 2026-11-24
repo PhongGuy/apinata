@@ -40,7 +40,7 @@ use crate::network::{
 use crate::ntlm;
 use crate::oauth1;
 use crate::resolve::{Body, FileRef, ResolvedRequest, SendAuth, redact_url};
-use crate::response::{HOP_BODY_LIMIT, Hop, Response};
+use crate::response::{HOP_BODY_LIMIT, Hop, Response, SentRequest};
 use crate::session_log::{
     Exchange, Logged, NetworkEntry, Redactor, SendHold, SendSource, SessionLog,
 };
@@ -223,6 +223,8 @@ pub(crate) struct HopBuffer {
     pub(crate) hops: Vec<Hop>,
     /// Credentials the exchange computed per hop, to be redacted.
     pub(crate) placed: Vec<String>,
+    /// The hop sent and not yet answered; a completed hop clears it.
+    pub(crate) unanswered: Option<SentRequest>,
     /// Set when a log is attached, so the exchange keeps what only the log needs.
     record: bool,
 }
@@ -234,6 +236,15 @@ impl HopBuffer {
             self.placed.push(value.to_owned());
         }
     }
+}
+
+/// What a send that got no response leaves behind: the hops that completed, the request still
+/// waiting when it failed, and the credentials it placed.
+#[derive(Default)]
+pub(crate) struct FailedSend {
+    pub(crate) timeline: Vec<Hop>,
+    pub(crate) unanswered: Option<SentRequest>,
+    pub(crate) derived: Vec<String>,
 }
 
 /// The `access_token`, `refresh_token` and `id_token` strings of a token answer: a JSON object,
@@ -911,8 +922,10 @@ impl Executor {
         req: &ResolvedRequest,
         cancel: &CancelHandle,
     ) -> (Result<Response, ExecError>, Vec<PacWarning>) {
-        self.send_as_reporting(req, cancel, &SendTag::default())
-            .await
+        let (result, pac, _) = self
+            .send_as_reporting(req, cancel, &SendTag::default())
+            .await;
+        (result, pac)
     }
 
     /// The log sends are recorded into, when one is attached.
@@ -931,19 +944,20 @@ impl Executor {
         self.send_as_reporting(req, cancel, tag).await.0
     }
 
-    /// `send_as`, plus the PAC warnings of this send, kept even when it fails or is cancelled.
+    /// `send_as`, plus the PAC warnings of this send, kept even when it fails or is cancelled,
+    /// and what a send that got no response sent.
     pub(crate) async fn send_as_reporting(
         &self,
         req: &ResolvedRequest,
         cancel: &CancelHandle,
         tag: &SendTag,
-    ) -> (Result<Response, ExecError>, Vec<PacWarning>) {
+    ) -> (Result<Response, ExecError>, Vec<PacWarning>, FailedSend) {
         // The network check runs before anything is read or logged, on every attempt, so a
         // declined send leaves no trace and each attempt hashes the certificate it will load.
         let preloaded = match &self.network_check {
             Some(check) => match check.run(req, cancel).await {
                 Ok(loaded) => Some(loaded),
-                Err(e) => return (Err(e), Vec::new()),
+                Err(e) => return (Err(e), Vec::new(), FailedSend::default()),
             },
             None => None,
         };
@@ -1020,7 +1034,16 @@ impl Executor {
                 }
             }
         }
-        (result, pac.into_warnings())
+        // The log above borrowed the hops; only a send with no response hands them on.
+        let failed = match &result {
+            Ok(_) => FailedSend::default(),
+            Err(_) => FailedSend {
+                timeline: std::mem::take(&mut buf.hops),
+                unanswered: buf.unanswered.take(),
+                derived: derived_list(std::mem::take(&mut buf.placed), req.derived()),
+            },
+        };
+        (result, pac.into_warnings(), failed)
     }
 
     /// The request's own timeout, lowered to the run-wide cap when that is shorter or the
@@ -1398,6 +1421,11 @@ impl Executor {
                 }
             }
             let mut sent = sent_headers(&request);
+            buf.unanswered = Some(SentRequest {
+                method: method.to_string(),
+                url: url.to_string(),
+                headers: sent.clone(),
+            });
             // The log shows the first hop's bytes as sent, after any OAuth 1.0 body signing.
             if buf.record && buf.first_body.is_none() {
                 let kept = body[..body.len().min(HOP_BODY_LIMIT)].to_vec();
@@ -1714,6 +1742,7 @@ impl Executor {
                 via_proxy: proxy.is_some(),
                 override_from: None,
             });
+            buf.unanswered = None;
             for hop in &mut buf.hops[first_new_hop..] {
                 hop.override_from = label_for(&overrides, &hop.url);
             }

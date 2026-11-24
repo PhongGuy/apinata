@@ -186,6 +186,7 @@ mod export_postman_settings;
 mod export_snapshots;
 mod export_write;
 mod export_wsse_edgegrid;
+mod failed_send_timeline;
 mod fileless_secrets;
 mod fixtures_vendored;
 mod git_branch;
