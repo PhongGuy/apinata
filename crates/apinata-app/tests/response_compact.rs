@@ -153,18 +153,7 @@ fn a_narrow_pane_shows_tabs_over_one_status_row_and_a_one_row_body_bar(cx: &mut 
     // The saved label shortens to its age; the full text moves to the tooltip.
     let saved = bounds(cx, win, "response-saved");
     assert!(saved.size.width < px(120.), "{saved:?} not shortened");
-    one_row(
-        cx,
-        win,
-        &[
-            "body-filter",
-            "body-view",
-            "body-edit",
-            "body-pretty",
-            "body-raw",
-            "body-format",
-        ],
-    );
+    one_row(cx, win, &["body-filter", "body-edit", "body-format"]);
 }
 
 #[gpui_kit::test]
@@ -226,7 +215,7 @@ fn a_wide_pane_keeps_every_action_on_the_header_row(cx: &mut TestAppContext) {
     one_row(
         cx,
         win,
-        &["body-filter", "body-pretty", "body-copy", "body-save"],
+        &["body-filter", "body-format", "body-copy", "body-save"],
     );
 }
 

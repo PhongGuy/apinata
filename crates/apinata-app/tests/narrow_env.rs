@@ -11,8 +11,8 @@ use apinata_app::style::{
 };
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{
-    AnyWindowHandle, AppContext as _, Bounds, ElementId, Focusable as _, Pixels, Rems, ScrollDelta,
-    TestAppContext, point, px, size,
+    AnyWindowHandle, AppContext as _, Bounds, ElementId, Pixels, Rems, ScrollDelta, TestAppContext,
+    point, px, size,
 };
 use std::sync::Arc;
 use support::*;
@@ -387,15 +387,15 @@ fn the_global_button_keeps_its_place_in_the_bar(cx: &mut TestAppContext) {
     }
 }
 
-// A wide bar keeps the full select, so the button is no second way in there.
+// A wide bar keeps the full picker, so the button is no second way in there.
 #[gpui_kit::test]
-fn the_global_select_shows_instead_of_the_button_at_100_percent(cx: &mut TestAppContext) {
+fn the_picker_shows_instead_of_the_button_at_100_percent(cx: &mut TestAppContext) {
     let (_col, _globals, s) = zoomed_globals(cx, 1.0);
     cx.update_window(s.win, |_, w, cx| {
         w.render_frame(cx);
         let bar = w.within("title-bar");
         assert!(bar.try_find("global-environments").is_none());
-        assert!(bar.find("global-env-selector").bounds().size.width > px(0.));
+        assert!(bar.find("env-control").bounds().size.width > px(0.));
     })
     .unwrap();
 }
@@ -411,11 +411,9 @@ fn palette_reachable(cx: &mut TestAppContext, s: &Started) -> bool {
 }
 
 fn focus_global_select(cx: &mut TestAppContext, s: &Started) {
-    let select = s
-        .shell
-        .read_with(cx, |sh, _| sh.global_env_selector().clone());
+    let select = s.shell.read_with(cx, |sh, _| sh.env_picker().clone());
     cx.update_window(s.win, |_, w, cx| {
-        let handle = select.read(cx).select().focus_handle(cx);
+        let handle = select.read(cx).focus_handle().clone();
         handle.focus(w, cx)
     })
     .unwrap();
@@ -766,10 +764,8 @@ fn active_global(cx: &mut TestAppContext, s: &Started) -> Option<String> {
 
 // What the title bar's global control shows, select or not.
 fn bar_shows(cx: &mut TestAppContext, s: &Started) -> Option<String> {
-    let sel = s
-        .shell
-        .read_with(cx, |sh, _| sh.global_env_selector().clone());
-    sel.read_with(cx, |g, _| g.shown().map(|n| n.to_string()))
+    let sel = s.shell.read_with(cx, |sh, _| sh.env_picker().clone());
+    sel.read_with(cx, |g, cx| Some(g.checked(cx).1.to_string()))
 }
 
 fn click(cx: &mut TestAppContext, win: AnyWindowHandle, id: impl Into<ElementId>) {
@@ -822,7 +818,7 @@ fn the_active_global_is_seen_and_changed_in_the_dialog_at_200_percent_at_the_nar
     assert!(!present(cx, s.win, ("global-env-active-mark", 1usize)));
     assert_eq!(
         bar_shows(cx, &s).as_deref(),
-        Some(apinata_app::global_env_selector::NO_GLOBAL_ENVIRONMENT)
+        Some(apinata_app::env_picker::NO_GLOBAL_ENVIRONMENT)
     );
 }
 
@@ -857,21 +853,14 @@ fn a_wide_global_dialog_keeps_its_list_width(cx: &mut TestAppContext) {
 fn the_bar_select_still_picks_the_active_global_in_a_wide_window(cx: &mut TestAppContext) {
     let (_col, _globals, s) = zoomed_with(cx, 1.0, &TWO_GLOBALS);
     resize(cx, s.win, 1000., 700.);
-    let sel = s
-        .shell
-        .read_with(cx, |sh, _| sh.global_env_selector().clone());
-    let select = sel.read_with(cx, |g, _| g.select().clone());
-    // What a click on the entry does: the kit moves its cursor there, then confirms it.
     cx.update_window(s.win, |_, w, cx| {
-        select.update(cx, |st, cx| st.set_selected_value(&"h".into(), w, cx))
-    })
-    .unwrap();
-    cx.update_window(s.win, |_, w, cx| {
-        w.within("title-bar").click("global-env-select", cx)
+        w.within("title-bar").click("env-select", cx)
     })
     .unwrap();
     frame(cx, s.win);
-    cx.simulate_keystrokes(s.win, "enter");
+    let row = apinata_app::env_picker::global_option_id("h");
+    cx.update_window(s.win, |_, w, cx| w.within("popup-menu").click(row, cx))
+        .unwrap();
     cx.run_until_parked();
     assert_eq!(active_global(cx, &s).as_deref(), Some("h"));
     assert_eq!(bar_shows(cx, &s).as_deref(), Some("h"));
@@ -881,9 +870,9 @@ fn the_bar_select_still_picks_the_active_global_in_a_wide_window(cx: &mut TestAp
 }
 
 fn env_select_focused(cx: &mut TestAppContext, s: &Started) -> bool {
-    let env = s.shell.read_with(cx, |sh, _| sh.env_selector().clone());
+    let env = s.shell.read_with(cx, |sh, _| sh.env_picker().clone());
     cx.update_window(s.win, |_, w, cx| {
-        env.read(cx).select().focus_handle(cx).is_focused(w)
+        env.read(cx).focus_handle().clone().is_focused(w)
     })
     .unwrap()
 }
@@ -915,9 +904,9 @@ fn tab_skips_the_squeezed_environment_select_at_200_percent_at_the_narrowest_wid
 fn narrowing_past_the_environment_select_keeps_the_keys_with_it_focused(cx: &mut TestAppContext) {
     let (_col, _globals, s) = zoomed_globals(cx, 2.0);
     resize(cx, s.win, 640., 700.);
-    let env = s.shell.read_with(cx, |sh, _| sh.env_selector().clone());
+    let env = s.shell.read_with(cx, |sh, _| sh.env_picker().clone());
     cx.update_window(s.win, |_, w, cx| {
-        let handle = env.read(cx).select().focus_handle(cx);
+        let handle = env.read(cx).focus_handle().clone();
         handle.focus(w, cx)
     })
     .unwrap();
@@ -1029,9 +1018,9 @@ fn a_squeezed_select_hands_focus_back_to_the_body_editor(cx: &mut TestAppContext
         held.is_some() && held.as_ref() != Some(&url),
         "in the body editor"
     );
-    let env = s.shell.read_with(cx, |sh, _| sh.env_selector().clone());
+    let env = s.shell.read_with(cx, |sh, _| sh.env_picker().clone());
     cx.update_window(s.win, |_, w, cx| {
-        let handle = env.read(cx).select().focus_handle(cx);
+        let handle = env.read(cx).focus_handle().clone();
         handle.focus(w, cx)
     })
     .unwrap();

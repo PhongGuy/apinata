@@ -3,7 +3,7 @@
 use crate::support;
 
 use apinata_app::command::Command;
-use apinata_app::global_env_selector::GlobalEnvSelector;
+use apinata_app::env_picker::EnvPicker;
 use apinata_app::workspace::{Workspace, WorkspaceEvent};
 use apinata_core::{VarScope, VariableSet};
 use gpui_kit::{AppContext as _, Entity, TestAppContext, WindowOptions};
@@ -239,12 +239,10 @@ fn the_picker_lists_workspace_environments(cx: &mut TestAppContext) {
         .update(|cx| gpui_kit::open_window(WindowOptions::default(), cx, |_, cx| cx.new(|_| Blank)))
         .unwrap();
     let sel = cx
-        .update_window(win, |_, w, cx| {
-            cx.new(|cx| GlobalEnvSelector::new(shared, w, cx))
-        })
+        .update_window(win, |_, w, cx| cx.new(|cx| EnvPicker::new(shared, w, cx)))
         .unwrap();
     let listed: Vec<String> = sel
-        .read_with(cx, |s, cx| s.items(cx))
+        .read_with(cx, |s, cx| s.global_items(cx))
         .iter()
         .map(|i| i.to_string())
         .collect();

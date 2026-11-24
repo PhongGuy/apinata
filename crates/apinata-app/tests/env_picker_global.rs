@@ -1,8 +1,8 @@
-//! The title bar's global environment picker.
+//! The global section of the title bar's environment picker.
 
 use crate::support;
 
-use apinata_app::global_env_selector::{NO_GLOBAL_ENVIRONMENT, option_id};
+use apinata_app::env_picker::{NO_GLOBAL_ENVIRONMENT, global_option_id as option_id};
 use apinata_app::shell::Shell;
 use apinata_app::workspace::Workspace;
 use gpui_kit::{
@@ -54,9 +54,8 @@ fn option_ids_keep_names_apart_from_the_fixed_row() {
 #[gpui_kit::test]
 fn the_picker_lists_and_chooses_global_environments(cx: &mut TestAppContext) {
     let (_c, _g, _s, win, ws, shell) = shell_with_globals(cx);
-    let sel = shell.read_with(cx, |s, _| s.global_env_selector().clone());
-    let items = sel.read_with(cx, |s, cx| s.items(cx));
-    // Task 3 appends a manage row; the listed environments come first.
+    let sel = shell.read_with(cx, |s, _| s.env_picker().clone());
+    let items = sel.read_with(cx, |s, cx| s.global_items(cx));
     assert_eq!(
         items[..3],
         [
@@ -66,20 +65,22 @@ fn the_picker_lists_and_chooses_global_environments(cx: &mut TestAppContext) {
         ]
     );
     assert_eq!(
-        sel.read_with(cx, |s, _| s.shown()),
-        Some(NO_GLOBAL_ENVIRONMENT.into())
+        sel.read_with(cx, |s, cx| s.checked(cx).1),
+        SharedString::from(NO_GLOBAL_ENVIRONMENT)
     );
-    cx.update_window(win, |_, w, cx| sel.update(cx, |s, cx| s.choose("h", w, cx)))
-        .unwrap();
+    cx.update_window(win, |_, w, cx| {
+        sel.update(cx, |s, cx| s.choose_global("h", w, cx))
+    })
+    .unwrap();
     cx.run_until_parked();
     assert_eq!(
         ws.read_with(cx, |w, _| w.selected_global_environment())
             .as_deref(),
         Some("h")
     );
-    assert_eq!(sel.read_with(cx, |s, _| s.shown()), Some("h".into()));
+    assert_eq!(sel.read_with(cx, |s, cx| s.checked(cx).1), "h");
     cx.update_window(win, |_, w, cx| {
-        sel.update(cx, |s, cx| s.choose(NO_GLOBAL_ENVIRONMENT, w, cx))
+        sel.update(cx, |s, cx| s.choose_global(NO_GLOBAL_ENVIRONMENT, w, cx))
     })
     .unwrap();
     cx.run_until_parked();
@@ -93,24 +94,24 @@ fn the_picker_lists_and_chooses_global_environments(cx: &mut TestAppContext) {
 fn refresh_shows_a_file_added_outside_the_app(cx: &mut TestAppContext) {
     let (_c, globals, _s, _win, _ws, shell) = shell_with_globals(cx);
     std::fs::write(globals.path().join("k.yml"), "name: k\n").unwrap();
-    let sel = shell.read_with(cx, |s, _| s.global_env_selector().clone());
+    let sel = shell.read_with(cx, |s, _| s.env_picker().clone());
     sel.update(cx, |s, cx| s.refresh(cx));
     cx.run_until_parked();
-    let items = sel.read_with(cx, |s, cx| s.items(cx));
+    let items = sel.read_with(cx, |s, cx| s.global_items(cx));
     assert!(items.contains(&SharedString::from("k")), "{items:?}");
 }
 
 #[gpui_kit::test]
 fn the_picker_sits_in_the_title_bar(cx: &mut TestAppContext) {
     let (_c, _g, _s, win, _ws, _shell) = shell_with_globals(cx);
-    assert!(present(cx, win, "global-env-selector"));
+    assert!(present(cx, win, "env-select"));
 }
 
 #[test]
 fn the_empty_global_row_reads_no_global_environment() {
     assert_eq!(NO_GLOBAL_ENVIRONMENT, "No global environment");
     assert_eq!(
-        apinata_app::global_env_selector::manage_global_environments(),
+        apinata_app::env_picker::manage_global_environments(),
         "Manage globals…"
     );
 }

@@ -618,9 +618,9 @@ fn environment_and_example_labels_read_as_elsewhere() {
         "Save response as example…"
     );
     assert_eq!(label("request.compare_response"), "Compare response");
-    assert_eq!(apinata_app::env_selector::NO_ENVIRONMENT, "No environment");
+    assert_eq!(apinata_app::env_picker::NO_ENVIRONMENT, "No environment");
     assert_eq!(
-        apinata_app::env_selector::option_id(apinata_app::env_selector::NO_ENVIRONMENT),
+        apinata_app::env_picker::option_id(apinata_app::env_picker::NO_ENVIRONMENT),
         "env-none"
     );
 }

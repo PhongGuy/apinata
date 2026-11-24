@@ -2,8 +2,8 @@
 
 use crate::support;
 
-use apinata_app::env_selector::option_id;
-use apinata_app::global_env_selector::option_id as global_option_id;
+use apinata_app::env_picker::global_option_id;
+use apinata_app::env_picker::option_id;
 use gpui_kit::{AppContext as _, TestAppContext};
 use support::*;
 
@@ -19,9 +19,9 @@ fn two_envs() -> tempfile::TempDir {
 fn space_opens_the_collection_environment_select(cx: &mut TestAppContext) {
     let col = two_envs();
     let s = started(cx, &col);
-    let sel = s.shell.read_with(cx, |v, _| v.env_selector().clone());
-    let state = sel.read_with(cx, |v, _| v.select().clone());
-    cx.update_window(s.win, |_, w, cx| state.update(cx, |s, cx| s.focus(w, cx)))
+    let sel = s.shell.read_with(cx, |v, _| v.env_picker().clone());
+    let focus = sel.read_with(cx, |v, _| v.focus_handle().clone());
+    cx.update_window(s.win, |_, w, cx| focus.focus(w, cx))
         .unwrap();
     frame(cx, s.win);
     assert!(
@@ -43,11 +43,9 @@ fn space_opens_the_global_environment_select(cx: &mut TestAppContext) {
     let dir = globals.path().to_path_buf();
     s.ws.update(cx, |w, cx| w.set_global_dir(dir, cx));
     cx.run_until_parked();
-    let sel = s
-        .shell
-        .read_with(cx, |v, _| v.global_env_selector().clone());
-    let state = sel.read_with(cx, |v, _| v.select().clone());
-    cx.update_window(s.win, |_, w, cx| state.update(cx, |s, cx| s.focus(w, cx)))
+    let sel = s.shell.read_with(cx, |v, _| v.env_picker().clone());
+    let focus = sel.read_with(cx, |v, _| v.focus_handle().clone());
+    cx.update_window(s.win, |_, w, cx| focus.focus(w, cx))
         .unwrap();
     frame(cx, s.win);
     assert!(

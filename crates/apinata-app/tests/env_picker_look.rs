@@ -1,14 +1,10 @@
-//! The title bar's two environment pickers read as controls: each names its scope in a
-//! tooltip and an icon, fills on hover, and lists its actions apart from its environments.
+//! The title bar's environment picker reads as a control: it names itself in a tooltip and an
+//! icon, fills on hover, and sets its two sections and its actions apart in the open menu.
 
 use crate::support;
 
-use apinata_app::env_selector::{
-    ACTIONS_GROUP, ENV_SELECT_TIP, ENVIRONMENTS_GROUP, IMPORT_ENVIRONMENT, MANAGE_ENVIRONMENTS,
-    NO_ENVIRONMENT,
-};
-use apinata_app::global_env_selector::{
-    GLOBAL_ENV_SELECT_TIP, GLOBALS_GROUP, NO_GLOBAL_ENVIRONMENT, manage_global_environments,
+use apinata_app::env_picker::{
+    ACTIONS_GROUP, COLLECTION_GROUP, ENV_SELECT_TIP, GLOBAL_GROUP, NO_GLOBAL_ENVIRONMENT,
 };
 use apinata_app::shell::Shell;
 use apinata_app::tabs::TabKind;
@@ -16,9 +12,7 @@ use apinata_app::theme::{DARK, HC_DARK, HC_LIGHT, LIGHT};
 use apinata_app::workspace::Workspace;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::test::TestWindowExt as _;
-use gpui_kit::{
-    AnyWindowHandle, AppContext as _, Entity, SharedString, TestAppContext, WindowOptions,
-};
+use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, TestAppContext, WindowOptions};
 use support::*;
 
 struct Bar {
@@ -64,74 +58,62 @@ fn bar_with(cx: &mut TestAppContext, globals: &[(&str, &str)]) -> Bar {
     }
 }
 
-fn tip_after_hover(
-    cx: &mut TestAppContext,
-    win: AnyWindowHandle,
-    target: &'static str,
-    tip: &'static str,
-) -> Option<String> {
-    cx.update_window(win, |_, w, cx| w.within("title-bar").hover(target, cx))
+// Hovers the picker from elsewhere, so a tip shown before is built afresh.
+fn tip_after_hover(cx: &mut TestAppContext, win: AnyWindowHandle) -> Option<String> {
+    cx.update_window(win, |_, w, cx| w.within("title-bar").hover("app-menu", cx))
         .unwrap();
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.within("title-bar").hover("env-select", cx)
+    })
+    .unwrap();
     cx.executor()
         .advance_clock(std::time::Duration::from_millis(800));
     frame(cx, win);
     cx.update_window(win, |_, w, _| {
-        w.try_find(tip).and_then(|e| e.label().map(str::to_owned))
+        w.try_find("env-control-tooltip")
+            .and_then(|e| e.label().map(str::to_owned))
     })
     .unwrap()
 }
 
-// Hovering either select names which environment it picks, so the two read apart.
+fn open(cx: &mut TestAppContext, win: AnyWindowHandle) {
+    cx.update_window(win, |_, w, cx| {
+        w.within("title-bar").click("env-select", cx)
+    })
+    .unwrap();
+    frame(cx, win);
+}
+
+// The tip names the picker, then both picks in full, since the button may cut them short.
 #[gpui_kit::test]
-fn each_picker_names_its_scope_in_a_tooltip(cx: &mut TestAppContext) {
+fn the_tip_names_the_picker_and_both_picks(cx: &mut TestAppContext) {
     let b = bar(cx);
+    assert_eq!(tip_after_hover(cx, b.win).as_deref(), Some(ENV_SELECT_TIP));
+    assert_eq!(ENV_SELECT_TIP, "Environment");
+    b.ws.update(cx, |w, cx| {
+        let root = w.current_root().unwrap();
+        w.select_environment(&root, Some("prod".into()), cx);
+        w.select_picker_item("h", cx);
+    });
+    frame(cx, b.win);
     assert_eq!(
-        tip_after_hover(cx, b.win, "env-select", "env-control-tooltip").as_deref(),
-        Some(ENV_SELECT_TIP)
+        tip_after_hover(cx, b.win).as_deref(),
+        Some("Environment: prod · h")
     );
-    assert_eq!(ENV_SELECT_TIP, "Collection environment");
-    assert_eq!(
-        tip_after_hover(
-            cx,
-            b.win,
-            "global-env-select",
-            "global-env-selector-tooltip"
-        )
-        .as_deref(),
-        Some(GLOBAL_ENV_SELECT_TIP)
-    );
-    assert_eq!(GLOBAL_ENV_SELECT_TIP, "Global environment");
     cx.update_window(b.win, |_, w, _| {
-        assert_eq!(w.find("env-select").label(), Some(ENV_SELECT_TIP));
-        assert_eq!(
-            w.find("global-env-select").label(),
-            Some(GLOBAL_ENV_SELECT_TIP)
-        );
+        assert_eq!(w.find("env-select").label(), Some("Environment: prod · h"));
     })
     .unwrap();
 }
 
-// Each trigger leads with its scope icon, drawn in the trigger's text colour, which holds 3:1
-// against the title bar whether it shows a pick or the muted "none".
+// The button leads with its scope icon, drawn in the button's text colour, which holds 3:1
+// against the title bar whether it shows a pick or the muted "No environment".
 #[gpui_kit::test]
-fn each_picker_shows_a_scope_icon_at_three_to_one(cx: &mut TestAppContext) {
+fn the_picker_shows_a_scope_icon_at_three_to_one(cx: &mut TestAppContext) {
     let b = bar(cx);
     cx.update_window(b.win, |_, w, cx| {
         w.render_frame(cx);
-        assert!(w.within("env-select").try_find("env-scope-icon").is_some());
-        assert!(
-            (w.within("global-env-select"))
-                .try_find("global-env-scope-icon")
-                .is_some()
-        );
-    })
-    .unwrap();
-    b.ws.update(cx, |w, cx| {
-        let root = w.current_root().unwrap();
-        w.select_environment(&root, Some("dev".into()), cx);
-    });
-    frame(cx, b.win);
-    cx.update_window(b.win, |_, w, _| {
         assert!(w.within("env-select").try_find("env-scope-icon").is_some());
     })
     .unwrap();
@@ -151,10 +133,10 @@ fn each_picker_shows_a_scope_icon_at_three_to_one(cx: &mut TestAppContext) {
     }
 }
 
-// Under the pointer each picker fills as the bar's ghost buttons do, a fill that differs from
+// Under the pointer the picker fills as the bar's ghost buttons do, a fill that differs from
 // the bar in every theme.
 #[gpui_kit::test]
-fn hovering_a_picker_fills_it_in_every_theme(cx: &mut TestAppContext) {
+fn hovering_the_picker_fills_it_in_every_theme(cx: &mut TestAppContext) {
     let b = bar(cx);
     for theme in [LIGHT, DARK, HC_LIGHT, HC_DARK] {
         use_theme(cx, theme);
@@ -165,29 +147,26 @@ fn hovering_a_picker_fills_it_in_every_theme(cx: &mut TestAppContext) {
             title,
             "{theme}: the hover fill is the bar's own colour"
         );
-        for control in ["env-control", "global-env-selector"] {
-            let fills = cx
-                .update_window(b.win, |_, w, cx| {
-                    w.within("title-bar").hover(control, cx);
-                    w.render_frame(cx);
-                    let scale = w.scale_factor();
-                    let r = w.find(control).bounds();
-                    let (l, t) = (r.left().as_f32() * scale, r.top().as_f32() * scale);
-                    crate::support::whole_quads(w)
-                        .into_iter()
-                        .filter(|q| {
-                            (q.bounds.origin.x.0 - l).abs() < 1.
-                                && (q.bounds.origin.y.0 - t).abs() < 1.
-                        })
-                        .filter_map(|q| q.background.as_solid())
-                        .collect::<Vec<_>>()
-                })
-                .unwrap();
-            assert!(
-                fills.contains(&fill),
-                "{theme} {control}: painted {fills:?}, wanted {fill:?}"
-            );
-        }
+        let fills = cx
+            .update_window(b.win, |_, w, cx| {
+                w.within("title-bar").hover("env-select", cx);
+                w.render_frame(cx);
+                let scale = w.scale_factor();
+                let r = w.find("env-select").bounds();
+                let (l, t) = (r.left().as_f32() * scale, r.top().as_f32() * scale);
+                crate::support::whole_quads(w)
+                    .into_iter()
+                    .filter(|q| {
+                        (q.bounds.origin.x.0 - l).abs() < 1. && (q.bounds.origin.y.0 - t).abs() < 1.
+                    })
+                    .filter_map(|q| q.background.as_solid())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap();
+        assert!(
+            fills.contains(&fill),
+            "{theme}: painted {fills:?}, wanted {fill:?}"
+        );
     }
 }
 
@@ -203,192 +182,27 @@ fn over(top: gpui_kit::Hsla, under: gpui_kit::Hsla) -> gpui_kit::Hsla {
     .into()
 }
 
-fn names(items: &[&str]) -> Vec<SharedString> {
-    items.iter().map(|s| SharedString::from(*s)).collect()
-}
-
-// The environments form one group and the actions a second one after it.
+// The open menu draws a header and a rule between sections, so the gap from the last
+// collection environment to the first global row, and from the last global to the first
+// action, is wider than the one between two rows.
 #[gpui_kit::test]
-fn actions_sit_in_their_own_group_after_the_environments(cx: &mut TestAppContext) {
+fn the_open_menu_sets_its_sections_apart(cx: &mut TestAppContext) {
     let b = bar(cx);
-    let env = b.shell.read_with(cx, |s, _| s.env_selector().clone());
-    assert_eq!(
-        env.read_with(cx, |s, _| s.groups()),
-        vec![
-            (
-                SharedString::from(ENVIRONMENTS_GROUP),
-                names(&[NO_ENVIRONMENT, "dev", "prod"])
-            ),
-            (
-                SharedString::from(ACTIONS_GROUP),
-                names(&[MANAGE_ENVIRONMENTS, IMPORT_ENVIRONMENT])
-            ),
-        ]
-    );
-    let global = b
-        .shell
-        .read_with(cx, |s, _| s.global_env_selector().clone());
-    assert_eq!(
-        global.read_with(cx, |s, _| s.groups()),
-        vec![
-            (
-                SharedString::from(GLOBALS_GROUP),
-                names(&[NO_GLOBAL_ENVIRONMENT, "g", "h"])
-            ),
-            (
-                SharedString::from(ACTIONS_GROUP),
-                names(&[manage_global_environments()])
-            ),
-        ]
-    );
-}
-
-// The open list draws a group header between the last environment and the first action, so
-// that gap is wider than the one between two environments.
-#[gpui_kit::test]
-fn the_open_list_sets_the_actions_apart(cx: &mut TestAppContext) {
-    let b = bar(cx);
-    for (select, first, last, action) in [
-        ("env-select", "env-none", "env-option-prod", "env-manage"),
-        (
-            "global-env-select",
-            "global-env-none",
-            "global-env-option-h",
-            "global-env-manage",
-        ),
-    ] {
-        cx.update_window(b.win, |_, w, cx| w.within("title-bar").click(select, cx))
-            .unwrap();
-        frame(cx, b.win);
-        let (step, gap) = cx
-            .update_window(b.win, |_, w, _| {
-                let top = |id: &'static str| w.find(id).bounds().top().as_f32();
-                let second = if select == "env-select" {
-                    "env-option-dev"
-                } else {
-                    "global-env-option-g"
-                };
-                (top(second) - top(first), top(action) - top(last))
-            })
-            .unwrap();
-        assert!(
-            gap > step + 8.,
-            "{select}: the action is {gap} below the last environment, rows step {step}"
-        );
-        cx.simulate_keystrokes(b.win, "escape");
-        frame(cx, b.win);
-    }
-}
-
-// A click on an action row still runs it, and a click on an environment row still picks it.
-#[gpui_kit::test]
-fn clicking_grouped_rows_runs_actions_and_picks_environments(cx: &mut TestAppContext) {
-    let b = bar(cx);
-    let root = b.ws.read_with(cx, |w, _| w.current_root().unwrap());
-    let win = b.win;
-    let pick = |cx: &mut TestAppContext, select: &'static str, row: &'static str| {
-        cx.update_window(win, |_, w, cx| w.within("title-bar").click(select, cx))
-            .unwrap();
-        frame(cx, win);
-        cx.update_window(win, |_, w, cx| w.click(row, cx)).unwrap();
-        cx.run_until_parked();
-        frame(cx, win);
-    };
-    pick(cx, "env-select", "env-option-prod");
-    assert_eq!(
-        b.ws.read_with(cx, |w, cx| w.selected_environment(&root, cx))
-            .as_deref(),
-        Some("prod")
-    );
-    pick(cx, "env-select", "env-manage");
-    assert_eq!(
-        b.ws.read_with(cx, |w, _| w.tabs().active().map(|t| t.kind.clone())),
-        Some(TabKind::Environments)
-    );
-    assert_eq!(
-        b.ws.read_with(cx, |w, cx| w.selected_environment(&root, cx))
-            .as_deref(),
-        Some("prod"),
-        "managing keeps the pick"
-    );
-    pick(cx, "global-env-select", "global-env-option-h");
-    assert_eq!(
-        b.ws.read_with(cx, |w, _| w.selected_global_environment())
-            .as_deref(),
-        Some("h")
-    );
-    pick(cx, "global-env-select", "global-env-manage");
-    assert!(present(cx, b.win, "global-env-editor"));
-    assert_eq!(
-        b.ws.read_with(cx, |w, _| w.selected_global_environment())
-            .as_deref(),
-        Some("h"),
-        "managing keeps the pick"
-    );
-}
-
-// The group headers read as labels, not rows: their own ids and names, shorter than a row,
-// and a rule above the actions; their muted text holds the theme's text floor on the popup.
-#[gpui_kit::test]
-fn group_headers_read_as_labels(cx: &mut TestAppContext) {
-    let b = bar(cx);
-    for (select, prefix, first, second, titles) in [
-        (
-            "env-select",
-            "env-group",
-            "env-none",
-            "env-option-dev",
-            [ENVIRONMENTS_GROUP, ACTIONS_GROUP],
-        ),
-        (
-            "global-env-select",
-            "global-env-group",
-            "global-env-none",
-            "global-env-option-g",
-            [GLOBALS_GROUP, ACTIONS_GROUP],
-        ),
-    ] {
-        cx.update_window(b.win, |_, w, cx| w.within("title-bar").click(select, cx))
-            .unwrap();
-        frame(cx, b.win);
-        let border = cx.update(|cx| cx.theme().border);
-        cx.update_window(b.win, |_, w, cx| {
-            w.render_frame(cx);
-            for (ix, title) in titles.iter().enumerate() {
-                assert_eq!(w.find((prefix, ix)).label(), Some(*title), "{select} {ix}");
-            }
-            let top = |id: &'static str| w.find(id).bounds().top().as_f32();
-            let step = top(second) - top(first);
-            let header = w.find((prefix, 1usize)).bounds();
-            let tall = header.size.height.as_f32();
-            assert!(
-                tall < step,
-                "{select}: a header {tall} tall is no shorter than a row {step}"
-            );
-            let scale = w.scale_factor();
-            let (l, t) = (
-                header.left().as_f32() * scale,
-                header.top().as_f32() * scale,
-            );
-            // A top-only border paints as a single strip of the border colour, so the rule is
-            // a thin band of that colour along the header's top edge.
-            let rule = crate::support::whole_quads(w).into_iter().any(|q| {
-                let band = q.bounds.intersect(&q.content_mask.bounds);
-                let edge =
-                    (q.bounds.origin.x.0 - l).abs() < 1. && (q.bounds.origin.y.0 - t).abs() < 1.;
-                let bordered = q.border_widths.top.0 > 0. && q.border_color == border;
-                let strip = q.background.as_solid() == Some(border)
-                    && (band.origin.y.0 - t).abs() < 1.
-                    && band.size.height.0 > 0.
-                    && band.size.height.0 <= 2. * scale;
-                edge && (bordered || strip)
-            });
-            assert!(rule, "{select}: no rule above the actions");
-        })
-        .unwrap();
-        cx.simulate_keystrokes(b.win, "escape");
-        frame(cx, b.win);
-    }
+    open(cx, b.win);
+    cx.update_window(b.win, |_, w, cx| {
+        w.render_frame(cx);
+        let top = |id: &'static str| w.find(id).bounds().top().as_f32();
+        let step = top("env-option-dev") - top("env-none");
+        let to_globals = top("global-env-none") - top("env-option-prod");
+        let to_actions = top("env-manage") - top("global-env-option-h");
+        assert!(to_globals > step + 8., "{to_globals} vs {step}");
+        assert!(to_actions > step + 8., "{to_actions} vs {step}");
+        let menu = w.within("popup-menu");
+        for title in [COLLECTION_GROUP, GLOBAL_GROUP, ACTIONS_GROUP] {
+            assert!(menu.try_find_by_label(title).is_some(), "{title} header");
+        }
+    })
+    .unwrap();
     for theme in [LIGHT, DARK, HC_LIGHT, HC_DARK] {
         use_theme(cx, theme);
         let (muted, popup) = cx.update(|cx| (cx.theme().muted_foreground, cx.theme().popover));
@@ -405,73 +219,77 @@ fn group_headers_read_as_labels(cx: &mut TestAppContext) {
     }
 }
 
-// With globals to pick from and none picked, the picker names the choice the way the
-// collection picker does, rather than reading as if none exist.
+// Each section's manage action opens its editor and keeps both picks.
 #[gpui_kit::test]
-fn with_none_picked_the_global_picker_says_no_global_environment(cx: &mut TestAppContext) {
+fn the_manage_actions_open_their_editors_and_keep_the_picks(cx: &mut TestAppContext) {
     let b = bar(cx);
-    assert_eq!(NO_GLOBAL_ENVIRONMENT, "No global environment");
-    let global = b
-        .shell
-        .read_with(cx, |s, _| s.global_env_selector().clone());
+    let root = b.ws.read_with(cx, |w, _| w.current_root().unwrap());
+    let win = b.win;
+    let pick = |cx: &mut TestAppContext, row: &'static str| {
+        open(cx, win);
+        cx.update_window(win, |_, w, cx| w.within("popup-menu").click(row, cx))
+            .unwrap();
+        cx.run_until_parked();
+        frame(cx, win);
+    };
+    pick(cx, "env-option-prod");
+    pick(cx, "global-env-option-h");
+    pick(cx, "env-manage");
     assert_eq!(
-        global.read_with(cx, |s, _| s.shown()).as_deref(),
-        Some(NO_GLOBAL_ENVIRONMENT)
+        b.ws.read_with(cx, |w, _| w.tabs().active().map(|t| t.kind.clone())),
+        Some(TabKind::Environments)
+    );
+    pick(cx, "global-env-manage");
+    assert!(present(cx, b.win, "global-env-editor"));
+    assert_eq!(
+        b.ws.read_with(cx, |w, cx| w.selected_environment(&root, cx))
+            .as_deref(),
+        Some("prod"),
+        "managing keeps the collection pick"
+    );
+    assert_eq!(
+        b.ws.read_with(cx, |w, _| w.selected_global_environment())
+            .as_deref(),
+        Some("h"),
+        "managing keeps the global pick"
     );
 }
 
-// A name cut short in the open list keeps a gap before the check mark beside it.
+// With globals to pick from and none picked, the global section names the choice rather than
+// reading as if none exist, and the button names only the collection's pick.
 #[gpui_kit::test]
-fn a_cut_name_keeps_a_gap_before_the_check(cx: &mut TestAppContext) {
+fn with_no_global_picked_the_menu_says_no_global_environment(cx: &mut TestAppContext) {
+    let b = bar(cx);
+    assert_eq!(NO_GLOBAL_ENVIRONMENT, "No global environment");
+    let picker = b.shell.read_with(cx, |s, _| s.env_picker().clone());
+    assert_eq!(
+        picker.read_with(cx, |s, cx| s.checked(cx).1),
+        NO_GLOBAL_ENVIRONMENT
+    );
+    assert_eq!(picker.read_with(cx, |s, cx| s.label(cx)), "No environment");
+}
+
+// A name cut short in the open menu stays inside its row.
+#[gpui_kit::test]
+fn a_cut_name_stays_inside_its_row(cx: &mut TestAppContext) {
     let long = "shared-staging-credentials-for-the-payments-team";
     let (path, file) = (format!("{long}.yml"), format!("name: {long}\n"));
     let b = bar_with(cx, &[(&path, &file)]);
     b.ws.update(cx, |w, cx| w.select_picker_item(long, cx));
     frame(cx, b.win);
-    cx.update_window(b.win, |_, w, cx| {
-        w.within("title-bar").click("global-env-select", cx)
-    })
-    .unwrap();
-    frame(cx, b.win);
+    open(cx, b.win);
     let option: &'static str = format!("global-env-option-{long}").leak();
     let (name, row) = cx
         .update_window(b.win, |_, w, _| {
             let name = (w.within(option).find("global-env-row-name").bounds())
                 .right()
                 .as_f32();
-            (name, w.find(option).bounds().right().as_f32())
+            (name, w.find("popup-menu").bounds().right().as_f32())
         })
         .unwrap();
     assert!(
-        row - name >= 4.,
-        "the cut name ends {} before the check",
-        row - name
-    );
-}
-
-// The tip names the picked environment after the scope, so a name the trigger cuts short
-// can still be read in full.
-#[gpui_kit::test]
-fn the_tip_names_the_picked_environment(cx: &mut TestAppContext) {
-    let b = bar(cx);
-    b.ws.update(cx, |w, cx| {
-        let root = w.current_root().unwrap();
-        w.select_environment(&root, Some("prod".into()), cx);
-        w.select_picker_item("h", cx);
-    });
-    frame(cx, b.win);
-    assert_eq!(
-        tip_after_hover(cx, b.win, "env-select", "env-control-tooltip").as_deref(),
-        Some("Collection environment: prod")
-    );
-    assert_eq!(
-        tip_after_hover(
-            cx,
-            b.win,
-            "global-env-select",
-            "global-env-selector-tooltip"
-        )
-        .as_deref(),
-        Some("Global environment: h")
+        name <= row,
+        "the cut name ends {} past the menu",
+        name - row
     );
 }

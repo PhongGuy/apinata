@@ -15,7 +15,7 @@ use crate::body_node::{
 use crate::check_dialog::CheckCollection;
 use crate::config_editor::SaveConfig;
 use crate::env_editor::SaveEnvironment;
-use crate::env_selector::{IMPORT_ENVIRONMENT, MANAGE_ENVIRONMENTS};
+use crate::env_picker::{IMPORT_ENVIRONMENT, MANAGE_ENVIRONMENTS};
 use crate::env_table::ENV_TABLE_CONTEXT as ENV_TABLE;
 use crate::export::ShowLastExportReport;
 use crate::history_palette::OpenHistory;

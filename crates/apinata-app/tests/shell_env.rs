@@ -1,6 +1,6 @@
 use crate::support;
 
-use apinata_app::env_selector::{EnvSelector, MANAGE_ENVIRONMENTS, NO_ENVIRONMENT};
+use apinata_app::env_picker::{ACTIONS_GROUP, EnvPicker, MANAGE_ENVIRONMENTS, NO_ENVIRONMENT};
 use apinata_app::session::Session;
 use apinata_app::shell::Shell;
 use apinata_app::tabs::TabKind;
@@ -50,11 +50,11 @@ fn the_selector_lists_and_chooses_the_current_collections_environments(cx: &mut 
     let root = col.path().to_path_buf();
     let sel = cx
         .update_window(win, |_, w, cx| {
-            cx.new(|cx| EnvSelector::new(ws.clone(), w, cx))
+            cx.new(|cx| EnvPicker::new(ws.clone(), w, cx))
         })
         .unwrap();
     cx.run_until_parked();
-    let items = sel.read_with(cx, |s, cx| s.items(cx));
+    let items = sel.read_with(cx, |s, cx| s.collection_items(cx));
     assert_eq!(
         items,
         [
@@ -73,8 +73,8 @@ fn the_selector_lists_and_chooses_the_current_collections_environments(cx: &mut 
         Some("dev")
     );
     assert_eq!(
-        sel.read_with(cx, |s, _| s.shown()),
-        Some(SharedString::from("dev"))
+        sel.read_with(cx, |s, cx| s.checked(cx).0),
+        SharedString::from("dev")
     );
     cx.update_window(win, |_, w, cx| {
         sel.update(cx, |s, cx| s.choose(NO_ENVIRONMENT, w, cx))
@@ -133,12 +133,17 @@ fn manage_environments_opens_the_editor_and_keeps_the_selection(cx: &mut TestApp
     frame(cx, win);
     let sel = cx
         .update_window(win, |_, w, cx| {
-            cx.new(|cx| EnvSelector::new(ws.clone(), w, cx))
+            cx.new(|cx| EnvPicker::new(ws.clone(), w, cx))
         })
         .unwrap();
     cx.run_until_parked();
-    let second_last = sel.read_with(cx, |s, _| s.listed().iter().rev().nth(1).cloned());
-    assert_eq!(second_last.as_deref(), Some(MANAGE_ENVIRONMENTS));
+    let sections = sel.read_with(cx, |s, cx| s.sections(cx));
+    let (title, actions) = sections.last().unwrap();
+    assert_eq!(title, ACTIONS_GROUP);
+    assert_eq!(
+        actions.first().map(|a| a.as_ref()),
+        Some(MANAGE_ENVIRONMENTS)
+    );
     cx.update_window(win, |_, w, cx| {
         sel.update(cx, |s, cx| s.choose(MANAGE_ENVIRONMENTS, w, cx))
     })
@@ -153,11 +158,11 @@ fn manage_environments_opens_the_editor_and_keeps_the_selection(cx: &mut TestApp
             .as_deref(),
         Some("dev")
     );
-    assert_eq!(sel.read_with(cx, |s, _| s.shown()).as_deref(), Some("dev"));
+    assert_eq!(sel.read_with(cx, |s, cx| s.checked(cx).0), "dev");
 }
 
 #[gpui_kit::test]
-fn the_manage_row_fits_the_picker(cx: &mut TestAppContext) {
+fn the_manage_row_fits_the_menu(cx: &mut TestAppContext) {
     let col = envs();
     let (_state, win, _ws) = shell_with(cx, &col);
     cx.update_window(win, |_, w, cx| {
@@ -167,7 +172,7 @@ fn the_manage_row_fits_the_picker(cx: &mut TestAppContext) {
     frame(cx, win);
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
-        let picker = w.find("env-control").bounds();
+        let picker = w.find("popup-menu").bounds();
         let row = w.find("env-manage").bounds();
         let style = w.text_style();
         let size = gpui_kit::rems(0.875).to_pixels(w.rem_size());

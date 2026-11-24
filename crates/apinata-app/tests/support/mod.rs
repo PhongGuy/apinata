@@ -611,6 +611,54 @@ pub fn present(
     .unwrap()
 }
 
+/// Opens the response body's format menu and returns its entries' labels, leaving it open.
+pub fn format_entries(
+    cx: &mut gpui_kit::TestAppContext,
+    win: gpui_kit::AnyWindowHandle,
+) -> Vec<String> {
+    use gpui_kit::AppContext as _;
+    use gpui_kit::test::TestWindowExt as _;
+    cx.update_window(win, |_, w, cx| w.click("body-format-button", cx))
+        .unwrap();
+    frame(cx, win);
+    cx.update_window(win, |_, w, _| {
+        (0..24usize)
+            .filter_map(|ix| {
+                let menu = w.within("popup-menu");
+                menu.try_find(ix).and_then(|e| e.label().map(str::to_owned))
+            })
+            .collect()
+    })
+    .unwrap()
+}
+
+/// Opens the response body's format menu and chooses the entry labelled `label`.
+pub fn choose_format(
+    cx: &mut gpui_kit::TestAppContext,
+    win: gpui_kit::AnyWindowHandle,
+    label: &str,
+) {
+    use gpui_kit::AppContext as _;
+    use gpui_kit::test::TestWindowExt as _;
+    cx.update_window(win, |_, w, cx| w.click("body-format-button", cx))
+        .unwrap();
+    frame(cx, win);
+    let ix = cx
+        .update_window(win, |_, w, _| {
+            (0..24usize).find(|ix| {
+                w.within("popup-menu")
+                    .try_find(*ix)
+                    .is_some_and(|e| e.label() == Some(label))
+            })
+        })
+        .unwrap()
+        .unwrap_or_else(|| panic!("no {label} entry in the format menu"));
+    cx.update_window(win, |_, w, cx| w.within("popup-menu").click(ix, cx))
+        .unwrap();
+    cx.run_until_parked();
+    frame(cx, win);
+}
+
 /// Presses Tab (a full key press) until the element `id` holds focus, at most 64 times (a
 /// long form such as Preferences has many stops), then presses Enter on it: a keyboard
 /// user's way to activate one dialog button.
