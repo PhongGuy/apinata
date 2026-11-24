@@ -297,6 +297,29 @@ fn merge(ranges: &mut Vec<Range<usize>>) {
     *ranges = merged;
 }
 
+/// The colour class of a row's status: the error colour for a failure, otherwise the class
+/// the response status line gives its code.
+pub fn status_class(e: &HistoryEntry) -> crate::ui::StatusClass {
+    match e.reason {
+        Some(_) => crate::ui::StatusClass::Danger,
+        None => crate::ui::status_class(e.status),
+    }
+}
+
+// Where a row's detail splits into its status (a failure's reason) and the " · age" after
+// it; a detail that does not start with the status is all status.
+fn status_end(e: &HistoryEntry) -> usize {
+    let status = match &e.reason {
+        Some(reason) => reason.clone(),
+        None => e.status.to_string(),
+    };
+    if e.detail.starts_with(&status) {
+        status.len()
+    } else {
+        e.detail.len()
+    }
+}
+
 /// The tag of a send from an unsaved draft.
 pub const UNSAVED_TAG: &str = "Unsaved";
 
@@ -590,7 +613,8 @@ fn history_row(
     columns: Columns,
 ) -> CommandItem {
     let (detail, tag, method) = (entry.detail.clone(), entry.tag, entry.method.clone());
-    let failed = entry.reason.is_some();
+    let class = status_class(entry);
+    let split = status_end(entry);
     let mut found = found.clone();
     // The tag column shows the method, so the text that names the send drops it: a draft's
     // name, or a saved request's target.
@@ -671,16 +695,36 @@ fn history_row(
                 // A row with no target fills its place, so the detail stays right.
                 .when(target.is_none(), |row| row.child(div().flex_1()))
                 .children(target)
+                // The status takes the response status line's colour and the age stays muted;
+                // the search only highlights inside the status, so its ranges carry over.
                 .child(
-                    div()
+                    h_flex()
                         .id((detail_id, r))
                         .test_support()
                         .flex_none()
+                        .overflow_hidden()
                         .aria_label(detail.clone())
                         .w(columns.detail)
-                        .truncate()
-                        .text_color(if failed { cx.theme().danger } else { muted })
-                        .child(marked(&detail, &found.detail)),
+                        .child(
+                            div()
+                                .id(("history-status", r))
+                                .test_support()
+                                .aria_label(detail[..split].to_owned())
+                                .min_w_0()
+                                .truncate()
+                                .text_color(class.color(cx))
+                                .child(marked(&detail[..split], &found.detail)),
+                        )
+                        .when(split < detail.len(), |cell| {
+                            cell.child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .truncate()
+                                    .text_color(muted)
+                                    .child(detail[split..].to_owned()),
+                            )
+                        }),
                 )
                 // Every row keeps the tag slot last while any send is tagged, so tags line up
                 // whatever the detail.

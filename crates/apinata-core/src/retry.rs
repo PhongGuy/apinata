@@ -1,7 +1,7 @@
 //! Re-sending a request whose send failed in transit or was answered with 502, 503 or 504.
 
 use crate::cancel::CancelHandle;
-use crate::execute::{ConnectCause, ExecError, Executor, SendTag};
+use crate::execute::{ConnectCause, ExecError, Executor, FailedSend, SendTag};
 use crate::network::PacWarning;
 use crate::resolve::ResolvedRequest;
 use crate::response::Response;
@@ -26,6 +26,8 @@ pub(crate) struct Sent {
     /// The last attempt's outcome.
     pub(crate) sent: Result<Response, ExecError>,
     pub(crate) pac: Vec<PacWarning>,
+    /// What the last attempt sent, when it got no response.
+    pub(crate) failed: FailedSend,
     /// How many sends were made.
     pub(crate) attempts: u32,
     /// Set when a cancel ended the pause before the next attempt, so `sent` is the attempt before.
@@ -54,10 +56,11 @@ pub(crate) async fn send_with_retries(
             attempt: allowed.then_some((attempts, retry.retries + 1)),
             ..tag.clone()
         };
-        let (sent, pac) = exec.send_as_reporting(req, cancel, &numbered).await;
+        let (sent, pac, failed) = exec.send_as_reporting(req, cancel, &numbered).await;
         let done = |sent, pac, cancelled| Sent {
             sent,
             pac,
+            failed,
             attempts,
             cancelled,
         };
@@ -100,9 +103,11 @@ fn retry_wanted(sent: &Result<Response, ExecError>, subscription: bool) -> Optio
             Some(retry_after(response).unwrap_or_default())
         }
         Ok(_) => None,
-        Err(ExecError::Timeout { run_wide: None, .. } | ExecError::Transport { .. }) => {
-            Some(Duration::ZERO)
-        }
+        Err(
+            ExecError::Timeout { run_wide: None, .. }
+            | ExecError::Transport { .. }
+            | ExecError::BodyCut { .. },
+        ) => Some(Duration::ZERO),
         Err(ExecError::Connect { cause, .. }) if !is_tls(*cause) => Some(Duration::ZERO),
         Err(_) => None,
     }

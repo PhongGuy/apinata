@@ -205,7 +205,7 @@ pub use example::{
     Example, ExampleBody, ExampleBodyKind, ExampleRequest, ExampleResponse, ScrubReport, Scrubbed,
     ScrubbedExample, scrub_example_userinfo,
 };
-pub use execute::{ConnectCause, ExecError, ExecOptions, Executor, NtlmCause};
+pub use execute::{ConnectCause, CutBody, ExecError, ExecOptions, Executor, NtlmCause};
 pub use git::{
     Branch, CancelFlag, CloneError, CloneProgress, CloneRequest, CloneUrlKind, CommitError,
     CommitOutcome, ConflictKind, ConflictPath, DiffLine, DotenvGit, FetchError, FileDiff,
@@ -291,7 +291,7 @@ pub use resolve::{
     AuthSource, Body, HeaderSource, InheritedAuth, InheritedHeader, PreparedRequest,
     ResolvedRequest, Warning, prepare, resolve, resolve_prepared,
 };
-pub use response::{CookieOrigin, HOP_BODY_LIMIT, Hop, Response};
+pub use response::{CookieOrigin, HOP_BODY_LIMIT, Hop, Response, SentRequest};
 pub use results_report::ResultsReport;
 pub use runner::{
     Outcome, RecheckRefused, RequestResult, RunError, RunEvent, RunOptions, RunPlan, RunReport,
