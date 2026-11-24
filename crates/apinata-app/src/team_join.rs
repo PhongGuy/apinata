@@ -128,14 +128,20 @@ pub fn open_for(
                             cx: &mut Context<JoinView>| match e {
             InputEvent::Change => {
                 this.error = None;
+                this.notice = None;
                 this.forget_check();
                 cx.notify();
             }
             InputEvent::Blur => this.check_server(window, cx),
+            // A password goes out only once this address said it takes one.
             InputEvent::PressEnter { .. } => {
-                this.check_server(window, cx);
-                if this.password_offered() {
+                let text = this.server(cx);
+                let takes_password = (this.checked.as_ref())
+                    .is_some_and(|c| c.server == text && c.info.password_sign_in);
+                if takes_password {
                     this.submit(window, cx);
+                } else {
+                    this.check_server(window, cx);
                 }
             }
             _ => {}
@@ -204,6 +210,7 @@ impl JoinView {
     pub fn set_server(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.server
             .update(cx, |i, cx| i.set_value(text, window, cx));
+        self.notice = None;
         self.forget_check();
         cx.notify();
     }
@@ -303,6 +310,10 @@ impl JoinView {
                 }
                 if let Ok(Ok(info)) = answer {
                     this.checked = Some(Checked { server: text, info });
+                    // An error about a field the answer hides would point at nothing.
+                    if !this.password_offered() {
+                        this.error = None;
+                    }
                     cx.notify();
                 }
             });
@@ -405,13 +416,18 @@ impl JoinView {
             let pending = team::begin_sso(&api).await?;
             let _ = url_tx.send(pending.url().to_owned()).await;
             drop(url_tx);
-            pending
-                .finish(&api, &*secrets, &file, SSO_TIMEOUT, &watched)
-                .await
+            // A refused redeem is about the browser sign-in, not a username and password.
+            let finished = pending.finish(&api, &*secrets, &file, SSO_TIMEOUT, &watched);
+            finished.await.map_err(|e| match e {
+                TeamError::Unauthenticated => TeamError::SsoRefused,
+                e => e,
+            })
         });
         let workspace = self.workspace.clone();
         cx.spawn_in(window, async move |this, cx| {
-            if let Ok(url) = url_rx.recv().await {
+            if let Ok(url) = url_rx.recv().await
+                && !cancel.is_cancelled()
+            {
                 let _ = this.update(cx, |this, cx| {
                     this.browser_opened = crate::oauth2_signin::open_in_browser(&url, cx);
                     this.sso_url = Some(url);

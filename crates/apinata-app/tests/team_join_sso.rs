@@ -228,24 +228,33 @@ fn each_refusal_returns_to_the_form_with_its_reason(cx: &mut TestAppContext) {
     http_ready(cx);
     recording_opener(cx);
     let (_col, s, secrets) = team_app(cx, |_, _| {});
+    let invalid =
+        || ResponseTemplate::new(400).set_body_json(error("oidc_code_invalid", "Bad code.", None));
+    let unauthenticated =
+        ResponseTemplate::new(401).set_body_json(error("unauthenticated", "No.", None));
     let cases = [
-        ("error=access_denied", "The sign-in was refused."),
+        ("error=access_denied", invalid(), "The sign-in was refused."),
         (
             "error=account_not_linked",
+            invalid(),
             "No account on this server is linked to that sign-in.",
         ),
         (
             "error=oidc_expired",
+            invalid(),
             "The sign-in took too long in the browser.",
         ),
-        ("code=stale", "The sign-in could not be completed."),
+        (
+            "code=stale",
+            invalid(),
+            "The sign-in could not be completed.",
+        ),
+        ("code=late", unauthenticated, "The sign-in was refused."),
     ];
-    for (query, text) in cases {
+    for (query, redeem, text) in cases {
         let server = potluck_server(cx);
         answer(cx, &server, "GET", "/api/v1/server", acme());
-        let invalid =
-            ResponseTemplate::new(400).set_body_json(error("oidc_code_invalid", "Bad code.", None));
-        answer(cx, &server, "POST", REDEEM, invalid);
+        answer(cx, &server, "POST", REDEEM, redeem);
         let view = open_join(cx, &s, &server.uri());
         checked(cx, &server);
         let start = start_sso(cx, &s, &view);
@@ -295,11 +304,16 @@ fn cancelling_the_browser_wait_closes_the_port_and_stores_nothing(cx: &mut TestA
 fn a_server_with_only_single_sign_on_hides_the_password_rows(cx: &mut TestAppContext) {
     http_ready(cx);
     let server = potluck_server(cx);
-    let only = info_with(false, Some(json!({"name": "Acme ID"})));
+    let only = info_with(false, Some(json!({"name": "Acme ID"})))
+        .set_delay(std::time::Duration::from_millis(400));
     answer(cx, &server, "GET", "/api/v1/server", only);
     let (_col, s, _secrets) = team_app(cx, |_, _| {});
     let view = open_join(cx, &s, &server.uri());
-    checked(cx, &server);
+    // Until the server answers, the form still asks for a password.
+    assert!(shown(cx, s.win, "team-join-password"));
+    wait_for(cx, "the answer", |cx| {
+        view.read_with(cx, |v, _| v.sso_name().is_some())
+    });
     frame(cx, s.win);
     assert!(!view.read_with(cx, |v, _| v.password_offered()));
     assert!(!shown(cx, s.win, "team-join-password"));
@@ -366,4 +380,123 @@ fn an_answer_for_an_old_address_is_dropped(cx: &mut TestAppContext) {
     frame(cx, s.win);
     assert_eq!(sso_name(cx, &view), None);
     assert!(!shown(cx, s.win, "team-join-sso"));
+}
+
+/// `open_for` as `username` on a server whose kept account is ada's, expiring at `expires_at`.
+fn reopen_with_account(
+    cx: &mut TestAppContext,
+    expires_at: &str,
+    username: &str,
+) -> (tempfile::TempDir, Started, Entity<JoinView>, MockServer) {
+    let server = potluck_server(cx);
+    answer(cx, &server, "GET", "/api/v1/server", acme());
+    let url = server_url(&server);
+    let expires_at = expires_at.to_owned();
+    let (col, s, _secrets) = team_app(cx, |paths, _| {
+        let mut account = Account::new(&url, "ada", "Ada Lovelace", "7", false);
+        account.expires_at = Some(expires_at);
+        TeamStore::update(&paths.team, |t| t.put_account(account)).unwrap();
+    });
+    let (ws, uri, user) = (s.ws.clone(), server.uri(), username.to_owned());
+    let view = cx
+        .update_window(s.win, |_, w, cx| {
+            team_join::open_for(&ws, &uri, &user, w, cx)
+        })
+        .unwrap();
+    frame(cx, s.win);
+    (col, s, view, server)
+}
+
+#[gpui_kit::test]
+fn the_expired_note_is_only_for_that_user_and_a_past_expiry(cx: &mut TestAppContext) {
+    http_ready(cx);
+    for (expires_at, username) in [
+        ("2000-01-01T00:00:00Z", "grace"),
+        ("2999-01-01T00:00:00Z", "ada"),
+    ] {
+        let (_col, s, view, _server) = reopen_with_account(cx, expires_at, username);
+        assert_eq!(
+            view.read_with(cx, |v, _| v.notice().map(str::to_owned)),
+            None
+        );
+        assert!(!shown(cx, s.win, "team-join-notice"));
+    }
+}
+
+#[gpui_kit::test]
+fn another_address_drops_the_expired_note(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let (_col, s, view, _server) = reopen_with_account(cx, "2000-01-01T00:00:00Z", "ada");
+    assert!(view.read_with(cx, |v, _| v.notice().is_some()));
+    let v = view.clone();
+    cx.update_window(s.win, |_, w, cx| {
+        v.update(cx, |v, cx| v.set_server("https://other.example.com", w, cx))
+    })
+    .unwrap();
+    assert_eq!(
+        view.read_with(cx, |v, _| v.notice().map(str::to_owned)),
+        None
+    );
+}
+
+/// The join dialog opened empty, so the address field has focus, with all three fields filled.
+fn filled_join(cx: &mut TestAppContext, s: &Started, server: &MockServer) -> Entity<JoinView> {
+    let ws = s.ws.clone();
+    let view = cx
+        .update_window(s.win, |_, w, cx| team_join::open(&ws, w, cx))
+        .unwrap();
+    frame(cx, s.win);
+    let (v, uri) = (view.clone(), server.uri());
+    cx.update_window(s.win, |_, w, cx| {
+        v.update(cx, |v, cx| {
+            v.set_server(&uri, w, cx);
+            v.set_username("ada", w, cx);
+            v.set_password("hunter2", w, cx);
+        })
+    })
+    .unwrap();
+    view
+}
+
+#[gpui_kit::test]
+fn enter_in_the_address_never_sends_a_password_to_a_server_without_it(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let server = potluck_server(cx);
+    let only = info_with(false, Some(json!({"name": "Acme ID"})));
+    answer(cx, &server, "GET", "/api/v1/server", only);
+    let session = crate::support::potluck::session(7, false);
+    answer(cx, &server, "POST", "/api/v1/session", session);
+    let (_col, s, _secrets) = team_app(cx, |_, _| {});
+    let view = filled_join(cx, &s, &server);
+    platform_press(cx, s.win, "enter");
+    wait_for(cx, "the answer", |cx| {
+        view.read_with(cx, |v, _| v.sso_name().is_some())
+    });
+    platform_press(cx, s.win, "enter");
+    assert_eq!(hits_on(cx, &server, "POST", "/api/v1/session"), 0);
+    assert_eq!(
+        view.read_with(cx, |v, _| v.error().map(str::to_owned)),
+        None
+    );
+    assert_eq!(view.read_with(cx, |v, _| v.phase()), JoinPhase::Form);
+}
+
+#[gpui_kit::test]
+fn enter_in_the_address_signs_in_once_the_server_takes_a_password(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let server = potluck_server(cx);
+    answer(cx, &server, "GET", "/api/v1/server", acme());
+    let session = crate::support::potluck::session(7, false);
+    answer(cx, &server, "POST", "/api/v1/session", session);
+    let (_col, s, _secrets) = team_app(cx, |_, _| {});
+    let view = filled_join(cx, &s, &server);
+    platform_press(cx, s.win, "enter");
+    assert_eq!(hits_on(cx, &server, "POST", "/api/v1/session"), 0);
+    wait_for(cx, "the answer", |cx| {
+        view.read_with(cx, |v, _| v.sso_name().is_some())
+    });
+    platform_press(cx, s.win, "enter");
+    wait_for(cx, "the sign-in", |cx| {
+        hits_on(cx, &server, "POST", "/api/v1/session") == 1
+    });
 }
