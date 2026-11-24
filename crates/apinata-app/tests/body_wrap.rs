@@ -49,11 +49,6 @@ fn long_json(len: usize) -> String {
     format!("{{\"k\":\"{}\"}}", "x".repeat(len))
 }
 
-fn present(cx: &mut TestAppContext, win: AnyWindowHandle, id: &'static str) -> bool {
-    cx.update_window(win, |_, w, _| w.try_find(id).is_some())
-        .unwrap()
-}
-
 #[gpui_kit::test]
 fn the_editor_toggle_wraps_and_unwraps(cx: &mut TestAppContext) {
     let (win, view) = host(cx, long_json(3000), "application/json");
