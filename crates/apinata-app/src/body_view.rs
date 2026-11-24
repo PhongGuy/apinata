@@ -55,6 +55,7 @@ use crate::body_text::{
     image_caption, json_problem, prepare, prepare_body, size_labels, wrap_columns,
 };
 use crate::download_model::{DownloadModel, DownloadPolicy, DownloadState, download_policy};
+use crate::follow_url::{NO_URL, OPEN_URL, OpenUrl, OpenUrlAsRequest, url_at};
 use crate::keymap::{ResetZoom, ZoomIn, ZoomOut};
 use crate::menu_focus;
 use crate::ui::{ChooseButton as _, LockButton as _};
@@ -379,6 +380,8 @@ pub struct BodyView {
     compact: bool,
     // The node entries and selection state captured by the last right-press on the editor.
     node_pending: Rc<RefCell<(Vec<NodeCopy>, bool)>>,
+    // Whether the last right-press on the editor landed on an http or https URL.
+    url_pending: Rc<Cell<bool>>,
     // What held focus when the rows menu opened, for `menu_focus` to hand back.
     node_held: Rc<RefCell<Option<FocusHandle>>>,
     // Whether the chosen node entry handed focus to the host, as Assert this value does by
@@ -443,6 +446,8 @@ impl EventEmitter<SetVariable> for BodyView {}
 pub struct AssertValue(pub Assertion);
 
 impl EventEmitter<AssertValue> for BodyView {}
+
+impl EventEmitter<OpenUrl> for BodyView {}
 
 /// Asks for a schema test built from the response; carries the unfiltered response text.
 pub struct SchemaTest(pub String);
@@ -603,6 +608,7 @@ impl BodyView {
             selection_laid: Rc::default(),
             compact: false,
             node_pending: Rc::default(),
+            url_pending: Rc::default(),
             node_held: Rc::default(),
             node_handed_focus: Rc::default(),
             assert_offered: false,
@@ -1828,6 +1834,23 @@ impl BodyView {
             self.activate_node(entry, window, cx);
         } else if self.node_offered() && self.shown == Shown::Editor && self.assert_offered {
             window.push_notification(ui::info_toast("This value cannot be asserted"), cx);
+        }
+    }
+
+    /// Asks the host to open the http or https URL at the editor's caret as a new request by
+    /// emitting [`OpenUrl`]; a toast says when there is none.
+    pub fn open_url_at_caret(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.shown != Shown::Editor {
+            return;
+        }
+        let state = self.editor.read(cx);
+        let value = state.value();
+        match url_at(&value, state.cursor()) {
+            Some(url) => {
+                let url = url.to_owned();
+                cx.emit(OpenUrl(url));
+            }
+            None => window.push_notification(ui::info_toast(NO_URL), cx),
         }
     }
 
@@ -3921,11 +3944,28 @@ impl Render for BodyView {
                         .readonly(!self.edit_on())
                         .h_full()
                         .text_size(Self::font_size(cx))
-                        .when(self.node_offered(), |editor| {
+                        // A read-only body offers its node entries on JSON, else the kit's
+                        // own entries, then the URL entry.
+                        .when(!self.edit_on(), |editor| {
                             let pending = Rc::clone(&self.node_pending);
+                            let url = Rc::clone(&self.url_pending);
+                            let (node, state) = (self.node_offered(), self.editor.downgrade());
                             editor.context_menu(move |menu, _, cx| {
                                 let (entries, selected) = &*pending.borrow();
-                                node_menu(menu, entries, *selected, cx)
+                                let off = !url.get();
+                                let menu = match state.upgrade().filter(|_| !node) {
+                                    Some(state) => {
+                                        let caps = state.read(cx).context_menu_capabilities();
+                                        crate::percent_codec::edit_entries(menu, &caps, cx)
+                                            .separator()
+                                    }
+                                    None => node_menu(menu, entries, *selected, cx),
+                                };
+                                menu.menu_with_disabled(
+                                    ui::native_menu_label(OPEN_URL, off, cx),
+                                    off,
+                                    Box::new(OpenUrlAsRequest),
+                                )
                             })
                         }),
                     &self.editor,
@@ -3938,9 +3978,14 @@ impl Render for BodyView {
                         let state = this.editor.read(cx);
                         let selected = state.selected_text().chars().next().is_some();
                         let entries = this.node_copies(state.cursor(), cx);
+                        let url = url_at(&state.value(), state.cursor()).is_some();
                         *this.node_pending.borrow_mut() = (entries, selected);
+                        this.url_pending.set(url);
                     }),
                 )
+                .on_action(cx.listener(|this, _: &OpenUrlAsRequest, window, cx| {
+                    this.open_url_at_caret(window, cx)
+                }))
                 .on_action(cx.listener(|this, _: &CopyJsonValue, window, cx| {
                     this.copy_pending_node("Copy value", window, cx)
                 }))

@@ -1,13 +1,16 @@
 use crate::support;
 use crate::support::sse_server::{Script, Step, event};
 use crate::support::*;
-use apinata_app::live_stream::{EventRow, PREVIEW_CHARS, event_rows, preview, retry_label};
+use apinata_app::live_stream::{
+    EventRow, LiveStream, PREVIEW_CHARS, event_rows, preview, retry_label, time_label,
+};
 use apinata_app::response_pane::{ResponsePane, ResponseTab};
 use apinata_core::sse::SseEvent;
 use apinata_core::{Outcome, RequestResult, Response};
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AppContext as _, TestAppContext, WindowOptions};
 use std::sync::Arc;
+use std::time::Duration;
 
 #[test]
 fn preview_keeps_the_first_line_and_marks_the_cut() {
@@ -70,19 +73,22 @@ fn rows_name_the_event_and_keep_its_id() {
                 name: "tick".into(),
                 id: Some("7".into()),
                 retry: None,
-                preview: "hi".into()
+                preview: "hi".into(),
+                time: None,
             },
             EventRow {
                 name: "message".into(),
                 id: None,
                 retry: None,
-                preview: "plain".into()
+                preview: "plain".into(),
+                time: None,
             },
             EventRow {
                 name: "message".into(),
                 id: None,
                 retry: Some(3000),
-                preview: "slow".into()
+                preview: "slow".into(),
+                time: None,
             },
         ]
     );
@@ -206,12 +212,25 @@ fn a_kept_event_stream_response_shows_events_too(cx: &mut TestAppContext) {
     wait_real(cx, |cx| {
         pane.read_with(cx, |p, cx| p.event_rows(cx).len() == 2)
     });
+    // A kept response has no arrival times, so its rows show blank ones.
+    assert!(
+        pane.read_with(cx, |p, cx| p.event_rows(cx))
+            .iter()
+            .all(|r| r.time.is_none())
+    );
 }
 
-#[gpui_kit::test]
-fn clicking_an_event_copies_its_whole_data(cx: &mut TestAppContext) {
-    let big = format!("{}\nsecond line", "z".repeat(PREVIEW_CHARS + 20));
-    let (win, pane, model, root, _server, _col) = open_pane(
+// One event whose data runs past the preview and onto a second line.
+fn long_event(
+    cx: &mut TestAppContext,
+) -> (
+    gpui_kit::AnyWindowHandle,
+    gpui_kit::Entity<ResponsePane>,
+    gpui_kit::Entity<apinata_app::send_model::SendModel>,
+    support::sse_server::SlowServer,
+    tempfile::TempDir,
+) {
+    let (win, pane, model, root, server, col) = open_pane(
         cx,
         Script::sse(vec![Step::Chunk(format!(
             "data: {}\ndata: second line\n\n",
@@ -223,10 +242,143 @@ fn clicking_an_event_copies_its_whole_data(cx: &mut TestAppContext) {
         model.read_with(cx, |m, _| m.live().is_some_and(|l| l.events().len() == 1))
     });
     pane.update(cx, |p, cx| p.set_tab(ResponseTab::Events, cx));
-    assert!(present(cx, win, ("event-row", 0usize)));
-    cx.update_window(win, |_, w, cx| w.click(("event-row", 0usize), cx))
+    (win, pane, model, server, col)
+}
+
+#[gpui_kit::test]
+fn the_copy_icon_copies_the_whole_data(cx: &mut TestAppContext) {
+    let big = format!("{}\nsecond line", "z".repeat(PREVIEW_CHARS + 20));
+    let (win, pane, model, _server, _col) = long_event(cx);
+    assert!(present(cx, win, ("event-copy", 0usize)));
+    cx.update_window(win, |_, w, cx| w.click(("event-copy", 0usize), cx))
         .unwrap();
     assert_eq!(cx.read_from_clipboard().and_then(|c| c.text()), Some(big));
+    // The icon sits on the row, yet copying picks nothing.
+    assert_eq!(pane.read_with(cx, |p, _| p.selected_event()), None);
+    model.update(cx, |m, cx| m.cancel(cx));
+    finished(cx, &model);
+}
+
+// A row click picks the event for the detail panel, which shows its whole data; the
+// clipboard stays untouched.
+#[gpui_kit::test]
+fn clicking_a_row_selects_it_and_does_not_copy(cx: &mut TestAppContext) {
+    let big = format!("{}\nsecond line", "z".repeat(PREVIEW_CHARS + 20));
+    let (win, pane, model, _server, _col) = long_event(cx);
+    assert!(!present(cx, win, "event-detail"));
+    cx.update_window(win, |_, w, cx| w.click(("event-row", 0usize), cx))
+        .unwrap();
+    assert_eq!(cx.read_from_clipboard().and_then(|c| c.text()), None);
+    assert_eq!(pane.read_with(cx, |p, _| p.selected_event()), Some(0));
+    assert!(present(cx, win, "event-detail"));
+    let data = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.find("event-detail-data").label().map(str::to_owned)
+        })
+        .unwrap();
+    assert_eq!(data.as_deref(), Some(big.as_str()));
+    // The selection carries into the finished view of the same send.
+    model.update(cx, |m, cx| m.stop(cx));
+    finished(cx, &model);
+    wait_real(cx, |cx| {
+        pane.read_with(cx, |p, cx| p.event_rows(cx).len() == 1)
+    });
+    assert!(present(cx, win, "event-detail"));
+    // Clicking the picked row again closes the panel.
+    cx.update_window(win, |_, w, cx| w.click(("event-row", 0usize), cx))
+        .unwrap();
+    assert_eq!(pane.read_with(cx, |p, _| p.selected_event()), None);
+    assert!(!present(cx, win, "event-detail"));
+}
+
+#[test]
+fn a_live_stream_stamps_each_event_with_its_arrival() {
+    let mut live = LiveStream::new(200, vec![], true);
+    let start = live.started();
+    live.push_at(b"data: a\n\ndata: b", start + Duration::from_millis(1500));
+    live.push_at(b"\n\n", start + Duration::from_millis(2250));
+    let times = live.times();
+    assert_eq!(times.get(0), Some(Duration::from_millis(1500)));
+    assert_eq!(times.get(1), Some(Duration::from_millis(2250)));
+    assert_eq!(times.get(2), None);
+}
+
+#[test]
+fn time_label_reads_as_an_offset_from_the_response_start() {
+    assert_eq!(time_label(None), "");
+    assert_eq!(time_label(Some(Duration::from_millis(1500))), "+1.500s");
+    assert_eq!(time_label(Some(Duration::from_millis(62_345))), "+1:02.345");
+    assert_eq!(time_label(Some(Duration::from_secs(3723))), "+1:02:03");
+}
+
+// Each row shows when its event arrived, live and after the end of the same send.
+#[gpui_kit::test]
+fn rows_show_the_time_offset(cx: &mut TestAppContext) {
+    let (win, pane, model, root, _server, _col) =
+        open_pane(cx, Script::sse(vec![event("one"), event("two")]));
+    model.update(cx, |m, cx| m.send(&root, ip("a.yml"), cx));
+    wait_real(cx, |cx| {
+        model.read_with(cx, |m, _| m.live().is_some_and(|l| l.events().len() == 2))
+    });
+    pane.update(cx, |p, cx| p.set_tab(ResponseTab::Events, cx));
+    let rows = pane.read_with(cx, |p, cx| p.event_rows(cx));
+    assert!(rows.iter().all(|r| r.time.is_some()), "{rows:?}");
+    let label = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.find(("event-time", 0usize)).label().map(str::to_owned)
+        })
+        .unwrap();
+    assert_eq!(label, Some(time_label(rows[0].time)));
+    model.update(cx, |m, cx| m.stop(cx));
+    finished(cx, &model);
+    // Once the parse of the stored body lands, the live arrivals still mark its rows.
+    wait_real(cx, |cx| {
+        pane.read_with(cx, |p, cx| p.event_rows(cx).len() == 2)
+    });
+    cx.run_until_parked();
+    let after = pane.read_with(cx, |p, cx| p.event_rows(cx));
+    assert_eq!(
+        after.iter().map(|r| r.time).collect::<Vec<_>>(),
+        rows.iter().map(|r| r.time).collect::<Vec<_>>()
+    );
+}
+
+// Typing in the filter narrows the list once typing settles, matching the name or the data.
+#[gpui_kit::test]
+fn the_filter_narrows_rows(cx: &mut TestAppContext) {
+    let steps = vec![
+        event("one"),
+        Step::Chunk("event: tick\nid: 2\ndata: two\n\n".into()),
+        event("three"),
+    ];
+    let (win, pane, model, root, _server, _col) = open_pane(cx, Script::sse(steps));
+    model.update(cx, |m, cx| m.send(&root, ip("a.yml"), cx));
+    wait_real(cx, |cx| {
+        model.read_with(cx, |m, _| m.live().is_some_and(|l| l.events().len() == 3))
+    });
+    pane.update(cx, |p, cx| p.set_tab(ResponseTab::Events, cx));
+    assert!(present(cx, win, "events-filter"));
+    replace_input(cx, win, None, "events-filter", "TICK");
+    assert_eq!(pane.read_with(cx, |p, cx| p.event_rows(cx).len()), 3);
+    cx.executor().advance_clock(apinata_app::body_view::SETTLE);
+    cx.run_until_parked();
+    let rows = pane.read_with(cx, |p, cx| p.event_rows(cx));
+    assert_eq!(
+        rows.iter().map(|r| r.preview.as_str()).collect::<Vec<_>>(),
+        ["two"]
+    );
+    assert!(present(cx, win, ("event-row", 0usize)));
+    assert!(!present(cx, win, ("event-row", 1usize)));
+    replace_input(cx, win, None, "events-filter", "thr");
+    cx.executor().advance_clock(apinata_app::body_view::SETTLE);
+    cx.run_until_parked();
+    let rows = pane.read_with(cx, |p, cx| p.event_rows(cx));
+    assert_eq!(
+        rows.iter().map(|r| r.preview.as_str()).collect::<Vec<_>>(),
+        ["three"]
+    );
     model.update(cx, |m, cx| m.cancel(cx));
     finished(cx, &model);
 }

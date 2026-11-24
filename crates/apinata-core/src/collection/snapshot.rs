@@ -1,14 +1,21 @@
 //! Request snapshots: a request's mapping carried as JSON, with literal credentials blanked.
 
 use super::Collection;
+use super::tree::new_request_root;
+use crate::document::Document;
 use crate::edit::auth::{CREDENTIAL_PATHS, PARAM_ROWS};
+use crate::edit::{AuthSpec, KeyValue};
+use crate::error::EditError;
 use crate::item_path::ItemPath;
-use crate::request::RequestFile;
+use crate::request::{RequestFile, RequestKind};
 use crate::url_password::{is_lone_placeholder, url_without_password};
 use std::fmt;
 use yaml_serde::{Mapping, Value};
 
-/// A request's mapping as it stood at one moment, safe to store beside its response.
+/// A request's mapping as it stood at one moment. One taken from a request through
+/// [`RequestFile::snapshot`] has its literal credentials blanked and is safe to store; one built
+/// by [`DraftSnapshot::http_get`] holds its auth as given, and only a snapshot of the draft it
+/// starts, taken the same way, is stored.
 #[derive(Clone, PartialEq)]
 #[non_exhaustive]
 pub struct DraftSnapshot {
@@ -53,6 +60,28 @@ impl DraftSnapshot {
         };
         if !root.get(key).is_some_and(Value::is_mapping) {
             return Err(SnapshotError::Parse(format!("no `{key}` mapping")));
+        }
+        Ok(DraftSnapshot { root })
+    }
+
+    /// An unnamed HTTP GET of `url` with `headers` and `auth` kept as given, credentials
+    /// included, so a draft made from it takes a free name and sends what the source would. It
+    /// is for starting a draft, not for storing; [`EditError::InvalidHeaderName`] for a name
+    /// with a line break.
+    pub fn http_get(
+        url: &str,
+        headers: Vec<KeyValue>,
+        auth: AuthSpec,
+    ) -> Result<DraftSnapshot, EditError> {
+        // The request setters write each field as an edit would, the URL's params included.
+        let root = new_request_root("", 1, RequestKind::Http);
+        let mut file = RequestFile::from_document(Document::draft("get.yml".into(), root));
+        file.set_url(url);
+        file.set_headers(headers)?;
+        file.set_auth(auth);
+        let mut root = file.document().mapping().clone();
+        if let Some(Value::Mapping(info)) = root.get_mut("info") {
+            info.remove("name");
         }
         Ok(DraftSnapshot { root })
     }

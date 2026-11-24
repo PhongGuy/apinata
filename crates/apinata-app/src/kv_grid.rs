@@ -8,6 +8,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::base::{ObservedElement, SelectableText};
 use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::menu::{ContextMenuExt as _, PopupMenuItem};
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, Icon, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -512,6 +513,8 @@ pub struct KvView {
     head: Option<ElementId>,
     delete: Option<(&'static str, &'static str, DeleteFn)>,
     copy: Option<(&'static str, &'static str, DeleteFn)>,
+    // A right-click menu of one entry, its label and the rows that offer it.
+    menu: Option<(&'static str, Vec<bool>, DeleteFn)>,
     reveal: Option<Reveal>,
     reveal_column: Option<usize>,
     follow: Option<FocusFollow>,
@@ -538,6 +541,7 @@ pub fn kv_view(id: impl Into<ElementId>, columns: Vec<KvColumn>, rows: Vec<Vec<K
         head: None,
         delete: None,
         copy: None,
+        menu: None,
         reveal: None,
         reveal_column: None,
         follow: None,
@@ -629,6 +633,18 @@ impl KvView {
         f: impl Fn(usize, &mut Window, &mut App) + 'static,
     ) -> Self {
         self.copy = Some((id, tooltip, Rc::new(f)));
+        self
+    }
+
+    /// A right-click menu holding the one entry `label` on each row `rows[ix]` marks, calling
+    /// `f(ix, ..)`.
+    pub fn row_menu(
+        mut self,
+        label: &'static str,
+        rows: Vec<bool>,
+        f: impl Fn(usize, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.menu = Some((label, rows, Rc::new(f)));
         self
     }
 
@@ -817,7 +833,7 @@ impl RenderOnce for KvView {
                     )
                 });
             // The right gutter keeps a long value off the pane's edge.
-            kv_row((self.row_prefix, ix))
+            let row = kv_row((self.row_prefix, ix))
                 .pr(SPACE_2)
                 .items_start()
                 .font_family(mono.clone())
@@ -850,7 +866,27 @@ impl RenderOnce for KvView {
                                 ActionShow::OnHover,
                             )),
                     )
-                })
+                });
+            let menu =
+                (self.menu.as_ref()).filter(|(_, rows, _)| rows.get(ix).copied().unwrap_or(false));
+            match menu {
+                Some((label, _, f)) => {
+                    let (label, f) = (*label, Rc::clone(f));
+                    div()
+                        .id(("kv-menu-row", ix))
+                        .w_full()
+                        .child(row)
+                        .context_menu(move |menu, _, _| {
+                            let f = Rc::clone(&f);
+                            menu.item(
+                                PopupMenuItem::new(label)
+                                    .on_click(move |_, window, cx| f(ix, window, cx)),
+                            )
+                        })
+                        .into_any_element()
+                }
+                None => row.into_any_element(),
+            }
         });
         v_flex()
             .id(self.id)
