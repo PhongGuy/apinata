@@ -965,7 +965,7 @@ fn the_fitted_path_cover_is_opaque_in_every_theme(cx: &mut TestAppContext) {
             let b = w.find(("cert-file-shown", 1usize)).bounds();
             let (l, t) = (b.left().as_f32() * scale, b.top().as_f32() * scale);
             let width = b.size.width.as_f32() * scale;
-            let fills: Vec<_> = (w.painted_quads().into_iter())
+            let fills: Vec<_> = (crate::support::whole_quads(w).into_iter())
                 .filter(|q| {
                     (q.bounds.origin.x.0 - l).abs() < 0.5
                         && (q.bounds.origin.y.0 - t).abs() < 0.5

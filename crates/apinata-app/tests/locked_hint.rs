@@ -215,7 +215,7 @@ fn field_fills(
         w.render_frame(cx);
         let scale = w.scale_factor();
         let b = w.find(("input", id)).bounds();
-        w.painted_quads()
+        crate::support::whole_quads(w)
             .into_iter()
             .filter(|q| {
                 (q.bounds.origin.x.0 / scale - f32::from(b.left())).abs() < 2.
@@ -236,7 +236,7 @@ fn ring_shown(cx: &mut TestAppContext, win: AnyWindowHandle, view: &Entity<Host>
         let scale = w.scale_factor();
         let b = w.find(("input", id)).bounds();
         let ring = cx.theme().ring;
-        w.painted_quads().into_iter().any(|q| {
+        crate::support::whole_quads(w).into_iter().any(|q| {
             q.border_widths.left.0 > 0.
                 && q.border_color == ring
                 && (q.bounds.origin.x.0 / scale - f32::from(b.left())).abs() < 3.

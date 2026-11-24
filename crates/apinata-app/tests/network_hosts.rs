@@ -324,7 +324,7 @@ fn the_danger_ring_is_painted_over_the_accent_ring(cx: &mut TestAppContext) {
             let scale = w.scale_factor();
             let b = w.find(("host-danger-ring", 0usize)).bounds();
             let (l, t) = (b.left().as_f32() * scale, b.top().as_f32() * scale);
-            w.painted_quads()
+            crate::support::whole_quads(w)
                 .into_iter()
                 .filter(|q| {
                     q.border_widths.left.0 > 0.

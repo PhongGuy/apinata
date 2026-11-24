@@ -1175,9 +1175,12 @@ impl BodyView {
                     if let Some((hit, tries)) = pending {
                         let laid = (e.range_to_bounds(&hit), e.text_bounds(), e.line_height());
                         if let (Some(at), Some(view), Some(line)) = laid {
-                            let top = (view.size.height - line) / 2. - (at.top() - view.top());
-                            let x = e.scroll_offset().x;
-                            e.set_scroll_offset(point(x, top.min(Pixels::ZERO)), cx);
+                            // The hit is where it is drawn and the view does not scroll, so the
+                            // scroll offset is taken off to give the hit's place in the text.
+                            let scroll = e.scroll_offset();
+                            let in_text = at.top() - view.top() - scroll.y;
+                            let top = (view.size.height - line) / 2. - in_text;
+                            e.set_scroll_offset(point(scroll.x, top.min(Pixels::ZERO)), cx);
                         } else if tries > 0 {
                             e.set_selected_range(hit.clone(), cx);
                             *centre.borrow_mut() = Some((hit, tries - 1));

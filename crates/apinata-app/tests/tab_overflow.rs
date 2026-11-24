@@ -448,7 +448,7 @@ fn an_active_tab_wider_than_the_strip_still_shows(cx: &mut TestAppContext) {
         // The underline is a 2 px accent quad left visible by its clip.
         let scale = w.scale_factor();
         let accent = cx.theme().primary;
-        let underline = w.painted_quads().into_iter().any(|q| {
+        let underline = crate::support::whole_quads(w).into_iter().any(|q| {
             let (b, m) = (q.bounds, q.content_mask.bounds);
             q.background.as_solid() == Some(accent)
                 && (b.size.height.0 / scale - 2.).abs() < 0.1
@@ -1114,7 +1114,7 @@ fn check_clear_of_overflow(cx: &mut TestAppContext, width: f32, zoom: f32) {
             let chevron = w.find("tab-overflow").bounds();
             let strip = w.find("tab-strip").bounds();
             let scale = w.scale_factor();
-            for q in w.painted_quads() {
+            for q in crate::support::whole_quads(w) {
                 let (b, m) = (q.bounds, q.content_mask.bounds);
                 let (top, bottom) = (b.origin.y.0 / scale, (b.origin.y + b.size.height).0 / scale);
                 if top < f32::from(strip.top()) || bottom > f32::from(strip.bottom()) + 0.5 {

@@ -120,7 +120,7 @@ fn a_shown_reference_in_a_masked_field_is_tinted(cx: &mut TestAppContext) {
             let b = w.find("auth-password").bounds();
             let scale = w.scale_factor();
             let tint = var_tint(VarKind::Defined, cx);
-            w.painted_quads().into_iter().any(|q| {
+            crate::support::whole_quads(w).into_iter().any(|q| {
                 let x = q.bounds.origin.x.0 / scale;
                 let y = q.bounds.origin.y.0 / scale;
                 q.background.as_solid() == Some(tint)

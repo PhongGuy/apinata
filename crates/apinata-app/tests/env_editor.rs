@@ -1092,7 +1092,7 @@ fn save_filled(cx: &mut TestAppContext, win: AnyWindowHandle, primary: gpui_kit:
         let save = w.find("env-save").bounds();
         let scale = w.scale_factor();
         let (cx_, cy) = (f32::from(save.center().x), f32::from(save.center().y));
-        w.painted_quads().into_iter().any(|q| {
+        crate::support::whole_quads(w).into_iter().any(|q| {
             let (x, y) = (q.bounds.origin.x.0 / scale, q.bounds.origin.y.0 / scale);
             let r = x + q.bounds.size.width.0 / scale;
             let b = y + q.bounds.size.height.0 / scale;
@@ -1467,8 +1467,7 @@ fn the_none_swatch_outline_is_visible_in_both_themes(cx: &mut TestAppContext) {
                 w.render_frame(cx);
                 let dot = w.within("env-swatch-none").find("env-swatch-dot").bounds();
                 let scale = w.scale_factor();
-                let quad = w
-                    .painted_quads()
+                let quad = crate::support::whole_quads(w)
                     .into_iter()
                     .find(|q| {
                         (q.bounds.origin.x.0 / scale - f32::from(dot.left())).abs() < 1.

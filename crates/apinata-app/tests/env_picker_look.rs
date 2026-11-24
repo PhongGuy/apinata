@@ -173,7 +173,7 @@ fn hovering_a_picker_fills_it_in_every_theme(cx: &mut TestAppContext) {
                     let scale = w.scale_factor();
                     let r = w.find(control).bounds();
                     let (l, t) = (r.left().as_f32() * scale, r.top().as_f32() * scale);
-                    w.painted_quads()
+                    crate::support::whole_quads(w)
                         .into_iter()
                         .filter(|q| {
                             (q.bounds.origin.x.0 - l).abs() < 1.
@@ -370,11 +370,18 @@ fn group_headers_read_as_labels(cx: &mut TestAppContext) {
                 header.left().as_f32() * scale,
                 header.top().as_f32() * scale,
             );
-            let rule = w.painted_quads().into_iter().any(|q| {
-                q.border_widths.top.0 > 0.
-                    && q.border_color == border
-                    && (q.bounds.origin.x.0 - l).abs() < 1.
-                    && (q.bounds.origin.y.0 - t).abs() < 1.
+            // A top-only border paints as a single strip of the border colour, so the rule is
+            // a thin band of that colour along the header's top edge.
+            let rule = crate::support::whole_quads(w).into_iter().any(|q| {
+                let band = q.bounds.intersect(&q.content_mask.bounds);
+                let edge =
+                    (q.bounds.origin.x.0 - l).abs() < 1. && (q.bounds.origin.y.0 - t).abs() < 1.;
+                let bordered = q.border_widths.top.0 > 0. && q.border_color == border;
+                let strip = q.background.as_solid() == Some(border)
+                    && (band.origin.y.0 - t).abs() < 1.
+                    && band.size.height.0 > 0.
+                    && band.size.height.0 <= 2. * scale;
+                edge && (bordered || strip)
             });
             assert!(rule, "{select}: no rule above the actions");
         })
