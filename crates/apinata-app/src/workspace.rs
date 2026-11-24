@@ -2249,6 +2249,41 @@ impl Workspace {
         Some(id)
     }
 
+    /// Asks for an unsent GET draft of `url` in the folder of the request `source`, opening as
+    /// `new_draft_of_kind`'s does. It carries `source`'s headers and auth as written only when
+    /// `url` has the origin of `sent_to`, the URL `source` was sent to; otherwise it inherits.
+    /// `None` with nothing sent when the root is not open.
+    pub fn new_draft_from_url(
+        &mut self,
+        root: &Path,
+        source: &ItemPath,
+        url: &str,
+        sent_to: &str,
+        cx: &mut Context<Self>,
+    ) -> Option<u64> {
+        let root = absolute(root);
+        let snap = self.snapshot(&root, cx)?;
+        let mut parent = source.parent().unwrap_or_else(ItemPath::root);
+        if parent != ItemPath::root() && !snap.content.folders.contains_key(&parent) {
+            parent = ItemPath::root();
+        }
+        let view = (snap.content.requests.get(source))
+            .filter(|_| crate::follow_url::same_origin(url, sent_to));
+        let (headers, auth) = match view {
+            Some(view) => (view.headers.clone(), view.auth.clone()),
+            None => (Vec::new(), apinata_core::AuthSpec::Inherit),
+        };
+        let snapshot = DraftSnapshot::http_get(url, headers, auth).ok()?;
+        let op = TreeOp::CreateDraftFrom {
+            parent,
+            snapshot,
+            unsaved: false,
+        };
+        let id = self.send(&root, Command::Tree(op), cx)?;
+        self.drafts.insert((root, id));
+        Some(id)
+    }
+
     /// Asks for a draft at the collection root from `snapshot`; once it opens, its tab holds
     /// `key` and `take_kept_view` yields `seq`. None when the root is not open.
     pub fn reopen_draft(

@@ -1,9 +1,13 @@
 //! Request snapshots: a request's mapping carried as JSON, with literal credentials blanked.
 
 use super::Collection;
+use super::tree::new_request_root;
+use crate::document::Document;
 use crate::edit::auth::{CREDENTIAL_PATHS, PARAM_ROWS};
+use crate::edit::{AuthSpec, KeyValue};
+use crate::error::EditError;
 use crate::item_path::ItemPath;
-use crate::request::RequestFile;
+use crate::request::{RequestFile, RequestKind};
 use crate::url_password::{is_lone_placeholder, url_without_password};
 use std::fmt;
 use yaml_serde::{Mapping, Value};
@@ -53,6 +57,26 @@ impl DraftSnapshot {
         };
         if !root.get(key).is_some_and(Value::is_mapping) {
             return Err(SnapshotError::Parse(format!("no `{key}` mapping")));
+        }
+        Ok(DraftSnapshot { root })
+    }
+
+    /// An unnamed HTTP GET of `url` with `headers` and `auth` kept as given, so a draft made
+    /// from it takes a free name; [`EditError::InvalidHeaderName`] for a name with a line break.
+    pub fn http_get(
+        url: &str,
+        headers: Vec<KeyValue>,
+        auth: AuthSpec,
+    ) -> Result<DraftSnapshot, EditError> {
+        // The request setters write each field as an edit would, the URL's params included.
+        let root = new_request_root("", 1, RequestKind::Http);
+        let mut file = RequestFile::from_document(Document::draft("get.yml".into(), root));
+        file.set_url(url);
+        file.set_headers(headers)?;
+        file.set_auth(auth);
+        let mut root = file.document().mapping().clone();
+        if let Some(Value::Mapping(info)) = root.get_mut("info") {
+            info.remove("name");
         }
         Ok(DraftSnapshot { root })
     }

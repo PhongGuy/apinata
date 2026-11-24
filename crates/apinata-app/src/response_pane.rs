@@ -50,6 +50,7 @@ use crate::cookie_jar::{
 use crate::diff_doc::DiffRow;
 use crate::download_model::DownloadModel;
 use crate::executor;
+use crate::follow_url::{NO_URL, OPEN_URL, OpenUrl, follow_target};
 use crate::kv_grid::{ActionShow, KvColumn, action_slot};
 use crate::last_response::{self, KeptAs, KeptSend, ResponseStore, StoreOp, Stored};
 use crate::live_stream::{self, EventRow};
@@ -743,6 +744,7 @@ pub struct ResponsePane {
     cookies_filter: Entity<InputState>,
     _filter_events: Vec<Subscription>,
     _body_events: Subscription,
+    _url_events: Subscription,
     _inputs: Vec<Subscription>,
 }
 
@@ -836,6 +838,9 @@ impl ResponsePane {
         let body_events = cx.subscribe_in(&body, window, |this, _, e: &SetVariable, window, cx| {
             this.open_set_variable(e, window, cx)
         });
+        let url_events = cx.subscribe_in(&body, window, |this, _, e: &OpenUrl, window, cx| {
+            this.open_url_as_request(&e.0, window, cx)
+        });
         // The pane is drawn cached, so the collection, the script approvals and the settings
         // it reads (error offers, warnings, the live body's font size) redraw it on change.
         let workspace = send.read(cx).workspace().clone();
@@ -909,6 +914,7 @@ impl ResponsePane {
             cookies_filter,
             _filter_events: filter_events,
             _body_events: body_events,
+            _url_events: url_events,
             _inputs: inputs,
         };
         pane.refresh_events_tab(cx);
@@ -917,6 +923,31 @@ impl ResponsePane {
         pane.tick(cx);
         pane.tick_expiry(cx);
         pane
+    }
+
+    /// Opens `raw`, a URL from this response, as an unsent GET draft in the folder of the request
+    /// that was sent. A relative `raw` resolves against the URL that answered; a scheme other
+    /// than http or https is refused with a toast.
+    pub fn open_url_as_request(&self, raw: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let send = self.send.read(cx);
+        let (workspace, root) = (send.workspace().clone(), send.root().map(Path::to_path_buf));
+        let result = done(send);
+        let hops = (result.as_ref())
+            .and_then(|r| r.response.as_ref())
+            .map(|r| r.timeline());
+        let (Some(root), Some(result), Some([first, .., last] | [first @ last])) =
+            (root, result.as_ref(), hops)
+        else {
+            window.push_notification(ui::info_toast("This response has no request to follow"), cx);
+            return;
+        };
+        let Some(url) = follow_target(raw, &last.url) else {
+            window.push_notification(ui::info_toast(NO_URL), cx);
+            return;
+        };
+        workspace.update(cx, |w, cx| {
+            w.new_draft_from_url(&root, &result.path, &url, &first.url, cx)
+        });
     }
 
     // Opens the Set as variable dialog for the send's collection, or says why it cannot.
@@ -2223,6 +2254,13 @@ impl ResponsePane {
         let kept: Vec<(String, String)> = shown.into_iter().map(|(_, p)| p.clone()).collect();
         let none_kept = kept.is_empty();
         let pane = cx.entity();
+        // A Location row whose value shows in full offers to open it as a new request.
+        let follows: Vec<bool> = (kept.iter().zip(&flags).zip(&locked))
+            .map(|(((name, _), eye), locked)| {
+                name.eq_ignore_ascii_case("location") && *eye != Some(false) && !locked
+            })
+            .collect();
+        let (follow_pane, follow_values) = (pane.clone(), values.clone());
         let described = (kept.iter())
             .map(|(name, _)| header_description(name).map(SharedString::from))
             .collect();
@@ -2241,6 +2279,11 @@ impl ResponsePane {
             .lock_eyes(locked, SCRUBBED_TIP)
             .on_copy("header-copy", "Copy value", move |ix, window, cx| {
                 copy_with_toast(values[ix].clone(), "Copied the value", window, cx)
+            })
+            .row_menu(OPEN_URL, follows, move |ix, window, cx| {
+                follow_pane.update(cx, |p, cx| {
+                    p.open_url_as_request(&follow_values[ix], window, cx)
+                })
             });
         let bar = self.filter_bar(
             (&self.headers_filter, "headers-filter", "headers-copy"),

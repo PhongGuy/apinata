@@ -79,6 +79,7 @@ mod derived_credentials_oauth2;
 mod digest_key;
 mod dotenv_write;
 mod draft_copy;
+mod draft_get;
 mod draft_save_snapshot;
 mod draft_snapshot;
 mod draft_unsaved;
