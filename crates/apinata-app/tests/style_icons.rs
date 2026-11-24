@@ -170,3 +170,10 @@ fn every_icon_the_app_names_is_bundled() {
         .collect();
     assert!(missing.is_empty(), "icons with no bundled SVG: {missing:?}");
 }
+
+#[test]
+fn the_console_toggle_shows_a_terminal_not_a_panel() {
+    use apinata_app::shell::CONSOLE_ICON;
+    assert_eq!(CONSOLE_ICON, IconName::SquareTerminal);
+    assert!(matches!(AppAssets.load(&CONSOLE_ICON.path()), Ok(Some(_))));
+}
