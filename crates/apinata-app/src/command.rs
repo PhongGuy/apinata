@@ -97,8 +97,8 @@ pub enum Edit {
     HostOverrides(Vec<apinata_core::HostOverride>),
     /// The collection's request type and URL presets for new requests.
     Presets(apinata_core::CollectionPresets),
-    /// Move every literal network secret of the collection file to `.env`.
-    MoveNetworkSecrets,
+    /// Move one literal network secret of the collection file to `.env`.
+    MoveNetworkSecret(NetworkSlot),
     /// Move the target's literal OAuth 2.0 client secret and password to `.env`.
     MoveAuthSecrets,
     /// Move one literal credential of the target's auth to a secret: the auth as the draft
@@ -106,6 +106,15 @@ pub enum Edit {
     /// variable of the environment, or to `.env` when no environment can hold it, once the
     /// target is saved.
     MoveToSecret(Box<AuthSpec>),
+}
+
+/// One secret field of the collection's network settings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NetworkSlot {
+    /// The custom proxy's password.
+    ProxyPassword,
+    /// The passphrase of the client certificate in this row.
+    Passphrase(usize),
 }
 
 /// Where a held imported secret goes when its request is saved.
@@ -152,7 +161,7 @@ impl Edit {
             Edit::Proxy(_)
             | Edit::ClientCertificates(_)
             | Edit::HostOverrides(_)
-            | Edit::MoveNetworkSecrets => Field::Network,
+            | Edit::MoveNetworkSecret(_) => Field::Network,
         }
     }
 }

@@ -22,7 +22,7 @@ fn section(cx: &mut TestAppContext, rows: Vec<HostOverride>) -> (AnyWindowHandle
     let mut network = CollectionNetwork::default();
     network.host_overrides = rows;
     cx.update_window(win, |_, w, cx| {
-        s.update(cx, |s, cx| s.load(&network, false, w, cx))
+        s.update(cx, |s, cx| s.load(&network, w, cx))
     })
     .unwrap();
     frame(cx, win);
@@ -402,7 +402,7 @@ fn an_echo_of_the_saved_rows_keeps_a_draft_in_place(cx: &mut TestAppContext) {
     let mut network = CollectionNetwork::default();
     network.host_overrides = vec![b];
     cx.update_window(win, |_, w, cx| {
-        s.update(cx, |s, cx| s.load(&network, false, w, cx))
+        s.update(cx, |s, cx| s.load(&network, w, cx))
     })
     .unwrap();
     frame(cx, win);

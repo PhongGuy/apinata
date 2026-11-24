@@ -1526,7 +1526,7 @@ fn moving_secrets_with_two_uncommitted_passphrases_lands_after_a_settled_reload(
                     .cloned();
                 set_uncommitted(cx, win, input.unwrap(), text);
             }
-            cx.update_window(win, |_, w, cx| w.click("network-move-secrets", cx))
+            cx.update_window(win, |_, w, cx| w.click("proxy-password-move", cx))
                 .unwrap();
         },
         "{{p2}}",
