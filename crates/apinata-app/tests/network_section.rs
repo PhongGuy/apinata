@@ -1,10 +1,10 @@
-//! The collection's Network tab: the proxy choice and fields, and moving plain secrets.
+//! The collection's Network tab: the proxy choice and fields, and moving literal secrets.
 
 use crate::support;
 
-use apinata_app::command::Edit;
+use apinata_app::command::{Edit, NetworkSlot};
 use apinata_app::config_editor::{ConfigEditor, ConfigSection, ConfigTarget};
-use apinata_app::network_section::{NetworkSection, ProxyChoice};
+use apinata_app::network_section::{NetworkField, NetworkSection, ProxyChoice};
 use apinata_app::workspace::Workspace;
 use apinata_core::{CollectionNetwork, CollectionProxy, ProxyAuth, ProxyConfig};
 use gpui_kit::test::TestWindowExt as _;
@@ -14,15 +14,11 @@ use support::*;
 
 type Host = Entity<SectionHost<NetworkSection>>;
 
-fn section(
-    cx: &mut TestAppContext,
-    network: CollectionNetwork,
-    plain: bool,
-) -> (AnyWindowHandle, Host) {
+fn section(cx: &mut TestAppContext, network: CollectionNetwork) -> (AnyWindowHandle, Host) {
     let (win, host) = host_section(cx, |w, cx| NetworkSection::new(PathBuf::from("/c"), w, cx));
     let s = host.read_with(cx, |h, _| h.view.clone());
     cx.update_window(win, |_, w, cx| {
-        s.update(cx, |s, cx| s.load(&network, plain, w, cx))
+        s.update(cx, |s, cx| s.load(&network, w, cx))
     })
     .unwrap();
     frame(cx, win);
@@ -64,6 +60,21 @@ fn stored_names(cx: &mut TestAppContext, win: AnyWindowHandle, host: &Host, stor
     frame(cx, win);
 }
 
+// The accessible label of element `id`, after a fresh frame.
+fn label_of(
+    cx: &mut TestAppContext,
+    win: AnyWindowHandle,
+    id: impl Into<gpui_kit::ElementId>,
+) -> Option<String> {
+    let id = id.into();
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.try_find(id).and_then(|e| e.label().map(str::to_owned))
+    })
+    .unwrap()
+}
+
 fn edit_count(cx: &mut TestAppContext, host: &Host) -> usize {
     host.read_with(cx, |h, _| h.edits.len())
 }
@@ -102,15 +113,13 @@ fn editor(
 
 #[gpui_kit::test]
 fn loading_shows_the_choice_without_sending(cx: &mut TestAppContext) {
-    let (win, host) = section(cx, with_proxy(custom("http", "proxy.local", None)), false);
+    let (win, host) = section(cx, with_proxy(custom("http", "proxy.local", None)));
     let s = host.read_with(cx, |h, _| h.view.clone());
     assert_eq!(s.read_with(cx, |s, _| s.choice()), ProxyChoice::Custom);
     assert!(present(cx, win, "proxy-host"));
     assert_eq!(edit_count(cx, &host), 0);
     cx.update_window(win, |_, w, cx| {
-        s.update(cx, |s, cx| {
-            s.load(&CollectionNetwork::default(), false, w, cx)
-        })
+        s.update(cx, |s, cx| s.load(&CollectionNetwork::default(), w, cx))
     })
     .unwrap();
     frame(cx, win);
@@ -120,7 +129,7 @@ fn loading_shows_the_choice_without_sending(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn the_choice_sends_the_proxy(cx: &mut TestAppContext) {
-    let (win, host) = section(cx, with_proxy(custom("http", "proxy.local", None)), false);
+    let (win, host) = section(cx, with_proxy(custom("http", "proxy.local", None)));
     segment(cx, win, "proxy-mode", 1);
     assert_eq!(last_proxy(cx, &host), Some(CollectionProxy::Off));
     segment(cx, win, "proxy-mode", 2);
@@ -134,7 +143,7 @@ fn the_choice_sends_the_proxy(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn typing_sends_the_custom_fields(cx: &mut TestAppContext) {
-    let (win, host) = section(cx, with_proxy(custom("http", "proxy.local", None)), false);
+    let (win, host) = section(cx, with_proxy(custom("http", "proxy.local", None)));
     type_at_end(cx, win, None, "proxy-host", "x");
     cx.run_until_parked();
     assert_eq!(
@@ -153,7 +162,6 @@ fn the_password_is_sent_on_enter_only(cx: &mut TestAppContext) {
     let (win, host) = section(
         cx,
         with_proxy(custom("http", "proxy.local", Some(("u", "")))),
-        false,
     );
     let before = edit_count(cx, &host);
     type_at_end(cx, win, None, "proxy-password", "pw");
@@ -169,18 +177,20 @@ fn the_password_is_sent_on_enter_only(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn plain_secrets_offer_a_move(cx: &mut TestAppContext) {
+fn a_literal_password_offers_its_own_move(cx: &mut TestAppContext) {
     let (win, host) = section(
         cx,
         with_proxy(custom("http", "proxy.local", Some(("u", "pw")))),
-        true,
     );
-    assert!(present(cx, win, "network-plain-notice"));
-    cx.update_window(win, |_, w, cx| w.click("network-move-secrets", cx))
+    assert!(!present(cx, win, "network-plain-notice"));
+    cx.update_window(win, |_, w, cx| w.click("proxy-password-move", cx))
         .unwrap();
     cx.run_until_parked();
     let moved = host.read_with(cx, |h, _| {
-        matches!(h.edits.last(), Some(Edit::MoveNetworkSecrets))
+        matches!(
+            h.edits.last(),
+            Some(Edit::MoveNetworkSecret(NetworkSlot::ProxyPassword))
+        )
     });
     assert!(moved);
 }
@@ -206,30 +216,6 @@ fn the_collection_settings_have_a_network_tab(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn move_to_dotenv_clears_the_plain_text_notice(cx: &mut TestAppContext) {
-    let col = write_tree(&[("opencollection.yml", &root_with_password("hunter2"))]);
-    let (_state, ws, root) = open_dir(cx, &col);
-    let (win, ed) = editor(cx, &ws, &root, ConfigTarget::Collection);
-    ed.update(cx, |e, cx| e.set_section(ConfigSection::Network, cx));
-    frame(cx, win);
-    assert!(present(cx, win, "network-plain-notice"));
-    cx.update_window(win, |_, w, cx| w.click("network-move-secrets", cx))
-        .unwrap();
-    frame(cx, win);
-    assert!(!ws_snap(cx, &ws, &root).content.collection.plain_secrets);
-    assert!(!col.path().join(".env").exists());
-    ed.update(cx, |e, cx| e.save(cx));
-    cx.run_until_parked();
-    frame(cx, win);
-    let dotenv = std::fs::read_to_string(col.path().join(".env")).unwrap();
-    assert!(
-        dotenv.contains("APINATA_PROXY_PASSWORD='hunter2'"),
-        "{dotenv}"
-    );
-    assert!(!present(cx, win, "network-plain-notice"));
-}
-
-#[gpui_kit::test]
 fn a_typed_password_reaches_dotenv_on_save(cx: &mut TestAppContext) {
     let col = write_tree(&[("opencollection.yml", ROOT)]);
     let (_state, ws, root) = open_dir(cx, &col);
@@ -248,7 +234,10 @@ fn a_typed_password_reaches_dotenv_on_save(cx: &mut TestAppContext) {
     let notice = network.read_with(cx, |n, _| n.notice().map(str::to_owned));
     assert_eq!(notice, None);
     assert!(!col.path().join(".env").exists() && !col.path().join(".gitignore").exists());
-    assert!(present(cx, win, "proxy-password-stored"));
+    assert_eq!(
+        label_of(cx, win, "proxy-password-storage").as_deref(),
+        Some("Saved to .env when you save")
+    );
     ed.update(cx, |e, cx| e.save(cx));
     frame(cx, win);
     cx.run_until_parked();
@@ -258,7 +247,7 @@ fn a_typed_password_reaches_dotenv_on_save(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn an_invalid_port_shows_its_error_and_keeps_the_last_valid_port(cx: &mut TestAppContext) {
-    let (win, host) = section(cx, with_proxy(custom("http", "proxy.local", None)), false);
+    let (win, host) = section(cx, with_proxy(custom("http", "proxy.local", None)));
     let before = edit_count(cx, &host);
     type_at_end(cx, win, None, "proxy-port", "x");
     frame(cx, win);
@@ -288,7 +277,6 @@ fn a_template_password_shows_and_a_literal_stays_masked(cx: &mut TestAppContext)
         let (_win, host) = section(
             cx,
             with_proxy(custom("http", "proxy.local", Some(("u", password)))),
-            false,
         );
         let s = host.read_with(cx, |h, _| h.view.clone());
         let input = s.read_with(cx, |s, _| s.input(NetworkField::Password).clone());
@@ -449,7 +437,7 @@ fn a_typed_password_survives_choosing_off(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn the_network_form_stacks_at_the_minimum_window(cx: &mut TestAppContext) {
     use apinata_app::session::{MIN_HEIGHT, MIN_WIDTH};
-    let (win, _host) = section(cx, with_proxy(custom("http", "proxy.local", None)), false);
+    let (win, _host) = section(cx, with_proxy(custom("http", "proxy.local", None)));
     cx.simulate_window_resize(
         win,
         gpui_kit::size(gpui_kit::px(MIN_WIDTH), gpui_kit::px(MIN_HEIGHT.max(600.))),
@@ -480,7 +468,7 @@ fn the_network_form_stacks_at_the_minimum_window(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn the_bypass_hint_sits_under_its_field(cx: &mut TestAppContext) {
-    let (win, _host) = section(cx, with_proxy(custom("http", "proxy.local", None)), false);
+    let (win, _host) = section(cx, with_proxy(custom("http", "proxy.local", None)));
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
         let field = w.find("proxy-bypass").bounds();
@@ -572,41 +560,29 @@ fn an_unfilled_certificate_row_is_not_saved_until_it_is_complete(cx: &mut TestAp
 }
 
 #[gpui_kit::test]
-fn a_dotenv_password_shows_a_badge_and_replace_takes_a_new_value(cx: &mut TestAppContext) {
+fn a_dotenv_password_shows_its_reference_and_takes_a_new_value(cx: &mut TestAppContext) {
     let stored = "{{process.env.APINATA_PROXY_PASSWORD}}";
     let (win, host) = section(
         cx,
         with_proxy(custom("http", "proxy.local", Some(("u", stored)))),
-        false,
-    );
-    assert!(
-        !present(cx, win, "proxy-password-stored"),
-        "no such .env key"
     );
     stored_names(cx, win, &host, &["APINATA_PROXY_PASSWORD"]);
-    assert!(present(cx, win, "proxy-password-stored"));
-    assert!(!present(cx, win, "proxy-password"));
+    assert_eq!(
+        label_of(cx, win, "proxy-password-storage").as_deref(),
+        Some("Stored in .env")
+    );
+    assert!(!present(cx, win, "proxy-password-move"));
+    let s = host.read_with(cx, |h, _| h.view.clone());
+    let shown = s.read_with(cx, |s, cx| {
+        s.input(NetworkField::Password).read(cx).value().to_string()
+    });
+    assert_eq!(shown, stored);
     cx.update_window(win, |_, w, _| w.activate_window())
         .unwrap();
     frame(cx, win);
-    let before = edit_count(cx, &host);
-    // A replace left empty keeps the stored password.
-    cx.update_window(win, |_, w, cx| w.click("proxy-password-replace", cx))
+    replace_input(cx, win, None, "proxy-password", "new-pw");
+    cx.update_window(win, |_, w, cx| w.press("enter", cx))
         .unwrap();
-    frame(cx, win);
-    cx.update_window(win, |_, w, cx| w.click("proxy-host", cx))
-        .unwrap();
-    frame(cx, win);
-    assert_eq!(edit_count(cx, &host), before);
-    assert!(present(cx, win, "proxy-password-stored"));
-    cx.update_window(win, |_, w, cx| w.click("proxy-password-replace", cx))
-        .unwrap();
-    frame(cx, win);
-    cx.update_window(win, |_, w, cx| {
-        w.input("new-pw", cx);
-        w.press("enter", cx);
-    })
-    .unwrap();
     frame(cx, win);
     assert_eq!(
         last_proxy(cx, &host),
@@ -616,7 +592,7 @@ fn a_dotenv_password_shows_a_badge_and_replace_takes_a_new_value(cx: &mut TestAp
 
 #[gpui_kit::test]
 fn a_custom_proxy_without_a_host_is_held_back_and_named(cx: &mut TestAppContext) {
-    let (win, host) = section(cx, CollectionNetwork::default(), false);
+    let (win, host) = section(cx, CollectionNetwork::default());
     segment(cx, win, "proxy-mode", 2);
     assert_eq!(last_proxy(cx, &host), None, "no host, nothing sent");
     assert!(present(cx, win, "proxy-host-incomplete"));
@@ -638,13 +614,11 @@ fn a_custom_proxy_without_a_host_is_held_back_and_named(cx: &mut TestAppContext)
 
 #[gpui_kit::test]
 fn a_held_back_custom_proxy_survives_a_reload(cx: &mut TestAppContext) {
-    let (win, host) = section(cx, CollectionNetwork::default(), false);
+    let (win, host) = section(cx, CollectionNetwork::default());
     segment(cx, win, "proxy-mode", 2);
     let s = host.read_with(cx, |h, _| h.view.clone());
     cx.update_window(win, |_, w, cx| {
-        s.update(cx, |s, cx| {
-            s.load(&CollectionNetwork::default(), false, w, cx)
-        })
+        s.update(cx, |s, cx| s.load(&CollectionNetwork::default(), w, cx))
     })
     .unwrap();
     frame(cx, win);
@@ -669,28 +643,25 @@ fn an_empty_custom_proxy_and_an_empty_host_override_never_reach_the_file(cx: &mu
 }
 
 #[gpui_kit::test]
-fn a_dotenv_passphrase_shows_a_badge_and_replace_takes_a_new_value(cx: &mut TestAppContext) {
+fn a_dotenv_passphrase_shows_its_reference_and_takes_a_new_value(cx: &mut TestAppContext) {
+    let stored = "{{process.env.APINATA_CERT_PASSPHRASE_1}}";
     let mut cert = apinata_core::ClientCertificate::pem("a.test", "c.pem", "k.pem");
-    cert.passphrase = "{{process.env.APINATA_CERT_PASSPHRASE_1}}".into();
+    cert.passphrase = stored.into();
     let mut network = CollectionNetwork::default();
     network.certificates = vec![cert];
-    let (win, host) = section(cx, network, false);
+    let (win, host) = section(cx, network);
     stored_names(cx, win, &host, &["APINATA_CERT_PASSPHRASE_1"]);
-    assert!(present(cx, win, ("cert-passphrase-stored", 0usize)));
-    assert!(!present(cx, win, ("cert-passphrase", 0usize)));
+    assert_eq!(
+        label_of(cx, win, ("cert-passphrase-storage", 0usize)).as_deref(),
+        Some("Stored in .env")
+    );
+    assert!(!present(cx, win, ("cert-passphrase-move", 0usize)));
     cx.update_window(win, |_, w, _| w.activate_window())
         .unwrap();
     frame(cx, win);
-    cx.update_window(win, |_, w, cx| {
-        w.click(("cert-passphrase-replace", 0usize), cx)
-    })
-    .unwrap();
-    frame(cx, win);
-    cx.update_window(win, |_, w, cx| {
-        w.input("new-pp", cx);
-        w.press("enter", cx);
-    })
-    .unwrap();
+    replace_input(cx, win, None, ("cert-passphrase", 0usize), "new-pp");
+    cx.update_window(win, |_, w, cx| w.press("enter", cx))
+        .unwrap();
     frame(cx, win);
     let sent = host.read_with(cx, |h, _| {
         h.edits.iter().rev().find_map(|e| match e {
@@ -703,7 +674,7 @@ fn a_dotenv_passphrase_shows_a_badge_and_replace_takes_a_new_value(cx: &mut Test
 
 #[gpui_kit::test]
 fn a_saved_custom_proxy_without_a_host_says_requests_fail(cx: &mut TestAppContext) {
-    let (win, host) = section(cx, with_proxy(custom("http", "", None)), false);
+    let (win, host) = section(cx, with_proxy(custom("http", "", None)));
     assert!(present(cx, win, "proxy-host-fails"));
     assert!(!present(cx, win, "proxy-host-incomplete"));
     let s = host.read_with(cx, |h, _| h.view.clone());
@@ -717,14 +688,14 @@ fn a_saved_custom_proxy_without_a_host_says_requests_fail(cx: &mut TestAppContex
 #[gpui_kit::test]
 fn an_echo_keeps_a_cleared_proxy_host_cleared(cx: &mut TestAppContext) {
     let network = with_proxy(custom("http", "proxy.local", None));
-    let (win, host) = section(cx, network.clone(), false);
+    let (win, host) = section(cx, network.clone());
     let before = edit_count(cx, &host);
     replace_input(cx, win, None, "proxy-host", "");
     cx.run_until_parked();
     assert_eq!(edit_count(cx, &host), before, "a blank host is not sent");
     let s = host.read_with(cx, |h, _| h.view.clone());
     cx.update_window(win, |_, w, cx| {
-        s.update(cx, |s, cx| s.load(&network, false, w, cx))
+        s.update(cx, |s, cx| s.load(&network, w, cx))
     })
     .unwrap();
     frame(cx, win);
@@ -740,7 +711,7 @@ fn an_echo_keeps_a_cleared_proxy_host_cleared(cx: &mut TestAppContext) {
 fn every_part(cx: &mut TestAppContext) -> AnyWindowHandle {
     let mut network = with_proxy(custom("http", "proxy.local", None));
     network.host_overrides = vec![apinata_core::HostOverride::new("a.test", "127.0.0.1")];
-    let (win, _host) = section(cx, network, false);
+    let (win, _host) = section(cx, network);
     cx.update_window(win, |_, w, cx| w.click("cert-add", cx))
         .unwrap();
     frame(cx, win);
@@ -828,7 +799,7 @@ fn pem_over_bundle(cx: &mut TestAppContext, width: f32) -> (AnyWindowHandle, Hos
     bundle.passphrase = "{{process.env.APINATA_CERT_PASSPHRASE_2}}".into();
     let mut network = CollectionNetwork::default();
     network.certificates = vec![pem, bundle];
-    let (win, host) = section(cx, network, false);
+    let (win, host) = section(cx, network);
     gpui_kit::VisualTestContext::from_window(win, cx)
         .simulate_resize(gpui_kit::size(gpui_kit::px(width), gpui_kit::px(700.)));
     let s = host.read_with(cx, |h, _| h.view.clone());
@@ -849,20 +820,20 @@ fn pem_over_bundle(cx: &mut TestAppContext, width: f32) -> (AnyWindowHandle, Hos
 const BUNDLE: &str = "certs/staging/eu-west/clients/team-payments/client-bundle.p12";
 
 #[gpui_kit::test]
-fn a_held_passphrase_note_never_pushes_replace_under_remove(cx: &mut TestAppContext) {
+fn a_held_passphrase_hint_sits_under_its_row(cx: &mut TestAppContext) {
     let (win, _host) = pem_over_bundle(cx, 1040.);
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
         let row = w.find(("cert-row", 1usize)).bounds();
-        let note = w.find(("cert-passphrase-stored", 1usize)).bounds();
-        let replace = w.find(("cert-passphrase-replace", 1usize)).bounds();
-        let remove = w.find(("cert-remove", 1usize)).bounds();
-        assert!(!replace.intersects(&remove), "{replace:?} under {remove:?}");
-        assert!(replace.right() <= remove.left(), "{replace:?} {remove:?}");
-        assert!(replace.right() <= row.right(), "{replace:?} past {row:?}");
-        assert!(note.right() <= remove.left(), "{note:?} {remove:?}");
+        let note = w.find(("cert-passphrase-storage", 1usize)).bounds();
+        assert!(note.top() >= row.bottom(), "{note:?} over {row:?}");
+        assert!(note.right() <= row.right(), "{note:?} past {row:?}");
     })
     .unwrap();
+    assert_eq!(
+        label_of(cx, win, ("cert-passphrase-storage", 1usize)).as_deref(),
+        Some("Saved to .env when you save")
+    );
 }
 
 #[gpui_kit::test]
@@ -880,7 +851,7 @@ fn a_bundle_path_takes_the_unused_key_room_and_keeps_its_file_name(cx: &mut Test
         );
         assert!(bundle.right() < bundle_pick.left());
         let pem_pass = w.find(("cert-passphrase", 0usize)).bounds().left();
-        let bundle_pass = w.find(("cert-passphrase-stored", 1usize)).bounds().left();
+        let bundle_pass = w.find(("cert-passphrase", 1usize)).bounds().left();
         assert_eq!(pem_pass, bundle_pass, "the passphrase columns line up");
         let shown = shown_path(w).expect("a cut path shows its fitted form");
         assert!(shown.ends_with("/client-bundle.p12"), "{shown:?}");
@@ -994,7 +965,7 @@ fn the_fitted_path_cover_is_opaque_in_every_theme(cx: &mut TestAppContext) {
             let b = w.find(("cert-file-shown", 1usize)).bounds();
             let (l, t) = (b.left().as_f32() * scale, b.top().as_f32() * scale);
             let width = b.size.width.as_f32() * scale;
-            let fills: Vec<_> = (w.painted_quads().into_iter())
+            let fills: Vec<_> = (crate::support::whole_quads(w).into_iter())
                 .filter(|q| {
                     (q.bounds.origin.x.0 - l).abs() < 0.5
                         && (q.bounds.origin.y.0 - t).abs() < 0.5
@@ -1013,4 +984,156 @@ fn the_fitted_path_cover_is_opaque_in_every_theme(cx: &mut TestAppContext) {
         })
         .unwrap();
     }
+}
+
+// The cert row `row`'s passphrase input.
+fn passphrase_input(
+    cx: &mut TestAppContext,
+    host: &Host,
+    row: usize,
+) -> Entity<gpui_kit::component::input::InputState> {
+    use apinata_app::network_section::CertField;
+    let s = host.read_with(cx, |h, _| h.view.clone());
+    s.read_with(cx, |s, _| s.cert_input(row, CertField::Passphrase).cloned())
+        .expect("a row")
+}
+
+#[gpui_kit::test]
+fn a_move_on_a_row_after_an_open_draft_names_its_file_row(cx: &mut TestAppContext) {
+    let mut network = CollectionNetwork::default();
+    network.certificates = vec![apinata_core::ClientCertificate::pem(
+        "a.test", "c.pem", "k.pem",
+    )];
+    let (win, host) = section(cx, network);
+    cx.update_window(win, |_, w, _| w.activate_window())
+        .unwrap();
+    for _ in 0..2 {
+        cx.update_window(win, |_, w, cx| w.click("cert-add", cx))
+            .unwrap();
+        frame(cx, win);
+    }
+    // Row 2 completes while row 1 stays an open draft, so row 2 is the file's second row.
+    type_at_end(cx, win, None, ("cert-domain", 2usize), "c.test");
+    type_at_end(cx, win, None, ("cert-file", 2usize), "c2.pem");
+    type_at_end(cx, win, None, ("cert-key", 2usize), "k2.pem");
+    type_at_end(cx, win, None, ("cert-passphrase", 2usize), "pp");
+    cx.update_window(win, |_, w, cx| w.press("enter", cx))
+        .unwrap();
+    frame(cx, win);
+    assert!(
+        present(cx, win, ("cert-domain", 1usize)),
+        "row 1 is a draft"
+    );
+    cx.update_window(win, |_, w, cx| {
+        w.click(("cert-passphrase-move", 2usize), cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+    let last = host.read_with(cx, |h, _| h.edits.last().cloned());
+    assert!(
+        matches!(
+            last,
+            Some(Edit::MoveNetworkSecret(NetworkSlot::Passphrase(1)))
+        ),
+        "{last:?}"
+    );
+}
+
+#[gpui_kit::test]
+fn a_move_sends_the_other_fields_typing_first(cx: &mut TestAppContext) {
+    let mut cert = apinata_core::ClientCertificate::pem("a.test", "c.pem", "k.pem");
+    cert.passphrase = "{{old}}".into();
+    let mut network = with_proxy(custom("http", "proxy.local", Some(("u", "pw"))));
+    network.certificates = vec![cert];
+    let (win, host) = section(cx, network);
+    let pass = passphrase_input(cx, &host, 0);
+    cx.update_window(win, |_, w, cx| {
+        pass.update(cx, |i, cx| i.set_value("{{new}}".to_string(), w, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+    let before = edit_count(cx, &host);
+    cx.update_window(win, |_, w, cx| w.click("proxy-password-move", cx))
+        .unwrap();
+    cx.run_until_parked();
+    let sent = host.read_with(cx, |h, _| h.edits[before..].to_vec());
+    match sent.as_slice() {
+        [
+            Edit::ClientCertificates(certs),
+            Edit::MoveNetworkSecret(NetworkSlot::ProxyPassword),
+        ] => assert_eq!(certs[0].passphrase, "{{new}}"),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[gpui_kit::test]
+fn a_reveal_ends_when_a_reload_changes_the_value(cx: &mut TestAppContext) {
+    let (win, host) = section(
+        cx,
+        with_proxy(custom("http", "proxy.local", Some(("u", "pw1")))),
+    );
+    let s = host.read_with(cx, |h, _| h.view.clone());
+    let password = s.read_with(cx, |s, _| s.input(NetworkField::Password).clone());
+    let masked =
+        |cx: &mut TestAppContext| password.read_with(cx, |i, _| i.presentation().is_masked());
+    assert!(masked(cx));
+    // The field's eye reveals the value, and the reveal holds while the value stays.
+    cx.update_window(win, |_, w, cx| {
+        password.update(cx, |i, cx| i.set_masked(false, w, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+    assert!(!masked(cx));
+    cx.update_window(win, |_, w, cx| {
+        let network = with_proxy(custom("http", "proxy.local", Some(("u", "pw2"))));
+        s.update(cx, |s, cx| s.load(&network, w, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+    assert!(masked(cx), "a reloaded value is masked again");
+    // A move's reference shows, and a value restored over it is masked again.
+    let reference = "{{process.env.APINATA_PROXY_PASSWORD}}";
+    cx.update_window(win, |_, w, cx| {
+        let network = with_proxy(custom("http", "proxy.local", Some(("u", reference))));
+        s.update(cx, |s, cx| s.load(&network, w, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+    assert!(!masked(cx), "a reference shows");
+    cx.update_window(win, |_, w, cx| {
+        let network = with_proxy(custom("http", "proxy.local", Some(("u", "pw2"))));
+        s.update(cx, |s, cx| s.load(&network, w, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+    assert!(
+        masked(cx),
+        "a literal restored over the reference is masked"
+    );
+}
+
+#[gpui_kit::test]
+fn a_revealed_passphrase_is_masked_again_after_a_reload(cx: &mut TestAppContext) {
+    let cert = |pass: &str| {
+        let mut cert = apinata_core::ClientCertificate::pem("a.test", "c.pem", "k.pem");
+        cert.passphrase = pass.into();
+        let mut network = CollectionNetwork::default();
+        network.certificates = vec![cert];
+        network
+    };
+    let (win, host) = section(cx, cert("pp1"));
+    let s = host.read_with(cx, |h, _| h.view.clone());
+    let pass = passphrase_input(cx, &host, 0);
+    cx.update_window(win, |_, w, cx| {
+        pass.update(cx, |i, cx| i.set_masked(false, w, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+    assert!(!pass.read_with(cx, |i, _| i.presentation().is_masked()));
+    cx.update_window(win, |_, w, cx| {
+        s.update(cx, |s, cx| s.load(&cert("pp2"), w, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+    assert!(pass.read_with(cx, |i, _| i.presentation().is_masked()));
 }

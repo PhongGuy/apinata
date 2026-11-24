@@ -556,7 +556,7 @@ fn save_filled(cx: &mut TestAppContext, win: AnyWindowHandle, primary: gpui_kit:
         let save = w.find("global-env-save").bounds();
         let scale = w.scale_factor();
         let (cx_, cy) = (f32::from(save.center().x), f32::from(save.center().y));
-        w.painted_quads().into_iter().any(|q| {
+        crate::support::whole_quads(w).into_iter().any(|q| {
             let (x, y) = (q.bounds.origin.x.0 / scale, q.bounds.origin.y.0 / scale);
             let r = x + q.bounds.size.width.0 / scale;
             let b = y + q.bounds.size.height.0 / scale;

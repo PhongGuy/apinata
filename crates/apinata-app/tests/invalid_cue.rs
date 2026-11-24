@@ -17,7 +17,7 @@ fn network_window(cx: &mut TestAppContext, network: CollectionNetwork) -> AnyWin
     let (win, host) = host_section(cx, |w, cx| NetworkSection::new(PathBuf::from("/c"), w, cx));
     let s = host.read_with(cx, |h, _| h.view.clone());
     cx.update_window(win, |_, w, cx| {
-        s.update(cx, |s, cx| s.load(&network, false, w, cx))
+        s.update(cx, |s, cx| s.load(&network, w, cx))
     })
     .unwrap();
     cx.update_window(win, |_, w, _| w.activate_window())
@@ -495,7 +495,7 @@ fn danger_borders_at(
         let (l, t) = (b.left().as_f32() * scale, b.top().as_f32() * scale);
         use gpui_kit::component::ActiveTheme as _;
         let danger = cx.theme().danger;
-        w.painted_quads()
+        crate::support::whole_quads(w)
             .into_iter()
             .filter(|q| {
                 q.border_widths.left.0 > 0.

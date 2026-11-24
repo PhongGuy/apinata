@@ -1,18 +1,14 @@
-//! The pure helpers that name and recognise network secrets.
+//! The pure helpers that name and recognise network secrets, and the per-field move.
 
+use apinata_app::command::{Edit, NetworkSlot};
 use apinata_app::network_secrets::{
-    dotenv_name, env_name, git_tracks_dotenv, is_template, passphrase_base, plain_secrets,
+    TRACKED, UNQUOTABLE, apply, dotenv_name, env_name, git_tracks_dotenv, is_template,
+    passphrase_base,
 };
-use apinata_core::{ClientCertificate, CollectionNetwork, CollectionProxy, ProxyAuth, ProxyConfig};
+use apinata_core::{Collection, CollectionNetwork, CollectionProxy};
 use std::collections::BTreeSet;
 use std::path::Path;
 use std::process::Command;
-
-fn custom(password: &str) -> CollectionProxy {
-    let mut p = ProxyConfig::new("http", "p", "3128");
-    p.auth = Some(ProxyAuth::new("u", password));
-    CollectionProxy::Custom(p)
-}
 
 fn git(dir: &Path, args: &[&str]) {
     let out = Command::new("git")
@@ -44,21 +40,6 @@ fn names_and_templates() {
         "APINATA_PROXY_PASSWORD_3"
     );
     assert_eq!(dotenv_name("OTHER", &taken), "OTHER");
-}
-
-#[test]
-fn plain_secrets_are_literals_only() {
-    let mut n = CollectionNetwork::default();
-    assert!(!plain_secrets(&n));
-    n.proxy = custom("{{process.env.P}}");
-    assert!(!plain_secrets(&n));
-    n.proxy = custom("hunter2");
-    assert!(plain_secrets(&n));
-    n.proxy = CollectionProxy::Off;
-    let mut cert = ClientCertificate::pem("a.test", "c.pem", "k.pem");
-    cert.passphrase = "pp".into();
-    n.certificates = vec![cert];
-    assert!(plain_secrets(&n));
 }
 
 #[test]
@@ -98,4 +79,104 @@ fn env_name_takes_only_portable_env_keys() {
         let template = format!("{{{{process.env.{inner}}}}}");
         assert_eq!(env_name(&template), Some(inner), "{template:?}");
     }
+}
+
+// A collection whose proxy password is `password` and whose two certificates have the
+// passphrases `first` and `second`, with `.env` holding `KEEP=1`.
+fn network_root(password: &str, first: &str, second: &str) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    let root = format!(
+        "opencollection: 1.0.0\ninfo:\n  name: c\nconfig:\n  proxy:\n    inherit: false\n    config:\n      protocol: http\n      hostname: proxy.local\n      port: \"3128\"\n      auth:\n        username: u\n        password: \"{password}\"\n      bypassProxy: \"\"\n  clientCertificates:\n    - domain: a.test\n      type: pem\n      certificateFilePath: a.pem\n      privateKeyFilePath: a.key\n      passphrase: \"{first}\"\n    - domain: b.test\n      type: pem\n      certificateFilePath: b.pem\n      privateKeyFilePath: b.key\n      passphrase: \"{second}\"\n"
+    );
+    std::fs::write(dir.path().join("opencollection.yml"), root).unwrap();
+    std::fs::write(dir.path().join(".env"), "KEEP=1\n").unwrap();
+    dir
+}
+
+fn password_of(network: &CollectionNetwork) -> &str {
+    match &network.proxy {
+        CollectionProxy::Custom(p) => p.auth.as_ref().map_or("", |a| a.password.as_str()),
+        other => panic!("not a custom proxy: {other:?}"),
+    }
+}
+
+#[test]
+fn moving_one_network_slot_moves_only_that_literal() {
+    let dir = network_root("hunter2", "pp-one", "pp-two");
+    let mut c = Collection::open(dir.path()).unwrap();
+    let slot = Edit::MoveNetworkSecret(NetworkSlot::Passphrase(1));
+    let moved = apply(&mut c, slot, &BTreeSet::new()).unwrap();
+    assert_eq!(
+        moved,
+        [("APINATA_CERT_PASSPHRASE_2".to_owned(), "pp-two".to_owned())]
+    );
+    let network = c.file().network();
+    assert_eq!(password_of(&network), "hunter2");
+    assert_eq!(network.certificates[0].passphrase, "pp-one");
+    assert_eq!(
+        network.certificates[1].passphrase,
+        "{{process.env.APINATA_CERT_PASSPHRASE_2}}"
+    );
+
+    let slot = Edit::MoveNetworkSecret(NetworkSlot::ProxyPassword);
+    let moved = apply(&mut c, slot, &BTreeSet::new()).unwrap();
+    assert_eq!(
+        moved,
+        [("APINATA_PROXY_PASSWORD".to_owned(), "hunter2".to_owned())]
+    );
+    let network = c.file().network();
+    assert_eq!(
+        password_of(&network),
+        "{{process.env.APINATA_PROXY_PASSWORD}}"
+    );
+    assert_eq!(network.certificates[0].passphrase, "pp-one");
+    // Values reach `.env` only when the collection is saved.
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join(".env")).unwrap(),
+        "KEEP=1\n"
+    );
+}
+
+#[test]
+fn moving_a_reference_or_an_empty_slot_changes_nothing() {
+    let dir = network_root("{{process.env.KEEP}}", "", "pp-two");
+    let mut c = Collection::open(dir.path()).unwrap();
+    let before = c.file().network();
+    for slot in [NetworkSlot::ProxyPassword, NetworkSlot::Passphrase(0)] {
+        let moved = apply(&mut c, Edit::MoveNetworkSecret(slot), &BTreeSet::new()).unwrap();
+        assert!(moved.is_empty());
+    }
+    assert_eq!(c.file().network(), before);
+}
+
+#[test]
+fn an_unquotable_value_is_refused_and_leaves_the_draft_and_dotenv_alone() {
+    let dir = network_root("a'b\\\"c`", "pp-one", "pp-two");
+    let mut c = Collection::open(dir.path()).unwrap();
+    let before = c.file().network();
+    let slot = Edit::MoveNetworkSecret(NetworkSlot::ProxyPassword);
+    let refused = apply(&mut c, slot, &BTreeSet::new()).unwrap_err();
+    assert_eq!(refused, UNQUOTABLE);
+    assert_eq!(c.file().network(), before);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join(".env")).unwrap(),
+        "KEEP=1\n"
+    );
+}
+
+#[test]
+fn a_tracked_dotenv_is_refused_and_leaves_the_draft_and_dotenv_alone() {
+    let dir = network_root("hunter2", "pp-one", "pp-two");
+    git(dir.path(), &["init", "-q"]);
+    git(dir.path(), &["add", ".env"]);
+    let mut c = Collection::open(dir.path()).unwrap();
+    let before = c.file().network();
+    let slot = Edit::MoveNetworkSecret(NetworkSlot::Passphrase(0));
+    let refused = apply(&mut c, slot, &BTreeSet::new()).unwrap_err();
+    assert_eq!(refused, TRACKED);
+    assert_eq!(c.file().network(), before);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join(".env")).unwrap(),
+        "KEEP=1\n"
+    );
 }

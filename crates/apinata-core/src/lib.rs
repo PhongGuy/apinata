@@ -323,7 +323,7 @@ pub use session_log::{
     ConsoleLine, LogLimits, LogSlice, LoggedBody, LoggedHop, NetworkEntry, SendSource, SessionLog,
 };
 pub use shell_word::shell_word;
-pub use stream::{StreamBound, StreamEnd, StreamEvent, StreamLimits, StreamOptions};
+pub use stream::{HiddenValues, StreamBound, StreamEnd, StreamEvent, StreamLimits, StreamOptions};
 pub use system_trash::SystemTrash;
 pub use tags::{TagFilter, normalize_tags};
 pub use timing::{ConnectKind, HopTiming};

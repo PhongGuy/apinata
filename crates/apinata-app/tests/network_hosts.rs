@@ -22,7 +22,7 @@ fn section(cx: &mut TestAppContext, rows: Vec<HostOverride>) -> (AnyWindowHandle
     let mut network = CollectionNetwork::default();
     network.host_overrides = rows;
     cx.update_window(win, |_, w, cx| {
-        s.update(cx, |s, cx| s.load(&network, false, w, cx))
+        s.update(cx, |s, cx| s.load(&network, w, cx))
     })
     .unwrap();
     frame(cx, win);
@@ -324,7 +324,7 @@ fn the_danger_ring_is_painted_over_the_accent_ring(cx: &mut TestAppContext) {
             let scale = w.scale_factor();
             let b = w.find(("host-danger-ring", 0usize)).bounds();
             let (l, t) = (b.left().as_f32() * scale, b.top().as_f32() * scale);
-            w.painted_quads()
+            crate::support::whole_quads(w)
                 .into_iter()
                 .filter(|q| {
                     q.border_widths.left.0 > 0.
@@ -402,7 +402,7 @@ fn an_echo_of_the_saved_rows_keeps_a_draft_in_place(cx: &mut TestAppContext) {
     let mut network = CollectionNetwork::default();
     network.host_overrides = vec![b];
     cx.update_window(win, |_, w, cx| {
-        s.update(cx, |s, cx| s.load(&network, false, w, cx))
+        s.update(cx, |s, cx| s.load(&network, w, cx))
     })
     .unwrap();
     frame(cx, win);

@@ -95,7 +95,7 @@ fn typing_in_a_partly_scrolled_query_keeps_the_caret_in_view(cx: &mut TestAppCon
     let caret = |cx: &mut TestAppContext| {
         query.read_with(cx, |q, _| {
             let (c, _) = q.cursor_layout().expect("a laid out caret");
-            let scrolled = q.text_bounds().unwrap().origin.y - q.input_bounds().origin.y;
+            let scrolled = q.scroll_offset().y;
             (c.top() + scrolled, c.bottom() + scrolled, q.input_bounds())
         })
     };
@@ -165,7 +165,7 @@ fn typing_in_a_query_under_a_scrolled_section_body_keeps_the_caret_in_view(
         .unwrap();
         let (top, bottom) = query.read_with(cx, |q, _| {
             let (c, _) = q.cursor_layout().expect("a laid out caret");
-            let scrolled = q.text_bounds().unwrap().origin.y - q.input_bounds().origin.y;
+            let scrolled = q.scroll_offset().y;
             (c.top() + scrolled, c.bottom() + scrolled)
         });
         let body = cx
@@ -180,7 +180,7 @@ fn typing_in_a_query_under_a_scrolled_section_body_keeps_the_caret_in_view(
     let caret_bottom = |cx: &mut TestAppContext| {
         query.read_with(cx, |q, _| {
             let (c, _) = q.cursor_layout().expect("a laid out caret");
-            c.bottom() + q.text_bounds().unwrap().origin.y - q.input_bounds().origin.y
+            c.bottom() + q.scroll_offset().y
         })
     };
     let before = caret_bottom(cx);

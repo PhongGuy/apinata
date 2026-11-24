@@ -152,8 +152,8 @@ fn run(codec: Codec, cx: &mut App) {
 }
 
 // The selection, grown to whole placeholders, is replaced in one undoable edit and stays
-// selected. A decode that is not UTF-8, or that would put a control character other than a
-// tab into the single-line field, changes nothing and says why.
+// selected. A decode that is not UTF-8, or that would put any control character into the
+// single-line field, changes nothing and says why; the field would drop a tab without a word.
 fn apply(codec: Codec, window: &mut Window, cx: &mut App) {
     let Some(field) = focused_field(window, cx).filter(|f| offered(f.read(cx))) else {
         return;
@@ -170,7 +170,7 @@ fn apply(codec: Codec, window: &mut Window, cx: &mut App) {
         Codec::Decode => percent_decode(&selected)
             .map_err(|_| NOT_UTF8)
             .and_then(|text| {
-                let control = text.chars().any(|c| c.is_control() && c != '\t');
+                let control = text.chars().any(char::is_control);
                 if control { Err(CONTROL) } else { Ok(text) }
             }),
     };

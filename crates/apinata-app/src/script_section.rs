@@ -413,7 +413,7 @@ impl ScriptSection {
     pub fn caret(&self, cx: &App) -> Option<Bounds<Pixels>> {
         let state = self.editors.get(self.shown)?.code.read(cx);
         let (mut caret, _) = state.cursor_layout()?;
-        caret.origin.y += state.text_bounds()?.origin.y - state.input_bounds().origin.y;
+        caret.origin.y += state.scroll_offset().y;
         Some(caret)
     }
 

@@ -155,7 +155,8 @@ fn decode_that_is_not_utf8_leaves_the_text_and_says_so(cx: &mut TestAppContext) 
 
 #[gpui_kit::test]
 fn decode_never_puts_control_characters_in_a_single_line_field(cx: &mut TestAppContext) {
-    for escaped in ["a%0Ab", "a%0Db", "a%00b", "a%1Bb"] {
+    // A tab counts too: the field drops one, so decoding it would lose a character.
+    for escaped in ["a%0Ab", "a%0Db", "a%00b", "a%1Bb", "a%09b"] {
         let (win, input) = opened(cx, escaped, plain(), 0..escaped.len());
         let before = toasts(cx, win);
         dispatch(cx, win, PercentDecode);
@@ -166,10 +167,6 @@ fn decode_never_puts_control_characters_in_a_single_line_field(cx: &mut TestAppC
             "a toast says why for {escaped}"
         );
     }
-    // A tab is ordinary text in a field.
-    let (win, input) = opened(cx, "a%09b", plain(), 0..5);
-    dispatch(cx, win, PercentDecode);
-    assert_eq!(text(cx, &input), "a\tb");
 }
 
 #[gpui_kit::test]
