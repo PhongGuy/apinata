@@ -77,6 +77,11 @@ impl EditHistory {
         self.sent.get(&field).map(|(edit, _)| edit)
     }
 
+    /// The stamp of the value last sent for `field`, which changes with every send.
+    pub fn sent_stamp(&self, field: Field) -> Option<u64> {
+        self.sent.get(&field).map(|(_, stamp)| *stamp)
+    }
+
     /// Note an edit sent without a step, so a step on its field stops being valid.
     pub fn note_sent(&mut self, edit: &Edit) -> u64 {
         let (stamp, prior) = self.stamp(edit);
