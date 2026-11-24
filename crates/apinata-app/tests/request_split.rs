@@ -258,12 +258,11 @@ fn the_response_is_clipped_to_its_panel_at_the_minimum_split_at_200_percent(
         !format.visible(),
         "the overhang is painted over the request: {b:?}"
     );
-    // Click the part of the format menu that lies over the request column.
-    let offset = gpui_kit::point((column.right() - b.left()) / 2., b.size.height / 2.);
-    cx.update_window(s.win, |_, w, cx| {
-        w.click_at("body-format-button", offset, cx)
-    })
-    .unwrap();
+    // Click the part of the format menu that lies over the request column; the menu is
+    // clipped, so the click goes by position, not by its id.
+    let at = gpui_kit::point((b.left() + column.right()) / 2., b.center().y);
+    gpui_kit::VisualTestContext::from_window(s.win, cx)
+        .simulate_click(at, gpui_kit::Modifiers::none());
     frame(cx, s.win);
     assert!(
         !present(cx, s.win, "popup-menu"),

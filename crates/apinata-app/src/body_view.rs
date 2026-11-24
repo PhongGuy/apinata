@@ -962,7 +962,7 @@ impl BodyView {
         self.chunk_width
     }
 
-    // Whether the bar offers the Wrap toggle: text in the editor or in long-body rows.
+    // Whether the format menu offers Pretty, Raw and Wrap: text in the editor or in long-body rows.
     fn wrap_offered(&self) -> bool {
         matches!(self.shown, Shown::Editor | Shown::Lines(_))
     }
@@ -1769,7 +1769,7 @@ impl BodyView {
     fn format_menu(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let label = self.format_label()?;
         let view = cx.entity().downgrade();
-        let text = matches!(self.shown, Shown::Editor | Shown::Lines(_));
+        let text = self.wrap_offered();
         let (mode, wrap, kind, detected) = (self.mode, self.wrap, self.kind, self.detected);
         let button = Button::new("body-format-button")
             .solid_ring(cx)
@@ -2046,7 +2046,7 @@ impl BodyView {
 
     // The one ellipsis button, `top` px down its container's right edge. It never takes focus
     // or moves the caret; its menu lists what the press resolved.
-    fn value_button(&self, top: Pixels, cx: &mut Context<Self>) -> AnyElement {
+    fn value_button(&self, top: Pixels, rem: Pixels, cx: &mut Context<Self>) -> AnyElement {
         let view = cx.entity().downgrade();
         let (pending, held, open) = (
             Rc::clone(&self.node_pending),
@@ -2090,13 +2090,14 @@ impl BodyView {
                 entry_items(menu, entries, &menu_view, cx)
             });
         // A line under the corner overlay keeps its button just left of the overlay.
-        let beside = self.actions_size.get().filter(|s| top < s.height + px(8.));
+        let beside =
+            (self.actions_size.get()).filter(|s| top < s.height + style::SPACE_2.to_pixels(rem));
         div()
             .absolute()
             .top(top)
             .right(style::SPACE_5)
             .when_some(beside, |d, s| {
-                d.right(style::SCROLLBAR_GUTTER + s.width + px(4.))
+                d.right(style::SCROLLBAR_GUTTER + s.width + style::SPACE_1.to_pixels(rem))
             })
             // Captured so no focus change or caret move happens on the press.
             .capture_any_mouse_down(move |e, window, cx| {
@@ -3407,7 +3408,7 @@ impl BodyView {
                 offered
                     .then(|| self.rows_button_top(window.rem_size()))
                     .flatten()
-                    .map(|top| self.value_button(top, cx)),
+                    .map(|top| self.value_button(top, window.rem_size(), cx)),
             )
             // The rows keep a gutter on the right (and below, when they scroll sideways) for
             // the bars, which overlay it. A bar is drawn only while its axis overflows.
@@ -4168,7 +4169,7 @@ impl Render for BodyView {
                     self.node_offered()
                         .then(|| self.editor_button_top(window.rem_size(), cx))
                         .flatten()
-                        .map(|top| self.value_button(top, cx)),
+                        .map(|top| self.value_button(top, window.rem_size(), cx)),
                 )
                 .into_any_element(),
             Shown::Lines(_) => self.rows_list(true, window, cx),
