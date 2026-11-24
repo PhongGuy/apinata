@@ -291,7 +291,7 @@ pub use resolve::{
     AuthSource, Body, HeaderSource, InheritedAuth, InheritedHeader, PreparedRequest,
     ResolvedRequest, Warning, prepare, resolve, resolve_prepared,
 };
-pub use response::{CookieOrigin, HOP_BODY_LIMIT, Hop, Response};
+pub use response::{CookieOrigin, HOP_BODY_LIMIT, Hop, Response, SentRequest};
 pub use results_report::ResultsReport;
 pub use runner::{
     Outcome, RecheckRefused, RequestResult, RunError, RunEvent, RunOptions, RunPlan, RunReport,
