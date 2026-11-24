@@ -329,6 +329,49 @@ pub fn switch_branch(
     run_steps(root, opts, &Mode::Existing, None, vec![switch], done)
 }
 
+/// Make local branch `name` at HEAD and switch to it. Changes in the working tree and the index
+/// come along untouched, and a repository with no commits yet gets `name` as its unborn branch.
+/// A name git would not accept as a branch, one starting with `-`, or one already taken is
+/// refused, and so is a held lock, all before git writes anything.
+pub fn create_branch(root: &Path, name: &str, opts: &GitOptions) -> Result<Switched, SwitchError> {
+    let invalid = || SwitchError::Failed {
+        stderr: format!("\"{name}\" is not a valid branch name"),
+    };
+    if name.is_empty() || name.starts_with('-') {
+        return Err(invalid());
+    }
+    check_root(root).map_err(from_git)?;
+    // Git expands shorthands such as `@{-1}`, so only a name it echoes back unchanged is literal.
+    let args = ["check-ref-format", "--branch", name];
+    let checked = run::git(&args, root, opts).map_err(from_git)?;
+    if !checked.status.success() || checked.stdout.strip_suffix(b"\n") != Some(name.as_bytes()) {
+        return Err(invalid());
+    }
+    let full = format!("refs/heads/{name}");
+    let text =
+        lines(root, &["for-each-ref", "--format=%(refname)", &full], opts).map_err(from_git)?;
+    if text.lines().any(|l| l == full) {
+        return Err(SwitchError::Failed {
+            stderr: format!("A branch named {name} already exists"),
+        });
+    }
+    // A new branch at HEAD needs the index, HEAD and its own ref, never the config.
+    let names = [
+        "index.lock".to_owned(),
+        "HEAD.lock".to_owned(),
+        format!("{full}.lock"),
+    ];
+    if let Some(lock) = first_held(root, opts, &names) {
+        return Err(SwitchError::Busy { lock });
+    }
+    let done = Switched {
+        branch: name.to_owned(),
+        upstream: Upstream::Unchanged,
+    };
+    let switch = strings(&["switch", "-c", name]);
+    run_steps(root, opts, &Mode::Existing, None, vec![switch], done)
+}
+
 /// Whether [`ready`] lets untracked files through. A switch does, since git carries them over
 /// and refuses one it would overwrite; a pull, rebase or squash does not.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -461,7 +504,7 @@ pub enum Upstream {
         /// The short name of the branch it tracks.
         upstream: String,
     },
-    /// A local branch was picked; its upstream was not touched.
+    /// A local branch was picked or made; its upstream was not touched.
     Unchanged,
 }
 
@@ -618,7 +661,13 @@ fn held_lock(root: &Path, opts: &GitOptions, local: &str, mode: &Mode) -> Option
     if matches!(mode, Mode::Create) {
         names.push(format!("refs/heads/{local}.lock"));
     }
-    run::git_paths(root, opts, &names)?
+    first_held(root, opts, &names)
+}
+
+/// The first of the git-dir lock files `names` that exists, `None` when none does or the
+/// lookup fails.
+fn first_held(root: &Path, opts: &GitOptions, names: &[String]) -> Option<PathBuf> {
+    run::git_paths(root, opts, names)?
         .into_iter()
         .find(|lock| lock.exists())
 }

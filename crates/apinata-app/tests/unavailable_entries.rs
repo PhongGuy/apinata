@@ -114,15 +114,15 @@ fn greyed_app_menu_entries_say_why_on_hover(cx: &mut TestAppContext) {
 // entries below. The test collection is in no git repository.
 #[gpui_kit::test]
 fn greyed_app_menu_tips_open_beside_the_menu(cx: &mut TestAppContext) {
-    use apinata_app::app_menu::{APP_MENU_REASON_TIP, app_menu_groups};
+    use apinata_app::app_menu::{APP_MENU_REASON_TIP, app_menu_rows};
     use gpui_kit::AppContext as _;
     use gpui_kit::test::TestWindowExt as _;
     // The popup row of `label`, counting one separator row between groups.
     let row_of = |label: &str| {
         let mut row = 0;
-        for (i, group) in app_menu_groups().iter().enumerate() {
+        for (i, group) in app_menu_rows().iter().enumerate() {
             row += usize::from(i > 0);
-            for (l, _) in group {
+            for l in group {
                 if *l == label {
                     return row;
                 }

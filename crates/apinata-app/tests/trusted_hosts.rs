@@ -207,7 +207,7 @@ fn input_that_is_not_a_bare_host_is_refused_without_writing(cx: &mut TestAppCont
         "good.example@evil.example",
         "evil.example#.good.example",
         "evil.example/.good",
-        "ex\tample.com",
+        "exa mple.com",
         "http://good.example@evil.example",
     ] {
         add(cx, win, input);

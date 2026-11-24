@@ -81,6 +81,9 @@ fn a_file_is_a_source_like_the_link(cx: &mut TestAppContext) {
         assert!(o.files && !o.directories && !o.multiple);
         Some(vec![file])
     });
+    cx.run_until_parked();
+    assert_eq!(phase(cx, &d), Phase::Idle, "Browse waits for Import");
+    r.click(cx, "import-link-import");
     let from_file = preview(cx, &d);
     // The same spec through the link gives the same plan.
     d.update(cx, |d, cx| d.change_source(cx));
@@ -142,6 +145,8 @@ fn a_bad_file_fails_in_the_dialog(cx: &mut TestAppContext) {
     std::fs::write(&file, b"not a spec").unwrap();
     r.click(cx, "import-update-browse");
     cx.simulate_path_prompt_response(move |_| Some(vec![file]));
+    cx.run_until_parked();
+    r.click(cx, "import-link-import");
     wait_for(cx, "the failure", |cx| {
         matches!(phase(cx, &d), Phase::Failed(_))
     });

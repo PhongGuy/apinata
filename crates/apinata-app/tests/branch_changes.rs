@@ -265,8 +265,7 @@ fn assert_whole_ring(cx: &mut TestAppContext, s: &Started, id: &'static str) {
         let b = w.within("title-bar").find(id).bounds();
         let (left, top) = (b.left().as_f32() * scale, b.top().as_f32() * scale);
         let (right, bottom) = (b.right().as_f32() * scale, b.bottom().as_f32() * scale);
-        let rings: Vec<_> = w
-            .painted_quads()
+        let rings: Vec<_> = crate::support::whole_quads(w)
             .into_iter()
             .filter(|q| {
                 let qb = q.bounds;

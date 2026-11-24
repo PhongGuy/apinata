@@ -327,8 +327,7 @@ fn the_retry_outline_is_visible_in_both_themes(cx: &mut TestAppContext) {
                 w.render_frame(cx);
                 let button = w.find("response-retry").bounds();
                 let scale = w.scale_factor();
-                let quad = w
-                    .painted_quads()
+                let quad = crate::support::whole_quads(w)
                     .into_iter()
                     .find(|q| {
                         (q.bounds.origin.x.0 / scale - f32::from(button.left())).abs() < 1.

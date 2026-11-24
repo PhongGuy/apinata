@@ -83,20 +83,89 @@ pub fn app_menu_groups() -> Vec<Vec<(&'static str, Box<dyn Action>)>> {
         .collect()
 }
 
+/// The label of the submenu that holds the exports, in this menu and a collection's row menu.
+pub const EXPORT_MENU: &str = "Export collection";
+
+/// Command ids of the exports the Export submenu holds, in order.
+pub const EXPORT_COMMANDS: [&str; 4] = [
+    "collection.export",
+    "collection.export_keep_scripts",
+    "collection.export_openapi",
+    "collection.export_html",
+];
+
+// One top-level row of the open menu: a command, or the Export submenu with its commands.
+enum Row {
+    Command(&'static str, Box<dyn Action>),
+    Exports(Vec<(&'static str, Box<dyn Action>)>),
+}
+
+impl Row {
+    fn label(&self) -> &'static str {
+        match self {
+            Row::Command(label, _) => label,
+            Row::Exports(_) => EXPORT_MENU,
+        }
+    }
+}
+
+fn is_export(label: &str) -> bool {
+    EXPORT_COMMANDS
+        .iter()
+        .any(|id| crate::commands::label(id) == label)
+}
+
+// The groups as the menu draws them: the exports fold into one Export row where the first of
+// them stood.
+fn rows() -> Vec<Vec<Row>> {
+    app_menu_groups()
+        .into_iter()
+        .map(|group| {
+            let mut rows: Vec<Row> = Vec::new();
+            for (label, action) in group {
+                if !is_export(label) {
+                    rows.push(Row::Command(label, action));
+                } else if let Some(Row::Exports(exports)) =
+                    rows.iter_mut().find(|r| matches!(r, Row::Exports(_)))
+                {
+                    exports.push((label, action));
+                } else {
+                    rows.push(Row::Exports(vec![(label, action)]));
+                }
+            }
+            rows
+        })
+        .collect()
+}
+
+/// The labels of the open menu's top-level rows by group, the exports folded into
+/// [`EXPORT_MENU`].
+pub fn app_menu_rows() -> Vec<Vec<&'static str>> {
+    rows()
+        .iter()
+        .map(|g| g.iter().map(Row::label).collect())
+        .collect()
+}
+
 /// Every menu entry in order, without the separators between groups.
 pub fn app_menu_items() -> Vec<(&'static str, Box<dyn Action>)> {
     app_menu_groups().into_iter().flatten().collect()
 }
 
-/// The popup row that dispatches `action`, counting one separator row between groups.
+/// The popup row that dispatches `action`, or the Export row for an export, counting one
+/// separator row between groups.
 pub fn app_menu_index(action: &dyn Action) -> Option<usize> {
     let mut row = 0;
-    for (i, group) in app_menu_groups().iter().enumerate() {
+    for (i, group) in rows().iter().enumerate() {
         if i > 0 {
             row += 1;
         }
-        for (_, a) in group {
-            if a.partial_eq(action) {
+        for r in group {
+            let holds = match r {
+                Row::Command(_, a) => a.partial_eq(action),
+                Row::Exports(exports) => exports.iter().any(|(_, a)| a.partial_eq(action)),
+            };
+            if holds {
                 return Some(row);
             }
             row += 1;
@@ -126,19 +195,29 @@ pub fn app_menu(
         .compact()
         .icon(IconName::Menu)
         .accessibility_label("Application menu")
-        .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
-            app_menu_groups().into_iter().enumerate().fold(
-                menu.action_context(shell.clone()),
-                |menu, (i, group)| {
-                    let menu = if i > 0 { menu.separator() } else { menu };
-                    group.into_iter().fold(menu, |menu, (label, action)| {
-                        match disabled.iter().find(|(l, _)| *l == label) {
-                            Some(&(_, reason)) => menu.item(greyed_entry(label, reason)),
-                            None => menu.menu(label, action),
+        .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, window, cx| {
+            let mut menu = menu.action_context(shell.clone());
+            for (i, group) in rows().into_iter().enumerate() {
+                if i > 0 {
+                    menu = menu.separator();
+                }
+                for row in group {
+                    let label = row.label();
+                    menu = match (row, disabled.iter().find(|(l, _)| *l == label)) {
+                        (_, Some(&(_, reason))) => menu.item(greyed_entry(label, reason)),
+                        (Row::Command(_, action), None) => menu.menu(label, action),
+                        // The submenu inherits the shell as its action context from this menu.
+                        (Row::Exports(exports), None) => {
+                            menu.submenu(label, window, cx, move |sub, _, _| {
+                                exports.iter().fold(sub, |sub, (label, action)| {
+                                    sub.menu(*label, action.boxed_clone())
+                                })
+                            })
                         }
-                    })
-                },
-            )
+                    };
+                }
+            }
+            menu
         })
         .on_open_change(move |now, window, _| {
             stand_in.freeze(*now);
@@ -181,7 +260,7 @@ pub fn app_menu_disabled_reasons(
     in_repo: bool,
     updates: bool,
 ) -> Vec<(&'static str, &'static str)> {
-    registry()
+    let mut off = registry()
         .into_iter()
         .filter_map(|c| {
             let reason = if scratch_only && COLLECTION_ONLY.contains(&c.id) {
@@ -195,7 +274,18 @@ pub fn app_menu_disabled_reasons(
             };
             Some((c.label, reason))
         })
-        .collect()
+        .collect::<Vec<_>>();
+    // The Export row greys out, for the same reason, when every export in it does.
+    let exports: Vec<_> = (off.iter())
+        .filter(|(label, _)| is_export(label))
+        .copied()
+        .collect();
+    if let Some(&(_, reason)) = exports.first()
+        && exports.len() == EXPORT_COMMANDS.len()
+    {
+        off.push((EXPORT_MENU, reason));
+    }
+    off
 }
 
 // A greyed entry drawn as an element, since the kit's plain items take no tooltip; it fills the

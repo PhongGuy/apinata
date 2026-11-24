@@ -162,6 +162,76 @@ fn chosen_environment_files_are_imported(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn a_clean_import_says_so_and_use_it_selects_the_environment(cx: &mut TestAppContext) {
+    let col = collection();
+    let (files, win, view) = shell(cx, Some(&col));
+    let dev = files.path().join("dev.json");
+    fs::write(&dev, DEV).unwrap();
+    import_env(cx, win, &view);
+    choose_files(cx, vec![dev]);
+    assert!(!dialog(cx, win), "no notes, no report");
+    assert_eq!(label(cx, win, "env-import-use").as_deref(), Some("Use it"));
+    assert_eq!(label(cx, win, "env-import-open").as_deref(), Some("Open"));
+    let selected = |cx: &mut TestAppContext| {
+        view.read_with(cx, |v, cx| {
+            let w = v.workspace().read(cx);
+            w.selected_environment(col.path(), cx)
+        })
+    };
+    assert_eq!(selected(cx), None);
+    cx.update_window(win, |_, w, cx| w.click("env-import-use", cx))
+        .unwrap();
+    // Let the dismissed toast finish closing.
+    cx.executor()
+        .advance_clock(std::time::Duration::from_secs(1));
+    cx.run_until_parked();
+    assert_eq!(selected(cx).as_deref(), Some("dev"));
+    assert!(!present(cx, win, "env-import-use"), "the toast closes");
+}
+
+#[gpui_kit::test]
+fn open_in_the_import_toast_opens_the_environment_editor(cx: &mut TestAppContext) {
+    let col = collection();
+    let (files, win, view) = shell(cx, Some(&col));
+    assert!(!present(cx, win, "env-list"));
+    let stage = files.path().join("stage.json");
+    fs::write(&stage, STAGE).unwrap();
+    import_env(cx, win, &view);
+    choose_files(cx, vec![stage]);
+    cx.update_window(win, |_, w, cx| w.click("env-import-open", cx))
+        .unwrap();
+    cx.run_until_parked();
+    assert!(
+        present(cx, win, "env-list"),
+        "the environment editor is open"
+    );
+}
+
+#[test]
+fn the_import_toast_counts_variables_and_secrets() {
+    use apinata_app::env_selector::imported_text;
+    let one = vec!["PM Env".to_owned()];
+    assert_eq!(
+        imported_text(&one, 2, 1),
+        "Imported PM Env (2 variables, 1 secret kept out of the file)"
+    );
+    assert_eq!(imported_text(&one, 1, 0), "Imported PM Env (1 variable)");
+    let two = vec!["dev".to_owned(), "stage".to_owned()];
+    assert_eq!(
+        imported_text(&two, 3, 2),
+        "Imported 2 environments (3 variables, 2 secrets kept out of the file)"
+    );
+}
+
+fn label(cx: &mut TestAppContext, win: AnyWindowHandle, id: &'static str) -> Option<String> {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.try_find(id).and_then(|e| e.label().map(str::to_owned))
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
 fn a_file_that_is_not_an_environment_imports_nothing(cx: &mut TestAppContext) {
     let col = collection();
     let (files, win, view) = shell(cx, Some(&col));
@@ -181,6 +251,7 @@ fn a_file_that_is_not_an_environment_imports_nothing(cx: &mut TestAppContext) {
 fn a_write_failing_after_another_keeps_what_was_written(cx: &mut TestAppContext) {
     let col = collection();
     let (files, win, view) = shell(cx, Some(&col));
+    assert!(!present(cx, win, "env-list"));
     let stage = files.path().join("stage.json");
     let dots = files.path().join("dots.json");
     fs::write(&stage, STAGE).unwrap();
@@ -262,6 +333,7 @@ fn without_a_collection_the_dropdown_offers_no_import(cx: &mut TestAppContext) {
 fn choosing_import_keeps_the_selected_environment(cx: &mut TestAppContext) {
     let col = collection();
     let (files, win, view) = shell(cx, Some(&col));
+    assert!(!present(cx, win, "env-list"));
     let stage = files.path().join("stage.json");
     fs::write(&stage, STAGE).unwrap();
     import_env(cx, win, &view);

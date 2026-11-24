@@ -196,7 +196,7 @@ async fn an_unapproved_pre_request_script_sends_nothing() {
     assert_eq!(
         result.error.as_ref().map(ToString::to_string).as_deref(),
         Some(
-            "pre-request script error, this request's script is not approved; approve it in the Apinata app"
+            "Pre-request script error, this request's script is not approved; approve it in the Apinata app"
         )
     );
 }

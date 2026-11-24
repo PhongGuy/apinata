@@ -410,7 +410,7 @@ fn underlines(
         let s = w.find(strip).bounds();
         let scale = w.scale_factor();
         let accent = cx.theme().primary;
-        w.painted_quads()
+        crate::support::whole_quads(w)
             .into_iter()
             .filter_map(|q| {
                 let height = q.bounds.size.height.0 / scale;

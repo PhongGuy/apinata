@@ -129,7 +129,7 @@ fn painted_button(
     cx.run_until_parked();
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
-        let quads = w.painted_quads();
+        let quads = crate::support::whole_quads(w);
         // GPUI paints one edge as a quad per side, all alike, so they collapse to one entry.
         let mut edges: Vec<_> = quads
             .iter()
@@ -500,7 +500,7 @@ fn dashed_quads(
     cx.run_until_parked();
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
-        w.painted_quads()
+        crate::support::whole_quads(w)
             .into_iter()
             .filter(|q| q.border_style == BorderStyle::Dashed && q.border_widths.left.0 > 0.)
             .map(|q| {
