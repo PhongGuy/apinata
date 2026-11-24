@@ -5,11 +5,15 @@ use crate::ui::SolidRing as _;
 use std::ops::Range;
 use std::rc::Rc;
 
-use apinata_core::{ScriptPhase, Snippet, SnippetPhase, script_code, script_snippets};
+use apinata_core::{
+    RequestResult, RunError, ScriptPhase, Snippet, SnippetPhase, Verdict, own_script_line,
+    script_code, script_snippets,
+};
+use gpui_kit::base::input::{Diagnostic, DiagnosticSeverity};
 use gpui_kit::component::button::Button;
-use gpui_kit::component::input::{Editor, EditorState, Enter, InputEvent};
+use gpui_kit::component::input::{Editor, EditorState, Enter, InputEvent, Position, Rope};
 use gpui_kit::component::tab::Tab;
-use gpui_kit::component::{Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{
@@ -47,6 +51,8 @@ pub struct ScriptSection {
     picked: bool,
     // The Preferences default last applied to the editors.
     default_wrap: bool,
+    // The last result's script errors for this section's phases, one per phase at most.
+    errors: Vec<ScriptErrorNote>,
     _subs: Vec<Subscription>,
 }
 
@@ -97,6 +103,50 @@ fn snippet_button(
         .on_click(move |_, _, cx| {
             this.update(cx, |_, cx| cx.emit(SnippetChosen(phase, snippet)));
         })
+}
+
+/// A script error the shown result reports, for the editor of the phase whose script failed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScriptErrorNote {
+    /// The phase whose script failed.
+    pub phase: ScriptPhase,
+    /// The error as the response pane words it, redacted.
+    pub text: String,
+    /// The 1-based line of this request's own script that failed, when the error names one.
+    pub line: Option<u32>,
+}
+
+/// The script errors `result` reports, the pre-request one first, then each later phase's.
+pub fn script_error_notes(result: &RequestResult) -> Vec<ScriptErrorNote> {
+    let pre = match &result.error {
+        Some(e @ RunError::Script { phase, message }) => Some(ScriptErrorNote {
+            phase: *phase,
+            text: result.redact(&ui::plain_quotes(&e.to_string())),
+            line: own_script_line(message),
+        }),
+        _ => None,
+    };
+    let later = result.tests.iter().filter(|t| t.script_error).map(|t| {
+        let detail = match &t.verdict {
+            Verdict::Fail { detail, .. } => detail.as_deref().unwrap_or(""),
+            _ => "",
+        };
+        ScriptErrorNote {
+            phase: t.phase,
+            text: result.redact(&crate::response_pane::test_line(t).1),
+            line: own_script_line(detail),
+        }
+    });
+    pre.into_iter().chain(later).collect()
+}
+
+// The underline under `line` (1-based) of `text`, carrying the error on hover; `None` past the end.
+fn line_diagnostic(text: &Rope, line: u32, message: &str) -> Option<Diagnostic> {
+    let row = line.checked_sub(1)?;
+    let source = text.to_string();
+    let width = source.split('\n').nth(row as usize)?.chars().count() as u32;
+    let range = Position::new(row, 0)..Position::new(row, width.max(1));
+    Some(Diagnostic::new(range, message.to_string()).with_severity(DiagnosticSeverity::Error))
 }
 
 /// Post-response when only the post-response script has content after trimming, else Pre-request.
@@ -162,6 +212,53 @@ fn plan_snippet(text: &str, sel: Range<usize>, snippet: &Snippet) -> (String, Ra
     (out, at..at + snippet.select.len())
 }
 
+// Drops the error underline from `code`, if it has one.
+fn clear_underline(code: &Entity<EditorState>, cx: &mut App) {
+    code.update(cx, |c, cx| {
+        if let Some(set) = c.diagnostics_mut()
+            && !set.is_empty()
+        {
+            set.clear();
+            cx.notify();
+        }
+    });
+}
+
+// The banner over the editor of a phase whose script failed: the message, cut to one line with
+// the whole text on hover, and Go to line when the failing line is in this script.
+fn error_banner(note: &ScriptErrorNote, this: Entity<ScriptSection>, cx: &App) -> impl IntoElement {
+    let phase = note.phase;
+    h_flex()
+        .id("script-error")
+        .test_support()
+        .aria_label(note.text.clone())
+        .w_full()
+        .gap(SPACE_2)
+        .items_center()
+        .child(Icon::new(IconName::CircleAlert).text_color(cx.theme().danger))
+        .child(
+            div()
+                .id("script-error-text")
+                .min_w_0()
+                .flex_1()
+                .truncate()
+                .text_color(cx.theme().danger)
+                .tooltip(ui::text_tooltip("script-error-tooltip", note.text.clone()))
+                .child(note.text.clone()),
+        )
+        .when_some(note.line, |row, line| {
+            row.child(
+                Button::new("script-error-go-to-line")
+                    .solid_ring(cx)
+                    .small()
+                    .label(format!("Go to line {line}"))
+                    .on_click(move |_, window, cx| {
+                        this.update(cx, |s, cx| s.go_to_error(phase, window, cx))
+                    }),
+            )
+        })
+}
+
 fn label(phase: ScriptPhase) -> &'static str {
     match phase {
         ScriptPhase::PreRequest => "Pre-request",
@@ -214,6 +311,9 @@ impl ScriptSection {
             subs.push(
                 cx.subscribe(&code, move |this, state, event: &InputEvent, cx| {
                     if matches!(event, InputEvent::Change) {
+                        // The underline sits at fixed offsets, so an edit would leave it on the
+                        // wrong text; the banner keeps the message.
+                        clear_underline(&state, cx);
                         this.editors[ix].typed = true;
                         let text = state.read(cx).value().to_string();
                         cx.emit(SectionEdit::new(Edit::Script(phase, text)));
@@ -243,8 +343,50 @@ impl ScriptSection {
             shown: 0,
             picked: false,
             default_wrap,
+            errors: Vec::new(),
             _subs: subs,
         }
+    }
+
+    /// Marks each of `notes` whose phase this section edits; replaces the earlier marks.
+    /// Each shows as a banner over its phase's editor, and a line of this request's own
+    /// script is underlined with the message on hover until the user edits that editor.
+    pub fn set_errors(&mut self, notes: &[ScriptErrorNote], cx: &mut Context<Self>) {
+        self.errors = (self.editors.iter())
+            .filter_map(|e| notes.iter().find(|n| n.phase == e.phase).cloned())
+            .collect();
+        for e in &self.editors {
+            let note = self.errors.iter().find(|n| n.phase == e.phase);
+            e.code.update(cx, |c, cx| {
+                let text = c.text().clone();
+                let mark = note.and_then(|n| line_diagnostic(&text, n.line?, &n.text));
+                if let Some(set) = c.diagnostics_mut() {
+                    set.reset(&text);
+                    set.extend(mark);
+                }
+                cx.notify();
+            });
+        }
+        cx.notify();
+    }
+
+    /// The error marked on `phase`, if any.
+    pub fn error(&self, phase: ScriptPhase) -> Option<&ScriptErrorNote> {
+        self.errors.iter().find(|n| n.phase == phase)
+    }
+
+    /// Shows `phase` and puts its caret at the start of the line its error names, focused.
+    pub fn go_to_error(&mut self, phase: ScriptPhase, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(row) = self.error(phase).and_then(|n| n.line?.checked_sub(1)) else {
+            return;
+        };
+        let Some(code) = self.code(phase).cloned() else {
+            return;
+        };
+        self.show(phase, cx);
+        code.update(cx, |c, cx| {
+            c.set_cursor_position(Position::new(row, 0), window, cx)
+        });
     }
 
     /// Ends the typing run of each phase editor's own undo, as at a save or a reload.
@@ -279,6 +421,9 @@ impl ScriptSection {
                 let replace = script_code(&shown_now) != script_code(want);
                 if replace {
                     c.set_value(shown.to_string(), window, cx);
+                    if let Some(set) = c.diagnostics_mut() {
+                        set.clear();
+                    }
                 }
                 replace
             });
@@ -533,6 +678,9 @@ impl Render for ScriptSection {
                                     })
                             }),
                     )
+                    .when_some(self.error(e.phase), |col, note| {
+                        col.child(error_banner(note, this.clone(), cx))
+                    })
                     .child(
                         div()
                             .id(e.id.clone())

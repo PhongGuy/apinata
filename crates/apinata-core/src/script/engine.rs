@@ -499,6 +499,19 @@ pub(crate) fn attribute(
     }
 }
 
+/// The 1-based line of the request's own script or tests that a script error message names,
+/// as `attribute` words it; `None` for another level's script or a message without a line.
+pub fn own_script_line(message: &str) -> Option<u32> {
+    let rest = [
+        "this request's script, line ",
+        "this request's tests, line ",
+    ]
+    .iter()
+    .find_map(|prefix| message.strip_prefix(prefix))?;
+    let (line, _) = rest.split_once(": ")?;
+    line.parse().ok()
+}
+
 /// The segment holding `line` of the wrapped source, and the line within it (1-based).
 fn locate(starts: &[u32], line: Option<u32>) -> Option<(usize, u32)> {
     let line = line?;
