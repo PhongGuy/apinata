@@ -3844,9 +3844,9 @@ fn fill_row_menu(
             Some(action) => line.action(action),
             None => line,
         };
-        // Rename shows the key the palette shows for it, not the tree's own F2.
+        // Rename shows the key that renames in the tree the menu came from, F2 by default.
         let line = match choice {
-            MenuEntry::Rename => line.key(ui::primary_key(&RenameSelected, cx)),
+            MenuEntry::Rename => line.key(ui::key_in(&RenameSelected, ui::SIDEBAR_ROW_KEYS, cx)),
             _ => line,
         };
         let line = line
