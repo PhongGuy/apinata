@@ -85,6 +85,51 @@ fn scan_folder(folder: &Folder, ctx: &VarContext, found: &mut RuntimeNames) {
     }
 }
 
+/// The names a send of `req` under `ctx` would refuse as undefined, sorted and without repeats.
+///
+/// It agrees with `check`'s errors: a name a script or post-response variable of the collection
+/// may set, a `process.env` name and a name no collection file writes are left out.
+pub fn undefined_variables(
+    collection: &Collection,
+    req: &RequestFile,
+    ctx: &VarContext,
+) -> Vec<String> {
+    let runtime = runtime_names(collection.tree(), ctx);
+    let mut known = shared_placeholders(collection);
+    known.extend(placeholders(req.document()));
+    // Each missing name gets a stand-in value so the next round reaches the one after it.
+    let mut stubbed: Vec<(String, String)> = Vec::new();
+    let mut prompts: Vec<String> = Vec::new();
+    let mut found = BTreeSet::new();
+    for _ in 0..MAX_ROUNDS {
+        let round = ctx.with_iteration_row(&stubbed);
+        let round = if prompts.is_empty() {
+            round
+        } else {
+            round.with_prompt_values(prompts.iter().map(|l| (l.as_str(), NAME_PLACEHOLDER)))
+        };
+        match resolve(req, &round) {
+            Err(ResolveError::PromptRequired { labels }) => {
+                if labels.iter().all(|l| prompts.contains(l)) {
+                    break;
+                }
+                prompts.extend(labels);
+            }
+            Err(ResolveError::UndefinedVariable { name, .. }) => {
+                if stubbed.iter().any(|(n, _)| *n == name) || !known.contains(name.trim()) {
+                    break;
+                }
+                if !name.trim().starts_with(PROCESS_ENV) && !runtime.covers(&name) {
+                    found.insert(name.trim().to_owned());
+                }
+                stubbed.push((name, NAME_PLACEHOLDER.to_owned()));
+            }
+            _ => break,
+        }
+    }
+    found.into_iter().collect()
+}
+
 /// Everything one request check shares across the collection for one environment.
 struct Pass<'a> {
     collection: &'a Collection,

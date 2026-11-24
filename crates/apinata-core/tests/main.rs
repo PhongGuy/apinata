@@ -40,6 +40,7 @@ mod script_support;
 mod session_log_support;
 mod tree_support;
 mod undefined_hint;
+mod undefined_variables;
 #[cfg(feature = "update")]
 mod update_support;
 mod workspace_file;
