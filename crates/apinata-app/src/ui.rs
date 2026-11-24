@@ -281,14 +281,6 @@ impl LockedMarker {
     }
 }
 
-impl IntoElement for LockedMarker {
-    type Element = Self;
-
-    fn into_element(self) -> Self {
-        self
-    }
-}
-
 impl gpui_kit::Element for LockedMarker {
     type RequestLayoutState = <Stateful<Div> as gpui_kit::Element>::RequestLayoutState;
     type PrepaintState = <Stateful<Div> as gpui_kit::Element>::PrepaintState;
@@ -734,13 +726,6 @@ impl PaddedInput {
     }
 }
 
-impl IntoElement for PaddedInput {
-    type Element = Self;
-    fn into_element(self) -> Self {
-        self
-    }
-}
-
 impl gpui_kit::Element for PaddedInput {
     type RequestLayoutState = ();
     type PrepaintState = Option<gpui_kit::Hitbox>;
@@ -895,13 +880,6 @@ pub struct RingedField {
     child: AnyElement,
     source: RingSource,
     by_key: bool,
-}
-
-impl IntoElement for RingedField {
-    type Element = Self;
-    fn into_element(self) -> Self {
-        self
-    }
 }
 
 impl gpui_kit::Element for RingedField {

@@ -42,7 +42,7 @@ fn ring_and_surface(cx: &mut TestAppContext, win: AnyWindowHandle, id: &str, rin
         let b = w.find(id).bounds();
         let (l, t) = (b.left().as_f32() * scale, b.top().as_f32() * scale);
         let (r, bt) = (b.right().as_f32() * scale, b.bottom().as_f32() * scale);
-        let quads = w.painted_quads();
+        let quads = crate::support::whole_quads(w);
         let rings = quads
             .iter()
             .filter(|q| {
