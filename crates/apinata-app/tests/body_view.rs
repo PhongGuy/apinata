@@ -282,6 +282,7 @@ fn an_image_body_shows_a_preview_and_its_caption(cx: &mut TestAppContext) {
         kind: ImageKind::Png,
         size: bytes.len() as u64,
         dimensions: Some((3, 2)),
+        alpha: true,
     };
     assert_eq!(
         view.read_with(cx, |v, _| (
@@ -314,6 +315,7 @@ fn an_svg_body_is_an_image(cx: &mut TestAppContext) {
             kind: ImageKind::Svg,
             size: svg.len() as u64,
             dimensions: Some((10, 12)),
+            alpha: true,
         })
     );
     assert!(present(cx, win, "body-image"));

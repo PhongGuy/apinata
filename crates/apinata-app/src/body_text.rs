@@ -86,6 +86,9 @@ pub struct ImageInfo {
     pub size: u64,
     /// Width and height in pixels, when the bytes say.
     pub dimensions: Option<(u32, u32)>,
+    /// Whether the pixels can be transparent: an alpha channel or transparency key in
+    /// the decoded format, and always for SVG.
+    pub alpha: bool,
 }
 
 /// Classifies a body from its `Content-Type` header and its bytes.
@@ -466,23 +469,29 @@ fn xml_error(
 /// Reads an image body's size and, from its header or SVG root, its pixel
 /// dimensions; dimensions are `None` when the bytes do not say.
 pub fn image_info(kind: ImageKind, body: &[u8]) -> ImageInfo {
+    use image::ImageDecoder as _;
+    // A raster header gives the size and the decoded colour type, which carries an alpha
+    // channel whenever the format holds one or a transparency key; nothing is decoded.
     let raster = |format| {
         image::ImageReader::with_format(std::io::Cursor::new(body), format)
-            .into_dimensions()
+            .into_decoder()
             .ok()
+            .map(|d| (Some(d.dimensions()), d.color_type().has_alpha()))
+            .unwrap_or((None, false))
     };
-    let dimensions = match kind {
+    let (dimensions, alpha) = match kind {
         ImageKind::Png => raster(image::ImageFormat::Png),
         ImageKind::Jpeg => raster(image::ImageFormat::Jpeg),
         ImageKind::Gif => raster(image::ImageFormat::Gif),
         ImageKind::Webp => raster(image::ImageFormat::WebP),
         ImageKind::Bmp => raster(image::ImageFormat::Bmp),
-        ImageKind::Svg => svg_dimensions(body),
+        ImageKind::Svg => (svg_dimensions(body), true),
     };
     ImageInfo {
         kind,
         size: body.len() as u64,
         dimensions,
+        alpha,
     }
 }
 
