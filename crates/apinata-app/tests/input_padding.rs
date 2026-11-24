@@ -299,7 +299,7 @@ fn the_certificate_row_fields_take_edge_presses(cx: &mut TestAppContext) {
     let mut network = CollectionNetwork::default();
     network.certificates = vec![ClientCertificate::pem("", "", "")];
     cx.update_window(win, |_, w, cx| {
-        section.update(cx, |s, cx| s.load(&network, false, w, cx))
+        section.update(cx, |s, cx| s.load(&network, w, cx))
     })
     .unwrap();
     frame(cx, win);

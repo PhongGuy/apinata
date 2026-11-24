@@ -13,7 +13,6 @@ use apinata_core::{
 
 use crate::auth_section::inherit_text;
 use crate::command::{Edit, Notice, Target};
-use crate::network_secrets;
 
 /// What the disk holds for a document, as the app shows it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -216,8 +215,6 @@ pub struct ConfigView {
     pub reloaded: u64,
     /// The proxy and client certificates; only the collection has them.
     pub network: Option<CollectionNetwork>,
-    /// Whether `network` holds a literal password or passphrase.
-    pub plain_secrets: bool,
     /// The request presets for new requests; only the collection has them.
     pub presets: Option<apinata_core::CollectionPresets>,
 }
@@ -747,7 +744,6 @@ fn folder_view(f: &Folder, path: &ItemPath, collection: &Collection) -> ConfigVi
             disk: file.disk_state().into(),
             reloaded: 0,
             network: None,
-            plain_secrets: false,
             presets: None,
         },
         None => ConfigView {
@@ -764,7 +760,6 @@ fn folder_view(f: &Folder, path: &ItemPath, collection: &Collection) -> ConfigVi
             disk: f.disk_state().into(),
             reloaded: 0,
             network: None,
-            plain_secrets: false,
             presets: None,
         },
     }
@@ -774,7 +769,6 @@ fn collection_view(c: &Collection) -> ConfigView {
     let file = c.file();
     let network = file.network();
     ConfigView {
-        plain_secrets: network_secrets::plain_secrets(&network),
         presets: Some(file.presets()),
         network: Some(network),
         name: file.name().map(str::to_owned),
