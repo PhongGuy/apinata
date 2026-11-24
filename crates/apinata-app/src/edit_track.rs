@@ -79,6 +79,8 @@ pub fn prior_of(
     edit: &Edit,
 ) -> Option<Edit> {
     match sent_for(history, edit) {
+        // A move whose name the actor has not reported leaves a value nothing can name.
+        Some(Edit::MoveToSecret { pinned: None, .. }) => None,
         Some(last) => Some(plain(last).into_owned()),
         None => view_edit(edit),
     }

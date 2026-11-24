@@ -121,8 +121,13 @@ pub enum Edit {
 /// The secret a moved auth credential is referred to by.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SecretRef {
-    /// A secret variable of the environment that keeps secrets.
-    Environment(String),
+    /// A secret variable of the environment `env`, which keeps secrets.
+    Environment {
+        /// The environment the value is held for.
+        env: String,
+        /// The variable's name.
+        name: String,
+    },
     /// A `.env` key.
     Dotenv(String),
 }
@@ -131,7 +136,7 @@ impl SecretRef {
     /// The text the auth field holds to refer to this secret.
     pub fn template(&self) -> String {
         match self {
-            SecretRef::Environment(name) => format!("{{{{{name}}}}}"),
+            SecretRef::Environment { name, .. } => format!("{{{{{name}}}}}"),
             SecretRef::Dotenv(name) => format!("{{{{process.env.{name}}}}}"),
         }
     }

@@ -303,9 +303,8 @@ pub struct RequestEditor {
     // The generated test text just appended; its edit is an undo step, unlike script typing.
     script_step: Option<String>,
     sent: HashMap<u64, Section>,
-    // Moves to a secret awaiting the name the actor takes, by command id: the auth before
-    // the move, the slotted auth it sent, and the auth field's sent stamp at that time.
-    moves: HashMap<u64, (AuthSpec, AuthSpec, Option<u64>)>,
+    // Moves to a secret awaiting the name the actor takes, by command id.
+    moves: HashMap<u64, PendingMove>,
     // The snapshots each field's controls loaded; its edits are built from that content.
     loaded: LoadStamps<Field>,
     // Set while a table change is sent whose rows the table no longer shows.
@@ -1654,14 +1653,21 @@ impl RequestEditor {
             // The OAuth 2.0 move rewrites values the history cannot restore.
             Edit::MoveAuthSecrets => {}
             // A move to a secret becomes a step once the actor reports the name it took.
+            // Stamped as sent at once, so a step taken while it is on its way finds the field
+            // moved on.
             Edit::MoveToSecret { ref slotted, .. } => {
                 let before = self.auth_before(&edit, cx);
-                let stamp = self.history.sent_stamp(Field::Auth);
                 let slotted = (**slotted).clone();
+                let stamp = self.history.note_sent(&edit);
                 if let Some(id) = self.dispatch(edit, section, item, cx)
                     && let Some(before) = before
                 {
-                    self.moves.insert(id, (before, slotted, stamp));
+                    let pending = PendingMove {
+                        before,
+                        slotted,
+                        stamp,
+                    };
+                    self.moves.insert(id, pending);
                 }
                 return;
             }
@@ -1730,10 +1736,15 @@ impl RequestEditor {
     // undo returns the literal and drops the held value, redo moves it under the same name.
     // A later auth edit sent meanwhile has moved the field on, so the move stays unrecorded.
     fn record_move(&mut self, id: u64, reference: &SecretRef) {
-        let Some((before, slotted, stamp)) = self.moves.remove(&id) else {
+        let Some(PendingMove {
+            before,
+            slotted,
+            stamp,
+        }) = self.moves.remove(&id)
+        else {
             return;
         };
-        if self.history.sent_stamp(Field::Auth) != stamp {
+        if self.history.sent_stamp(Field::Auth) != Some(stamp) {
             return;
         }
         let undo = Edit::ReturnFromSecret {
@@ -2142,6 +2153,16 @@ fn body_typing(before: &Edit, edit: &Edit) -> bool {
     };
     let form = |b: &BodySpec| matches!(b, BodySpec::FormUrlEncoded(_) | BodySpec::Multipart(_));
     std::mem::discriminant(old) == std::mem::discriminant(new) && !form(new)
+}
+
+// A move to a secret sent and not yet named by the actor.
+struct PendingMove {
+    // The auth before the move, as the history knew it.
+    before: AuthSpec,
+    // The auth sent, with the moved field marked.
+    slotted: AuthSpec,
+    // The stamp the move left on the auth field; any later auth send changes it.
+    stamp: u64,
 }
 
 /// Each parent folder as (segment, folder path), then the request's display name.
