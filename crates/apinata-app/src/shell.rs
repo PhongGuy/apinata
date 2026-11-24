@@ -168,6 +168,9 @@ pub const APP_MENU_TIP: &str = "App menu";
 /// Element id of the app menu's tooltip text, so a test can see when it is drawn.
 pub const APP_MENU_TIP_ID: &str = "app-menu-tip";
 
+/// The status bar's console toggle icon: a terminal, so it reads apart from the layout toggle.
+pub const CONSOLE_ICON: IconName = IconName::SquareTerminal;
+
 // The no-collection state's icon, decoded once rather than on every frame.
 static APP_ICON: LazyLock<Arc<Image>> = LazyLock::new(|| {
     let png = include_bytes!("../../../assets/icon/generated/png/64x64.png");
@@ -2613,7 +2616,7 @@ impl Shell {
                     .right(
                         icon_button(
                             "toggle-console",
-                            IconName::PanelBottom,
+                            CONSOLE_ICON,
                             commands::label("view.toggle_console"),
                             Some(&ToggleConsole),
                             cx,
