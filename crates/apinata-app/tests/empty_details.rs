@@ -281,3 +281,25 @@ fn with_nothing_open_the_picker_offers_only_the_globals(cx: &mut TestAppContext)
     assert_eq!(titles, [GLOBAL_GROUP, ACTIONS_GROUP]);
     assert_eq!(sections[1].1, [manage_global_environments()]);
 }
+
+// An empty collection's open root says so and names the key that starts its first request.
+#[gpui_kit::test]
+fn an_empty_collection_root_hints_at_a_new_request(cx: &mut TestAppContext) {
+    let h = open_sidebar_with(cx, vec![("opencollection.yml", ROOT.to_string())]);
+    let hint = marker_id("name", &empty_id(0, &apinata_core::ItemPath::root()));
+    let key = cx
+        .update(|cx| apinata_app::ui::primary_key(&NewRequest, cx))
+        .unwrap();
+    let want = format!(
+        "No requests yet. New request ({})",
+        gpui_kit::component::kbd::Kbd::format(&key)
+    );
+    let label = cx
+        .update_window(h.win, |_, w, cx| {
+            w.render_frame(cx);
+            w.try_find(hint.clone())
+                .and_then(|e| e.label().map(str::to_owned))
+        })
+        .unwrap();
+    assert_eq!(label.as_deref(), Some(want.as_str()));
+}

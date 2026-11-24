@@ -63,6 +63,9 @@ pub fn unsaved_id(collection: usize) -> SharedString {
 /// The label of the row an empty folder shows.
 pub const EMPTY_LABEL: &str = "Empty";
 
+/// The label of the row an empty collection's root shows, before the new-request key.
+pub const EMPTY_ROOT_LABEL: &str = "No requests yet";
+
 /// The tree id of the Empty row in the folder at `path`, `"{collection}:{path}:#empty"`.
 pub fn empty_id(collection: usize, path: &ItemPath) -> SharedString {
     format!("{collection}:{}:#empty", path.as_str()).into()
@@ -159,6 +162,14 @@ pub fn build(
             });
             if let Some(content) = content {
                 hint_siblings(&mut children, &sibling_hints(content));
+            }
+            // A loaded collection with nothing in it says so under its root, as an empty folder
+            // does; the scratch pad has its own note and a filter keeps no such row.
+            let bare = content.is_some() && scratch != Some(root) && ctx.filter.is_none();
+            if bare && children.is_empty() {
+                let mut row = ctx.empty_row(&ItemPath::root());
+                row.name = EMPTY_ROOT_LABEL.to_owned();
+                children.push(row);
             }
             // A filter leaves out a collection with no matching row; ids keep its open index.
             if ctx.filter.is_some() && children.is_empty() {

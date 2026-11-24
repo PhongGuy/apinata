@@ -75,6 +75,7 @@ mod kind_convert;
 mod lazy_keychain;
 pub mod legacy;
 mod list_items;
+mod loopback;
 mod method;
 mod mime_table;
 pub mod mock;
@@ -89,6 +90,7 @@ mod opaque;
 mod order;
 mod paging;
 mod percent_text;
+mod pkce;
 mod post_response;
 mod presets;
 mod prompt;
@@ -295,7 +297,7 @@ pub use response::{CookieOrigin, HOP_BODY_LIMIT, Hop, Response, SentRequest};
 pub use results_report::ResultsReport;
 pub use runner::{
     Outcome, RecheckRefused, RequestResult, RunError, RunEvent, RunOptions, RunPlan, RunReport,
-    SelectError, StatusRule, Summary, recheck_assertions, rerun_slots, run, send_one,
+    RunStop, SelectError, StatusRule, Summary, recheck_assertions, rerun_slots, run, send_one,
 };
 pub use runtime_vars::{RuntimeVar, RuntimeVars};
 pub use schema_test::schema_test_script;

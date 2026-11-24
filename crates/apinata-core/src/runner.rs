@@ -750,6 +750,20 @@ pub struct Summary {
     pub failed_tests: usize,
     /// Script tests skipped, script-error entries not counted.
     pub skipped_tests: usize,
+    /// Why the run ended before every planned request was sent; `None` when it ran to the end.
+    pub stop: Option<RunStop>,
+}
+
+/// What ended a run early; every request after it is reported as skipped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RunStop {
+    /// A request failed or errored and the run was set to stop on the first failure.
+    FirstFailure,
+    /// The run was cancelled, or a send it needed was declined.
+    Cancelled,
+    /// A script stopped the run or jumped nowhere.
+    Script,
 }
 
 /// What a run produced: the plan's load errors, each request's result in run order, and counts.
@@ -812,7 +826,10 @@ impl RunReport {
                 }
             }
         }
+        // The stop still explains the run while any request it left unsent remains unsent.
+        let stop = rerun.summary.stop.or(self.summary.stop);
         self.summary = summarize(&self.results);
+        self.summary.stop = stop.filter(|_| self.summary.skipped > 0);
         merged
     }
 }
@@ -976,7 +993,7 @@ pub async fn run(
     let rows = iteration_total(opts.iterations.as_ref(), opts.iteration_count);
     let mut walk = Walk {
         results: Vec::with_capacity(names.len() * rows),
-        stopped: false,
+        stop: None,
         jumps: 0,
         sent_any: false,
     };
@@ -1002,16 +1019,14 @@ pub async fn run(
         )
         .await;
     } else {
-        // A bail, a cancel or a script stop in one iteration ends every later one too.
+        // A bail, a cancel or a script stop in one iteration ends every later one too, yet each
+        // later iteration still walks the plan so its requests are reported as skipped.
         for iteration in 0..rows {
             if opts
                 .iterations
                 .as_ref()
                 .is_some_and(|d| d.row(iteration).is_none())
             {
-                break;
-            }
-            if walk.stopped || cancel.is_cancelled() {
                 break;
             }
             on_event(RunEvent::IterationStarted {
@@ -1033,7 +1048,8 @@ pub async fn run(
         }
     }
     let results = walk.results;
-    let summary = summarize(&results);
+    let mut summary = summarize(&results);
+    summary.stop = walk.stop;
     on_event(RunEvent::Finished {
         summary: summary.clone(),
     });
@@ -1047,8 +1063,8 @@ pub async fn run(
 /// What carries over from one iteration's walk of the plan to the next.
 struct Walk {
     results: Vec<Arc<RequestResult>>,
-    /// A bail or a script ended the run.
-    stopped: bool,
+    /// What ended the run early, once something has.
+    stop: Option<RunStop>,
     /// Script jumps made so far, across every iteration.
     jumps: usize,
     /// Whether any request has been sent, so the delay never precedes the first.
@@ -1073,12 +1089,19 @@ impl Walk {
         while let Some((path, request, _)) = plan.requests.get(index) {
             let mut next = index + 1;
             // The pause watches the handle, so a cancel during it ends the run at once.
-            if !self.stopped && !cancel.is_cancelled() && self.sent_any && !opts.delay.is_zero() {
+            if self.stop.is_none()
+                && !cancel.is_cancelled()
+                && self.sent_any
+                && !opts.delay.is_zero()
+            {
                 cancel.run(tokio::time::sleep(opts.delay)).await;
+            }
+            if self.stop.is_none() && cancel.is_cancelled() {
+                self.stop = Some(RunStop::Cancelled);
             }
             // A bail, a cancel or a script that ended the run turns every later request into a
             // skipped result that is never resolved, sent or announced as started.
-            let mut result = if self.stopped || cancel.is_cancelled() {
+            let mut result = if self.stop.is_some() {
                 RequestResult::new(path.clone(), request, Outcome::Skipped)
             } else {
                 on_event(RunEvent::RequestStarted {
@@ -1111,15 +1134,20 @@ impl Walk {
                     )
                     .await
                 };
-                self.stopped = result.outcome == Outcome::Cancelled
-                    || result.network_declined
-                    || opts.bail && matches!(result.outcome, Outcome::Failed | Outcome::Errored);
-                if !self.stopped {
+                self.stop = if result.outcome == Outcome::Cancelled || result.network_declined {
+                    Some(RunStop::Cancelled)
+                } else if opts.bail && matches!(result.outcome, Outcome::Failed | Outcome::Errored)
+                {
+                    Some(RunStop::FirstFailure)
+                } else {
+                    None
+                };
+                if self.stop.is_none() {
                     match step(names, index, &result.control, &mut self.jumps) {
                         Step::To(to) => next = to,
                         Step::End(warning) => {
                             result.warnings.extend(warning);
-                            self.stopped = true;
+                            self.stop = Some(RunStop::Script);
                         }
                     }
                 }

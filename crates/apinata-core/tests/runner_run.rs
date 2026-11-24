@@ -4,7 +4,7 @@ use crate::common;
 
 use apinata_core::{
     CancelHandle, Collection, ContextOptions, ExecError, ExecOptions, Executor, Outcome,
-    RequestResult, RunError, RunEvent, RunOptions, RunReport, Summary, VarContext, run,
+    RequestResult, RunError, RunEvent, RunOptions, RunReport, RunStop, Summary, VarContext, run,
 };
 use common::write_tree;
 use std::path::Path;
@@ -139,6 +139,7 @@ async fn bail_skips_everything_after_the_first_failure_without_starting_it() {
         ]
     );
     assert_eq!(outcomes(&report), [Outcome::Failed, Outcome::Skipped]);
+    assert_eq!(report.summary.stop, Some(RunStop::FirstFailure));
     assert!(report.results[1].response.is_none());
     assert_eq!(server.received_requests().await.expect("recorded").len(), 1);
 }
@@ -248,6 +249,7 @@ async fn a_handle_cancelled_before_the_run_skips_every_request_and_sends_nothing
     );
     let mut want = Summary::default();
     (want.requests, want.skipped) = (2, 2);
+    want.stop = Some(RunStop::Cancelled);
     assert_eq!(report.summary, want);
     assert!(
         report

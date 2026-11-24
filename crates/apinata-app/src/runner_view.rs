@@ -9,7 +9,7 @@ use crate::ui::SolidRing as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use apinata_core::{ItemPath, Outcome, RequestResult, RunError, StatusRule, Verdict};
+use apinata_core::{ItemPath, Outcome, RequestResult, RunError, RunStop, StatusRule, Verdict};
 use gpui_kit::component::IndexPath;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
@@ -74,7 +74,10 @@ pub struct RunnerView {
     choosing: bool,
     // The tab's Tab stop: the first thing focus lands on, ahead of the controls.
     focus: FocusHandle,
+    // The collection environment and global a run would use, as the tab last showed them.
+    environments: (Option<String>, Option<String>),
     _observer: Subscription,
+    _workspace_observer: Subscription,
 }
 
 // The delay and tag inputs, made on first render since they need a window.
@@ -117,6 +120,16 @@ impl RunnerView {
     fn with_model(model: Entity<RunnerModel>, cx: &mut Context<Self>) -> Self {
         model.update(cx, |m, cx| m.refresh_preview(cx));
         let observer = cx.observe(&model, |this, _, cx| this.sync(cx));
+        // The title bar owns the environment choice, so the tab redraws only when it changes.
+        let workspace = model.read(cx).workspace().clone();
+        let workspace_observer = cx.observe(&workspace, |this: &mut Self, _, cx| {
+            let now = Self::environments_of(&this.model, cx);
+            if now != this.environments {
+                this.environments = now;
+                cx.notify();
+            }
+        });
+        let environments = Self::environments_of(&model, cx);
         RunnerView {
             model,
             selected: None,
@@ -125,8 +138,15 @@ impl RunnerView {
             options_scroll: ScrollHandle::new(),
             choosing: false,
             focus: cx.focus_handle().tab_stop(true),
+            environments,
             _observer: observer,
+            _workspace_observer: workspace_observer,
         }
+    }
+
+    fn environments_of(model: &Entity<RunnerModel>, cx: &App) -> (Option<String>, Option<String>) {
+        let m = model.read(cx);
+        (m.selected_environment(cx), m.effective_global(cx))
     }
 
     /// The run this tab shows.
@@ -452,6 +472,8 @@ pub struct Tally {
     pub no_tests: usize,
     /// Assertions and script tests skipped across the finished rows.
     pub skipped_tests: usize,
+    /// What ended the run early, which [`tally`] cannot see in the rows.
+    pub stop: Option<RunStop>,
 }
 
 /// Counts the finished rows by their Result cell; queued and running rows are left out.
@@ -480,8 +502,28 @@ pub fn tally(rows: &[RunRow]) -> Tally {
     t
 }
 
+/// "Environment: {name}, Global: {name}", with None for either that is not chosen.
+fn environment_line(env: Option<&str>, global: Option<&str>) -> String {
+    format!(
+        "Environment: {}, Global: {}",
+        env.unwrap_or("None"),
+        global.unwrap_or("None")
+    )
+}
+
+/// Why a run ended early, as the summary line words it.
+fn stop_reason(stop: RunStop) -> Option<&'static str> {
+    match stop {
+        RunStop::FirstFailure => Some("stopped after the first failure"),
+        RunStop::Cancelled => Some("cancelled before the end"),
+        RunStop::Script => Some("stopped by a script"),
+        _ => None,
+    }
+}
+
 /// "{n} request(s): {p} passed ({u} unverified), {f} failed" then non-zero without tests,
-/// errored, not sent, cancelled, then "; {k} check(s) skipped" when any check was skipped. A
+/// errored, not sent, cancelled, then why the run stopped early in brackets, then
+/// "; {k} check(s) skipped" when any check was skipped. A
 /// request with no check is counted apart from `passed`; the unverified ones stay inside it.
 pub fn summary_line(t: &Tally) -> String {
     let n = t.passed + t.failed + t.errored + t.not_sent + t.cancelled;
@@ -504,6 +546,9 @@ pub fn summary_line(t: &Tally) -> String {
     ];
     for (count, word) in extras.into_iter().filter(|(count, _)| *count > 0) {
         line.push_str(&format!(", {count} {word}"));
+    }
+    if let Some(why) = t.stop.and_then(stop_reason) {
+        line.push_str(&format!(" ({why})"));
     }
     // Skipped checks are not requests, so they follow apart from the request counts.
     if t.skipped_tests > 0 {
@@ -1010,16 +1055,20 @@ impl Render for RunnerView {
                             }),
                     )
             }));
+        // The checkbox sits on the fields' line, and its warning wraps under it.
         let retry_unsafe = v_flex()
             .min_w_0()
+            .max_w(style::RUN_RETRY_UNSAFE_WIDTH)
             .gap_1()
             .child(
-                ui::checkbox("run-retry-unsafe", model.retry_unsafe())
-                    .label("Also retry POST and PATCH")
-                    .tooltip(RETRY_UNSAFE_TOOLTIP)
-                    .on_click(move |on: &bool, _, cx| {
-                        m5.update(cx, |m, cx| m.set_retry_unsafe(*on, cx))
-                    }),
+                h_flex().min_h(style::INPUT_HEIGHT).items_center().child(
+                    ui::checkbox("run-retry-unsafe", model.retry_unsafe())
+                        .label("Also retry POST and PATCH")
+                        .tooltip(RETRY_UNSAFE_TOOLTIP)
+                        .on_click(move |on: &bool, _, cx| {
+                            m5.update(cx, |m, cx| m.set_retry_unsafe(*on, cx))
+                        }),
+                ),
             )
             .child(
                 div()
@@ -1109,17 +1158,29 @@ impl Render for RunnerView {
                     )),
             )
             .child(
+                option_row().child(option_slot(
+                    Some(option_label(
+                        "run-fail-on-status-label",
+                        "Fail on status",
+                        cx,
+                    )),
+                    Select::new(&fail_select)
+                        .id("run-fail-on-status")
+                        .w(style::FORM_INPUT_WIDTH),
+                )),
+            )
+            // The checkbox carries its own text, so it gets a row under the control column.
+            .child(
+                h_flex()
+                    .w_full()
+                    .gap_2()
+                    .child(div().flex_none().w(style::RUN_OPTION_LABEL_WIDTH))
+                    .child(bail),
+            )
+            // The retry options read as one group: how many, how far apart, and for which methods.
+            .child(
                 option_row()
-                    .child(option_slot(
-                        Some(option_label(
-                            "run-fail-on-status-label",
-                            "Fail on status",
-                            cx,
-                        )),
-                        Select::new(&fail_select)
-                            .id("run-fail-on-status")
-                            .w(style::FORM_INPUT_WIDTH),
-                    ))
+                    .items_start()
                     .child(option_slot(
                         Some(hinted_label(
                             "run-retries-label",
@@ -1137,24 +1198,8 @@ impl Render for RunnerView {
                             cx,
                         )),
                         field(&retry_delay, "run-retry-delay"),
-                    )),
-            )
-            // The checkboxes carry their own text, so they get a row under the control column
-            // and take the rest of the width there, where the warning wraps.
-            .child(
-                h_flex()
-                    .w_full()
-                    .gap_2()
-                    .items_start()
-                    .child(div().flex_none().w(style::RUN_OPTION_LABEL_WIDTH))
-                    .child(
-                        v_flex()
-                            .flex_1()
-                            .min_w_0()
-                            .gap_2()
-                            .child(bail)
-                            .child(retry_unsafe),
-                    ),
+                    ))
+                    .child(option_slot(None::<Div>, retry_unsafe)),
             );
         // The export buttons appear once a run exists and work once it has finished.
         let finished = matches!(model.state(), RunState::Finished(_));
@@ -1242,6 +1287,19 @@ impl Render for RunnerView {
                         m2.update(cx, |m, cx| m.start(cx));
                     }),
             );
+        // Runs use the environments the title bar has chosen, so the tab names them read-only.
+        let environment = {
+            let (env, global) = &self.environments;
+            let text = environment_line(env.as_deref(), global.as_deref());
+            div()
+                .id("run-environment")
+                .test_support()
+                .aria_label(text.clone())
+                .flex_none()
+                .text_size(style::TEXT_SMALL)
+                .text_color(cx.theme().muted_foreground)
+                .child(text)
+        };
         let options_box = v_flex()
             .id("run-options-box")
             .test_support()
@@ -1562,8 +1620,11 @@ impl Render for RunnerView {
             rows.push(item.into_any_element());
         }
         let status = match model.state() {
-            RunState::Finished(_) => {
-                let t = tally(model.rows());
+            RunState::Finished(summary) => {
+                let t = Tally {
+                    stop: summary.stop,
+                    ..tally(model.rows())
+                };
                 Some(("run-summary", summary_line(&t), Some(summary_tone(&t))))
             }
             RunState::Cancelled => Some(("run-summary", "Cancelled".to_owned(), None)),
@@ -1579,6 +1640,7 @@ impl Render for RunnerView {
             .pl(style::tab_content_inset(window))
             .pt(style::tab_content_inset(window))
             .gap_2()
+            .child(environment)
             .child(actions)
             .child(options_box)
             // A line under the options, so the list scrolling up below them stops at an edge.
@@ -1650,7 +1712,7 @@ mod tests {
         result_word, row_checks, row_tone, summary_line, summary_tone, tally,
     };
     use crate::ui::Tone;
-    use apinata_core::{Assertion, AssertionOutcome, Verdict};
+    use apinata_core::{Assertion, AssertionOutcome, RunStop, Verdict};
     use std::sync::Arc;
 
     fn bare(outcome: Outcome) -> RequestResult {
@@ -1957,5 +2019,30 @@ mod tests {
             done(scripts_off(bare(Outcome::Passed))),
         ]);
         assert_eq!(summary_tone(&failed), Tone::Danger);
+    }
+
+    #[test]
+    fn a_stopped_run_says_why_after_its_counts() {
+        let mut rows = vec![
+            done(checked(Outcome::Passed, Verdict::Pass)),
+            done(checked(Outcome::Failed, Verdict::Pass)),
+        ];
+        rows.extend((0..28).map(|_| done(bare(Outcome::Skipped))));
+        let t = Tally {
+            stop: Some(RunStop::FirstFailure),
+            ..tally(&rows)
+        };
+        assert_eq!(
+            summary_line(&t),
+            "30 requests: 1 passed, 1 failed, 28 not sent (stopped after the first failure)"
+        );
+        let script = Tally {
+            stop: Some(RunStop::Script),
+            ..tally(&rows[..1])
+        };
+        assert_eq!(
+            summary_line(&script),
+            "1 request: 1 passed, 0 failed (stopped by a script)"
+        );
     }
 }
