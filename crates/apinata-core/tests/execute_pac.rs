@@ -353,7 +353,14 @@ async fn a_pac_lookup_past_the_deadline_names_no_limit() {
     );
     let err = exec.send(r.request()).await.expect_err("times out");
     assert!(
-        matches!(err, ExecError::Timeout { limit: None, .. }),
+        matches!(
+            err,
+            ExecError::Timeout {
+                limit: None,
+                run_wide: None,
+                ..
+            }
+        ),
         "{err:?}"
     );
 }

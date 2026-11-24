@@ -190,6 +190,36 @@ async fn a_download_slower_than_the_request_timeout_completes_while_chunks_keep_
 }
 
 #[tokio::test]
+async fn an_idle_window_under_a_run_wide_cap_is_not_named_as_the_cap() {
+    let s = body_server(vec![(
+        "/",
+        Reply::short(pattern(16 * 1024), MIB, Tail::Hold),
+    )])
+    .await;
+    let dir = tempfile::tempdir().unwrap();
+    let (opts, _) = recording(&target(&dir));
+    let capped = Executor::new(
+        ExecOptions::new()
+            .max_body_bytes(Some(1024))
+            .timeout_cap(Some(Duration::from_millis(300))),
+    )
+    .unwrap();
+    let res = save(&capped, &request("GET", &s.url("/"), None), opts).await;
+    // The idle window ran out, not the response deadline, so the cap is not blamed.
+    assert!(
+        matches!(
+            res,
+            Err(ExecError::Timeout {
+                limit: None,
+                run_wide: None,
+                ..
+            })
+        ),
+        "{res:?}"
+    );
+}
+
+#[tokio::test]
 async fn a_stalled_body_past_the_idle_window_errors_and_leaves_no_file() {
     let s = body_server(vec![(
         "/",

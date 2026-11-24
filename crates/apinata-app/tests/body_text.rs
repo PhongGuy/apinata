@@ -334,11 +334,35 @@ fn image_info_reads_raster_dimensions_from_the_header() {
         ImageInfo {
             kind: ImageKind::Png,
             size: bytes.len() as u64,
-            dimensions: Some((3, 2))
+            dimensions: Some((3, 2)),
+            alpha: true,
         }
     );
     assert_eq!(image_info(ImageKind::Png, b"not a png").dimensions, None);
     assert_eq!(image_info(ImageKind::Jpeg, &bytes).dimensions, None);
+}
+
+#[test]
+fn image_info_says_which_images_can_be_transparent() {
+    let encode = |image: image::DynamicImage, format| {
+        let mut out = std::io::Cursor::new(Vec::new());
+        image.write_to(&mut out, format).unwrap();
+        out.into_inner()
+    };
+    let alpha = |kind, bytes: &[u8]| image_info(kind, bytes).alpha;
+    assert!(alpha(ImageKind::Png, &png(2, 2)));
+    let opaque = image::DynamicImage::ImageRgb8(image::RgbImage::new(2, 2));
+    assert!(!alpha(
+        ImageKind::Png,
+        &encode(opaque.clone(), image::ImageFormat::Png)
+    ));
+    assert!(!alpha(
+        ImageKind::Jpeg,
+        &encode(opaque, image::ImageFormat::Jpeg)
+    ));
+    // An SVG paints on a clear canvas; bytes that do not decode claim nothing.
+    assert!(alpha(ImageKind::Svg, b"<svg width='2' height='2'/>"));
+    assert!(!alpha(ImageKind::Png, b"not a png"));
 }
 
 #[test]
@@ -377,12 +401,14 @@ fn image_caption_names_format_dimensions_and_size() {
         kind: ImageKind::Png,
         size: 2048,
         dimensions: Some((640, 480)),
+        alpha: false,
     };
     assert_eq!(image_caption(&info), "PNG image, 640 × 480, 2.0 KB");
     let info = ImageInfo {
         kind: ImageKind::Svg,
         size: 512,
         dimensions: None,
+        alpha: true,
     };
     assert_eq!(image_caption(&info), "SVG image, 512 B");
 }
