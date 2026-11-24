@@ -270,6 +270,7 @@ mod error_kinds;
 mod example_tab;
 mod export_collection;
 mod export_environment;
+mod failed_send_timeline;
 mod files;
 mod find_cancel;
 mod find_options;
