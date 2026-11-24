@@ -36,6 +36,9 @@ pub struct Account {
     /// The commit identity the server gave last, used while it cannot be reached.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub identity: Option<Identity>,
+    /// When the kept token stops working, RFC 3339; None when it does not expire.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<String>,
 }
 
 impl Account {
@@ -54,7 +57,17 @@ impl Account {
             token_id: token_id.to_owned(),
             server_admin,
             identity: None,
+            expires_at: None,
         }
+    }
+
+    /// Whether the kept token's expiry has passed. An expiry that does not parse is left for
+    /// the server to judge.
+    pub fn expired(&self) -> bool {
+        self.expires_at
+            .as_deref()
+            .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
+            .is_some_and(|at| at <= chrono::Utc::now())
     }
 }
 

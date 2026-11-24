@@ -70,6 +70,30 @@ pub enum TeamError {
     /// The caller cancelled the call before it kept anything.
     #[error("Cancelled.")]
     Cancelled,
+    /// The server does not offer single sign-on.
+    #[error("This server does not offer single sign-on.")]
+    SsoOff,
+    /// The sign-in provider or the server refused the single sign-on.
+    #[error("The sign-in was refused.")]
+    SsoRefused,
+    /// No account on the server is linked to the provider's sign-in.
+    #[error("No account on this server is linked to that sign-in.")]
+    AccountNotLinked,
+    /// The browser came back too late for the server to finish the sign-in.
+    #[error("The sign-in took too long in the browser.")]
+    SsoExpired,
+    /// The server refused the returned code: expired, reused or not this app's.
+    #[error("The sign-in could not be completed.")]
+    SsoCodeInvalid,
+    /// The browser came back with a sign-in this app did not start.
+    #[error("The browser returned a sign-in this app did not start.")]
+    SsoStateMismatch,
+    /// The browser did not come back in time, or the wait was cancelled.
+    #[error("No sign-in came back from the browser.")]
+    SsoTimeout,
+    /// The sign-in could not be started on this computer.
+    #[error("The sign-in could not be started: {0}")]
+    SsoListen(String),
 }
 
 /// The server's error envelope: `{"error": {"code", "message", "field"}}`.
@@ -112,6 +136,7 @@ impl TeamError {
                 retry_after_secs: retry_after,
             },
             "unavailable" => TeamError::Unavailable(message),
+            "oidc_code_invalid" => TeamError::SsoCodeInvalid,
             _ => TeamError::Server {
                 status,
                 code: super::redact_token(&error.code),
