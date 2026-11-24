@@ -42,6 +42,9 @@ pub struct Settings {
     pub history_limit: u32,
     /// Save edited files automatically, a moment after the last edit.
     pub autosave: bool,
+    /// A single click in the sidebar opens a preview tab that the next one replaces; off,
+    /// every open keeps its tab.
+    pub preview_tabs: bool,
     /// Wrap long lines in the body and script editors; each editor can still toggle it.
     pub wrap_editors: bool,
     /// The global proxy; its password lives in the secret store, never here.
@@ -97,6 +100,13 @@ pub fn wrap_editors(cx: &App) -> bool {
         .is_none_or(|state| state.settings.read(cx).get().wrap_editors)
 }
 
+/// Whether a sidebar click opens a preview tab rather than a kept one; on when the app state
+/// is absent (tests).
+pub fn preview_tabs(cx: &App) -> bool {
+    cx.try_global::<AppState>()
+        .is_none_or(|state| state.settings.read(cx).get().preview_tabs)
+}
+
 /// `context` with the Preferences timeout as the default for requests that inherit theirs.
 /// Send, the runner and Get token each call this after planning, so all read the same value.
 pub fn with_request_timeout(context: &VarContext, cx: &App) -> VarContext {
@@ -121,6 +131,7 @@ impl Default for Settings {
             remember_responses: true,
             history_limit: 20,
             autosave: false,
+            preview_tabs: true,
             wrap_editors: true,
             proxy: ProxyPrefs::default(),
             ca_file: None,

@@ -25,7 +25,12 @@ fn listed(a: Availability, id: &str) -> bool {
 
 // One row per flag: how to clear it in an Availability, and the commands it governs.
 type Clear = fn(&mut Availability);
-const FLAGS: [(&str, Clear, &[&str]); 33] = [
+const FLAGS: [(&str, Clear, &[&str]); 34] = [
+    (
+        "selection_codec",
+        |a| a.selection_codec = false,
+        &["edit.percent_encode", "edit.percent_decode"],
+    ),
     (
         "last_export",
         |a| a.last_export = false,

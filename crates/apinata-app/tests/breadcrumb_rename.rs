@@ -235,6 +235,20 @@ fn f2_or_enter_on_the_focused_crumb_starts_the_rename(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn a_rebound_rename_key_starts_the_rename_and_f2_no_longer_does(cx: &mut TestAppContext) {
+    let (_col, s) = start(cx);
+    edit_keys(cx, |o| {
+        *o = overrides(&[("request.rename_in_sidebar", &["shift-f2"])])
+    });
+    key_on(cx, s.win, CRUMB, "f2");
+    frame(cx, s.win);
+    assert!(!editing(cx, &s), "F2 left with the rebinding");
+    key_on(cx, s.win, CRUMB, "shift-f2");
+    frame(cx, s.win);
+    assert!(editing(cx, &s), "the new key starts it");
+}
+
+#[gpui_kit::test]
 fn undo_in_sidebar_reverts_a_breadcrumb_rename(cx: &mut TestAppContext) {
     let (_col, s) = start(cx);
     double_click_name(cx, &s);
