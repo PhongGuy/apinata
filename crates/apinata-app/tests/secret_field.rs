@@ -393,7 +393,7 @@ fn open_network(cx: &mut TestAppContext, files: &[(&str, &str)]) -> Net {
     Net {
         col,
         _state: state,
-        win: win.into(),
+        win,
         ed,
     }
 }
@@ -555,7 +555,7 @@ fn a_refused_network_move_leaves_the_draft_and_dotenv_alone(cx: &mut TestAppCont
         Net {
             col,
             _state: state,
-            win: win.into(),
+            win,
             ed,
         }
     };
