@@ -89,6 +89,36 @@ async fn run_exits_0_1_and_2_for_pass_failed_assertion_and_request_error() {
     assert_eq!(codes, (0, 1, 2));
 }
 
+/// A 127.0.0.1 server whose answers promise 100 bytes, send 10 and close; its base URL.
+fn cut_body_server() -> String {
+    use std::io::{Read as _, Write as _};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    std::thread::spawn(move || {
+        for mut sock in listener.incoming().flatten() {
+            let mut head = [0u8; 4096];
+            let _ = sock.read(&mut head);
+            let _ = sock.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 100\r\n\r\naaaaaaaaaa");
+        }
+    });
+    format!("http://127.0.0.1:{port}/")
+}
+
+#[test]
+fn run_exits_2_and_reports_the_counts_when_a_body_is_cut_short() {
+    let dir = collection(&cut_body_server());
+    let (mut c, _h) = cli();
+    c.current_dir(dir.path()).args(["run", "."]);
+    let out = c.output().expect("runs");
+    assert_eq!(out.status.code(), Some(2));
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(text.contains("10 of 100 bytes"), "{text}");
+}
+
 #[test]
 fn run_exits_3_without_a_collection_and_for_a_request_file_that_fails_to_load() {
     assert_eq!(code_of(&["run", "."], empty().path()), 3);

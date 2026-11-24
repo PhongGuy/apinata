@@ -40,7 +40,7 @@ use crate::network::{
 use crate::ntlm;
 use crate::oauth1;
 use crate::resolve::{Body, FileRef, ResolvedRequest, SendAuth, redact_url};
-use crate::response::{HOP_BODY_LIMIT, Hop, Response};
+use crate::response::{HOP_BODY_LIMIT, Hop, Response, SentRequest};
 use crate::session_log::{
     Exchange, Logged, NetworkEntry, Redactor, SendHold, SendSource, SessionLog,
 };
@@ -223,6 +223,8 @@ pub(crate) struct HopBuffer {
     pub(crate) hops: Vec<Hop>,
     /// Credentials the exchange computed per hop, to be redacted.
     pub(crate) placed: Vec<String>,
+    /// The hop sent and not yet answered; a completed hop clears it.
+    pub(crate) unanswered: Option<SentRequest>,
     /// Set when a log is attached, so the exchange keeps what only the log needs.
     record: bool,
 }
@@ -234,6 +236,15 @@ impl HopBuffer {
             self.placed.push(value.to_owned());
         }
     }
+}
+
+/// What a send that got no response leaves behind: the hops that completed, the request still
+/// waiting when it failed, and the credentials it placed.
+#[derive(Default)]
+pub(crate) struct FailedSend {
+    pub(crate) timeline: Vec<Hop>,
+    pub(crate) unanswered: Option<SentRequest>,
+    pub(crate) derived: Vec<String>,
 }
 
 /// The `access_token`, `refresh_token` and `id_token` strings of a token answer: a JSON object,
@@ -290,6 +301,30 @@ pub enum NtlmCause {
     ChallengeTooLarge,
     /// No random bytes were available for the response.
     Random,
+}
+
+/// The head of a response whose body was cut short, and how much of the body arrived.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct CutBody {
+    /// The status that arrived.
+    pub status: u16,
+    /// The headers that arrived, as the wire sent them.
+    pub headers: Vec<(String, String)>,
+    /// The body bytes that came over the wire before it was cut, still encoded.
+    pub received: u64,
+    /// The `Content-Length` the server promised; `None` when it sent none.
+    pub expected: Option<u64>,
+}
+
+impl CutBody {
+    /// `10 of 100 bytes`, or `10 bytes` when no length was promised.
+    pub fn count(&self) -> String {
+        match self.expected {
+            Some(expected) => format!("{} of {expected} bytes", self.received),
+            None => format!("{} bytes", self.received),
+        }
+    }
 }
 
 /// Why a request could not be sent or its response not read.
@@ -366,6 +401,22 @@ pub enum ExecError {
     Transport {
         /// The URL of the hop that failed.
         url: String,
+        /// The underlying error.
+        message: String,
+    },
+    /// The response's status and headers arrived but the connection failed before the whole
+    /// body did. The send still fails; the head is kept so a front end can show it.
+    #[error(
+        "{url}: status {}, but the body was cut short after {}: {message}",
+        cut.status,
+        cut.count()
+    )]
+    #[non_exhaustive]
+    BodyCut {
+        /// The URL of the hop whose body was cut.
+        url: String,
+        /// The head that arrived and how much of the body did, boxed to keep the error small.
+        cut: Box<CutBody>,
         /// The underlying error.
         message: String,
     },
@@ -483,6 +534,27 @@ impl ExecError {
     pub fn transport(url: impl Into<String>, message: impl Into<String>) -> Self {
         Self::Transport {
             url: url.into(),
+            message: message.into(),
+        }
+    }
+
+    /// Builds a `BodyCut` error for the hop at `url`, whose head arrived but whose body did not.
+    pub fn body_cut(
+        url: impl Into<String>,
+        status: u16,
+        headers: Vec<(String, String)>,
+        received: u64,
+        expected: Option<u64>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self::BodyCut {
+            url: url.into(),
+            cut: Box::new(CutBody {
+                status,
+                headers,
+                received,
+                expected,
+            }),
             message: message.into(),
         }
     }
@@ -911,8 +983,10 @@ impl Executor {
         req: &ResolvedRequest,
         cancel: &CancelHandle,
     ) -> (Result<Response, ExecError>, Vec<PacWarning>) {
-        self.send_as_reporting(req, cancel, &SendTag::default())
-            .await
+        let (result, pac, _) = self
+            .send_as_reporting(req, cancel, &SendTag::default())
+            .await;
+        (result, pac)
     }
 
     /// The log sends are recorded into, when one is attached.
@@ -931,19 +1005,20 @@ impl Executor {
         self.send_as_reporting(req, cancel, tag).await.0
     }
 
-    /// `send_as`, plus the PAC warnings of this send, kept even when it fails or is cancelled.
+    /// `send_as`, plus the PAC warnings of this send, kept even when it fails or is cancelled,
+    /// and what a send that got no response sent.
     pub(crate) async fn send_as_reporting(
         &self,
         req: &ResolvedRequest,
         cancel: &CancelHandle,
         tag: &SendTag,
-    ) -> (Result<Response, ExecError>, Vec<PacWarning>) {
+    ) -> (Result<Response, ExecError>, Vec<PacWarning>, FailedSend) {
         // The network check runs before anything is read or logged, on every attempt, so a
         // declined send leaves no trace and each attempt hashes the certificate it will load.
         let preloaded = match &self.network_check {
             Some(check) => match check.run(req, cancel).await {
                 Ok(loaded) => Some(loaded),
-                Err(e) => return (Err(e), Vec::new()),
+                Err(e) => return (Err(e), Vec::new(), FailedSend::default()),
             },
             None => None,
         };
@@ -1020,7 +1095,16 @@ impl Executor {
                 }
             }
         }
-        (result, pac.into_warnings())
+        // The log above borrowed the hops; only a send with no response hands them on.
+        let failed = match &result {
+            Ok(_) => FailedSend::default(),
+            Err(_) => FailedSend {
+                timeline: std::mem::take(&mut buf.hops),
+                unanswered: buf.unanswered.take(),
+                derived: derived_list(std::mem::take(&mut buf.placed), req.derived()),
+            },
+        };
+        (result, pac.into_warnings(), failed)
     }
 
     /// The request's own timeout, lowered to the run-wide cap when that is shorter or the
@@ -1255,8 +1339,23 @@ impl Executor {
             }
             let transport =
                 |e: reqwest::Error| classify(&url, proxy.as_ref(), followed as usize, e);
-            let body_fail = |e: BodyError| match e {
-                BodyError::Wire(e) => transport(e),
+            // A connection lost mid-body keeps the head that arrived; a body that does not
+            // decode, or a failure classified as something else, stays as it was.
+            let body_fail = |fail: BodyFail, status: StatusCode, head: &HeaderMap| match fail.error
+            {
+                BodyError::Wire(e) => match transport(e) {
+                    ExecError::Transport { url, message } => ExecError::body_cut(
+                        url,
+                        status.as_u16(),
+                        lossy(head),
+                        fail.received,
+                        head.get(CONTENT_LENGTH)
+                            .and_then(|v| v.to_str().ok())
+                            .and_then(|v| v.trim().parse().ok()),
+                        message,
+                    ),
+                    other => other,
+                },
                 BodyError::Decode(e) => ExecError::transport(
                     redact_url(url.as_str()),
                     format!("could not decode the response body: {e}"),
@@ -1398,6 +1497,11 @@ impl Executor {
                 }
             }
             let mut sent = sent_headers(&request);
+            buf.unanswered = Some(SentRequest {
+                method: method.to_string(),
+                url: url.to_string(),
+                headers: sent.clone(),
+            });
             // The log shows the first hop's bytes as sent, after any OAuth 1.0 body signing.
             if buf.record && buf.first_body.is_none() {
                 let kept = body[..body.len().min(HOP_BODY_LIMIT)].to_vec();
@@ -1562,7 +1666,7 @@ impl Executor {
                         ))
                         .await
                         .ok_or_else(timed_out)?
-                        .map_err(body_fail)?;
+                        .map_err(|f| body_fail(f, status, &hop_headers))?;
                     BodyRead {
                         end: Some(refused(why)),
                         ..read
@@ -1662,7 +1766,7 @@ impl Executor {
                     .map_err(|e| match e {
                         ReadFail::Timeout => timed_out(),
                         ReadFail::Idle => ExecError::timeout(redact_url(url.as_str())),
-                        ReadFail::Body(e) => body_fail(e),
+                        ReadFail::Body(f) => body_fail(f, status, &hop_headers),
                         ReadFail::Stopped => ExecError::Transport {
                             url: redact_url(url.as_str()),
                             message: "stopped before the whole body was saved".to_owned(),
@@ -1680,7 +1784,7 @@ impl Executor {
                     ))
                     .await
                     .ok_or_else(timed_out)?
-                    .map_err(body_fail)?,
+                    .map_err(|f| body_fail(f, status, &hop_headers))?,
             };
             let BodyRead {
                 bytes,
@@ -1714,6 +1818,7 @@ impl Executor {
                 via_proxy: proxy.is_some(),
                 override_from: None,
             });
+            buf.unanswered = None;
             for hop in &mut buf.hops[first_new_hop..] {
                 hop.override_from = label_for(&overrides, &hop.url);
             }
@@ -1840,11 +1945,11 @@ impl Executor {
 
 /// Reads a hop's decoded body chunk by chunk, keeping at most `limit` bytes. Past the limit
 /// reading stops and the dropped response closes the connection.
-async fn read_body(mut res: WireBody, limit: Option<u64>) -> Result<BodyRead, BodyError> {
+async fn read_body(mut res: WireBody, limit: Option<u64>) -> Result<BodyRead, BodyFail> {
     let mut body = Vec::new();
     let mut size = 0u64;
     let mut truncated = false;
-    while let Some(chunk) = res.chunk().await? {
+    while let Some(chunk) = res.chunk().await.map_err(|e| BodyFail::new(e, &res))? {
         size += chunk.len() as u64;
         if let Some(limit) = limit {
             let room =
@@ -1865,6 +1970,21 @@ async fn read_body(mut res: WireBody, limit: Option<u64>) -> Result<BodyRead, Bo
         end: None,
         file: None,
     })
+}
+
+/// A body read that failed, with the wire bytes that had arrived by then.
+struct BodyFail {
+    error: BodyError,
+    received: u64,
+}
+
+impl BodyFail {
+    fn new(error: BodyError, res: &WireBody) -> BodyFail {
+        BodyFail {
+            error,
+            received: res.wire_size(),
+        }
+    }
 }
 
 /// What a hop's body read produced.
@@ -1981,7 +2101,7 @@ enum ReadFail {
     Timeout,
     /// A saved plain body sent nothing for the idle window.
     Idle,
-    Body(BodyError),
+    Body(BodyFail),
     /// Stop ended a plain body that was being saved, so there is no whole body to commit.
     Stopped,
     /// Writing the body file at this path failed.
@@ -2150,7 +2270,7 @@ async fn read_streaming(
                 Err(BodyError::Decode(e)) if event_stream => {
                     break Some(StreamEnd::Error(format!("could not decode the response body: {e}")));
                 }
-                Err(e) => return Err(ReadFail::Body(e)),
+                Err(e) => return Err(ReadFail::Body(BodyFail::new(e, &res))),
             },
         }
     };

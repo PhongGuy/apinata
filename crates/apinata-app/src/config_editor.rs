@@ -1,5 +1,6 @@
-//! The settings editor of a folder or the collection: headers, auth, vars, script, tests and
-//! docs, plus the collection's AI access hosts, network settings and script trust.
+//! The settings editor of a folder or the collection: the collection's overview, headers, auth,
+//! vars, script, tests and docs, plus the collection's AI access hosts, network settings and
+//! script trust.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -7,9 +8,12 @@ use std::sync::Arc;
 
 use apinata_core::{AuthSpec, ItemPath, KeyValue, PostResponseVar, ScriptPhase, Variable};
 use gpui_kit::component::WindowExt as _;
+use gpui_kit::component::button::Button;
+use gpui_kit::component::menu::DropdownMenu as _;
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::tab::Tab;
-use gpui_kit::component::{h_flex, v_flex};
+use gpui_kit::component::text::TextView;
+use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, AnyView, App, Entity, FocusHandle, Focusable, Role, ScrollHandle, SharedString,
@@ -22,10 +26,12 @@ use crate::banner::{self, Banner, Choice};
 use crate::command::{Command, Edit, Field, Notice, NoticeKind, Target};
 use crate::edit_history::EditHistory;
 use crate::edit_track::{self, LoadStamps, same_value};
+use crate::export::ExportFormat;
 use crate::kv_table::{
     self, KvColumns, KvEvent, KvRow, KvTable, header_rows, headers_from, post_response_block,
     post_response_rows, post_response_vars_from, var_rows, vars_from, vars_heading,
 };
+use crate::mock_server::MockState;
 use crate::network_section::NetworkSection;
 use crate::presets_section::PresetsSection;
 use crate::request_editor::{AUTH_TYPING, RedoEdit, UndoEdit, load_auth, refresh_token_panel};
@@ -40,6 +46,7 @@ use crate::tag_input::{TagField, TagsChanged};
 use crate::token_panel::{Locate, TokenPanel};
 use crate::trusted_hosts::TrustedHostsView;
 use crate::ui;
+use crate::ui::SolidRing as _;
 use crate::workspace::{Workspace, WorkspaceEvent};
 
 actions!(
@@ -72,6 +79,7 @@ impl ConfigTarget {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(missing_docs)]
 pub enum ConfigSection {
+    Overview,
     Headers,
     Auth,
     Vars,
@@ -100,6 +108,7 @@ impl ConfigSection {
     /// The section's tab label.
     pub fn label(self) -> &'static str {
         match self {
+            ConfigSection::Overview => "Overview",
             ConfigSection::Headers => "Headers",
             ConfigSection::Auth => "Auth",
             ConfigSection::Vars => "Vars",
@@ -394,7 +403,7 @@ impl ConfigEditor {
             workspace,
             compare: None,
             root,
-            target,
+            target: target.clone(),
             headers,
             vars,
             post_response,
@@ -410,7 +419,10 @@ impl ConfigEditor {
             header_base: Vec::new(),
             var_base: Vec::new(),
             post_response_base: Vec::new(),
-            section: ConfigSection::Headers,
+            section: match target {
+                ConfigTarget::Collection => ConfigSection::Overview,
+                ConfigTarget::Folder(_) => ConfigSection::Headers,
+            },
             sent: HashMap::new(),
             loaded: LoadStamps::default(),
             lagging: false,
@@ -485,9 +497,13 @@ impl ConfigEditor {
         self.tags.as_ref()
     }
 
-    /// The sections offered, in tab order; `Tags` follows for a folder, and `Hosts`, `Network` and `Scripts` follow, collection only.
+    /// The sections offered, in tab order; the collection leads with `Overview`, `Tags` follows for a folder, and `Hosts`, `Network` and `Scripts` follow, collection only.
     pub fn sections(&self) -> Vec<ConfigSection> {
-        let mut sections = ConfigSection::ALL.to_vec();
+        let mut sections = Vec::new();
+        if self.target == ConfigTarget::Collection {
+            sections.push(ConfigSection::Overview);
+        }
+        sections.extend(ConfigSection::ALL);
         if self.tags.is_some() {
             sections.push(ConfigSection::Tags);
         }
@@ -1171,10 +1187,132 @@ impl ConfigEditor {
             .child(self.section_reveal.watch(&self.section_scroll, selected))
     }
 
+    // What the collection is at a glance: its name, folder, request count and rendered docs,
+    // with the runner, mock server and export one click away.
+    fn overview(&self, cx: &App) -> AnyElement {
+        let snapshot = self.workspace.read(cx).snapshot(&self.root, cx);
+        let content = snapshot.as_ref().map(|s| &s.content);
+        let name = target_name(content, &self.root, &self.target);
+        let path = crate::workspace::absolute(&self.root);
+        let requests = match content.map_or(0, |c| c.requests.len()) {
+            1 => "1 request".to_owned(),
+            n => format!("{n} requests"),
+        };
+        let docs = self.view(cx).map(|v| v.docs.clone()).unwrap_or_default();
+        let value = |id: &'static str, text: String| {
+            let label = SharedString::from(text);
+            div()
+                .id(id)
+                .aria_label(label.clone())
+                .test_support()
+                .child(label)
+        };
+        let (workspace, root) = (self.workspace.clone(), path.clone());
+        let run = Button::new("config-overview-run")
+            .solid_ring(cx)
+            .label(crate::commands::label("collection.run"))
+            .on_click(move |_, window, cx| {
+                if !crate::scratch::refuse(&workspace, &root, window, cx) {
+                    workspace.update(cx, |w, cx| w.open_runner(&root, ItemPath::root(), cx));
+                }
+            });
+        let (workspace, root) = (self.workspace.clone(), path.clone());
+        let mock_label = match self.workspace.read(cx).mock_state(&root) {
+            MockState::Off => "Start mock server",
+            _ => "Stop mock server",
+        };
+        let mock = Button::new("config-overview-mock")
+            .solid_ring(cx)
+            .label(mock_label)
+            .on_click(move |_, _, cx| workspace.update(cx, |w, cx| w.toggle_mock(&root, cx)));
+        let (workspace, root) = (self.workspace.clone(), path.clone());
+        let export = Button::new("config-overview-export")
+            .solid_ring(cx)
+            .label("Export")
+            .dropdown_menu(move |mut menu, _, cx| {
+                let formats = [
+                    (
+                        "Postman",
+                        ExportFormat::Postman {
+                            keep_scripts: false,
+                        },
+                    ),
+                    (
+                        "Postman, keeping scripts as written",
+                        ExportFormat::Postman { keep_scripts: true },
+                    ),
+                    ("OpenAPI", ExportFormat::OpenApi),
+                    ("HTML documentation", ExportFormat::Html),
+                ];
+                for (label, format) in formats {
+                    let (workspace, root) = (workspace.clone(), root.clone());
+                    menu = menu.item(ui::menu_item(label, false, cx).on_click(
+                        move |_, window, cx| {
+                            crate::export::export_collection(&workspace, &root, format, window, cx)
+                        },
+                    ));
+                }
+                menu
+            });
+        let preview = if docs.trim().is_empty() {
+            div()
+                .id("config-overview-docs-empty")
+                .test_support()
+                .text_color(cx.theme().muted_foreground)
+                .child("No docs yet. Write some on the Docs tab.")
+                .into_any_element()
+        } else {
+            TextView::markdown("config-overview-markdown", docs)
+                .selectable(true)
+                .w_full()
+                .into_any_element()
+        };
+        v_flex()
+            .id("config-overview")
+            .test_support()
+            .w_full()
+            .gap(style::SPACE_2)
+            .child(ui::form_row(
+                "config-overview-row-name",
+                "Name",
+                value("config-overview-name", name),
+            ))
+            .child(ui::form_row(
+                "config-overview-row-path",
+                "Folder",
+                value("config-overview-path", path.display().to_string()),
+            ))
+            .child(ui::form_row(
+                "config-overview-row-requests",
+                "Requests",
+                value("config-overview-requests", requests),
+            ))
+            .child(h_flex().gap_2().child(run).child(mock).child(export))
+            .child(
+                v_flex()
+                    .gap_1()
+                    .w_full()
+                    .child(vars_heading("config-overview-docs-heading", "Docs", cx))
+                    .child(
+                        div()
+                            .id("config-overview-docs")
+                            .test_support()
+                            .w_full()
+                            .child(preview),
+                    ),
+            )
+            .into_any_element()
+    }
+
     // Each section sits in a wrapper whose id scopes the ids of its controls; Vars heads its
     // table Pre-request and adds the Post-response block under it.
     fn section_body(&self, cx: &App) -> AnyElement {
+        if self.section == ConfigSection::Overview {
+            return self.overview(cx);
+        }
         let (id, view): (&'static str, AnyView) = match self.section {
+            // Drawn by `overview` above.
+            ConfigSection::Overview => ("config-docs", self.docs.clone().into()),
             ConfigSection::Headers => ("config-headers", self.headers.clone().into()),
             ConfigSection::Auth => ("config-auth", self.auth.clone().into()),
             ConfigSection::Vars => ("config-vars", self.vars.clone().into()),
