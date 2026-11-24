@@ -18,7 +18,7 @@ fn section(cx: &mut TestAppContext, certs: Vec<ClientCertificate>) -> (AnyWindow
     let mut network = CollectionNetwork::default();
     network.certificates = certs;
     cx.update_window(win, |_, w, cx| {
-        s.update(cx, |s, cx| s.load(&network, false, w, cx))
+        s.update(cx, |s, cx| s.load(&network, w, cx))
     })
     .unwrap();
     frame(cx, win);
@@ -67,7 +67,7 @@ fn a_draft_row_survives_a_load_and_its_removal_sends_nothing(cx: &mut TestAppCon
     let mut network = CollectionNetwork::default();
     network.certificates = vec![loaded];
     cx.update_window(win, |_, w, cx| {
-        s.update(cx, |s, cx| s.load(&network, false, w, cx))
+        s.update(cx, |s, cx| s.load(&network, w, cx))
     })
     .unwrap();
     frame(cx, win);
@@ -363,7 +363,7 @@ fn a_resolved_path_inside_a_symlinked_collection_shows_no_notice(cx: &mut TestAp
     let mut network = CollectionNetwork::default();
     network.certificates = vec![ClientCertificate::pem("a.test", cert.to_string_lossy(), "")];
     cx.update_window(win, |_, w, cx| {
-        s.update(cx, |s, cx| s.load(&network, false, w, cx))
+        s.update(cx, |s, cx| s.load(&network, w, cx))
     })
     .unwrap();
     frame(cx, win);
@@ -399,7 +399,7 @@ fn a_missing_certificate_falls_back_to_the_plain_comparison(cx: &mut TestAppCont
         .map(|p| ClientCertificate::pem("a.test", p.to_string_lossy(), ""))
         .collect();
     cx.update_window(win, |_, w, cx| {
-        s.update(cx, |s, cx| s.load(&network, false, w, cx))
+        s.update(cx, |s, cx| s.load(&network, w, cx))
     })
     .unwrap();
     frame(cx, win);
@@ -430,7 +430,7 @@ fn the_outside_check_runs_once_per_path_not_per_render(cx: &mut TestAppContext) 
     let mut network = CollectionNetwork::default();
     network.certificates = vec![ClientCertificate::pem("a.test", cert.to_string_lossy(), "")];
     cx.update_window(win, |_, w, cx| {
-        s.update(cx, |s, cx| s.load(&network, false, w, cx))
+        s.update(cx, |s, cx| s.load(&network, w, cx))
     })
     .unwrap();
     frame(cx, win);
