@@ -1,6 +1,6 @@
 //! The response body view: a read-only highlighted editor for small bodies, a virtualized
 //! list of plain rows for large ones and for a binary body's Hex or Base64 view, a preview
-//! for images, and a bar with the mode toggles, the detected format, a JSONPath or XPath
+//! for images, and an overlay in the body's corner with the format menu, a JSONPath or XPath
 //! filter, copy and save.
 
 use crate::ui::SolidRing as _;
@@ -33,7 +33,7 @@ use gpui_kit::{
     Anchor, AnyElement, App, Bounds, ClickEvent, ClipboardItem, DevicePixels, Entity, EventEmitter,
     FocusHandle, Focusable, Font, FontFeatures, HighlightStyle, Hsla, Image, ImageFormat,
     ListHorizontalSizingBehavior, MouseButton, MouseDownEvent, MouseMoveEvent, ObjectFit, Pixels,
-    Point, Rems, Result, ScrollStrategy, SharedString, StyledText, Subscription, Task,
+    Point, Rems, Result, ScrollStrategy, SharedString, Size, StyledText, Subscription, Task,
     TestSupportExt, UniformListScrollHandle, WeakEntity, Window, canvas, div, img, point, px, size,
     uniform_list,
 };
@@ -272,6 +272,9 @@ pub struct BodyView {
     lines_scroll: UniformListScrollHandle,
     shown: Shown,
     kind: Option<BodyKind>,
+    // The kind the body was detected as, and the one View as chose instead, if any.
+    detected: Option<BodyKind>,
+    kind_override: Option<BodyKind>,
     // The shown image's bytes, built once per body so gpui's image cache key stays put.
     image: Option<Arc<Image>>,
     mode: BodyMode,
@@ -391,6 +394,8 @@ pub struct BodyView {
     assert_offered: bool,
     // The rows-mode row the pointer last rested on, which the value-actions button follows.
     hovered_row: Option<usize>,
+    // The corner overlay's size as last painted, so the value-actions button steps left of it.
+    actions_size: Rc<Cell<Option<Size<Pixels>>>>,
     // The row the keyboard last moved to, marked in the rows list; None until a key moves it.
     current_row: Option<usize>,
     // Whether the value-actions menu is open; the hovered row stays put while it is.
@@ -542,6 +547,8 @@ impl BodyView {
             lines_scroll: UniformListScrollHandle::new(),
             shown: Shown::Empty,
             kind: None,
+            detected: None,
+            kind_override: None,
             image: None,
             mode: BodyMode::Pretty,
             binary_mode: BinaryMode::Hex,
@@ -613,6 +620,7 @@ impl BodyView {
             node_handed_focus: Rc::default(),
             assert_offered: false,
             hovered_row: None,
+            actions_size: Rc::default(),
             current_row: None,
             value_menu_open: Rc::default(),
             _editor_changes: editor_changes,
@@ -866,6 +874,7 @@ impl BodyView {
             self.editing = false;
             self.mask = Arc::default();
             self.json_cache = None;
+            self.kind_override = None;
         }
         self.result = result;
         self.kind = None;
@@ -953,7 +962,7 @@ impl BodyView {
         self.chunk_width
     }
 
-    // Whether the bar offers the Wrap toggle: text in the editor or in long-body rows.
+    // Whether the format menu offers Pretty, Raw and Wrap: text in the editor or in long-body rows.
     fn wrap_offered(&self) -> bool {
         matches!(self.shown, Shown::Editor | Shown::Lines(_))
     }
@@ -1727,20 +1736,117 @@ impl BodyView {
     /// The detected format of the shown body: "JSON", "HTML", "XML", "Text",
     /// "Binary" or an image format; `None` with no body.
     pub fn format_label(&self) -> Option<&'static str> {
-        match self.kind? {
-            BodyKind::Empty => None,
-            BodyKind::Json => Some("JSON"),
-            BodyKind::Html => Some("HTML"),
-            BodyKind::Xml => Some("XML"),
-            BodyKind::Text => Some("Text"),
-            BodyKind::Binary => Some("Binary"),
-            BodyKind::Image(image) => Some(image.label()),
+        kind_label(self.kind?)
+    }
+
+    /// The format chosen from View as, which a new response clears; `None` shows the detected one.
+    pub fn kind_override(&self) -> Option<BodyKind> {
+        self.kind_override
+    }
+
+    /// Shows the body as `kind`, or as detected for `None` or the detected kind itself. With
+    /// scratch edits it first asks, and switches only on Discard.
+    pub fn set_kind_override(
+        &mut self,
+        kind: Option<BodyKind>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let kind = kind.filter(|k| Some(*k) != self.detected);
+        if kind == self.kind_override || self.asking {
+            return;
         }
+        self.discarding_edits(window, cx, move |view, window, cx| {
+            view.kind_override = kind;
+            view.json_cache = None;
+            view.refresh(window, cx);
+            cx.notify();
+        });
+    }
+
+    // The format menu, labelled with the shown format: Pretty, Raw and Wrap for text, then the
+    // formats the body can be viewed as. `None` with no body.
+    fn format_menu(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let label = self.format_label()?;
+        let view = cx.entity().downgrade();
+        let text = self.wrap_offered();
+        let (mode, wrap, kind, detected) = (self.mode, self.wrap, self.kind, self.detected);
+        let button = Button::new("body-format-button")
+            .solid_ring(cx)
+            .ghost()
+            .compact()
+            .label(label)
+            .dropdown_caret(true)
+            .accessibility_label(format!("Format: {label}"))
+            .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, _, _| {
+                if text {
+                    menu = menu
+                        .item(format_item(
+                            "Pretty",
+                            mode == BodyMode::Pretty,
+                            &view,
+                            |v, w, cx| v.set_mode(BodyMode::Pretty, w, cx),
+                        ))
+                        .item(format_item(
+                            "Raw",
+                            mode == BodyMode::Raw,
+                            &view,
+                            |v, w, cx| v.set_mode(BodyMode::Raw, w, cx),
+                        ))
+                        .separator()
+                        .item(format_item("Wrap", wrap, &view, |v, w, cx| {
+                            v.set_wrap(!v.wrap, w, cx)
+                        }))
+                        .separator();
+                }
+                // An image can always go back to its preview; Hex is the bytes of any body.
+                let image = detected.filter(|k| matches!(k, BodyKind::Image(_)));
+                let kinds = [
+                    BodyKind::Json,
+                    BodyKind::Xml,
+                    BodyKind::Html,
+                    BodyKind::Text,
+                    BodyKind::Binary,
+                ];
+                menu = menu.label("View as");
+                for k in image.into_iter().chain(kinds) {
+                    let name = match k {
+                        BodyKind::Binary => "Hex",
+                        _ => kind_label(k).unwrap_or_default(),
+                    };
+                    menu = menu.item(format_item(
+                        name,
+                        kind == Some(k),
+                        &view,
+                        move |v, w, cx| v.set_kind_override(Some(k), w, cx),
+                    ));
+                }
+                menu
+            });
+        // A menu trigger's own tooltip does not show, so a wrapper carries it.
+        let tip = self.format_tooltip();
+        Some(
+            div()
+                .id("body-format")
+                .test_support()
+                .flex_none()
+                .when_some(tip, |d, tip| {
+                    d.tooltip(ui::text_tooltip("body-format-tooltip", tip))
+                })
+                .child(button)
+                .into_any_element(),
+        )
     }
 
     /// The format label's tooltip, saying the format was detected from the body when the
     /// content type was missing or generic; `None` otherwise.
     pub fn format_tooltip(&self) -> Option<String> {
+        if self.kind_override.is_some() {
+            let detected = self.detected.and_then(kind_label)?;
+            return Some(format!(
+                "Chosen in View as; the body was detected as {detected}"
+            ));
+        }
         let response = self.result.as_ref()?.response.as_ref()?;
         crate::body_text::format_tooltip(response.headers(), self.kind?)
     }
@@ -1940,7 +2046,7 @@ impl BodyView {
 
     // The one ellipsis button, `top` px down its container's right edge. It never takes focus
     // or moves the caret; its menu lists what the press resolved.
-    fn value_button(&self, top: Pixels, cx: &mut Context<Self>) -> AnyElement {
+    fn value_button(&self, top: Pixels, rem: Pixels, cx: &mut Context<Self>) -> AnyElement {
         let view = cx.entity().downgrade();
         let (pending, held, open) = (
             Rc::clone(&self.node_pending),
@@ -1983,10 +2089,16 @@ impl BodyView {
                 let entries = pending.borrow().0.clone();
                 entry_items(menu, entries, &menu_view, cx)
             });
+        // A line under the corner overlay keeps its button just left of the overlay.
+        let beside =
+            (self.actions_size.get()).filter(|s| top < s.height + style::SPACE_2.to_pixels(rem));
         div()
             .absolute()
             .top(top)
             .right(style::SPACE_5)
+            .when_some(beside, |d, s| {
+                d.right(style::SCROLLBAR_GUTTER + s.width + style::SPACE_1.to_pixels(rem))
+            })
             // Captured so no focus change or caret move happens on the press.
             .capture_any_mouse_down(move |e, window, cx| {
                 if e.button == MouseButton::Left {
@@ -2524,6 +2636,7 @@ impl BodyView {
             self.task = None;
             self.shown = Shown::Empty;
             self.kind = None;
+            self.detected = None;
             self.image = None;
             self.applied_filter = None;
             self.filter_no_match = false;
@@ -2545,6 +2658,7 @@ impl BodyView {
         let (stop, guard) = self.job_signal(&self.job_cancel);
         let parses = Arc::clone(&self.filter_parses);
         let (mask, reveal) = (Arc::clone(&self.mask), self.reveal);
+        let forced = self.kind_override;
         // An invalid filter keeps the shown text only if it already belongs to this result.
         let keep = self.kind.is_some();
         let job = cx.background_spawn(async move {
@@ -2556,6 +2670,7 @@ impl BodyView {
                 let Some(r) = &result.response else {
                     return Some((
                         BodyKind::Empty,
+                        BodyKind::Empty,
                         Some(Prepared::Empty),
                         None,
                         Vec::new(),
@@ -2563,7 +2678,11 @@ impl BodyView {
                         None,
                     ));
                 };
-                let kind = body_kind(r.headers(), r.body());
+                // View as replaces the detected kind for an existing body only.
+                let detected = body_kind(r.headers(), r.body());
+                let kind = forced
+                    .filter(|_| detected != BodyKind::Empty)
+                    .unwrap_or(detected);
                 // Only a text body is redacted; the copy is made here, off the main thread, and
                 // once per result.
                 let text = match kind {
@@ -2630,14 +2749,21 @@ impl BodyView {
                         let problem = (kind == BodyKind::Json && !r.truncated())
                             .then(|| json_problem(r.text()))
                             .flatten();
-                        return Some((kind, Some(prepared), None, binary, None, problem));
+                        return Some((detected, kind, Some(prepared), None, binary, None, problem));
                     }
                 };
                 Some(match filtered {
-                    Ok((prepared, applied)) => {
-                        (kind, Some(prepared), None, Vec::new(), Some(applied), None)
-                    }
+                    Ok((prepared, applied)) => (
+                        detected,
+                        kind,
+                        Some(prepared),
+                        None,
+                        Vec::new(),
+                        Some(applied),
+                        None,
+                    ),
                     Err(e) => (
+                        detected,
                         kind,
                         (!keep).then(whole),
                         Some(e.to_string()),
@@ -2651,7 +2777,8 @@ impl BodyView {
         });
         self.task = Some(cx.spawn_in(window, async move |this, cx| {
             // A replaced job lands nothing; the newer one already bumped the generation.
-            let Some((kind, mut prepared, error, binary, applied, problem)) = job.await else {
+            let Some((detected, kind, mut prepared, error, binary, applied, problem)) = job.await
+            else {
                 return;
             };
             // A long body is cut for the pane it lands in, so it never shows at the fixed width
@@ -2670,6 +2797,7 @@ impl BodyView {
             let _ = this.update_in(cx, |this, window, cx| {
                 if this.generation == generation {
                     this.kind = Some(kind);
+                    this.detected = Some(detected);
                     let placeholder = this.filter_placeholder();
                     this.filter_input
                         .update(cx, |i, cx| i.set_placeholder(placeholder, window, cx));
@@ -3280,7 +3408,7 @@ impl BodyView {
                 offered
                     .then(|| self.rows_button_top(window.rem_size()))
                     .flatten()
-                    .map(|top| self.value_button(top, cx)),
+                    .map(|top| self.value_button(top, window.rem_size(), cx)),
             )
             // The rows keep a gutter on the right (and below, when they scroll sideways) for
             // the bars, which overlay it. A bar is drawn only while its axis overflows.
@@ -3429,6 +3557,34 @@ fn entry_items(
 // The button's height, for centring it on a line.
 const VALUE_BUTTON_HEIGHT: Rems = style::ui(24.);
 
+// A format menu entry, checked while `checked`, that runs `act` on the view.
+fn format_item(
+    label: &'static str,
+    checked: bool,
+    view: &WeakEntity<BodyView>,
+    act: impl Fn(&mut BodyView, &mut Window, &mut Context<BodyView>) + 'static,
+) -> PopupMenuItem {
+    let view = view.clone();
+    PopupMenuItem::new(label)
+        .checked(checked)
+        .on_click(move |_, window, cx| {
+            view.update(cx, |v, cx| act(v, window, cx)).ok();
+        })
+}
+
+// The name a body kind goes by in the format menu; `None` for no body.
+fn kind_label(kind: BodyKind) -> Option<&'static str> {
+    match kind {
+        BodyKind::Empty => None,
+        BodyKind::Json => Some("JSON"),
+        BodyKind::Html => Some("HTML"),
+        BodyKind::Xml => Some("XML"),
+        BodyKind::Text => Some("Text"),
+        BodyKind::Binary => Some("Binary"),
+        BodyKind::Image(image) => Some(image.label()),
+    }
+}
+
 /// The font features of code and body text: contextual alternates and standard ligatures off,
 /// so `-->` or `<=>` shows the characters typed rather than an arrow.
 pub fn code_font_features() -> FontFeatures {
@@ -3438,29 +3594,9 @@ pub fn code_font_features() -> FontFeatures {
 impl Render for BodyView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.sync_chunks(window, cx);
-        // Each pair of modes is one segmented track; a choice updates this view through a
-        // weak handle, since the segment callbacks are plain closures.
+        // The binary and image pairs are segmented tracks; a choice updates this view through
+        // a weak handle, since the segment callbacks are plain closures.
         let view = cx.entity().downgrade();
-        let edit_toggle = {
-            let view = view.clone();
-            ui::segmented(
-                "body-edit-mode",
-                ["View", "Edit"],
-                usize::from(self.edit_on()),
-                move |ix, window, cx| {
-                    view.update(cx, |this, cx| this.set_editing(*ix == 1, window, cx))
-                        .ok();
-                },
-            )
-            .ids(["body-view", "body-edit"])
-            .tooltips([
-                ("body-view-tooltip", "Show the response as received"),
-                (
-                    "body-edit-tooltip",
-                    "Edit a copy; the response stays as received",
-                ),
-            ])
-        };
         let binary_toggle = {
             let view = view.clone();
             ui::segmented(
@@ -3496,24 +3632,38 @@ impl Render for BodyView {
                 ),
             ])
         };
-        let toggle = ui::segmented(
-            "body-text-mode",
-            ["Pretty", "Raw"],
-            usize::from(self.mode == BodyMode::Raw),
-            move |ix, window, cx| {
-                let mode = [BodyMode::Pretty, BodyMode::Raw][*ix];
-                view.update(cx, |this, cx| this.set_mode(mode, window, cx))
-                    .ok();
-            },
-        )
-        .ids(["body-pretty", "body-raw"]);
-        // A pane narrower than the bar wraps it onto more lines, still right-aligned.
-        let mut bar = h_flex()
-            .w_full()
-            .flex_wrap()
-            .justify_end()
-            .gap(style::SPACE_2);
         let filterable = matches!(self.kind, Some(BodyKind::Json | BodyKind::Xml));
+        // The actions float in the body's top-right corner, clear of its scrollbar, instead of
+        // taking a row above it. The overlay is opaque, so it covers only line ends.
+        let mut actions = h_flex()
+            .id("body-actions")
+            .test_support()
+            .absolute()
+            .top(style::SPACE_1)
+            .right(style::SCROLLBAR_GUTTER)
+            .items_center()
+            .gap(style::SPACE_1)
+            .p(style::SPACE_1)
+            .rounded(cx.theme().radius)
+            .border_1()
+            .border_color(cx.theme().border)
+            .bg(cx.theme().background)
+            .shadow_sm()
+            .occlude()
+            .children(self.format_menu(cx));
+        let size = Rc::clone(&self.actions_size);
+        actions = actions.child(
+            canvas(
+                move |bounds, window, _| {
+                    if size.replace(Some(bounds.size)) != Some(bounds.size) {
+                        window.refresh();
+                    }
+                },
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .size_full(),
+        );
         // One eye for the whole body, when redaction hid something in it.
         if self.maskable() {
             let on = self.reveal;
@@ -3525,11 +3675,9 @@ impl Render for BodyView {
             // One button across the flip, so a keyboard press keeps focus on it.
             let eye =
                 ui::swap_icon_button("body-eye", face, ui::glyph("body-eye", icon), words, cx);
-            bar = bar.child(
-                eye.on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
-                    this.set_reveal(!on, window, cx)
-                })),
-            );
+            actions = actions.child(eye.on_click(cx.listener(
+                move |this, _: &ClickEvent, window, cx| this.set_reveal(!on, window, cx),
+            )));
         } else if self.scrubbed && self.is_text() {
             // A kept body lost its secrets when saved, so the eye stays masked and says why.
             let eye = ui::swap_icon_button(
@@ -3539,60 +3687,64 @@ impl Render for BodyView {
                 SCRUBBED_TIP,
                 cx,
             );
-            bar = bar.child(ui::LockButton::lock(eye, true, cx));
+            actions = actions.child(ui::LockButton::lock(eye, true, cx));
         }
         // The filter only ever applies to JSON and XML, so another body stays whole and editable.
         let filtered = filterable && self.filter_expression(cx).is_some();
         // Only the editor can take edits; the long-body rows and filtered matches stay
         // view-only, and an open edit hides the filter.
         if filterable && !self.edit_on() {
-            bar = bar.child(
+            actions = actions.child(
                 div().id("body-filter").test_support().child(
-                    Button::new("body-filter-button")
-                        .solid_ring(cx)
-                        .label("Filter")
-                        .toggle(self.filter_open, cx)
-                        .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
-                            this.toggle_filter(window, cx)
-                        })),
+                    ui::icon_button(
+                        "body-filter-button",
+                        IconName::Funnel,
+                        "Filter with JSONPath or XPath",
+                        None,
+                        cx,
+                    )
+                    .toggle(self.filter_open, cx)
+                    .on_click(cx.listener(
+                        |this, _: &ClickEvent, window, cx| this.toggle_filter(window, cx),
+                    )),
                 ),
             );
         }
         if self.editable && self.shown == Shown::Editor && !filtered && !self.masked() {
-            bar = bar.child(edit_toggle);
-        }
-        // A binary body swaps Pretty and Raw for Hex and Base64, an image for Fit and 100%.
-        match self.shown {
-            Shown::Binary(_) => bar = bar.child(binary_toggle),
-            Shown::Image(_) => bar = bar.child(scale_toggle),
-            _ => bar = bar.child(toggle),
-        }
-        if self.wrap_offered() {
-            bar = bar.child(
-                ui::checkbox("body-wrap-toggle", self.wrap)
-                    .label("Wrap")
-                    .tooltip("Wrap long lines")
-                    .on_click(
-                        cx.listener(|this, on: &bool, window, cx| this.set_wrap(*on, window, cx)),
-                    ),
-            );
-        }
-        if let Some(label) = self.format_label() {
-            let tip = self.format_tooltip();
-            bar = bar.child(
+            let on = self.edit_on();
+            let tip = if on {
+                "Back to the response as received"
+            } else {
+                "Edit a copy; the response stays as received"
+            };
+            // The tooltip sits on a wrapper, as the view's tests and the pilot find it there.
+            let button = Button::new("body-edit-button")
+                .solid_ring(cx)
+                .ghost()
+                .compact()
+                .aspect_ratio(1.)
+                .icon(IconName::Pencil)
+                .accessibility_label(tip)
+                .toggle(on, cx)
+                .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
+                    this.set_editing(!on, window, cx)
+                }));
+            actions = actions.child(
                 div()
-                    .id("body-format")
+                    .id("body-edit")
                     .test_support()
-                    .text_size(style::TEXT_SMALL)
-                    .text_color(cx.theme().muted_foreground)
-                    .when_some(tip, |d, tip| {
-                        d.tooltip(ui::text_tooltip("body-format-tooltip", tip))
-                    })
-                    .child(label),
+                    .tooltip(ui::text_tooltip("body-edit-tooltip", tip))
+                    .child(button),
             );
+        }
+        // A binary body keeps its Hex and Base64 pair, an image its Fit and 100%.
+        match self.shown {
+            Shown::Binary(_) => actions = actions.child(binary_toggle),
+            Shown::Image(_) => actions = actions.child(scale_toggle),
+            _ => {}
         }
         if !self.compact && self.copy_offered() {
-            bar = bar.child(
+            actions = actions.child(
                 div()
                     .id("body-copy")
                     .test_support()
@@ -3615,23 +3767,27 @@ impl Render for BodyView {
         }
         if !self.compact && self.has_body() {
             let lock = self.schema_test_lock();
-            let button = Button::new("body-schema-test-button")
-                .solid_ring(cx)
-                .ghost()
-                .label("Schema test")
-                .tooltip(self.schema_test_tooltip());
-            bar = bar.child(
+            actions = actions.child(
                 div()
                     .id("body-schema-test")
                     .test_support()
                     .on_click(
                         cx.listener(|this, _: &ClickEvent, _, cx| this.request_schema_test(cx)),
                     )
-                    .child(button.lock(lock.is_some(), cx)),
+                    .child(
+                        ui::icon_button(
+                            "body-schema-test-button",
+                            IconName::FileCheck,
+                            self.schema_test_tooltip(),
+                            None,
+                            cx,
+                        )
+                        .lock(lock.is_some(), cx),
+                    ),
             );
         }
         if !self.compact && self.has_body() {
-            bar = bar.child(
+            actions = actions.child(
                 div()
                     .id("body-save")
                     .test_support()
@@ -3652,13 +3808,12 @@ impl Render for BodyView {
             // A cut body would open as a broken file, so it is offered but disabled.
             let truncated = self.truncated();
             let page = self.browser_page().is_some();
-            let mut open = Button::new("body-open")
-                .solid_ring(cx)
-                .label(if page {
-                    "Open in browser"
-                } else {
-                    "Open with system app"
-                })
+            let name = if page {
+                "Open in browser"
+            } else {
+                "Open with system app"
+            };
+            let mut open = ui::icon_button("body-open", IconName::ExternalLink, name, None, cx)
                 .lock(truncated, cx)
                 .on_click(
                     cx.listener(|this, _: &ClickEvent, window, cx| this.open_external(window, cx)),
@@ -3668,8 +3823,16 @@ impl Render for BodyView {
             } else if page {
                 open = open.tooltip(OPEN_PAGE_TIP);
             }
-            bar = bar.child(open);
+            actions = actions.child(open);
         }
+        // No actions while there is no body or it is still loading.
+        let actions = (self.shown != Shown::Empty
+            && self.kind.is_some_and(|k| k != BodyKind::Empty))
+        .then_some(actions);
+        if actions.is_none() {
+            self.actions_size.set(None);
+        }
+
         // The field lets an idle Escape propagate, so the bar's wrapper closes it.
         let find_bar = self.find_open.then(|| {
             h_flex()
@@ -4006,7 +4169,7 @@ impl Render for BodyView {
                     self.node_offered()
                         .then(|| self.editor_button_top(window.rem_size(), cx))
                         .flatten()
-                        .map(|top| self.value_button(top, cx)),
+                        .map(|top| self.value_button(top, window.rem_size(), cx)),
                 )
                 .into_any_element(),
             Shown::Lines(_) => self.rows_list(true, window, cx),
@@ -4083,13 +4246,22 @@ impl Render for BodyView {
             .on_action(|_: &ZoomIn, _, cx| zoom::apply_step(Response, ZoomStep::In, cx))
             .on_action(|_: &ZoomOut, _, cx| zoom::apply_step(Response, ZoomStep::Out, cx))
             .on_action(|_: &ResetZoom, _, cx| zoom::apply_step(Response, ZoomStep::Reset, cx))
-            .child(bar)
             .children(banner)
             .children(json_note)
             .children(filter_bar)
             .children(filter_chip)
             .children(find_bar)
-            .child(content)
+            .child(
+                div()
+                    .relative()
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_h_0()
+                    .w_full()
+                    .child(content)
+                    .children(actions),
+            )
             .child(
                 // Painted before the shell's catch-all listener, so a ctrl+scroll over the
                 // body sizes the body rather than the app.

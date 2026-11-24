@@ -62,14 +62,14 @@ fn the_body_is_read_only_until_edit_is_chosen(cx: &mut TestAppContext) {
     let ed = view.read_with(cx, |v, _| v.editor().clone());
     let shown = value(cx, &ed);
     assert!(!view.read_with(cx, |v, _| v.editing()));
-    assert!(present(cx, win, "body-view") && present(cx, win, "body-edit"));
+    assert!(present(cx, win, "body-edit"));
     type_into(cx, win, &ed, "x");
     assert_eq!(value(cx, &ed), shown, "View ignores typing");
     click(cx, win, "body-edit");
     assert!(view.read_with(cx, |v, _| v.editing()));
     type_into(cx, win, &ed, "x");
     assert!(value(cx, &ed).contains('x'), "Edit takes typing");
-    click(cx, win, "body-view");
+    click(cx, win, "body-edit");
     assert!(!view.read_with(cx, |v, _| v.editing()));
 }
 
@@ -148,21 +148,21 @@ fn switching_pretty_and_raw_asks_before_dropping_edits(cx: &mut TestAppContext) 
     let (win, view) = host(cx);
     show(cx, win, &view, &s);
     let ed = view.read_with(cx, |v, _| v.editor().clone());
-    click(cx, win, "body-raw");
+    choose_format(cx, win, "Raw");
     assert!(!confirm_open(cx), "no edits, no question");
     assert_eq!(view.read_with(cx, |v, _| v.mode()), BodyMode::Raw);
-    click(cx, win, "body-pretty");
+    choose_format(cx, win, "Pretty");
     click(cx, win, "body-edit");
     type_into(cx, win, &ed, "x");
     let edited = value(cx, &ed);
-    click(cx, win, "body-pretty");
+    choose_format(cx, win, "Pretty");
     assert!(!confirm_open(cx), "the mode already shown never asks");
-    click(cx, win, "body-raw");
+    choose_format(cx, win, "Raw");
     assert!(confirm_open(cx));
     answer_confirm(cx, "confirm-cancel");
     assert_eq!(view.read_with(cx, |v, _| v.mode()), BodyMode::Pretty);
     assert_eq!(value(cx, &ed), edited, "Cancel keeps the edits");
-    click(cx, win, "body-raw");
+    choose_format(cx, win, "Raw");
     answer_confirm(cx, "confirm-discard");
     assert_eq!(view.read_with(cx, |v, _| v.mode()), BodyMode::Raw);
     assert_eq!(value(cx, &ed), "{\"a\":1}");

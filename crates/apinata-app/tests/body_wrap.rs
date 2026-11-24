@@ -49,24 +49,14 @@ fn long_json(len: usize) -> String {
     format!("{{\"k\":\"{}\"}}", "x".repeat(len))
 }
 
-fn present(cx: &mut TestAppContext, win: AnyWindowHandle, id: &'static str) -> bool {
-    cx.update_window(win, |_, w, _| w.try_find(id).is_some())
-        .unwrap()
-}
-
 #[gpui_kit::test]
 fn the_editor_toggle_wraps_and_unwraps(cx: &mut TestAppContext) {
     let (win, view) = host(cx, long_json(3000), "application/json");
     assert_eq!(view.read_with(cx, |v, _| v.shown()), Shown::Editor);
     assert!(view.read_with(cx, |v, _| v.wrap()));
-    assert!(present(cx, win, "body-wrap-toggle"));
-    cx.update_window(win, |_, w, cx| w.click("body-wrap-toggle", cx))
-        .unwrap();
-    frame(cx, win);
+    choose_format(cx, win, "Wrap");
     assert!(!view.read_with(cx, |v, _| v.wrap()));
-    cx.update_window(win, |_, w, cx| w.click("body-wrap-toggle", cx))
-        .unwrap();
-    frame(cx, win);
+    choose_format(cx, win, "Wrap");
     assert!(view.read_with(cx, |v, _| v.wrap()));
 }
 
@@ -107,7 +97,7 @@ fn binary_and_empty_bodies_offer_no_toggle(cx: &mut TestAppContext) {
         view.read_with(cx, |v, _| v.shown()),
         Shown::Binary(_)
     ));
-    assert!(!present(cx, win, "body-wrap-toggle"));
+    assert!(!format_entries(cx, win).iter().any(|l| l == "Wrap"));
 }
 
 fn big_single_line() -> String {

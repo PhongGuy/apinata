@@ -194,7 +194,7 @@ fn the_example_pane_shows_only_what_an_example_saves(cx: &mut TestAppContext) {
     })
     .expect("an example tab");
     frame(cx, s.win);
-    for id in ["response-body", "response-size", "body-pretty"] {
+    for id in ["response-body", "response-size", "body-format"] {
         assert!(present(cx, s.win, id), "{id}");
     }
     assert!(present(cx, s.win, ("response-tab", 0usize)), "Body");
@@ -210,7 +210,6 @@ fn the_example_pane_shows_only_what_an_example_saves(cx: &mut TestAppContext) {
         "no elapsed time is saved"
     );
     assert!(!present(cx, s.win, "body-edit"), "the body is read-only");
-    assert!(!present(cx, s.win, "body-view"));
 }
 
 const OTHER: &str =

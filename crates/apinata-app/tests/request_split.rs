@@ -208,31 +208,19 @@ fn the_body_toolbar_fits_its_pane_side_by_side_at_200_percent(cx: &mut TestAppCo
     let (s, _tab, _col, _server) = sent(cx);
     side_by_side_at_200(cx, &s);
     cx.update_window(s.win, |_, w, _| {
-        all_within(
-            w,
-            "response",
-            &[
-                "body-filter",
-                "body-view",
-                "body-edit",
-                "body-pretty",
-                "body-raw",
-                "body-format",
-            ],
-        );
+        all_within(w, "response", &["body-filter", "body-edit", "body-format"]);
     })
     .unwrap();
 }
 
 // Side by side at 200% with the response squeezed under its header (its floor pinned to the
-// panel minimum, since the measured floor keeps the toolbar whole) the Pretty and Raw pair is
-// wider than the pane and overhangs the request; the pane must clip the overhang in paint
-// and in hit testing, so a click over the request never reaches Pretty.
+// panel minimum, since the measured floor keeps the actions whole) the body's actions are
+// wider than the pane and overhang the request; the pane must clip the overhang in paint
+// and in hit testing, so a click over the request never reaches the format menu.
 #[gpui_kit::test]
 fn the_response_is_clipped_to_its_panel_at_the_minimum_split_at_200_percent(
     cx: &mut TestAppContext,
 ) {
-    use apinata_app::body_view::BodyMode;
     use gpui_kit::test::TestWindowExt as _;
     let (s, tab, _col, _server) = sent(cx);
     side_by_side_at_200(cx, &s);
@@ -253,31 +241,32 @@ fn the_response_is_clipped_to_its_panel_at_the_minimum_split_at_200_percent(
     })
     .unwrap();
     frame(cx, s.win);
-    cx.update_window(s.win, |_, w, cx| w.click("body-raw", cx))
-        .unwrap();
-    frame(cx, s.win);
-    let body = ed.read_with(cx, |e, cx| e.response().read(cx).body().clone());
-    assert_eq!(body.read_with(cx, |b, _| b.mode()), BodyMode::Raw);
-    let (column, pretty) = cx
+    let (column, format) = cx
         .update_window(s.win, |_, w, _| {
-            (w.find("request-column").bounds(), w.find("body-pretty"))
+            (
+                w.find("request-column").bounds(),
+                w.find("body-format-button"),
+            )
         })
         .unwrap();
-    let b = pretty.bounds();
+    let b = format.bounds();
     assert!(
         b.left() < column.right(),
-        "the case needs Pretty over the request {column:?}: {b:?}"
+        "the case needs the format menu over the request {column:?}: {b:?}"
     );
-    assert!(pretty.visible(), "Pretty is clipped out of reach: {b:?}");
-    // Click the part of Pretty that lies over the request column.
-    let offset = gpui_kit::point((column.right() - b.left()) / 2., b.size.height / 2.);
-    cx.update_window(s.win, |_, w, cx| w.click_at("body-pretty", offset, cx))
-        .unwrap();
+    assert!(
+        !format.visible(),
+        "the overhang is painted over the request: {b:?}"
+    );
+    // Click the part of the format menu that lies over the request column; the menu is
+    // clipped, so the click goes by position, not by its id.
+    let at = gpui_kit::point((b.left() + column.right()) / 2., b.center().y);
+    gpui_kit::VisualTestContext::from_window(s.win, cx)
+        .simulate_click(at, gpui_kit::Modifiers::none());
     frame(cx, s.win);
-    assert_eq!(
-        body.read_with(cx, |b, _| b.mode()),
-        BodyMode::Raw,
-        "a click over the request {column:?} reached Pretty at {b:?}"
+    assert!(
+        !present(cx, s.win, "popup-menu"),
+        "a click over the request {column:?} reached the format menu at {b:?}"
     );
 }
 
