@@ -9,7 +9,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
-use hyper_util::client::legacy::connect::HttpInfo;
 use reqwest::header::{CONNECTION, HeaderValue, WWW_AUTHENTICATE};
 use reqwest::{Client, StatusCode};
 use tower::{Layer, Service};
@@ -20,6 +19,7 @@ use super::{
     ExecError, Executor, HOP_BODY_LIMIT, Hop, HopBuffer, HttpVersion, NtlmCause, classify, lossy,
     redact_url, sent_headers,
 };
+use crate::connection::local_addr;
 use crate::cookies::SetCookie;
 use crate::network::{ClientKey, ResolvedProxy};
 use crate::ntlm;
@@ -182,6 +182,12 @@ impl Sent {
             cookies: Vec::new(),
             version: HttpVersion::from_wire(res.version()),
             remote_addr: res.remote_addr(),
+            local_addr: local_addr(res),
+            tls: crate::connection::tls_details(res),
+            response_header_size: crate::connection::response_header_size(
+                res.status(),
+                res.headers(),
+            ),
             via_proxy,
             override_from: None,
         }
@@ -218,10 +224,6 @@ fn www_authenticate(res: &reqwest::Response) -> Vec<String> {
         .filter_map(|v| v.to_str().ok())
         .map(str::to_owned)
         .collect()
-}
-
-fn local_addr(res: &reqwest::Response) -> Option<std::net::SocketAddr> {
-    res.extensions().get::<HttpInfo>().map(HttpInfo::local_addr)
 }
 
 impl Executor {

@@ -1549,7 +1549,7 @@ pub struct RunArgs {
     /// Run the collection this many times; with a data file, at most this many rows.
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(u32).range(1..))]
     pub iterations: Option<u32>,
-    /// Print each network exchange to stderr.
+    /// Print each network exchange to stderr, with its connection details.
     #[arg(long)]
     pub verbose: bool,
     /// Print each response (status line, headers, blank line, body) to stdout and the verdicts

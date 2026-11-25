@@ -326,6 +326,7 @@ dependencies = [
  "socket2",
  "tempfile",
  "tokio",
+ "tokio-rustls",
  "tokio-tungstenite",
  "tree-sitter-c-sharp",
  "tree-sitter-graphql",
@@ -447,6 +448,7 @@ dependencies = [
  "windows-native-keyring-store",
  "windows-sys 0.61.2",
  "wiremock",
+ "x509-cert",
  "yaml_serde",
  "zbus-secret-service-keyring-store",
 ]

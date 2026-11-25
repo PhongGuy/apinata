@@ -791,6 +791,8 @@ impl Executor {
         let mut builder = Client::builder()
             .redirect(Policy::none())
             .tls_danger_accept_invalid_certs(self.insecure)
+            // Each hop reports its TLS version and the peer's certificate.
+            .tls_info(true)
             // Bodies are decoded in `wire_body`, since the stack's decoder drops the headers
             // that describe the wire; off, it also adds no Accept-Encoding of its own.
             .no_gzip()
@@ -1627,6 +1629,10 @@ impl Executor {
             let status = res.status();
             let version = HttpVersion::from_wire(res.version());
             let remote_addr = res.remote_addr();
+            let local_addr = crate::connection::local_addr(&res);
+            let tls = crate::connection::tls_details(&res);
+            let response_header_size =
+                crate::connection::response_header_size(status, res.headers());
             if version == Some(HttpVersion::Http2) {
                 strip_h2_connection_headers(&mut sent);
             }
@@ -1853,6 +1859,9 @@ impl Executor {
                 cookies: hop_cookies,
                 version,
                 remote_addr,
+                local_addr,
+                tls,
+                response_header_size,
                 via_proxy: proxy.is_some(),
                 override_from: None,
             });

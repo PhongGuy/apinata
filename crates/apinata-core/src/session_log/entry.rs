@@ -240,6 +240,7 @@ impl LoggedHop {
             + pairs_bytes(&self.response_headers)
             + self.pac.as_ref().map_or(0, String::capacity)
             + self.override_from.as_ref().map_or(0, String::capacity)
+            + self.tls.as_ref().map_or(0, crate::TlsDetails::owned_bytes)
     }
 
     fn rededact(&mut self, r: &Redactor) {
@@ -400,6 +401,9 @@ impl fmt::Debug for LoggedHop {
             .field("elapsed", &self.elapsed)
             .field("version", &self.version)
             .field("remote_addr", &self.remote_addr)
+            .field("local_addr", &self.local_addr)
+            .field("tls", &self.tls)
+            .field("response_header_size", &self.response_header_size)
             .field("via_proxy", &self.via_proxy)
             .finish()
     }
