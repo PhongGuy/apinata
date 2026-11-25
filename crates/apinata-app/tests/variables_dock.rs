@@ -270,3 +270,60 @@ fn the_open_variables_tab_is_saved_and_restored(cx: &mut TestAppContext) {
     assert_eq!(dock_tab(cx, &again), (true, DockTab::Variables));
     assert!(present(cx, again.win, "variables-overview"));
 }
+
+// The field may lose its caret while the palette has focus, so the caret seen when the
+// palette opened is the one the command reads.
+#[gpui_kit::test]
+fn the_command_uses_the_caret_from_before_the_palette_opened(cx: &mut TestAppContext) {
+    let col = collection("http://127.0.0.1:9/{{shared}}/{{x}}");
+    let s = app(cx, &col, Some("dev"));
+    let tab = s.ws.read_with(cx, |w, _| w.tabs().active().unwrap().id);
+    let editor = s.shell.read_with(cx, |sh, cx| {
+        sh.tab_area().read(cx).editor(tab).unwrap().clone()
+    });
+    let url = editor.read_with(cx, |e, _| e.url_input().clone());
+    let caret = "http://127.0.0.1:9/{{shared}}/{{".len();
+    cx.update_window(s.win, |_, w, cx| {
+        url.update(cx, |u, cx| {
+            u.focus(w, cx);
+            u.set_selected_range(caret..caret, cx);
+        });
+        apinata_app::var_tokens::remember_caret(w, cx);
+        url.update(cx, |u, cx| u.set_selected_range(0..0, cx));
+    })
+    .unwrap();
+    VisualTestContext::from_window(s.win, cx).dispatch_action(ShowVariableAtCaret);
+    cx.run_until_parked();
+    frame(cx, s.win);
+    let panel = s.shell.read_with(cx, |sh, cx| {
+        sh.dock().read(cx).variables().cloned().unwrap()
+    });
+    assert_eq!(
+        panel.read_with(cx, |p, _| p.focused().map(str::to_owned)),
+        Some("x".to_owned())
+    );
+}
+
+// A secret with no stored value is undefined, but its value belongs in the environment editor,
+// never in a plain field.
+#[gpui_kit::test]
+fn an_unstored_secret_opens_the_environments_instead_of_an_input(cx: &mut TestAppContext) {
+    let col = collection("http://127.0.0.1:9/{{key}}");
+    let s = started(cx, &col);
+    let select = Command::SelectEnvironment(Some("dev".into()));
+    s.ws.update(cx, |w, cx| w.send(&s.root, select, cx));
+    s.ws.update(cx, |w, cx| w.open_item(&s.root, ip("r.yml"), false, cx));
+    cx.run_until_parked();
+    show_tab(cx, &s);
+    assert_eq!(labels(cx, &s, "var-undefined-name"), ["key"]);
+    assert!(!present(cx, s.win, ("var-undefined-input", 0usize)));
+    cx.update_window(s.win, |_, w, cx| {
+        w.click(("var-undefined-open", 0usize), cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+    frame(cx, s.win);
+    let kind =
+        s.ws.read_with(cx, |w, _| w.tabs().active().map(|e| e.kind.clone()));
+    assert_eq!(kind, Some(apinata_app::tabs::TabKind::Environments));
+}

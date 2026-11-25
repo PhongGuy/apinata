@@ -1933,10 +1933,7 @@ impl Shell {
 
     // The Variables tab, focused on the placeholder at the caret of the focused field.
     fn show_variable_at_caret(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let name = crate::percent_codec::focused_field(window, cx).and_then(|field| {
-            let field = field.read(cx);
-            crate::var_tokens::name_at(&field.value(), field.cursor())
-        });
+        let name = crate::var_tokens::caret_name(window, cx);
         self.show_variables(name.as_deref(), window, cx);
     }
 

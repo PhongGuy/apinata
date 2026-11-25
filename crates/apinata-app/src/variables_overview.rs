@@ -132,6 +132,8 @@ pub struct VariablesOverview {
     built: Option<Built>,
     sections: Option<Vec<Section>>,
     undefined: Vec<String>,
+    // Undefined names that are secrets of the environment with no stored value yet.
+    unstored: BTreeSet<String>,
     masking: Option<Masking>,
     // Rows (by scope and name, so a changed list keeps them) whose masked value is shown.
     revealed: BTreeSet<(String, String)>,
@@ -170,6 +172,7 @@ impl VariablesOverview {
             built: None,
             sections: None,
             undefined: Vec::new(),
+            unstored: BTreeSet::new(),
             masking: None,
             revealed: BTreeSet::new(),
             winners: BTreeMap::new(),
@@ -322,6 +325,10 @@ impl VariablesOverview {
             .map(|n| n.to_string())
             .filter(|n| !self.winners.contains_key(n))
             .collect();
+        self.unstored = (self.undefined.iter())
+            .filter(|n| set.is_some_and(|s| s.is_unstored_secret(n)))
+            .cloned()
+            .collect();
         self.sync_fields(window, cx);
     }
 
@@ -359,7 +366,9 @@ impl VariablesOverview {
             })
             .collect();
         wanted.extend(
-            (self.undefined.iter()).map(|n| (FieldKey::Undefined(n.clone()), String::new())),
+            (self.undefined.iter())
+                .filter(|n| !self.unstored.contains(*n))
+                .map(|n| (FieldKey::Undefined(n.clone()), String::new())),
         );
         let keys: BTreeSet<FieldKey> = wanted.iter().map(|(k, _)| k.clone()).collect();
         self.fields.retain(|k, _| keys.contains(k));
@@ -653,8 +662,16 @@ impl VariablesOverview {
         (self.focused.as_deref() == Some(name)).then(|| cx.theme().accent)
     }
 
-    // An undefined name with an input that defines it.
-    fn undefined_row(&self, i: usize, name: &str, window: &Window, cx: &App) -> AnyElement {
+    // An undefined name with an input that defines it; a secret with no stored value gets a
+    // button to the environment editor instead, where secret values are kept.
+    fn undefined_row(
+        &self,
+        i: usize,
+        name: &str,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let secret = self.unstored.contains(name);
         let input = (self.fields.get(&FieldKey::Undefined(name.to_owned()))).map(|f| &f.input);
         h_flex()
             .id(("var-undefined-row", i))
@@ -685,9 +702,24 @@ impl VariablesOverview {
                     cx,
                 ))
             }))
+            .when(secret, |d| {
+                d.child(div().flex_1()).child(
+                    ui::icon_button(
+                        ("var-undefined-open", i),
+                        IconName::ExternalLink,
+                        "Set it in the environment editor",
+                        None,
+                        cx,
+                    )
+                    .on_click(cx.listener(|t, _, window, cx| {
+                        t.open_editor(VarScope::Environment, "", window, cx)
+                    })),
+                )
+            })
             .into_any_element()
     }
 }
+
 // The identity a reveal is remembered under: the layer and name of the row.
 fn reveal_key(row: &ScopedVariable) -> (String, String) {
     (format!("{:?}", row.scope()), row.name().to_owned())
