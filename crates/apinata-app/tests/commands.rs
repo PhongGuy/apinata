@@ -149,6 +149,7 @@ const IDS: &[&str] = &[
     "environment.export",
     "environment.export_all",
     "environment.variables_overview",
+    "environment.variable_at_caret",
     "environment.runtime_variables",
     "environment.manage_globals",
     "edit.percent_encode",
@@ -673,10 +674,7 @@ fn labels_spell_curl_and_the_ellipsis_one_way() {
 fn the_two_variables_commands_say_what_each_does() {
     let cmds = registry();
     let label = |id: &str| cmds.iter().find(|c| c.id == id).expect(id).label;
-    assert_eq!(
-        label("environment.variables_overview"),
-        "Show all variables…"
-    );
+    assert_eq!(label("environment.variables_overview"), "Show variables");
     assert_eq!(label("environment.runtime_variables"), "Runtime variables…");
 }
 

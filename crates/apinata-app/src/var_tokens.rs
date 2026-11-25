@@ -15,7 +15,8 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, App, Bounds, ContentMask, ElementId, Entity, Focusable, MouseMoveEvent, Pixels,
-    SharedString, StyleRefinement, TestSupportExt, Window, anchored, canvas, deferred, div, fill,
+    SharedString, StyleRefinement, TestSupportExt, WeakEntity, Window, anchored, canvas, deferred,
+    div, fill,
 };
 
 use crate::header_complete::Hint;
@@ -77,6 +78,61 @@ impl Token {
             lines,
         }
     }
+}
+
+/// The name of the placeholder the caret at byte `cursor` touches, braces included, else the
+/// partial name being typed after an open `{{`.
+pub fn name_at(text: &str, cursor: usize) -> Option<String> {
+    let whole = placeholders(text)
+        .into_iter()
+        .find(|(range, _)| range.start <= cursor && cursor <= range.end)
+        .map(|(_, name)| name.trim().to_owned());
+    whole
+        .or_else(|| {
+            let q = var_complete::query_at(text, cursor)?;
+            text.get(q.replace).map(str::to_owned)
+        })
+        .filter(|name| !name.is_empty())
+}
+
+// The focused field's text and caret when the palette opened; the field can lose its caret
+// while the palette holds focus.
+struct CaretMemo {
+    field: WeakEntity<InputState>,
+    text: SharedString,
+    cursor: usize,
+}
+
+impl gpui_kit::Global for CaretMemo {}
+
+/// Remembers the focused single-line field's caret, for a command the palette runs on it.
+pub fn remember_caret(window: &Window, cx: &mut App) {
+    if let Some(field) = crate::percent_codec::focused_field(window, cx) {
+        let (text, cursor) = (field.read(cx).value(), field.read(cx).cursor());
+        cx.set_global(CaretMemo {
+            field: field.downgrade(),
+            text,
+            cursor,
+        });
+    }
+}
+
+/// The placeholder name at the focused field's caret: the remembered caret when it was taken
+/// in this field over the same text, else the live one. The remembered caret is used once.
+pub fn caret_name(window: &Window, cx: &mut App) -> Option<String> {
+    let field = crate::percent_codec::focused_field(window, cx)?;
+    let memo = cx
+        .try_global::<CaretMemo>()
+        .filter(|m| m.field.upgrade().as_ref() == Some(&field) && m.text == field.read(cx).value());
+    let cursor = match memo {
+        Some(m) => m.cursor,
+        None => field.read(cx).cursor(),
+    };
+    // One palette opening, one use: a later run reads the live caret.
+    if cx.has_global::<CaretMemo>() {
+        cx.remove_global::<CaretMemo>();
+    }
+    name_at(&field.read(cx).value(), cursor)
 }
 
 /// Every placeholder in `text`, classified against `vars`.

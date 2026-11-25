@@ -1,5 +1,6 @@
-//! The bottom dock over the app's session log: a Console tab and a Network tab, each read
-//! through its own feed and cursor, polled only while the dock is open.
+//! The bottom dock: a Console tab and a Network tab over the app's session log, each read
+//! through its own feed and cursor and polled only while the dock is open, and a Variables tab
+//! over the active request.
 
 use crate::ui::SolidRing as _;
 use std::rc::Rc;
@@ -17,7 +18,7 @@ use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, App, EventEmitter, FocusHandle, Focusable, Role, Subscription, Task,
+    AnyElement, App, Entity, EventEmitter, FocusHandle, Focusable, Role, Subscription, Task,
     TestSupportExt, WeakEntity, Window, div, relative,
 };
 
@@ -27,29 +28,42 @@ use crate::har_export;
 use crate::list_keys::{self, ListDown, ListOpen, ListUp};
 use crate::log_feed::{self, Feed, SOURCE_FILTERS};
 use crate::response_pane;
+use crate::shell::OpenRuntimeVariables;
 use crate::tab_area::TabArea;
 use crate::timing_bar::{self, Phases};
+use crate::variables_overview::VariablesOverview;
 use crate::{style, ui};
 
 /// The most network rows the list draws, newest kept.
 pub const DOCK_NETWORK_ROWS: usize = 200;
 
-/// The dock's tabs.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// The dock's tabs, as the session saves the open one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum DockTab {
     /// Script console lines.
     Console,
     /// Network exchanges.
     Network,
+    /// The active request's variables.
+    Variables,
 }
 
 impl DockTab {
-    // The tab at strip position `ix`: Console first, then Network.
+    // The tab at strip position `ix`: Console, Network, then Variables.
     fn at(ix: usize) -> Self {
-        if ix == 0 {
-            DockTab::Console
-        } else {
-            DockTab::Network
+        match ix {
+            0 => DockTab::Console,
+            1 => DockTab::Network,
+            _ => DockTab::Variables,
+        }
+    }
+
+    fn index(self) -> usize {
+        match self {
+            DockTab::Console => 0,
+            DockTab::Network => 1,
+            DockTab::Variables => 2,
         }
     }
 }
@@ -71,8 +85,9 @@ pub struct ConsoleDock {
     focus: FocusHandle,
     // The network list's own Tab stop, where the arrows and Enter act.
     list_focus: FocusHandle,
-    // A focus marker under each dock tab, Console then Network.
-    tab_markers: [FocusHandle; 2],
+    // A focus marker under each dock tab, in strip order.
+    tab_markers: [FocusHandle; 3],
+    variables: Option<Entity<VariablesOverview>>,
     collapsed: bool,
     _subs: Vec<Subscription>,
 }
@@ -81,6 +96,11 @@ pub struct ConsoleDock {
 pub struct ExpandDock;
 
 impl EventEmitter<ExpandDock> for ConsoleDock {}
+
+/// The dock switched to another tab, so the shell can save it.
+pub struct DockTabChanged(pub DockTab);
+
+impl EventEmitter<DockTabChanged> for ConsoleDock {}
 
 impl ConsoleDock {
     /// How often an open dock reads the log.
@@ -111,7 +131,12 @@ impl ConsoleDock {
             polling: None,
             focus: cx.focus_handle(),
             list_focus: cx.focus_handle().tab_stop(true),
-            tab_markers: [ui::tab_marker_handle(cx), ui::tab_marker_handle(cx)],
+            tab_markers: [
+                ui::tab_marker_handle(cx),
+                ui::tab_marker_handle(cx),
+                ui::tab_marker_handle(cx),
+            ],
+            variables: None,
             collapsed: false,
             _subs: subs,
         }
@@ -197,8 +222,21 @@ impl ConsoleDock {
 
     /// Switches to `tab`.
     pub fn set_tab(&mut self, tab: DockTab, cx: &mut Context<Self>) {
-        self.tab = tab;
+        if self.tab != tab {
+            self.tab = tab;
+            cx.emit(DockTabChanged(tab));
+        }
         cx.notify();
+    }
+
+    /// The Variables tab's view, once the shell has given one.
+    pub fn variables(&self) -> Option<&Entity<VariablesOverview>> {
+        self.variables.as_ref()
+    }
+
+    /// Shows `view` as the Variables tab.
+    pub fn set_variables(&mut self, view: Entity<VariablesOverview>) {
+        self.variables = Some(view);
     }
 
     /// The dock tab holding keyboard focus, if any, as last drawn.
@@ -739,7 +777,7 @@ impl Render for ConsoleDock {
         let dock = cx.entity().downgrade();
         // The kit's tab list owns keyboard focus: Tab enters on the selected tab, the arrows
         // move focus, and Enter or Space chooses, as a click does.
-        let labels = ["Console", "Network"]
+        let labels = ["Console", "Network", "Variables"]
             .into_iter()
             .enumerate()
             .map(|(ix, label)| {
@@ -760,10 +798,7 @@ impl Render for ConsoleDock {
         // A collapsed dock opens on a chosen tab, whether a click or the keyboard chose it.
         let tabs = div().id("dock-tabs").test_support().child(
             ui::tab_strip("dock-tab-strip", cx)
-                .selected_index(match tab {
-                    DockTab::Console => 0,
-                    DockTab::Network => 1,
-                })
+                .selected_index(tab.index())
                 .children(labels)
                 .on_click(move |ix, _, cx| {
                     dock.update(cx, |d, cx| {
@@ -784,11 +819,19 @@ impl Render for ConsoleDock {
                 .solid_ring(cx)
                 .label("Clear")
                 .on_click(cx.listener(|d, _, _, cx| d.clear_network(cx))),
+            // Masked runtime values and the script overlay are edited in their own dialog.
+            DockTab::Variables => Button::new("var-overview-edit-runtime")
+                .solid_ring(cx)
+                .label(crate::commands::label("environment.runtime_variables"))
+                .on_click(|_, window, cx| {
+                    window.dispatch_action(Box::new(OpenRuntimeVariables), cx)
+                }),
         };
         let collapsed = self.collapsed;
         let body = (!collapsed).then(|| match tab {
             DockTab::Console => self.console_tab(cx),
             DockTab::Network => self.network_tab(window, cx),
+            DockTab::Variables => crate::variables_overview::dock_body(self.variables.as_ref()),
         });
         v_flex()
             .id("console-dock")

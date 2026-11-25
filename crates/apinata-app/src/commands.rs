@@ -41,7 +41,7 @@ use crate::shell::{
     ExportEnvironments, ImportCollection, ImportCurl, ImportEnvironment, JoinTeamServer,
     NewCollection, OpenCollection, OpenCookies, OpenDemoCollection, OpenGlobalEnvironments,
     OpenRuntimeVariables, OpenVariablesOverview, PullBranch, PushBranch, ShowChanges, ShowTeamSync,
-    SwitchBranch, TeamWorkspaces, ToggleMockServer,
+    ShowVariableAtCaret, SwitchBranch, TeamWorkspaces, ToggleMockServer,
 };
 use crate::sidebar::{
     CloneSelected, CloseSelectedDraft, CollapseAll, CopySelected, CutSelected, DeleteSelected,
@@ -1322,13 +1322,23 @@ pub fn registry() -> Vec<Command> {
         )),
         found_by(
             &["environment"],
-            asks(command(
+            command(
                 "environment.variables_overview",
-                "Show all variables…",
+                "Show variables",
                 Environment,
                 shell(OpenVariablesOverview),
                 &[],
-            )),
+            ),
+        ),
+        found_by(
+            &["environment", "caret", "placeholder"],
+            command(
+                "environment.variable_at_caret",
+                "Show variable at caret",
+                Environment,
+                shell(ShowVariableAtCaret),
+                &[],
+            ),
         ),
         found_by(
             &["environment"],

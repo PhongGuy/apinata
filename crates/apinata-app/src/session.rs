@@ -1,5 +1,6 @@
 //! The window and collection session, stored in `session.json`.
 
+use crate::console_dock::DockTab;
 use crate::tabs::TabKind;
 use apinata_core::{ItemPath, StatusRule};
 use gpui_kit::{Bounds, Pixels, Size, WindowBounds, point, px, size};
@@ -44,6 +45,13 @@ pub struct Session {
     /// The active global environment's name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub global_environment: Option<String>,
+    /// The dock tab shown when the session was saved; `None` while the dock was closed.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "lenient::option"
+    )]
+    pub dock: Option<DockTab>,
 }
 
 impl Session {
@@ -159,6 +167,13 @@ pub struct SavedRunnerOptions {
     pub iteration_count: Option<usize>,
     /// The data file iterated over, if any.
     pub data_file: Option<PathBuf>,
+    /// Which cookie jar a run reads and fills; a choice this build does not know is the shared jar.
+    #[serde(deserialize_with = "lenient::or_default")]
+    pub run_cookies: crate::runner_model::RunCookies,
+    /// Whether a run on its own jar puts its cookies into the shared jar.
+    pub keep_cookies: bool,
+    /// Whether a run works on a copy of the variables, dropping the values it sets.
+    pub fork_variables: bool,
 }
 
 /// A saved tab that can be the active one: a request or an example tab.
