@@ -89,7 +89,8 @@ write_sums() {
   (
     cd "$dir" || exit 1
     find . -type f \( -name '*.tar.gz' -o -name '*.deb' -o -name '*.AppImage' \
-      -o -name '*.dmg' -o -name '*.exe' -o -name '*.zip' -o -name 'apinata-[0-9]*' \) \
+      -o -name '*.dmg' -o -name '*.exe' -o -name '*.zip' -o -name 'apinata-[0-9]*' \
+      -o -name notes.json \) \
       -printf '%P\n' | LC_ALL=C sort | xargs -r -d '\n' sha256sum >SHA256SUMS || exit 1
     if [[ ! -s SHA256SUMS ]]; then
       rm -f SHA256SUMS

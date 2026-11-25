@@ -8,6 +8,7 @@
 
 mod dev_desktop;
 mod icons;
+mod notes_json;
 mod package_linux_script;
 mod packager_config;
 mod packager_metadata;

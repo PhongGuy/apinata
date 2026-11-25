@@ -1,0 +1,139 @@
+{
+  "schema": 1,
+  "releases": [
+    {
+      "version": "0.3.0",
+      "previous": "0.2.0",
+      "date": "2026-12-01",
+      "intro": "Find any request in a large collection.",
+      "groups": [
+        {
+          "kind": "features",
+          "title": "New features",
+          "items": [
+            {
+              "text": "Search the request list",
+              "pr": 20
+            },
+            {
+              "text": "Add --json output to apinata run",
+              "pr": 21
+            }
+          ]
+        },
+        {
+          "kind": "usability",
+          "title": "Usability and accessibility",
+          "items": [
+            {
+              "text": "Read the status bar aloud",
+              "pr": 22
+            }
+          ]
+        },
+        {
+          "kind": "performance",
+          "title": "Performance",
+          "items": [
+            {
+              "text": "Open large collections faster",
+              "pr": 23
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "version": "0.2.0",
+      "previous": "0.1.1",
+      "date": "2026-11-10",
+      "intro": "This release adds a sidebar filter and keeps the cookie jar on reload.",
+      "groups": [
+        {
+          "kind": "features",
+          "title": "New features",
+          "items": [
+            {
+              "text": "Add a sidebar filter",
+              "pr": 7
+            }
+          ]
+        },
+        {
+          "kind": "fixes",
+          "title": "Fixes",
+          "items": [
+            {
+              "text": "Keep the cookie jar on reload",
+              "pr": 8
+            }
+          ]
+        },
+        {
+          "title": "Other changes",
+          "items": [
+            {
+              "text": "Tidy the settings page",
+              "pr": 9
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "version": "0.1.1",
+      "previous": "0.1.0",
+      "date": "2026-11-05",
+      "intro": "A small fix release.",
+      "groups": [
+        {
+          "kind": "fixes",
+          "title": "Fixes",
+          "items": [
+            {
+              "text": "Fix the proxy toggle",
+              "pr": 5
+            },
+            {
+              "text": "Show curl errors in plain words",
+              "pr": 6
+            },
+            {
+              "text": "Handle redirects again",
+              "pr": 4
+            }
+          ]
+        },
+        {
+          "title": "Something new we called it",
+          "items": [
+            {
+              "text": "Name the active environment in the title bar"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "previous": null,
+      "date": "2026-11-01",
+      "intro": "The first release of Apinata.",
+      "groups": [
+        {
+          "title": "Changes",
+          "items": [
+            {
+              "text": "Open collections from disk",
+              "pr": 1
+            },
+            {
+              "text": "Send requests over HTTP/1.1 and HTTP/2",
+              "pr": 2
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

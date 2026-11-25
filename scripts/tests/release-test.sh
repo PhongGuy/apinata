@@ -79,6 +79,14 @@ test_sums_fails_when_nothing_is_hashed() {
   if bash "$RELEASE_SH" sums "$WORK/none" 2>/dev/null; then fail "sums passed with no artifacts"; fi
 }
 
+test_sums_list_the_updater_notes() {
+  local d=$WORK/sums-notes
+  mkdir -p "$d"
+  printf a >"$d/apinata-1-x.tar.gz"; printf '{}' >"$d/notes.json"
+  bash "$RELEASE_SH" sums "$d" || fail "sums failed"
+  grep -q '  notes.json$' "$d/SHA256SUMS" || fail "notes.json not summed: $(cat "$d/SHA256SUMS")"
+}
+
 # Windows has no trusted certificate, so the build neither signs nor renames its files.
 test_windows_is_never_signed_or_renamed() {
   if grep -nE 'WINDOWS_CERTIFICATE|signtool|-unsigned' "$RELEASE_SH"; then
@@ -200,6 +208,113 @@ test_update_manifest_strips_base_slashes_and_moves_the_manifest_out() {
   CARGO=$WORK/cargo-stub update_manifest "$WORK/empty-$$" 1.2.3 https://h v1.2.3 "$out" 2>/dev/null \
     && fail "an empty directory must fail"
   return 0
+}
+
+test_update_manifest_lists_the_notes_only_when_built() {
+  local d=$WORK/man-notes out=$WORK/man-notes-out
+  mkdir -p "$d"
+  touch "$d/apinata-1.2.3-x86_64-unknown-linux-gnu"
+  printf '#!/usr/bin/env bash\necho "$*" >"%s/cargo.log"\nprintf "{}" >"${@: -1}/latest.json"\n' \
+    "$WORK" >"$WORK/cargo-stub"
+  chmod +x "$WORK/cargo-stub"
+  CARGO=$WORK/cargo-stub update_manifest "$d" 1.2.3 https://h v1.2.3 "$out" || fail "update_manifest failed"
+  if grep -q -- '--notes-asset' "$WORK/cargo.log"; then fail "notes listed without notes.json"; fi
+  printf '{}' >"$d/notes.json"
+  CARGO=$WORK/cargo-stub update_manifest "$d" 1.2.3 https://h v1.2.3 "$out" || fail "update_manifest failed"
+  grep -q -- '--notes-asset notes.json ' "$WORK/cargo.log" || fail "cargo args: $(cat "$WORK/cargo.log")"
+}
+
+# A repository with an annotated v1.0.0, an unpublished v1.0.5 and an annotated
+# v1.1.0 that the working copy holds only as a lightweight tag, as a tag-push
+# checkout can leave it; origin holds the annotated tags. The gh stub logs its
+# arguments, answers generate-notes, and runs the --jq filter over a releases
+# page holding a draft and a pre-release.
+notes_inputs_fixture() {
+  local repo=$WORK/inputs-repo
+  [[ -d $repo ]] && { echo "$repo"; return 0; }
+  mkdir -p "$repo"
+  (
+    cd "$repo"
+    git init -q
+    git config user.email t@example.com
+    git config user.name t
+    git config core.hooksPath /dev/null
+    git commit -q --allow-empty -m 'feat: first'
+    git tag -a v1.0.0 -m 'Open collections from disk.' -m 'And send requests.'
+    git commit -q --allow-empty -m 'feat: second'
+    git tag v1.0.5
+    git commit -q --allow-empty -m 'fix: third'
+    git tag -a v1.1.0 -m 'Apinata 1.1.0' -m 'Mend a thing.'
+    git clone -q --bare . "$WORK/inputs-origin.git"
+    git remote add origin "$WORK/inputs-origin.git"
+    git tag -f v1.1.0 HEAD >/dev/null
+  )
+  cat >"$WORK/gh-releases.json" <<'JSON'
+[{"tag_name":"v1.1.0","draft":true,"prerelease":false,"body":"secret draft","published_at":null,"author":{"login":"o"}},
+ {"tag_name":"v1.1.0-rc.1","draft":false,"prerelease":true,"body":"rc","published_at":"2026-11-02T00:00:00Z"},
+ {"tag_name":"v1.0.0","draft":false,"prerelease":false,"body":"one","published_at":"2026-11-01T00:00:00Z","assets":[]}]
+JSON
+  cat >"$WORK/gh-inputs" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$@" >>"$WORK/gh-inputs.log"
+all="\$*" filter=
+while ((\$#)); do [[ \$1 == --jq ]] && filter=\$2; shift; done
+case \$all in
+  *generate-notes*) echo "## What's Changed" ;;
+  *) jq -c "\$filter" "$WORK/gh-releases.json" ;;
+esac
+STUB
+  chmod +x "$WORK/gh-inputs"
+  echo "$repo"
+}
+
+# Run notes_inputs for v1.1.0 into OUT with a fresh gh log.
+run_notes_inputs() {
+  local repo
+  repo=$(notes_inputs_fixture)
+  rm -f "$WORK/gh-inputs.log"
+  (cd "$repo" && GH=$WORK/gh-inputs GH_TOKEN=t notes_inputs v1.1.0 o/r "$1")
+}
+
+test_notes_inputs_keep_only_published_releases_and_their_text() {
+  local out=$WORK/inputs-pub
+  run_notes_inputs "$out" || { fail "notes_inputs failed"; return 0; }
+  [[ $(cat "$out/generated.md") == "## What's Changed" ]] || fail "generated: $(cat "$out/generated.md")"
+  [[ $(cat "$out/published/releases.json") == '[{"tag_name":"v1.0.0","body":"one","published_at":"2026-11-01T00:00:00Z"}]' ]] \
+    || fail "published: $(cat "$out/published/releases.json")"
+  grep -qx -- '--paginate' "$WORK/gh-inputs.log" || fail "releases are not paged"
+}
+
+test_notes_inputs_start_the_generated_notes_at_the_last_published_release() {
+  # v1.0.5 is tagged but never published, so the notes and previous both skip it.
+  local out=$WORK/inputs-prev
+  run_notes_inputs "$out" || { fail "notes_inputs failed"; return 0; }
+  grep -qx 'previous_tag_name=v1.0.0' "$WORK/gh-inputs.log" || fail "previous tag: $(cat "$WORK/gh-inputs.log")"
+}
+
+test_notes_inputs_carry_the_annotation_a_lightweight_checkout_lost() {
+  local out=$WORK/inputs-note
+  run_notes_inputs "$out" || { fail "notes_inputs failed"; return 0; }
+  [[ $(cat "$out/annotation.txt") == $'Apinata 1.1.0\n\nMend a thing.' ]] \
+    || fail "annotation: $(cat "$out/annotation.txt")"
+}
+
+test_tag_annotation_reads_only_annotated_tags() {
+  local repo
+  repo=$(notes_inputs_fixture)
+  [[ $(cd "$repo" && tag_annotation v1.0.0) == $'Open collections from disk.\n\nAnd send requests.' ]] \
+    || fail "annotation: $(cd "$repo" && tag_annotation v1.0.0)"
+  [[ -z $(cd "$repo" && tag_annotation v1.0.5) ]] || fail "a lightweight tag has no annotation"
+}
+
+test_notes_json_passes_the_inputs_to_xtask() {
+  local dist=$WORK/nj-dist
+  mkdir -p "$dist"
+  printf '#!/usr/bin/env bash\necho "$*" >"%s/nj.log"\n' "$WORK" >"$WORK/nj-cargo"
+  chmod +x "$WORK/nj-cargo"
+  CARGO=$WORK/nj-cargo notes_json "$dist" 1.0.0 /in || fail "notes_json failed"
+  grep -qE -- "^xtask notes-json --version 1.0.0 --date [0-9]{4}-[0-9]{2}-[0-9]{2} --generated /in/generated.md --published /in/published --intro /in/annotation.txt --output $dist/notes.json\$" "$WORK/nj.log" \
+    || fail "cargo args: $(cat "$WORK/nj.log")"
 }
 
 test_stable_copies_names_each_platform_without_the_version() {
