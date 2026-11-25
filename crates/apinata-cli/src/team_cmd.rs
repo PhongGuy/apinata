@@ -345,12 +345,72 @@ async fn sso_sign_in(
         SSO_TIMEOUT.as_secs() / 60
     );
     eprintln!("Over SSH, forward the port first: ssh -L {port}:{host}:{port} <host>");
+    eprintln!("Or paste the address your browser ended on (within a minute):");
+    read_pastes(pending.paste_handle());
     let finished = pending.finish(api, &**secrets, file, SSO_TIMEOUT, handle);
     // A refused redeem is about the browser sign-in, not a username and password.
     finished.await.map_err(|e| match e {
         TeamError::Unauthenticated => TeamError::SsoRefused,
         e => e,
     })
+}
+
+/// The longest pasted line read; a longer one is refused without being kept.
+const MAX_PASTE: usize = 8 * 1024;
+
+/// Reads pasted lines on a plain thread, so the runtime never waits on stdin when it shuts
+/// down; the thread is never joined and ends with the process. EOF ends only the paste side.
+fn read_pastes(paste: team::SsoPaste) {
+    std::thread::spawn(move || {
+        let mut stdin = std::io::stdin().lock();
+        let mut line = Vec::new();
+        loop {
+            match read_capped(&mut stdin, &mut line) {
+                Ok(Pasted::End) | Err(_) => return,
+                Ok(Pasted::TooLong) => {
+                    eprintln!("that line is longer than 8 KiB; paste the address again");
+                    continue;
+                }
+                Ok(Pasted::Line) => {}
+            }
+            let text = String::from_utf8_lossy(&line);
+            if text.trim().is_empty() {
+                continue;
+            }
+            match paste.submit(&text) {
+                Ok(()) | Err(team::PasteRefused::Finished) => return,
+                Err(refused) => eprintln!("{refused}; paste the address again"),
+            }
+        }
+    });
+}
+
+enum Pasted {
+    Line,
+    TooLong,
+    End,
+}
+
+/// Reads one line into `line`, holding at most `MAX_PASTE` bytes of it; the rest of a longer
+/// line is read past in bounded pieces and dropped.
+fn read_capped(input: &mut impl std::io::BufRead, line: &mut Vec<u8>) -> std::io::Result<Pasted> {
+    use std::io::{BufRead as _, Read as _};
+    line.clear();
+    let cap = MAX_PASTE as u64 + 1;
+    if input.by_ref().take(cap).read_until(b'\n', line)? == 0 {
+        return Ok(Pasted::End);
+    }
+    if line.len() <= MAX_PASTE || line.ends_with(b"\n") {
+        return Ok(Pasted::Line);
+    }
+    loop {
+        line.clear();
+        let n = input.by_ref().take(cap).read_until(b'\n', line)?;
+        if n == 0 || line.ends_with(b"\n") {
+            line.clear();
+            return Ok(Pasted::TooLong);
+        }
+    }
 }
 
 /// True where a browser would not reach the person at the keyboard: a CI job, a Unix

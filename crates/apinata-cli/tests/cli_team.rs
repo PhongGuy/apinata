@@ -78,7 +78,7 @@ fn user(display: &str) -> Value {
            "server_admin": false, "disabled": false, "created_at": "2026-11-15T10:00:00Z"})
 }
 
-fn signed(display: &str) -> ResponseTemplate {
+pub(crate) fn signed(display: &str) -> ResponseTemplate {
     ResponseTemplate::new(201).set_body_json(json!({"token": tok(),
         "token_meta": {"id": 7, "name": "Apinata", "prefix": "plk_AAAA",
             "created_at": "2026-11-15T10:00:00Z", "last_used_at": null,
@@ -86,7 +86,7 @@ fn signed(display: &str) -> ResponseTemplate {
         "user": user(display)}))
 }
 
-async fn answer(s: &MockServer, verb: &str, at: &str, response: ResponseTemplate) {
+pub(crate) async fn answer(s: &MockServer, verb: &str, at: &str, response: ResponseTemplate) {
     Mock::given(method(verb))
         .and(path(at))
         .respond_with(response)
@@ -95,7 +95,7 @@ async fn answer(s: &MockServer, verb: &str, at: &str, response: ResponseTemplate
 }
 
 /// A server offering password sign-in and, with `sso`, single sign-on.
-async fn server(sso: bool) -> MockServer {
+pub(crate) async fn server(sso: bool) -> MockServer {
     let s = MockServer::start().await;
     let oidc = if sso {
         json!({"name": "Corp"})
@@ -438,10 +438,10 @@ async fn start_sso_with(
     tokio::task::JoinHandle<String>,
 ) {
     let mut cmd = stores.tokio_cmd();
-    cmd.args(["team", "sign-in", &s.uri(), "--sso"]);
+    cmd.args(["team", "sign-in", &s.uri(), "--sso"])
+        .stdin(std::process::Stdio::null());
     setup(&mut cmd);
     let mut child = cmd
-        .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true)
@@ -553,6 +553,108 @@ async fn ctrl_c_during_single_sign_on_exits_130_and_keeps_nothing() {
     assert_eq!(status.code(), Some(130));
     assert!(stores.accounts().is_empty());
     assert!(!stores.secrets_text().contains("plk_"));
+}
+
+/// Starts an SSO sign-in with piped stdin and pastes `lines` into it, then waits for the
+/// child; returns its output and all of its stderr.
+async fn paste_sso(
+    s: &MockServer,
+    stores: &Stores,
+    lines: impl Fn(&str) -> Vec<String>,
+) -> (std::process::Output, String) {
+    use tokio::io::AsyncWriteExt as _;
+    let (mut child, url, seen, rest) = start_sso_with(stores, s, |cmd| {
+        cmd.arg("--no-browser").stdin(std::process::Stdio::piped());
+    })
+    .await;
+    let redirect = format!("http://127.0.0.1:{}/callback", param(&url, "port"));
+    let mut stdin = child.stdin.take().unwrap();
+    for line in lines(&format!(
+        "{redirect}?code=the-code&state={}",
+        param(&url, "state")
+    )) {
+        stdin
+            .write_all(format!("{line}\n").as_bytes())
+            .await
+            .unwrap();
+    }
+    let out = tokio::time::timeout(std::time::Duration::from_secs(30), child.wait_with_output())
+        .await
+        .unwrap()
+        .unwrap();
+    drop(stdin);
+    let rest = tokio::time::timeout(std::time::Duration::from_secs(30), rest)
+        .await
+        .expect("stderr closed")
+        .unwrap();
+    (out, format!("{seen}{rest}"))
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_pasted_redirect_completes_single_sign_on_without_printing_the_code() {
+    let s = server(true).await;
+    answer(&s, "POST", "/api/v1/oidc/redeem", signed("Ada Lovelace")).await;
+    let stores = Stores::new();
+    let (out, stderr) = paste_sso(&s, &stores, |valid| vec![format!("  {valid}  ")]).await;
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    no_token(&stdout, &stderr);
+    assert_eq!(out.status.code(), Some(0), "{stdout}{stderr}");
+    assert!(
+        stderr.contains("Or paste the address your browser ended on (within a minute):"),
+        "{stderr}"
+    );
+    for text in [&stdout, &stderr] {
+        assert!(!text.contains("the-code"), "the code was printed: {text}");
+    }
+    let bodies = s.received_requests().await.unwrap();
+    let redeem: Vec<_> = bodies
+        .iter()
+        .filter(|r| r.url.path() == "/api/v1/oidc/redeem")
+        .collect();
+    assert_eq!(redeem.len(), 1);
+    let body: Value = serde_json::from_slice(&redeem[0].body).unwrap();
+    assert_eq!(body["code"], "the-code");
+    assert_eq!(stores.accounts().len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_refused_paste_is_explained_and_a_correct_one_still_signs_in() {
+    let s = server(true).await;
+    answer(&s, "POST", "/api/v1/oidc/redeem", signed("Ada Lovelace")).await;
+    let stores = Stores::new();
+    let (out, stderr) = paste_sso(&s, &stores, |valid| {
+        let (head, _) = valid.split_once("state=").unwrap();
+        vec![
+            format!("{head}state=forged-state"),
+            format!("{valid}&{}", "x".repeat(9 * 1024)),
+            String::new(),
+            valid.to_owned(),
+        ]
+    })
+    .await;
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    no_token(&stdout, &stderr);
+    assert_eq!(out.status.code(), Some(0), "{stdout}{stderr}");
+    assert!(
+        stderr.contains("that address belongs to another sign-in"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("longer than 8 KiB"), "{stderr}");
+    for text in [&stdout, &stderr] {
+        assert!(
+            !text.contains("the-code") && !text.contains("forged"),
+            "{text}"
+        );
+    }
+    assert_eq!(stores.accounts().len(), 1);
+    let calls = s.received_requests().await.unwrap();
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|r| r.url.path() == "/api/v1/oidc/redeem")
+            .count(),
+        1
+    );
 }
 
 /// A token as a CI job would hold it, distinct from the one the keychain keeps.

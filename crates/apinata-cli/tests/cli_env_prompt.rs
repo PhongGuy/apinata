@@ -61,7 +61,12 @@ struct PtyRun {
 
 /// Runs `cmd` with a pty as its controlling terminal, waits for `prompt` and for echo to go off,
 /// types `typed`, and collects the rest until the child exits.
-fn on_pty(mut cmd: std::process::Command, prompt: &str, typed: &[u8]) -> PtyRun {
+fn on_pty(cmd: std::process::Command, prompt: &str, typed: &[u8]) -> PtyRun {
+    on_pty_with(cmd, prompt, typed, true)
+}
+
+/// As `on_pty`, waiting for echo to go off only when the prompt is `hidden`.
+fn on_pty_with(mut cmd: std::process::Command, prompt: &str, typed: &[u8], hidden: bool) -> PtyRun {
     let (mut master, slave) = open_pty();
     cmd.stdin(Stdio::from(slave.try_clone().unwrap()))
         .stdout(Stdio::from(slave.try_clone().unwrap()))
@@ -112,7 +117,7 @@ fn on_pty(mut cmd: std::process::Command, prompt: &str, typed: &[u8]) -> PtyRun 
     pump(&mut seen, &|s| s.contains(prompt));
     // The prompt can print just before echo goes off; type only once it is off.
     let echo_deadline = Instant::now() + LIMIT;
-    while echo_is_on(&master) {
+    while hidden && echo_is_on(&master) {
         if Instant::now() >= echo_deadline {
             let _ = child.kill();
             let _ = child.wait();
@@ -169,6 +174,26 @@ fn ctrl_c_at_the_team_password_prompt_exits_130_with_echo_back_on() {
         .env("APINATA_TEST_SECRETS_FILE", dir.path().join("secrets.json"))
         .args(["team", "sign-in", "http://127.0.0.1:9", "--username", "ada"]);
     let run = on_pty(cmd, "Password:", b"\x03");
+    assert_eq!(run.status.code(), Some(130), "{:?}", run.seen);
+    assert!(
+        run.seen.contains("Cancelled; nothing was kept."),
+        "{:?}",
+        run.seen
+    );
+    assert!(run.echo_after, "the terminal was left without echo");
+    assert!(!dir.path().join("team.json").exists());
+}
+
+#[test]
+fn ctrl_c_while_single_sign_on_waits_for_a_paste_exits_130_with_the_terminal_intact() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let s = runtime.block_on(crate::cli_team::server(true));
+    let dir = tempfile::TempDir::new().unwrap();
+    let mut cmd = apinata_std();
+    cmd.env("APINATA_TEST_TEAM_FILE", dir.path().join("team.json"))
+        .env("APINATA_TEST_SECRETS_FILE", dir.path().join("secrets.json"))
+        .args(["team", "sign-in", &s.uri(), "--sso", "--no-browser"]);
+    let run = on_pty_with(cmd, "within a minute):", b"http://127.0\x03", false);
     assert_eq!(run.status.code(), Some(130), "{:?}", run.seen);
     assert!(
         run.seen.contains("Cancelled; nothing was kept."),

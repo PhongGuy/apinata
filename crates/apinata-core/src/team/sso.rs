@@ -1,12 +1,16 @@
 //! Single sign-on to a team server. `begin_sso` holds a loopback port and makes the PKCE pair
 //! and state before any URL exists; the shell opens `PendingSso::url` in the browser, and
-//! `finish` reads the browser's return, redeems the code once and keeps the session.
+//! `finish` reads the browser's return, or the address pasted through `SsoPaste` when the
+//! browser cannot reach the loopback port, redeems the code once and keeps the session.
 
 use std::fmt;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::Path;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
+use aws_lc_rs::constant_time::verify_slices_are_equal;
+use tokio::sync::oneshot;
 use url::Url;
 
 use super::client::api_url;
@@ -27,6 +31,121 @@ pub struct PendingSso {
     url: String,
     state: String,
     verifier: String,
+    paste: SsoPaste,
+    pasted: oneshot::Receiver<Vec<(String, String)>>,
+}
+
+/// The query pairs of the one answer that ends the wait.
+type Answer = Vec<(String, String)>;
+
+/// Hands `finish` the address the browser ended on, for when the browser cannot reach the
+/// loopback port. Clones share one sign-in; only the first valid answer, pasted or from the
+/// listener, is used.
+#[derive(Clone)]
+pub struct SsoPaste {
+    gate: Arc<PasteGate>,
+}
+
+struct PasteGate {
+    redirect: Url,
+    state: String,
+    /// Taken by whichever answer wins, so an empty slot means the wait is over.
+    slot: Mutex<Option<oneshot::Sender<Answer>>>,
+}
+
+impl fmt::Debug for SsoPaste {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SsoPaste")
+            .field("redirect", &self.gate.redirect.as_str())
+            .finish_non_exhaustive()
+    }
+}
+
+/// Why a pasted address was refused. The message never repeats what was pasted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum PasteRefused {
+    /// Not an address, or not the loopback address this sign-in waits on.
+    NotThisAddress,
+    /// No `state`, more than one, or not the one this sign-in made.
+    WrongState,
+    /// The address carries neither a code nor an error.
+    NoCode,
+    /// The sign-in is no longer waiting.
+    Finished,
+}
+
+impl fmt::Display for PasteRefused {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            PasteRefused::NotThisAddress => "that is not the address this sign-in waits on",
+            PasteRefused::WrongState => "that address belongs to another sign-in",
+            PasteRefused::NoCode => "that address carries no sign-in code",
+            PasteRefused::Finished => "the sign-in is no longer waiting",
+        })
+    }
+}
+
+impl std::error::Error for PasteRefused {}
+
+impl SsoPaste {
+    /// Checks `text` as the address the browser ended on and, when it is this sign-in's
+    /// redirect with its state and a code or error, ends the wait with it. A refusal leaves
+    /// the wait going; once the wait is over every call is `Finished`.
+    pub fn submit(&self, text: &str) -> Result<(), PasteRefused> {
+        let gate = &self.gate;
+        let mut slot = gate.slot.lock().unwrap_or_else(PoisonError::into_inner);
+        if slot.as_ref().is_none_or(oneshot::Sender::is_closed) {
+            return Err(PasteRefused::Finished);
+        }
+        let answer = gate.check(text)?;
+        match slot.take() {
+            Some(sender) => sender.send(answer).map_err(|_| PasteRefused::Finished),
+            None => Err(PasteRefused::Finished),
+        }
+    }
+}
+
+impl PasteGate {
+    fn check(&self, text: &str) -> Result<Answer, PasteRefused> {
+        let url = Url::parse(text.trim()).map_err(|_| PasteRefused::NotThisAddress)?;
+        let want = &self.redirect;
+        // Compared part by part, so `localhost` never stands in for the address bound.
+        let same = url.scheme() == want.scheme()
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.host() == want.host()
+            && url.port_or_known_default() == want.port_or_known_default()
+            && url.path() == want.path();
+        if !same {
+            return Err(PasteRefused::NotThisAddress);
+        }
+        let pairs: Answer = url.query_pairs().into_owned().collect();
+        let mut states = pairs.iter().filter(|(k, _)| k == "state");
+        let state_ok = match (states.next(), states.next()) {
+            (Some((_, got)), None) => same_secret(got, &self.state),
+            _ => false,
+        };
+        if !state_ok {
+            return Err(PasteRefused::WrongState);
+        }
+        let has = |key: &str| pairs.iter().any(|(k, v)| k == key && !v.is_empty());
+        if !has("error") && !has("code") {
+            return Err(PasteRefused::NoCode);
+        }
+        Ok(pairs)
+    }
+
+    /// Claims the win for the listener; false when a paste already took it.
+    fn close(&self) -> bool {
+        let mut slot = self.slot.lock().unwrap_or_else(PoisonError::into_inner);
+        slot.take().is_some()
+    }
+}
+
+/// Compares two secrets in time that does not depend on where they differ.
+fn same_secret(got: &str, want: &str) -> bool {
+    verify_slices_are_equal(got.as_bytes(), want.as_bytes()).is_ok()
 }
 
 impl fmt::Debug for PendingSso {
@@ -45,6 +164,16 @@ pub async fn begin_sso(api: &dyn TeamApi) -> Result<PendingSso, TeamError> {
     let state = random_b64url().map_err(no_randomness)?;
     let (listener, loopback) = bind().await?;
     let listener = listener.expect_state(state.clone());
+    let redirect =
+        Url::parse(listener.redirect_uri()).map_err(|e| TeamError::SsoListen(e.to_string()))?;
+    let (sender, pasted) = oneshot::channel();
+    let paste = SsoPaste {
+        gate: Arc::new(PasteGate {
+            redirect,
+            state: state.clone(),
+            slot: Mutex::new(Some(sender)),
+        }),
+    };
     let mut url = api_url(api.server(), &["oidc", "start"])?;
     url.query_pairs_mut()
         .append_pair("port", &listener.port().to_string())
@@ -57,6 +186,8 @@ pub async fn begin_sso(api: &dyn TeamApi) -> Result<PendingSso, TeamError> {
         url: url.into(),
         state,
         verifier: pkce.verifier,
+        paste,
+        pasted,
     })
 }
 
@@ -92,9 +223,15 @@ impl PendingSso {
         &self.url
     }
 
-    /// Waits up to `timeout` for the browser, checks its state before anything else, redeems
-    /// the code once and keeps the session as a password sign-in does. A timeout or `cancel`
-    /// is `SsoTimeout`; the port is closed and nothing is kept on any failure.
+    /// A handle for pasting the address the browser ended on while `finish` waits.
+    pub fn paste_handle(&self) -> SsoPaste {
+        self.paste.clone()
+    }
+
+    /// Waits up to `timeout` for the browser or a paste, whichever brings a valid answer first,
+    /// checks its state before anything else, redeems the code once and keeps the session as a
+    /// password sign-in does. A timeout or `cancel` is `SsoTimeout`; the port is closed and
+    /// nothing is kept on any failure.
     pub async fn finish(
         self,
         api: &dyn TeamApi,
@@ -107,12 +244,31 @@ impl PendingSso {
             listener,
             state,
             verifier,
+            paste,
+            mut pasted,
             ..
         } = self;
-        let pairs = listener
-            .wait(timeout, cancel)
-            .await
-            .map_err(listen_failed)?;
+        // A winning paste stops the listener through its own cancel, so the port still closes.
+        let (stop_listening, guard) = cancel.child_until_dropped();
+        let listen = listener.wait(timeout, &stop_listening);
+        tokio::pin!(listen);
+        let heard = tokio::select! {
+            heard = &mut listen => {
+                // A paste that claimed the win just before the listener answered still wins;
+                // it sent while holding the slot, so its answer is already waiting.
+                if paste.gate.close() {
+                    heard
+                } else {
+                    pasted.try_recv().map_err(|_| ListenError::Cancelled)
+                }
+            }
+            Ok(pairs) = &mut pasted => {
+                drop(guard);
+                let _ = listen.await;
+                Ok(pairs)
+            }
+        };
+        let pairs = heard.map_err(listen_failed)?;
         let value = |key: &str| {
             pairs
                 .iter()
@@ -120,7 +276,7 @@ impl PendingSso {
                 .map(|(_, v)| v.as_str())
         };
         // The listener already waits past a return this app did not start; this guards it.
-        if value("state") != Some(state.as_str()) {
+        if !value("state").is_some_and(|got| same_secret(got, &state)) {
             return Err(TeamError::SsoStateMismatch);
         }
         if let Some(error) = value("error") {
