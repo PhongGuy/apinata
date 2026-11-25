@@ -35,10 +35,17 @@ pub use model::{
     Team, TeamToken, UpdateState, User, Workspace,
 };
 pub use resume::{Resumed, Standing, resume};
-pub use session::{current, kept_token, sign_in, sign_out};
+pub use session::{current, kept_token, sign_in, sign_out, whoami};
 pub use sso::{PendingSso, SSO_TIMEOUT, begin_sso};
 pub use store::{Account, Binding, TeamStore, token_key};
 pub use visible::escape_hidden;
+
+/// The variable a CI job puts a team token in. Only the CLI reads it; core keeps it out of
+/// `process.env`, scripts and every child process it starts.
+pub const TEAM_TOKEN_VAR: &str = "APINATA_TEAM_TOKEN";
+
+/// The variable naming the one server `TEAM_TOKEN_VAR` is for.
+pub const TEAM_SERVER_VAR: &str = "APINATA_TEAM_SERVER";
 
 /// The workspace kind the server keeps for Apinata collections.
 pub const APINATA_KIND: &str = "apinata";

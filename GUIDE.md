@@ -467,7 +467,7 @@ the command never exits with that code.
 | `network` | listed, set or removed | - | - | usage or collection error, or a refused edit |
 | `item` | created, copied, renamed, moved, removed, or a folder updated or left unchanged | - | - | usage or collection error, an unknown path, an invalid name, a move that is not allowed, no trash to remove into, a broken folder.yml, an unknown header or variable to unset, or a refused edit |
 | `oauth2` | shown, cleared, or nothing to clear | - | - | usage or collection error, an unknown path, auth that is not OAuth 2.0, or settings that do not resolve |
-| `team` | signed in, signed out, or every sign-in shown is valid | signed out, expired, or the server refused the sign-in | the server could not be reached or its answer was not understood | usage or local error, such as `--no-keychain` with `sign-in` or `sign-out`, or a team file or keychain failure |
+| `team` | signed in, signed out, or every sign-in shown is valid | signed out, expired, or the server refused the sign-in | the server could not be reached or its answer was not understood | usage or local error, such as `--no-keychain` with `sign-in` or `sign-out`, `APINATA_TEAM_TOKEN` without `APINATA_TEAM_SERVER` or a malformed value in either, `sign-out` for the server in `APINATA_TEAM_SERVER`, or a team file or keychain failure |
 | `trust` | done | - | - | any failure |
 | `gen` | printed | - | - | usage, collection or resolve error |
 | `graphql` | printed or written | the server answered without a schema (an error status, not JSON, GraphQL errors), a syntax error, a validation error, or `fmt --check` found a change | the request or its token fetch errored (no response) | usage, collection or resolve error, not a GraphQL request, the file could not be written, or an unreadable query or schema file |
@@ -827,6 +827,35 @@ With `--no-keychain`, `sign-in` and `sign-out` refuse to run, so a token is
 never forgotten here while it still works on the server, and `status` shows
 only the kept account and its expiry. Tokens and token ids are never printed,
 and hidden characters in what the server sends are shown as `\u{...}` escapes.
+
+A CI job has no keychain, so it passes a team token in two environment
+variables instead:
+
+```sh
+export APINATA_TEAM_SERVER=https://team.example.com
+export APINATA_TEAM_TOKEN="$CI_TEAM_TOKEN"   # from the CI system's secret store
+apinata team status --no-keychain
+```
+
+The token goes only to the server whose address equals
+`APINATA_TEAM_SERVER`, and for that server it wins over the keychain, which is
+not opened for it; other servers use their kept sign-ins as before. `status`
+needs no sign-in on the machine, reports the user as `(token from
+APINATA_TEAM_TOKEN)` (`"source": "environment"` in JSON), and a token the server
+refuses exits 1 without changing the keychain or the team file. `sign-out`
+refuses for that server, since the token comes from the environment, and
+`sign-in` ignores both variables. An empty variable counts as unset. A token
+without `APINATA_TEAM_SERVER`, or a value that is not a token or an address,
+exits 3 before any request, naming the variable but never its value. The
+token is kept out of `{{process.env.*}}` and scripts, so
+`{{process.env.APINATA_TEAM_TOKEN}}` is an undefined variable, and out of every
+program Apinata starts, git included. The desktop app ignores both variables.
+
+To get a token for CI, have a server admin create a dedicated user with only
+the grants the job needs, sign in as that user, and mint a personal access
+token with the server's `POST /api/v1/tokens` (`{"name": "ci", "expires_at":
+...}`). The token is shown once; store it in the CI system's secrets, and
+revoke it on the server when the job no longer needs it.
 
 ### Timeouts, streams and body size
 

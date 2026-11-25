@@ -266,6 +266,7 @@ fn allow_owner_write(dir: &Path, meta: &std::fs::Metadata) {
 pub fn start_installer(program: &Path, args: &[OsString]) -> Result<(), UpdateError> {
     std::process::Command::new(program)
         .args(args)
+        .env_remove(crate::team::TEAM_TOKEN_VAR)
         .spawn()
         .map(drop)
         .map_err(|e| UpdateError::Io {

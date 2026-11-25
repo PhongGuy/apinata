@@ -121,7 +121,8 @@ fn stream_body(
         } else {
             Stdio::null()
         })
-        .stderr(Stdio::piped());
+        .stderr(Stdio::piped())
+        .env_remove(crate::team::TEAM_TOKEN_VAR);
     for (key, value) in env {
         match value {
             Some(v) => cmd.env(key, v),
