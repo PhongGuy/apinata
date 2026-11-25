@@ -36,7 +36,7 @@ pub use model::{
 };
 pub use resume::{Resumed, Standing, resume};
 pub use session::{current, kept_token, sign_in, sign_out, whoami};
-pub use sso::{PendingSso, SSO_TIMEOUT, begin_sso};
+pub use sso::{PasteRefused, PendingSso, SSO_TIMEOUT, SsoPaste, begin_sso};
 pub use store::{Account, Binding, TeamStore, token_key};
 pub use visible::escape_hidden;
 

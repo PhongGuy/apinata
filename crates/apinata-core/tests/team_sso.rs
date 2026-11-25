@@ -21,7 +21,7 @@ use wiremock::{MockServer, ResponseTemplate};
 const LONG: Duration = Duration::from_secs(10);
 const REDEEM: &str = "/api/v1/oidc/redeem";
 
-fn file(dir: &TempDir) -> PathBuf {
+pub(crate) fn file(dir: &TempDir) -> PathBuf {
     dir.path().join("team.json")
 }
 
@@ -29,7 +29,7 @@ fn url(s: &MockServer) -> ServerUrl {
     ServerUrl::parse(&s.uri()).unwrap()
 }
 
-async fn fresh() -> (MockServer, TempDir, MemoryStore) {
+pub(crate) async fn fresh() -> (MockServer, TempDir, MemoryStore) {
     (
         MockServer::start().await,
         TempDir::new().unwrap(),
@@ -38,7 +38,7 @@ async fn fresh() -> (MockServer, TempDir, MemoryStore) {
 }
 
 /// The redeem answer: the `POST /session` shape with an expiring token.
-fn redeemed(id: i64, expires_at: &str) -> ResponseTemplate {
+pub(crate) fn redeemed(id: i64, expires_at: &str) -> ResponseTemplate {
     let mut meta = token_meta(id);
     meta["expires_at"] = json!(expires_at);
     ResponseTemplate::new(201)
@@ -46,7 +46,7 @@ fn redeemed(id: i64, expires_at: &str) -> ResponseTemplate {
 }
 
 /// The start URL's query as pairs.
-fn query(start: &str) -> Vec<(String, String)> {
+pub(crate) fn query(start: &str) -> Vec<(String, String)> {
     Url::parse(start)
         .unwrap()
         .query_pairs()
@@ -54,7 +54,7 @@ fn query(start: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-fn param(start: &str, key: &str) -> String {
+pub(crate) fn param(start: &str, key: &str) -> String {
     query(start)
         .into_iter()
         .find(|(k, _)| k == key)
@@ -62,14 +62,14 @@ fn param(start: &str, key: &str) -> String {
         .unwrap_or_else(|| panic!("{key} missing from {start}"))
 }
 
-fn callback_addr(start: &str) -> SocketAddr {
+pub(crate) fn callback_addr(start: &str) -> SocketAddr {
     let port: u16 = param(start, "port").parse().unwrap();
     assert_eq!(param(start, "loopback"), "v4");
     SocketAddr::from(([127, 0, 0, 1], port))
 }
 
 /// Plays the browser landing on the app's loopback with `query`; returns the page.
-async fn land(addr: SocketAddr, query: String) -> String {
+pub(crate) async fn land(addr: SocketAddr, query: String) -> String {
     tokio::task::spawn_blocking(move || {
         let mut s = TcpStream::connect(addr).expect("connect");
         write!(
@@ -86,7 +86,7 @@ async fn land(addr: SocketAddr, query: String) -> String {
 }
 
 /// Whether a connect to `addr` is refused within 2 s, meaning the listener closed.
-fn port_closes(addr: SocketAddr) -> bool {
+pub(crate) fn port_closes(addr: SocketAddr) -> bool {
     let deadline = std::time::Instant::now() + Duration::from_secs(2);
     while std::time::Instant::now() < deadline {
         match TcpStream::connect_timeout(&addr, Duration::from_millis(200)) {
@@ -118,7 +118,7 @@ async fn sign_in_with(
     (got, addr)
 }
 
-async fn redeem_bodies(s: &MockServer) -> Vec<Value> {
+pub(crate) async fn redeem_bodies(s: &MockServer) -> Vec<Value> {
     s.received_requests()
         .await
         .unwrap()
@@ -128,7 +128,7 @@ async fn redeem_bodies(s: &MockServer) -> Vec<Value> {
         .collect()
 }
 
-fn nothing_kept(s: &MockServer, secrets: &MemoryStore, team_file: &Path) {
+pub(crate) fn nothing_kept(s: &MockServer, secrets: &MemoryStore, team_file: &Path) {
     assert_eq!(secrets.get(&token_key(&url(s), "ada")).unwrap(), None);
     assert!(TeamStore::load(team_file).unwrap().accounts().is_empty());
 }
