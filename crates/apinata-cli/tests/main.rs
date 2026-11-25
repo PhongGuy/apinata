@@ -117,6 +117,7 @@ mod cli_url_trim;
 mod cli_usage;
 mod cli_userinfo_auth;
 mod cli_verbose;
+mod cli_verbose_connection;
 mod cli_verbose_cookies;
 mod cli_watch;
 mod cli_workspace_env;
