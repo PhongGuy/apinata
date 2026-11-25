@@ -234,3 +234,207 @@ async fn a_release_signed_by_another_key_is_an_error() {
         .stderr(contains("unknown key"));
     assert_eq!(std::fs::read(&exe).unwrap(), b"old");
 }
+
+/// Publishes 99.0.0 with a notes asset at `/v99/notes.json` listing `notes`; `served` is what
+/// that URL answers.
+async fn release_with_notes(s: &MockServer, signer: &Key, notes: &[u8], served: ResponseTemplate) {
+    let hex = |data: &[u8]| -> String {
+        sha2::Sha256::digest(data)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
+    };
+    let manifest = serde_json::json!({
+        "version": "99.0.0",
+        "notes": "Faster runs.",
+        "notes_asset": {"url": format!("{}/v99/notes.json", s.uri()),
+                        "size": notes.len(), "sha256": hex(notes)},
+        "targets": {target_id(Product::Cli): {"url": format!("{}/artifact", s.uri()),
+                    "format": "binary", "size": NEW.len(), "sha256": hex(NEW)}}
+    })
+    .to_string();
+    let ok = |body: Vec<u8>| ResponseTemplate::new(200).set_body_bytes(body);
+    Mock::given(method("GET"))
+        .and(path("/latest.json"))
+        .respond_with(ok(manifest.clone().into_bytes()))
+        .mount(s)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/latest.json.sig"))
+        .respond_with(ok(signer.sign(manifest.as_bytes()).into_bytes()))
+        .mount(s)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v99/notes.json"))
+        .respond_with(served)
+        .mount(s)
+        .await;
+}
+
+fn notes_json() -> Vec<u8> {
+    serde_json::to_vec(&serde_json::json!({"schema": 1, "releases": [
+        {"version": "98.0.0", "previous": "97.0.0", "date": "2026-11-01",
+         "groups": [{"kind": "fixes", "title": "Fixes", "items": [{"text": "Fixed a crash"}]}]},
+        {"version": "99.0.0", "previous": "98.0.0", "date": "2026-12-01",
+         "intro": "A faster release.",
+         "groups": [
+            {"kind": "features", "title": "New features",
+             "items": [{"text": "Search the history", "pr": 1364}, {"text": "...and 2 more"}]},
+            {"kind": "performance", "title": "Performance", "items": [{"text": "Faster runs"}]}]}
+    ]}))
+    .unwrap()
+}
+
+fn printed(out: &std::process::Output) -> String {
+    String::from_utf8(out.stdout.clone())
+        .unwrap()
+        .replace(env!("CARGO_PKG_VERSION"), "<current>")
+}
+
+// The update test seams exist only in debug builds.
+#[cfg(debug_assertions)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn check_lists_the_notes_of_every_newer_release() {
+    let (s, k, (_d, exe)) = (MockServer::start().await, Key::generate(), install());
+    let notes = notes_json();
+    release_with_notes(
+        &s,
+        &k,
+        &notes,
+        ResponseTemplate::new(200).set_body_bytes(notes.clone()),
+    )
+    .await;
+    let out = self_update(&s, &k, &exe).arg("--check").output().unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    insta::assert_snapshot!(printed(&out), @r#"
+    Apinata 99.0.0 is available (this is <current>).
+
+    99.0.0 (2026-12-01)
+      A faster release.
+      New features
+        - Search the history (#1364)
+        - ...and 2 more
+      Performance
+        - Faster runs
+
+    98.0.0 (2026-11-01)
+      Fixes
+        - Fixed a crash
+
+    Older versions: see https://example.com/download
+    "#);
+}
+
+// The update test seams exist only in debug builds.
+#[cfg(debug_assertions)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn check_says_when_the_notes_could_not_be_loaded() {
+    let (s, k, (_d, exe)) = (MockServer::start().await, Key::generate(), install());
+    release_with_notes(&s, &k, &notes_json(), ResponseTemplate::new(404)).await;
+    let out = self_update(&s, &k, &exe).arg("--check").output().unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    insta::assert_snapshot!(printed(&out), @r#"
+    Apinata 99.0.0 is available (this is <current>).
+    Release notes couldn't be loaded.
+      Faster runs.
+    "#);
+}
+
+// The update test seams exist only in debug builds.
+#[cfg(debug_assertions)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn check_prints_json_with_the_notes_or_the_reason() {
+    let (s, k, (_d, exe)) = (MockServer::start().await, Key::generate(), install());
+    let notes = notes_json();
+    release_with_notes(
+        &s,
+        &k,
+        &notes,
+        ResponseTemplate::new(200).set_body_bytes(notes.clone()),
+    )
+    .await;
+    let out = (self_update(&s, &k, &exe).args(["--check", "--format", "json"]))
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    insta::assert_snapshot!(printed(&out), @r#"
+    {
+      "current": "<current>",
+      "available": "99.0.0",
+      "notes": [
+        {
+          "version": "99.0.0",
+          "previous": "98.0.0",
+          "date": "2026-12-01",
+          "intro": "A faster release.",
+          "groups": [
+            {
+              "kind": "features",
+              "title": "New features",
+              "items": [
+                {
+                  "text": "Search the history",
+                  "pr": 1364
+                },
+                {
+                  "text": "...and 2 more"
+                }
+              ]
+            },
+            {
+              "kind": "performance",
+              "title": "Performance",
+              "items": [
+                {
+                  "text": "Faster runs"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "version": "98.0.0",
+          "previous": "97.0.0",
+          "date": "2026-11-01",
+          "groups": [
+            {
+              "kind": "fixes",
+              "title": "Fixes",
+              "items": [
+                {
+                  "text": "Fixed a crash"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "older_not_listed": true,
+      "notes_error": null
+    }
+    "#);
+
+    let (s, k) = (MockServer::start().await, Key::generate());
+    release_with_notes(&s, &k, &notes, ResponseTemplate::new(404)).await;
+    let out = (self_update(&s, &k, &exe).args(["--check", "--format", "json"]))
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    insta::assert_snapshot!(printed(&out), @r#"
+    {
+      "current": "<current>",
+      "available": "99.0.0",
+      "notes": null,
+      "older_not_listed": false,
+      "notes_error": "the notes answered HTTP 404"
+    }
+    "#);
+}
+
+#[test]
+fn format_needs_check() {
+    apinata()
+        .args(["self-update", "--format", "json"])
+        .assert()
+        .code(3);
+}

@@ -7,7 +7,7 @@ use apinata_core::update::{
     self, Available, InstallKind, Os, Product, Reason, UpdateConfig, UpdateError,
 };
 
-use crate::SelfUpdateArgs;
+use crate::{Format, SelfUpdateArgs};
 
 /// Exit code for an update reported by `--check`.
 const EXIT_AVAILABLE: u8 = 2;
@@ -31,26 +31,33 @@ fn self_update(args: &SelfUpdateArgs) -> anyhow::Result<u8> {
         .enable_all()
         .build()?;
     let current = &cfg.current_version;
-    let Some(available) = runtime.block_on(update::check(&cfg))? else {
-        outln!("Apinata {current} is up to date.");
+    let json = matches!(args.format, Format::Json);
+    let found = runtime.block_on(update::check(&cfg))?;
+    if json {
+        print_json(current, found.as_ref())?;
+    }
+    let Some(available) = found else {
+        if !json {
+            outln!("Apinata {current} is up to date.");
+        }
         return Ok(0);
     };
     let exe = executable()?;
     let kind = classify(&exe);
 
-    outln!(
-        "Apinata {} is available (this is {current}).",
-        available.version
-    );
-    for line in available.notes.iter().flat_map(|n| n.lines()) {
-        outln!("  {line}");
+    if !json {
+        outln!(
+            "Apinata {} is available (this is {current}).",
+            available.version
+        );
+        print_notes(&available, &cfg);
     }
     // A copy the updater does not own is updated by whatever installed it, so the user is
     // pointed there instead; that is a normal outcome, not an error.
     let target = match kind {
         InstallKind::Standalone(target) => target,
-        InstallKind::NotOwned(reason) => return Ok(not_owned(&reason, &cfg)),
-        _ => return Ok(not_owned(&Reason::Unrecognised, &cfg)),
+        InstallKind::NotOwned(reason) => return Ok(not_owned(&reason, &cfg, json)),
+        _ => return Ok(not_owned(&Reason::Unrecognised, &cfg, json)),
     };
     if args.check {
         return Ok(EXIT_AVAILABLE);
@@ -64,10 +71,67 @@ fn self_update(args: &SelfUpdateArgs) -> anyhow::Result<u8> {
     Ok(0)
 }
 
-fn not_owned(reason: &Reason, cfg: &UpdateConfig) -> u8 {
-    outln!("This copy cannot update itself: {reason}.");
-    outln!("Download it from {}", cfg.download_page);
+// JSON output keeps stdout to the document, so the pointer goes to stderr there.
+fn not_owned(reason: &Reason, cfg: &UpdateConfig, json: bool) -> u8 {
+    let text = format!(
+        "This copy cannot update itself: {reason}.\nDownload it from {}",
+        cfg.download_page
+    );
+    if json {
+        eprintln!("{text}");
+    } else {
+        outln!("{text}");
+    }
     0
+}
+
+/// The offer's notes as plain text: each release newer than this build under its heading,
+/// then where older notes are. An offer whose manifest lists no notes asset shows its
+/// one-line notes as before.
+fn print_notes(available: &Available, cfg: &UpdateConfig) {
+    let Some(notes) = &available.release_notes else {
+        if available.notes_error.is_some() {
+            outln!("Release notes couldn't be loaded.");
+        }
+        for line in available.notes.iter().flat_map(|n| n.lines()) {
+            outln!("  {line}");
+        }
+        return;
+    };
+    for release in &notes.releases {
+        outln!();
+        outln!("{}", release.heading());
+        if let Some(intro) = &release.intro {
+            outln!("  {intro}");
+        }
+        for group in &release.groups {
+            outln!("  {}", group.title);
+            for item in &group.items {
+                outln!("    - {}", item.line());
+            }
+        }
+    }
+    if notes.older_not_listed {
+        outln!();
+        outln!("Older versions: see {}", cfg.download_page);
+    }
+}
+
+/// `{current, available, notes, older_not_listed, notes_error}`, where `notes` lists the
+/// releases newer than this build, newest first, or is null when none loaded, and
+/// `older_not_listed` says the list stops short of this build.
+fn print_json(current: &str, available: Option<&Available>) -> anyhow::Result<()> {
+    let release_notes = available.and_then(|a| a.release_notes.as_ref());
+    let notes = (release_notes.map(|n| serde_json::to_value(&n.releases))).transpose()?;
+    let doc = serde_json::json!({
+        "current": current,
+        "available": available.map(|a| &a.version),
+        "notes": notes,
+        "older_not_listed": release_notes.is_some_and(|n| n.older_not_listed),
+        "notes_error": available.and_then(|a| a.notes_error.as_ref()),
+    });
+    outln!("{}", serde_json::to_string_pretty(&doc)?);
+    Ok(())
 }
 
 /// Stages the download beside `target`, so the swap is a rename within one directory.

@@ -837,7 +837,7 @@ fn the_gate_holds_the_lock_and_builds_core_without_its_default_features() {
         make_recipe("core-check"),
         [
             "$(CARGO) check -p apinata-core --no-default-features --locked",
-            "RUSTDOCFLAGS=-Dwarnings $(CARGO) doc --no-deps -p apinata-core --locked",
+            "RUSTDOCFLAGS=-Dwarnings $(CARGO) doc --no-deps -p apinata-core --features update --locked",
         ]
     );
 }
