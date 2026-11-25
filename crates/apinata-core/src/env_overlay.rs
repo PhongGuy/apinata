@@ -76,7 +76,7 @@ impl fmt::Debug for OverlayVar {
 
 type Entries = BTreeMap<String, OverlayEntry>;
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Layers {
     collection: Entries,
     /// Not keyed by environment: selecting, renaming and pinning leave it alone.
@@ -116,6 +116,27 @@ impl EnvOverlay {
     /// An empty overlay.
     pub fn new() -> EnvOverlay {
         EnvOverlay::default()
+    }
+
+    /// A store of its own holding a copy of these edits, on the same pin; writes to either
+    /// never reach the other.
+    pub(crate) fn fork(&self) -> EnvOverlay {
+        let layers = self.lock().clone();
+        EnvOverlay {
+            layers: Arc::new(Mutex::new(layers)),
+            revision: Arc::new(AtomicU64::new(self.revision())),
+            pinned: self.pinned.clone(),
+        }
+    }
+
+    /// A handle on `other`'s store that keeps this handle's pin, so a context built afresh can
+    /// read and write edits another context made.
+    pub(crate) fn on_store_of(&self, other: &EnvOverlay) -> EnvOverlay {
+        EnvOverlay {
+            layers: Arc::clone(&other.layers),
+            revision: Arc::clone(&other.revision),
+            pinned: self.pinned.clone(),
+        }
     }
 
     /// A handle for one context, fixed to `env` whatever is selected later. Once `env` is

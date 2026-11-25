@@ -460,6 +460,28 @@ impl VarContext {
         ctx
     }
 
+    /// A clone whose runtime variables and script edits to environment, global and collection
+    /// variables start as copies of these and are its own from then on, so a run on it leaves
+    /// this context's values alone. Sensitive marks and tainted values are copied, so the
+    /// clone masks what this context masks.
+    #[must_use]
+    pub fn fork_variables(&self) -> VarContext {
+        let mut ctx = self.clone();
+        ctx.runtime_vars = self.runtime_vars.fork();
+        ctx.env_overlay = self.env_overlay.fork();
+        ctx
+    }
+
+    /// A clone that keeps this context's file, environment and secret layers but reads and
+    /// writes `other`'s runtime variables and script edits, as a re-run of a forked run needs.
+    #[must_use]
+    pub fn with_variables_of(&self, other: &VarContext) -> VarContext {
+        let mut ctx = self.clone();
+        ctx.runtime_vars = other.runtime_vars.clone();
+        ctx.env_overlay = self.env_overlay.on_store_of(&other.env_overlay);
+        ctx
+    }
+
     /// A clone whose requests that inherit their timeout use `timeout`; `None` means no limit.
     pub fn with_default_timeout(&self, timeout: Option<Duration>) -> VarContext {
         let mut ctx = self.clone();
@@ -1599,6 +1621,30 @@ mod secret_values_tests {
             "{values:?}"
         );
         assert!(!values.contains(&"abc".to_owned()));
+    }
+
+    // A fork masks what the original masked, and taint the fork gains stays in the fork.
+    #[test]
+    fn a_fork_keeps_the_tainted_values_apart() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("opencollection.yml"),
+            "opencollection: 1.0.0\ninfo:\n  name: c\n",
+        )
+        .unwrap();
+        let c = Collection::open(dir.path()).unwrap();
+        let runtime = RuntimeVars::default();
+        runtime.taint(&["tainted-before-fork".to_owned()]);
+        let ctx = VarContext::new(&c, ContextOptions::new().runtime_vars(runtime)).unwrap();
+        let fork = ctx.fork_variables();
+        assert!(
+            (fork.secret_values()).contains(&"tainted-before-fork".to_owned()),
+            "the fork still masks it"
+        );
+        fork.runtime_vars().taint(&["tainted-in-fork".to_owned()]);
+        assert!(!ctx.secret_values().contains(&"tainted-in-fork".to_owned()));
+        let grafted = ctx.with_variables_of(&fork);
+        assert!((grafted.secret_values()).contains(&"tainted-in-fork".to_owned()));
     }
 
     /// A one-request collection and a context whose runtime scope the test controls.

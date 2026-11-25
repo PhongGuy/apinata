@@ -159,6 +159,13 @@ pub struct SavedRunnerOptions {
     pub iteration_count: Option<usize>,
     /// The data file iterated over, if any.
     pub data_file: Option<PathBuf>,
+    /// Which cookie jar a run reads and fills; a choice this build does not know is the shared jar.
+    #[serde(deserialize_with = "lenient::or_default")]
+    pub run_cookies: crate::runner_model::RunCookies,
+    /// Whether a run on its own jar puts its cookies into the shared jar.
+    pub keep_cookies: bool,
+    /// Whether a run works on a copy of the variables, dropping the values it sets.
+    pub fork_variables: bool,
 }
 
 /// A saved tab that can be the active one: a request or an example tab.
