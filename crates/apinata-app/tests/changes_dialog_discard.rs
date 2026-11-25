@@ -201,3 +201,17 @@ fn the_row_menu_and_the_button_both_offer_discard(cx: &mut TestAppContext) {
     assert!(confirm_open(cx), "the row menu asks");
     answer_confirm(cx, "confirm-cancel");
 }
+
+#[gpui_kit::test]
+fn delete_in_the_list_asks_to_discard_the_selected_row(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let col = changed(&sb);
+    let s = git_started(cx, &sb, &col);
+    with_trash(cx, &s, FakeTrash::new());
+    open_on(cx, &s, col.path());
+    click(cx, &s, ("changes-file", 0usize));
+    frame(cx, s.win);
+    platform_press(cx, s.win, "delete");
+    assert!(confirm_open(cx), "Delete asks");
+    answer_confirm(cx, "confirm-cancel");
+}

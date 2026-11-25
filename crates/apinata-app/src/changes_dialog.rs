@@ -917,6 +917,14 @@ impl ChangesView {
                 }
                 return;
             }
+            // Delete asks to discard the selected row's changes.
+            "delete" => {
+                if let Some(ix) = at {
+                    cx.stop_propagation();
+                    self.discard(ix, window, cx);
+                }
+                return;
+            }
             _ => return,
         };
         cx.stop_propagation();
@@ -1295,6 +1303,8 @@ impl ChangesView {
                                 .solid_ring(cx)
                                 .label("Discard")
                                 .small()
+                                // Delete in the list reaches it, so Tab keeps its old order.
+                                .tab_stop(false)
                                 .tooltip(DISCARD_ITEM)
                                 .lock(self.busy || self.selected.is_none(), cx)
                                 .on_click(move |_, window, cx| {
