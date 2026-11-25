@@ -15,8 +15,8 @@ use apinata_core::{
     CommitError, DotenvGit, DraftSnapshot, EnvOverlay, EnvVariable, GIT_TIMEOUT, GitError,
     GitOptions, GitState, GlobalEnvironments, IdentityScope, ItemPath, OpenError, PullRange,
     RequestKind, RuntimeVars, ScriptPhase, SecretName, SecretRenames, SecretStore, StageState,
-    WorkspaceFile, collection_status_with, commit, ignore_dotenv, is_workspace_dir, set_identity,
-    stage, unstage,
+    WorkspaceFile, collection_status_with, commit, discard, ignore_dotenv, is_workspace_dir,
+    set_identity, stage, undo_discard, unstage,
 };
 use gpui_kit::{App, AppContext, Context, Entity, EventEmitter, SharedString, Subscription, Task};
 
@@ -577,6 +577,10 @@ pub enum GitWrite {
     StageAllBut(Vec<PathBuf>),
     /// Commit what is staged with this message.
     Commit(String),
+    /// Throw away the changes to this collection-relative file, its version going to the trash.
+    Discard(PathBuf),
+    /// Reverse an earlier discard from the trash.
+    UndoDiscard(apinata_core::Discarded),
     /// Save git's name and email at `scope`, then commit what is staged with `message`.
     CommitAs {
         /// The author and committer name.
@@ -593,8 +597,10 @@ pub enum GitWrite {
 /// How a git write ended.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GitWriteDone {
-    /// A stage or unstage went through.
+    /// A stage, unstage or undone discard went through.
     Done,
+    /// The file's changes were discarded; what an undo needs to bring them back.
+    Discarded(apinata_core::Discarded),
     /// The commit landed.
     Committed {
         /// The abbreviated id of the new commit.
@@ -2692,8 +2698,19 @@ impl Workspace {
         let options = self.git_options.clone()?;
         let root = absolute(root);
         let dir = root.clone();
+        let trash = Arc::clone(&self.trash);
         let work = cx.background_spawn(async move {
             match op {
+                GitWrite::Discard(path) => discard(&dir, &[path], trash.as_ref(), &options)
+                    .map(GitWriteDone::Discarded)
+                    .unwrap_or_else(|e| {
+                        GitWriteDone::Failed(crate::sync_text::capitalized(&e.to_string()))
+                    }),
+                GitWrite::UndoDiscard(done) => undo_discard(&dir, &done, trash.as_ref(), &options)
+                    .map(|()| GitWriteDone::Done)
+                    .unwrap_or_else(|e| {
+                        GitWriteDone::Failed(crate::sync_text::capitalized(&e.to_string()))
+                    }),
                 GitWrite::Stage(paths) => stage(&dir, &paths, &options)
                     .map(|()| GitWriteDone::Done)
                     .unwrap_or_else(|e| GitWriteDone::Failed(e.to_string())),

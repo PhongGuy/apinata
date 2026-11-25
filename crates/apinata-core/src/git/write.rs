@@ -350,7 +350,7 @@ pub fn stage(
 }
 
 /// Whether a parent of `path`, inside `root`, is a symlink.
-fn under_link(root: &Path, path: &Path) -> bool {
+pub(super) fn under_link(root: &Path, path: &Path) -> bool {
     path.ancestors()
         .skip(1)
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -418,7 +418,7 @@ fn checked(root: &Path, paths: &[impl AsRef<Path>]) -> Result<Option<Vec<OsStrin
 }
 
 /// Lexical check: non-empty, relative, and never leaving the collection.
-fn check_relative(path: &Path) -> Result<(), GitError> {
+pub(super) fn check_relative(path: &Path) -> Result<(), GitError> {
     let bad = path.as_os_str().is_empty()
         || path.components().any(|c| {
             matches!(
@@ -436,7 +436,11 @@ fn check_relative(path: &Path) -> Result<(), GitError> {
 }
 
 /// One stage or unstage call, under the same time floor as a commit.
-fn run_write(args: &[OsString], root: &Path, options: &GitOptions) -> Result<(), GitError> {
+pub(super) fn run_write(
+    args: &[OsString],
+    root: &Path,
+    options: &GitOptions,
+) -> Result<(), GitError> {
     let options = options.clone().timeout(write_timeout(options.timeout));
     let out = run::git_write(args, &[], root, &options)?;
     if out.status.success() {

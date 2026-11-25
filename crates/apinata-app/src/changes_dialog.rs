@@ -12,6 +12,7 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{
     IndentInline, Input, InputEvent, InputState, OutdentInline, Position, Textarea, TextareaState,
 };
+use gpui_kit::component::menu::{ContextMenuExt as _, PopupMenuItem};
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::tag::Tag;
 use gpui_kit::component::{
@@ -54,6 +55,9 @@ const SCOPES: [(&str, IdentityScope); 2] = [
     ("This repository", IdentityScope::Repository),
     ("All repositories", IdentityScope::AllRepositories),
 ];
+
+// The row menu's item and the Discard button's tooltip.
+const DISCARD_ITEM: &str = "Discard Changes\u{2026}";
 
 // The list's note when nothing differs from the last commit.
 const NO_CHANGES: &str = "No changes since the last commit";
@@ -100,6 +104,64 @@ fn gone_warning(left: &Left) -> String {
             format!("Unstaging drops the staged copy; the path now opens another file ({other})")
         }
         Left::Nothing => GONE_UNSTAGE.to_owned(),
+    }
+}
+
+// Numbers each discard's Undo toast, so two discards keep two toasts.
+static DISCARDS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+// Shows the Undo toast of a discard of `path`; its button puts the trashed version back, and a
+// failure says why in a toast of its own.
+fn offer_undo(
+    workspace: &Entity<Workspace>,
+    root: &Path,
+    path: &Path,
+    undo: apinata_core::Discarded,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let ticket = DISCARDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let (workspace, root) = (workspace.clone(), root.to_path_buf());
+    let message = format!("Discarded the changes to {}", path.to_string_lossy());
+    crate::undo_toast::show_discard_undo_toast(
+        message,
+        ticket,
+        move |window, cx| {
+            let op = GitWrite::UndoDiscard(undo.clone());
+            let Some(task) = workspace.update(cx, |w, cx| w.run_git_write(&root, op, cx)) else {
+                return;
+            };
+            window
+                .spawn(cx, async move |cx| {
+                    if let GitWriteDone::Failed(text) = task.await {
+                        cx.update(|window, cx| {
+                            window.push_notification(format!("Undo failed: {text}"), cx)
+                        })
+                        .ok();
+                    }
+                })
+                .detach();
+        },
+        window,
+        cx,
+    );
+}
+
+// Whether the unsaved document `target` is the file at the collection-relative `path`.
+fn target_is(target: &crate::command::Target, path: &Path) -> bool {
+    use crate::command::Target;
+    // Names keep any dots of their own, so the extension is appended rather than swapped.
+    let either = |stem: String| {
+        [".yml", ".yaml"]
+            .iter()
+            .any(|ext| Path::new(&format!("{stem}{ext}")) == path)
+    };
+    match target {
+        Target::Request(item) => Path::new(item.as_str()) == path,
+        Target::Folder(item) if item.is_root() => either("folder".to_owned()),
+        Target::Folder(item) => either(format!("{}/folder", item.as_str())),
+        Target::Collection => either("opencollection".to_owned()),
+        Target::Environment(name) => either(format!("environments/{name}")),
     }
 }
 
@@ -388,6 +450,125 @@ impl ChangesView {
             false => ask,
         };
         self.confirmed(op, ask, secrets, window, cx);
+    }
+
+    /// Asks before throwing away the changes to the file at `ix`, then discards them; a file
+    /// that cannot be discarded safely is refused with a notice instead. Does nothing while busy.
+    pub fn discard(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if self.busy {
+            return;
+        }
+        let Some((path, change)) = self.files.get(ix).cloned() else {
+            return;
+        };
+        let shown = path.to_string_lossy().into_owned();
+        let trash = self.workspace.read(cx).trash_available();
+        if let Some(why) = self.discard_refusal(&path, &change, trash, cx) {
+            self.notice = Some(Notice::Failed(why));
+            cx.notify();
+            return;
+        }
+        let on_disk = self.root.join(&path).symlink_metadata().is_ok();
+        let mut notes: Vec<&str> = Vec::new();
+        if !matches!(change, GitChange::Untracked | GitChange::Added) {
+            notes.push("The file goes back to the last commit.");
+        }
+        if matches!(
+            self.stages.get(ix),
+            Some(GitStage::Both | GitStage::StagedGone)
+        ) {
+            notes.push("Its staged version differs and is discarded too.");
+        }
+        if holds_secrets(&path) {
+            notes.push("It holds secret values, which the trash keeps too.");
+        }
+        match (on_disk, trash) {
+            (true, true) => notes.push("Your version goes to the trash."),
+            (true, false) => notes.push("This cannot be undone."),
+            (false, _) => {}
+        }
+        let answer = confirm::ask(confirm::discard_file_ask(&shown, &notes), window, cx);
+        cx.spawn_in(window, async move |this, cx| {
+            if answer.recv().await == Ok(1) {
+                this.update_in(cx, |v, window, cx| v.run_discard(path, window, cx))
+                    .ok();
+            }
+        })
+        .detach();
+    }
+
+    // Why the file at `path` is not discarded: unsaved edits in its tab, a conflict, or a file
+    // the last commit lacks with no trash to keep it in.
+    fn discard_refusal(
+        &self,
+        path: &Path,
+        change: &GitChange,
+        trash: bool,
+        cx: &App,
+    ) -> Option<String> {
+        let shown = path.to_string_lossy();
+        let unsaved = self.workspace.read(cx).unsaved(Some(&self.root), cx);
+        let dirty = (unsaved.iter())
+            .flat_map(|u| &u.targets)
+            .any(|t| target_is(t, path));
+        if dirty {
+            return Some(format!(
+                "{shown} has unsaved edits in a tab; save or revert them before discarding"
+            ));
+        }
+        match change {
+            GitChange::Conflicted => Some(format!(
+                "Resolve the conflicts in {shown} before discarding it"
+            )),
+            GitChange::Untracked | GitChange::Added | GitChange::Renamed { .. } if !trash => {
+                Some(format!(
+                    "{shown} is not in the last commit and there is no trash to keep it in, so \
+                     it was left as it is"
+                ))
+            }
+            _ => None,
+        }
+    }
+
+    // Discards `path` through the workspace; once done, an Undo toast offers it back when the
+    // trash kept every version.
+    fn run_discard(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        if self.busy {
+            return;
+        }
+        // A tab may have picked up edits while the question was open.
+        let change = (self.files.iter())
+            .find(|(p, _)| *p == path)
+            .map(|(_, c)| c.clone());
+        let trash = self.workspace.read(cx).trash_available();
+        if let Some(why) = change.and_then(|c| self.discard_refusal(&path, &c, trash, cx)) {
+            self.notice = Some(Notice::Failed(why));
+            cx.notify();
+            return;
+        }
+        let root = self.root.clone();
+        let workspace = self.workspace.clone();
+        let Some(task) = workspace.update(cx, |w, cx| {
+            w.run_git_write(&root, GitWrite::Discard(path.clone()), cx)
+        }) else {
+            return;
+        };
+        self.notice = None;
+        self.busy = true;
+        cx.notify();
+        cx.spawn_in(window, async move |this, cx| {
+            let done = task.await;
+            let undo = match &done {
+                GitWriteDone::Discarded(d) if d.undoable() => Some(d.clone()),
+                _ => None,
+            };
+            if let Some(undo) = undo {
+                cx.update(|window, cx| offer_undo(&workspace, &root, &path, undo, window, cx))
+                    .ok();
+            }
+            this.update(cx, |v, cx| v.finished(done, cx)).ok();
+        })
+        .detach();
     }
 
     // The `.env` rows nothing of is staged, which Stage all leaves out.
@@ -783,168 +964,181 @@ impl ChangesView {
         let list_focus = self.list_focus.clone();
         let this = cx.entity();
         let header = self.summary_header(cx);
-        let rows = self.files.iter().enumerate().map(|(ix, (path, change))| {
-            let on = self.selected == Some(ix);
-            let path = path.to_string_lossy().into_owned();
-            let (dir, name) = match path.rfind(['/', '\\']) {
-                Some(cut) => (path[..=cut].to_owned(), path[cut + 1..].to_owned()),
-                None => (String::new(), path.clone()),
-            };
-            let gone = self.stages.get(ix) == Some(&GitStage::StagedGone);
-            let secrets = holds_secrets(Path::new(&path));
-            let note = match self.stages.get(ix) {
-                Some(GitStage::Both) => Some(("changes-partly", "partly staged".to_owned())),
-                Some(GitStage::StagedGone) => {
-                    Some(("changes-gone", gone_note(&self.left_at(&path))))
-                }
-                _ => None,
-            };
-            let origin = match change {
-                GitChange::Renamed { from } => Some(from.to_string_lossy().into_owned()),
-                _ => None,
-            };
-            let tall = note.is_some() || origin.is_some();
-            let spoken = match (&origin, &note) {
-                (Some(origin), _) => format!("{} {path} from {origin}", change.word()),
-                (None, Some((_, note))) if gone => format!("{} {path}, {note}", change.word()),
-                (None, _) => format!("{} {path}", change.word()),
-            };
-            h_flex()
-                .id(("changes-file", ix))
-                .test_support()
-                .role(Role::ListBoxOption)
-                .aria_label(spoken)
-                .aria_selected(on)
-                .gap(style::SPACE_2)
-                .px(style::SPACE_2)
-                // Only a minimum, since a wrapped name makes a row taller than one line.
-                .min_h(style::ROW_HEIGHT)
-                .py(if tall { style::SPACE_1 } else { style::SPACE_0 })
-                .flex_none()
-                .relative()
-                .rounded(radius)
-                .when(on, |row| {
-                    row.bg(active).child(
-                        div()
-                            .id((edge_kind, ix))
-                            .test_support()
-                            .absolute()
-                            .inset_0()
-                            .rounded(radius)
-                            .border_l_2()
-                            .border_color(edge),
-                    )
-                })
-                .cursor_pointer()
-                .child(self.stage_box(ix, &path, this.clone()))
-                .on_click({
-                    let list_focus = list_focus.clone();
-                    cx.listener(move |this, _, window, cx| {
-                        window.focus(&list_focus, cx);
-                        this.select(ix, cx);
+        let rows =
+            self.files.iter().enumerate().map(|(ix, (path, change))| {
+                let on = self.selected == Some(ix);
+                let path = path.to_string_lossy().into_owned();
+                let (dir, name) = match path.rfind(['/', '\\']) {
+                    Some(cut) => (path[..=cut].to_owned(), path[cut + 1..].to_owned()),
+                    None => (String::new(), path.clone()),
+                };
+                let gone = self.stages.get(ix) == Some(&GitStage::StagedGone);
+                let secrets = holds_secrets(Path::new(&path));
+                let note = match self.stages.get(ix) {
+                    Some(GitStage::Both) => Some(("changes-partly", "partly staged".to_owned())),
+                    Some(GitStage::StagedGone) => {
+                        Some(("changes-gone", gone_note(&self.left_at(&path))))
+                    }
+                    _ => None,
+                };
+                let origin = match change {
+                    GitChange::Renamed { from } => Some(from.to_string_lossy().into_owned()),
+                    _ => None,
+                };
+                let tall = note.is_some() || origin.is_some();
+                let spoken = match (&origin, &note) {
+                    (Some(origin), _) => format!("{} {path} from {origin}", change.word()),
+                    (None, Some((_, note))) if gone => format!("{} {path}, {note}", change.word()),
+                    (None, _) => format!("{} {path}", change.word()),
+                };
+                let menu_view = this.clone();
+                let row = h_flex()
+                    .id(("changes-file", ix))
+                    .test_support()
+                    .role(Role::ListBoxOption)
+                    .aria_label(spoken)
+                    .aria_selected(on)
+                    .gap(style::SPACE_2)
+                    .px(style::SPACE_2)
+                    // Only a minimum, since a wrapped name makes a row taller than one line.
+                    .min_h(style::ROW_HEIGHT)
+                    .py(if tall { style::SPACE_1 } else { style::SPACE_0 })
+                    .flex_none()
+                    .relative()
+                    .rounded(radius)
+                    .when(on, |row| {
+                        row.bg(active).child(
+                            div()
+                                .id((edge_kind, ix))
+                                .test_support()
+                                .absolute()
+                                .inset_0()
+                                .rounded(radius)
+                                .border_l_2()
+                                .border_color(edge),
+                        )
                     })
-                })
-                .child(
-                    // The status word and directory stay one line; a name that does not fit
-                    // beside them wraps to a line of its own at the row's full width. A rename's
-                    // origin and a stage note each add a line, so none is clipped.
-                    v_flex()
-                        .flex_1()
-                        .min_w_0()
-                        .child(
-                            h_flex()
-                                .flex_wrap()
-                                .gap_x(style::SPACE_2)
-                                .min_w_0()
-                                .child(
-                                    h_flex()
-                                        .gap(style::SPACE_2)
-                                        .min_w_0()
-                                        .child(
-                                            // A fixed column, so the names line up whatever the
-                                            // word.
+                    .cursor_pointer()
+                    .child(self.stage_box(ix, &path, this.clone()))
+                    .on_click({
+                        let list_focus = list_focus.clone();
+                        cx.listener(move |this, _, window, cx| {
+                            window.focus(&list_focus, cx);
+                            this.select(ix, cx);
+                        })
+                    })
+                    .child(
+                        // The status word and directory stay one line; a name that does not fit
+                        // beside them wraps to a line of its own at the row's full width. A rename's
+                        // origin and a stage note each add a line, so none is clipped.
+                        v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .child(
+                                h_flex()
+                                    .flex_wrap()
+                                    .gap_x(style::SPACE_2)
+                                    .min_w_0()
+                                    .child(
+                                        h_flex()
+                                            .gap(style::SPACE_2)
+                                            .min_w_0()
+                                            .child(
+                                                // A fixed column, so the names line up whatever the
+                                                // word.
+                                                div()
+                                                    .id(("changes-file-word", ix))
+                                                    .test_support()
+                                                    .flex_none()
+                                                    .w(style::CHANGES_STATUS_WIDTH)
+                                                    .text_size(style::TEXT_SMALL)
+                                                    .text_color(muted)
+                                                    .child(change.word()),
+                                            )
+                                            .when(!dir.is_empty(), |line| {
+                                                line.child(
+                                                    div()
+                                                        .id(("changes-file-dir", ix))
+                                                        .test_support()
+                                                        .min_w_0()
+                                                        .truncate()
+                                                        .text_color(muted)
+                                                        .child(dir),
+                                                )
+                                            }),
+                                    )
+                                    .child({
+                                        // A name too long even for its own line ends in an ellipsis;
+                                        // hovering it shows the whole path.
+                                        div()
+                                            .id(("changes-file-name", ix))
+                                            .test_support()
+                                            .min_w_0()
+                                            .truncate()
+                                            .tooltip(ui::text_tooltip(
+                                                "changes-file-tooltip",
+                                                SharedString::from(path.clone()),
+                                            ))
+                                            .child(name)
+                                    })
+                                    .when(secrets, |line| {
+                                        line.child(
                                             div()
-                                                .id(("changes-file-word", ix))
+                                                .id(("changes-secrets", ix))
                                                 .test_support()
                                                 .flex_none()
-                                                .w(style::CHANGES_STATUS_WIDTH)
-                                                .text_size(style::TEXT_SMALL)
-                                                .text_color(muted)
-                                                .child(change.word()),
+                                                .aria_label(SECRETS_NOTE)
+                                                .tooltip(ui::text_tooltip(
+                                                    "changes-secrets-tooltip",
+                                                    SECRETS_NOTE,
+                                                ))
+                                                .child(Tag::warning().small().child(SECRETS_BADGE)),
                                         )
-                                        .when(!dir.is_empty(), |line| {
-                                            line.child(
-                                                div()
-                                                    .id(("changes-file-dir", ix))
-                                                    .test_support()
-                                                    .min_w_0()
-                                                    .truncate()
-                                                    .text_color(muted)
-                                                    .child(dir),
-                                            )
-                                        }),
-                                )
-                                .child({
-                                    // A name too long even for its own line ends in an ellipsis;
-                                    // hovering it shows the whole path.
+                                    }),
+                            )
+                            .when_some(origin, |col, origin| {
+                                let text = format!("from {origin}");
+                                col.child(
                                     div()
-                                        .id(("changes-file-name", ix))
+                                        .id(("changes-from", ix))
                                         .test_support()
-                                        .min_w_0()
+                                        .flex_none()
                                         .truncate()
+                                        .text_size(style::TEXT_SMALL)
+                                        .text_color(muted)
+                                        .aria_label(text.clone())
                                         .tooltip(ui::text_tooltip(
-                                            "changes-file-tooltip",
-                                            SharedString::from(path.clone()),
+                                            "changes-from-tooltip",
+                                            SharedString::from(origin),
                                         ))
-                                        .child(name)
-                                })
-                                .when(secrets, |line| {
-                                    line.child(
-                                        div()
-                                            .id(("changes-secrets", ix))
-                                            .test_support()
-                                            .flex_none()
-                                            .aria_label(SECRETS_NOTE)
-                                            .tooltip(ui::text_tooltip(
-                                                "changes-secrets-tooltip",
-                                                SECRETS_NOTE,
-                                            ))
-                                            .child(Tag::warning().small().child(SECRETS_BADGE)),
-                                    )
-                                }),
-                        )
-                        .when_some(origin, |col, origin| {
-                            let text = format!("from {origin}");
-                            col.child(
-                                div()
-                                    .id(("changes-from", ix))
-                                    .test_support()
-                                    .flex_none()
-                                    .truncate()
-                                    .text_size(style::TEXT_SMALL)
-                                    .text_color(muted)
-                                    .aria_label(text.clone())
-                                    .tooltip(ui::text_tooltip(
-                                        "changes-from-tooltip",
-                                        SharedString::from(origin),
-                                    ))
-                                    .child(text),
-                            )
-                        })
-                        .when_some(note, |col, (id, text)| {
-                            col.child(
-                                div()
-                                    .id((id, ix))
-                                    .test_support()
-                                    .flex_none()
-                                    .text_size(style::TEXT_SMALL)
-                                    .text_color(muted)
-                                    .aria_label(text.clone())
-                                    .child(text),
-                            )
-                        }),
-                )
-        });
+                                        .child(text),
+                                )
+                            })
+                            .when_some(note, |col, (id, text)| {
+                                col.child(
+                                    div()
+                                        .id((id, ix))
+                                        .test_support()
+                                        .flex_none()
+                                        .text_size(style::TEXT_SMALL)
+                                        .text_color(muted)
+                                        .aria_label(text.clone())
+                                        .child(text),
+                                )
+                            }),
+                    );
+                // A right click offers the row's discard, which asks first.
+                div()
+                    .id(("changes-file-menu", ix))
+                    .flex_none()
+                    .child(row)
+                    .context_menu(move |menu, _, _| {
+                        let view = menu_view.clone();
+                        menu.item(PopupMenuItem::new(DISCARD_ITEM).on_click(
+                            move |_, window, cx| view.update(cx, |v, cx| v.discard(ix, window, cx)),
+                        ))
+                    })
+            });
         let quiet = self.seen.is_none().then(|| {
             div()
                 .id("changes-quiet")
@@ -1093,25 +1287,45 @@ impl ChangesView {
                         .child(format!("{staged} staged of {total}")),
                 )
                 .child(
-                    // Enter in a dialog arrives as its Confirm, which would close it; the
-                    // focused bulk button takes it as a press instead.
-                    div()
-                        .on_action({
+                    h_flex()
+                        .gap(style::SPACE_1)
+                        .child({
                             let this = this.clone();
-                            move |_: &Confirm, window, cx| {
-                                cx.stop_propagation();
-                                this.update(cx, |v, cx| v.toggle_all(window, cx));
-                            }
+                            Button::new("changes-discard")
+                                .solid_ring(cx)
+                                .label("Discard")
+                                .small()
+                                .tooltip(DISCARD_ITEM)
+                                .lock(self.busy || self.selected.is_none(), cx)
+                                .on_click(move |_, window, cx| {
+                                    this.update(cx, |v, cx| {
+                                        if let Some(ix) = v.selected {
+                                            v.discard(ix, window, cx);
+                                        }
+                                    })
+                                })
                         })
                         .child(
-                            Button::new("changes-toggle-all")
-                                .solid_ring(cx)
-                                .label(if all { "Unstage all" } else { "Stage all" })
-                                .small()
-                                .lock(self.busy, cx)
-                                .on_click(move |_, window, cx| {
-                                    this.update(cx, |v, cx| v.toggle_all(window, cx))
-                                }),
+                            // Enter in a dialog arrives as its Confirm, which would close it; the
+                            // focused bulk button takes it as a press instead.
+                            div()
+                                .on_action({
+                                    let this = this.clone();
+                                    move |_: &Confirm, window, cx| {
+                                        cx.stop_propagation();
+                                        this.update(cx, |v, cx| v.toggle_all(window, cx));
+                                    }
+                                })
+                                .child(
+                                    Button::new("changes-toggle-all")
+                                        .solid_ring(cx)
+                                        .label(if all { "Unstage all" } else { "Stage all" })
+                                        .small()
+                                        .lock(self.busy, cx)
+                                        .on_click(move |_, window, cx| {
+                                            this.update(cx, |v, cx| v.toggle_all(window, cx))
+                                        }),
+                                ),
                         ),
                 ),
         )

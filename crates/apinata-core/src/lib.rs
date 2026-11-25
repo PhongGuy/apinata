@@ -213,16 +213,17 @@ pub use example::{
 pub use execute::{ConnectCause, CutBody, ExecError, ExecOptions, Executor, NtlmCause};
 pub use git::{
     Branch, CancelFlag, CloneError, CloneProgress, CloneRequest, CloneUrlKind, CommitError,
-    CommitOutcome, ConflictKind, ConflictPath, DiffLine, DotenvGit, FetchError, FileDiff,
-    FileStatus, GIT_FILE_CAP, GIT_TIMEOUT, GitError, GitOptions, GitState, Hunk, IdentityScope,
-    LineKind, Pulled, Pushed, REPO_LOCK_WAIT, RebasePulled, RemoteBranch, RemoteHost, RepoBusy,
-    RepoLock, RepoStatus, Section, StageState, SwitchError, Switched, SyncDirection, SyncError,
-    SyncTargets, Upstream, branches, clone_repo, collection_status, collection_status_with, commit,
-    commit_all, create_branch, default_folder_name, discard_changes, fetch, file_diff,
-    file_diff_with, ignore_dotenv, is_dirty, proxy_host, pull, pull_reporting, push, rebase_pull,
-    redact_url, redact_url_userinfo, remote_branches, remote_host, remote_tip, remotes, repo_lock,
-    set_identity, squash_unpushed, stage, switch_branch, switch_to_remote, sync_targets,
-    text_hunks, tracking_tip, unpushed, unstage, validate_clone_url, validate_folder_name,
+    CommitOutcome, ConflictKind, ConflictPath, DiffLine, DiscardError, Discarded, DotenvGit,
+    FetchError, FileDiff, FileStatus, GIT_FILE_CAP, GIT_TIMEOUT, GitError, GitOptions, GitState,
+    Hunk, IdentityScope, LineKind, Pulled, Pushed, REPO_LOCK_WAIT, RebasePulled, RemoteBranch,
+    RemoteHost, RepoBusy, RepoLock, RepoStatus, Section, StageState, SwitchError, Switched,
+    SyncDirection, SyncError, SyncTargets, Upstream, branches, clone_repo, collection_status,
+    collection_status_with, commit, commit_all, create_branch, default_folder_name, discard,
+    discard_changes, fetch, file_diff, file_diff_with, ignore_dotenv, is_dirty, proxy_host, pull,
+    pull_reporting, push, rebase_pull, redact_url, redact_url_userinfo, remote_branches,
+    remote_host, remote_tip, remotes, repo_lock, set_identity, squash_unpushed, stage,
+    switch_branch, switch_to_remote, sync_targets, text_hunks, tracking_tip, undo_discard,
+    unpushed, unstage, validate_clone_url, validate_folder_name,
 };
 pub use global_env::GlobalEnvironments;
 pub use graphql_query::{
