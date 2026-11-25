@@ -29,11 +29,13 @@ pub fn clone_request(
     Ok(CloneRequest::new(expected, parent, ws.slug.clone()))
 }
 
-/// Whether `root` is the top of a repository whose `origin` fetches exactly `url`, as a clone
-/// of that workspace left it. Anything git cannot answer counts as not a clone.
+/// Whether `root` is a clone of the workspace at `url`: git resolves `root` itself as its
+/// repository's top level (canonical paths compared), and `origin`'s fetch address is exactly
+/// `url`. Anything git cannot answer counts as not a clone.
 pub fn is_clone_of(root: &Path, url: &str, opts: &GitOptions) -> bool {
-    // A `.git` right here, so a folder inside some other repository never counts.
-    root.join(".git").exists() && crate::git::origin_url(root, opts).is_some_and(|u| u == url)
+    // An empty or broken `.git` would let git fall back to an outer repository's origin.
+    crate::git::is_top_level(root, opts)
+        && crate::git::origin_url(root, opts).is_some_and(|u| u == url)
 }
 
 /// The workspace's change stream, which must be exactly

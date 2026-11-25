@@ -8,7 +8,7 @@ pub use autosync::{
     commit_all, discard_changes, is_dirty, remote_tip, squash_unpushed, tracking_tip, unpushed,
 };
 mod branch;
-pub(crate) use branch::origin_url;
+pub(crate) use branch::{is_top_level, origin_url};
 mod clone;
 mod diff;
 mod discard;

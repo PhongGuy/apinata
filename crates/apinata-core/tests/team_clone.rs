@@ -195,3 +195,14 @@ fn only_the_top_of_a_repository_whose_origin_is_the_workspace_counts_as_its_clon
     assert!(!team::is_clone_of(&plain, url, &opts));
     assert!(!team::is_clone_of(&sb.path().join("missing"), url, &opts));
 }
+
+#[test]
+fn an_empty_git_folder_inside_a_matching_repository_is_not_its_clone() {
+    let sb = Sandbox::new();
+    let url = "http://127.0.0.1:9/git/core/api.git";
+    let outer = sb.repo("outer");
+    sb.git(&outer, &["remote", "add", "origin", url]);
+    let inner = outer.join("api");
+    fs::create_dir_all(inner.join(".git")).unwrap();
+    assert!(!team::is_clone_of(&inner, url, &sb.options()));
+}

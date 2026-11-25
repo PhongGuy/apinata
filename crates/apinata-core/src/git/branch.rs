@@ -91,6 +91,18 @@ pub fn remotes(root: &Path, opts: &GitOptions) -> Result<Vec<String>, GitError> 
     Ok(text.lines().map(str::to_owned).collect())
 }
 
+/// Whether git resolves `root` itself as a repository's top level, comparing canonical paths.
+pub(crate) fn is_top_level(root: &Path, opts: &GitOptions) -> bool {
+    let Ok(text) = lines(root, &["rev-parse", "--show-toplevel"], opts) else {
+        return false;
+    };
+    let top = Path::new(text.trim_end_matches(['\n', '\r']));
+    matches!(
+        (std::fs::canonicalize(top), std::fs::canonicalize(root)),
+        (Ok(top), Ok(root)) if top == root
+    )
+}
+
 /// The fetch address of `origin` in the repository at `root`; `None` without one.
 pub(crate) fn origin_url(root: &Path, opts: &GitOptions) -> Option<String> {
     check_root(root).ok()?;
