@@ -133,19 +133,24 @@ fn a_compressed_body_shows_its_wire_size_on_hover(cx: &mut TestAppContext) {
         "",
     );
     let (win, _view) = pane(cx, &s);
+    let head = s.result.response.as_ref().unwrap().timeline()[0].response_header_size();
     assert_eq!(
-        size_tooltip(cx, win).as_deref(),
-        Some("21 B (1000 B decoded)")
+        size_tooltip(cx, win),
+        Some(format!("Headers  {head} B\nBody  21 B (1000 B decoded)"))
     );
 }
 
 #[gpui_kit::test]
-fn a_plain_body_has_no_size_tooltip(cx: &mut TestAppContext) {
+fn a_plain_body_shows_header_and_body_size_on_hover(cx: &mut TestAppContext) {
     let s = send_once(
         cx,
         ResponseTemplate::new(200).set_body_raw("hello", "text/plain"),
         "",
     );
     let (win, _view) = pane(cx, &s);
-    assert_eq!(size_tooltip(cx, win), None);
+    let head = s.result.response.as_ref().unwrap().timeline()[0].response_header_size();
+    assert_eq!(
+        size_tooltip(cx, win),
+        Some(format!("Headers  {head} B\nBody  5 B"))
+    );
 }
