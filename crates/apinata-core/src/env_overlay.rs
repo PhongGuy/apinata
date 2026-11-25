@@ -92,8 +92,11 @@ struct Layers {
     /// Runs after a delete or rename reached this store and its lock is free again, where
     /// another thread could fork it; never copied into a fork.
     #[cfg(test)]
-    after_change: Option<Arc<dyn Fn(&EnvOverlay) + Send + Sync>>,
+    after_change: Option<AfterChange>,
 }
+
+#[cfg(test)]
+type AfterChange = Arc<dyn Fn(&EnvOverlay) + Send + Sync>;
 
 impl Layers {
     fn generation(&self, name: &str) -> u64 {
