@@ -316,10 +316,11 @@ pub struct BodyView {
     row_tails: Vec<(usize, usize, Range<usize>)>,
     // Where the current match sat in the source before a re-cut, for the next scan to resume at.
     find_anchor: Option<(u32, usize)>,
-    // Whether the editor holds the shown text (it may be shown as rows), and the cells of its
-    // longest line.
+    // Whether the editor holds the shown text (it may be shown as rows), the cells of its
+    // longest line, and its line count.
     editor_backed: bool,
     editor_cells: usize,
+    editor_lines: usize,
     // Set when the current match was on screen before a re-cut, so the scan that follows
     // brings it back into view.
     reveal_after_cut: bool,
@@ -396,6 +397,8 @@ pub struct BodyView {
     hovered_row: Option<usize>,
     // The corner overlay's size as last painted, so the value-actions button steps left of it.
     actions_size: Rc<Cell<Option<Size<Pixels>>>>,
+    // The strip held clear above the text for the overlay this frame, if any.
+    overlay_strip: Option<Pixels>,
     // The row the keyboard last moved to, marked in the rows list; None until a key moves it.
     current_row: Option<usize>,
     // Whether the value-actions menu is open; the hovered row stays put while it is.
@@ -576,6 +579,7 @@ impl BodyView {
             find_anchor: None,
             editor_backed: false,
             editor_cells: 0,
+            editor_lines: 0,
             reveal_after_cut: false,
             reveal_sideways: Cell::new(false),
             reveal_editor: Rc::default(),
@@ -621,6 +625,7 @@ impl BodyView {
             assert_offered: false,
             hovered_row: None,
             actions_size: Rc::default(),
+            overlay_strip: None,
             current_row: None,
             value_menu_open: Rc::default(),
             _editor_changes: editor_changes,
@@ -2089,9 +2094,11 @@ impl BodyView {
                 let entries = pending.borrow().0.clone();
                 entry_items(menu, entries, &menu_view, cx)
             });
-        // A line under the corner overlay keeps its button just left of the overlay.
-        let beside =
-            (self.actions_size.get()).filter(|s| top < s.height + style::SPACE_2.to_pixels(rem));
+        // A line under the corner overlay keeps its button just left of the overlay; text below
+        // a held strip has no line under it.
+        let beside = (self.actions_size.get()).filter(|s| {
+            self.overlay_strip.is_none() && top < s.height + style::SPACE_2.to_pixels(rem)
+        });
         div()
             .absolute()
             .top(top)
@@ -2865,6 +2872,7 @@ impl BodyView {
                 self.prepared_text = self.editor.read(cx).value();
                 self.editor_backed = true;
                 self.editor_cells = self.prepared_text.lines().map(cells).max().unwrap_or(0);
+                self.editor_lines = self.prepared_text.lines().count();
                 Shown::Editor
             }
         };
@@ -3159,6 +3167,46 @@ impl BodyView {
             });
         });
         self.rechunk = Some((target, task));
+    }
+
+    // The strip to hold clear above wrapped text whose first rows reach under the corner
+    // overlay: wrapped lines cannot scroll sideways, so their ends would stay hidden. Short
+    // first rows leave the overlay floating, as unwrapped text scrolls out from under it.
+    fn overlay_strip(&self, window: &Window, cx: &App) -> Option<Pixels> {
+        let overlay = self.actions_size.get()?;
+        let basis = self.wrap_basis(window, cx)?;
+        let inset = style::resolve(style::SPACE_1, window);
+        let bottom = inset + overlay.height;
+        // A row is never shorter than the font, so this over-counts the rows beside it.
+        let beside = (bottom / Self::font_size(cx)).ceil() as usize;
+        let (lines, widths): (usize, Vec<usize>) = match self.shown {
+            // The rows are already cut at the wrap width.
+            Shown::Lines(_) => (
+                self.line_count,
+                (self.chunked.rows.iter().take(beside))
+                    .map(|row| cells(row))
+                    .collect(),
+            ),
+            Shown::Editor => {
+                let columns = basis.columns(self.editor_lines).max(1);
+                let rows = (self.prepared_text.lines())
+                    .flat_map(|line| {
+                        let c = cells(line);
+                        let full = c.saturating_sub(1) / columns;
+                        std::iter::repeat_n(columns, full).chain([c - full * columns])
+                    })
+                    .take(beside)
+                    .collect();
+                (self.editor_lines, rows)
+            }
+            _ => return None,
+        };
+        let covered = ((overlay.width + style::SCROLLBAR_GUTTER) / basis.advance).ceil() as usize;
+        let free = basis.columns(lines).saturating_sub(covered);
+        widths
+            .into_iter()
+            .any(|w| w > free)
+            .then_some(bottom + inset)
     }
 
     // What wrapping needs from the pane: the room beside the gutter's padding and the width of
@@ -3594,6 +3642,7 @@ pub fn code_font_features() -> FontFeatures {
 impl Render for BodyView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.sync_chunks(window, cx);
+        self.overlay_strip = self.overlay_strip(window, cx);
         // The binary and image pairs are segmented tracks; a choice updates this view through
         // a weak handle, since the segment callbacks are plain closures.
         let view = cx.entity().downgrade();
@@ -3634,7 +3683,8 @@ impl Render for BodyView {
         };
         let filterable = matches!(self.kind, Some(BodyKind::Json | BodyKind::Xml));
         // The actions float in the body's top-right corner, clear of its scrollbar, instead of
-        // taking a row above it. The overlay is opaque, so it covers only line ends.
+        // taking a row above it. The overlay is opaque, so it covers only line ends that scroll
+        // out from under it; wrapped text that would run under it starts below it instead.
         let mut actions = h_flex()
             .id("body-actions")
             .test_support()
@@ -4259,6 +4309,7 @@ impl Render for BodyView {
                     .flex_1()
                     .min_h_0()
                     .w_full()
+                    .when_some(self.overlay_strip, |body, strip| body.pt(strip))
                     .child(content)
                     .children(actions),
             )

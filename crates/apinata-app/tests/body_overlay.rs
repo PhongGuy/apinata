@@ -155,3 +155,68 @@ fn an_empty_body_has_no_overlay(cx: &mut TestAppContext) {
     assert!(!present(cx, win, "body-actions"));
     assert!(!present(cx, win, "body-format"));
 }
+
+// A body that is one JSON line of `len` characters.
+fn long_line(len: usize) -> ResponseTemplate {
+    let body = format!("{{\"k\":\"{}\"}}", "x ".repeat(len / 2));
+    ResponseTemplate::new(200).set_body_raw(body, "application/json")
+}
+
+// Whether the overlay sits wholly above the text element `id`, so no line runs under it.
+fn overlay_above(cx: &mut TestAppContext, win: AnyWindowHandle, id: &'static str) -> bool {
+    frame(cx, win);
+    let overlay = bounds(cx, win, "body-actions");
+    let text = bounds(cx, win, id);
+    overlay.bottom() <= text.top()
+}
+
+#[gpui_kit::test]
+fn wrapped_raw_text_starts_below_the_overlay(cx: &mut TestAppContext) {
+    let (_s, win, view) = show_body(cx, long_line(3000));
+    choose_format(cx, win, "Raw");
+    assert!(view.read_with(cx, |v, _| v.wrap()));
+    assert!(overlay_above(cx, win, "body-editor"));
+}
+
+#[gpui_kit::test]
+fn wrapped_pretty_text_starts_below_the_overlay(cx: &mut TestAppContext) {
+    let (_s, win, view) = show_body(cx, long_line(3000));
+    assert_eq!(
+        view.read_with(cx, |v, _| v.mode()),
+        apinata_app::body_view::BodyMode::Pretty
+    );
+    assert!(overlay_above(cx, win, "body-editor"));
+}
+
+#[gpui_kit::test]
+fn wrapped_long_body_rows_start_below_the_overlay(cx: &mut TestAppContext) {
+    let (_s, win, view) = show_body(cx, long_line(300_000));
+    choose_format(cx, win, "Raw");
+    assert!(matches!(
+        view.read_with(cx, |v, _| v.shown()),
+        apinata_app::body_view::Shown::Lines(_)
+    ));
+    assert!(overlay_above(cx, win, "body-lines-frame"));
+}
+
+#[gpui_kit::test]
+fn short_wrapped_lines_keep_the_overlay_floating(cx: &mut TestAppContext) {
+    let (_s, win, view) = show_body(cx, json());
+    choose_format(cx, win, "Raw");
+    assert!(view.read_with(cx, |v, _| v.wrap()));
+    assert!(!overlay_above(cx, win, "body-editor"));
+}
+
+#[gpui_kit::test]
+fn unwrapped_text_keeps_the_overlay_floating(cx: &mut TestAppContext) {
+    let (_s, win, view) = show_body(cx, long_line(3000));
+    choose_format(cx, win, "Raw");
+    choose_format(cx, win, "Wrap");
+    assert!(!view.read_with(cx, |v, _| v.wrap()));
+    // An unwrapped line scrolls sideways, so its end can always be brought out from under.
+    let id = match view.read_with(cx, |v, _| v.shown()) {
+        apinata_app::body_view::Shown::Lines(_) => "body-lines-frame",
+        _ => "body-editor",
+    };
+    assert!(!overlay_above(cx, win, id));
+}
