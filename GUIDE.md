@@ -810,8 +810,13 @@ apinata team sign-out https://team.example.com
 
 The password is read from stdin, or from a hidden prompt in a terminal, and is
 never taken from the command line or an environment variable. `--sso` prints
-the address to open in a browser and the local port it waits on, then waits up
-to five minutes; it opens no browser itself. Ctrl+C at the password prompt or
+the address to open in a browser and the local port it waits on, opens the
+address in your default browser, then waits up to five minutes. If no browser
+can be started it says "could not open a browser; open the address above" and
+keeps waiting. It only prints the address, opening nothing, with
+`--no-browser`, when `CI` is set, on Linux and BSD when neither `DISPLAY` nor
+`WAYLAND_DISPLAY` is set, and on macOS and Windows when `SSH_CONNECTION` is
+set; an empty variable counts as unset. Ctrl+C at the password prompt or
 during the sign-in cancels it, exits 130 and keeps nothing. Signing in
 on another machine over SSH, forward the printed port first, for example
 `ssh -L 53682:127.0.0.1:53682 build-box`, then open the address in your local
