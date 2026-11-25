@@ -98,10 +98,12 @@ fn scope_rank(scope: VarScope) -> u8 {
         .unwrap_or(ORDER.len()) as u8
 }
 
-// One in-place input, the text it was last filled with, and its Enter/blur subscription.
+// One in-place input, the text it was last filled with, the last value a write refused (so
+// its toast shows once), and its Enter/blur subscription.
 struct Field {
     input: Entity<InputState>,
     synced: String,
+    refused: Option<String>,
     _sub: Subscription,
 }
 
@@ -439,6 +441,7 @@ impl VariablesOverview {
                 Field {
                     input,
                     synced: text,
+                    refused: None,
                     _sub: sub,
                 },
             );
@@ -507,7 +510,16 @@ impl VariablesOverview {
                 true
             }
             Err(message) => {
-                window.push_notification(ui::kind_toast(ToastKind::Error, message), cx);
+                let field = self.fields.get_mut(key);
+                let again = field
+                    .as_ref()
+                    .is_some_and(|f| f.refused.as_ref() == Some(&value));
+                if let Some(field) = field {
+                    field.refused = Some(value);
+                }
+                if !again {
+                    window.push_notification(ui::kind_toast(ToastKind::Error, message), cx);
+                }
                 false
             }
         }

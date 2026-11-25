@@ -215,6 +215,67 @@ fn a_secret_declared_anywhere_is_never_written_to_a_file(cx: &mut TestAppContext
     apply(cx, &ws, &root, "gkey", VarTarget::Runtime).expect("the runtime store takes it");
 }
 
+// A name some other environment marks secret can still be updated where the target file
+// already holds it as plain text: the write exposes nothing new.
+#[gpui_kit::test]
+fn a_plain_variable_already_in_the_target_is_still_updated(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        (
+            "opencollection.yml",
+            "opencollection: 1.0.0\ninfo:\n  name: c\nrequest:\n  variables:\n    - name: pkey\n      value: c0\n",
+        ),
+        ("a.yml", &request("a", "http://{{token}}/0")),
+        (
+            "environments/dev.yml",
+            "name: dev\nvariables:\n  - name: pkey\n    value: d0\n",
+        ),
+        (
+            "environments/prod.yml",
+            "name: prod\nvariables:\n  - secret: true\n    name: pkey\n",
+        ),
+    ]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    selected(cx, &ws, &root);
+    apply(cx, &ws, &root, "pkey", VarTarget::Environment("dev".into())).expect("dev holds it");
+    apply(cx, &ws, &root, "pkey", VarTarget::Collection).expect("the collection holds it");
+    wait_for(cx, "both saves", |_| {
+        read(&root, "environments/dev.yml").contains("abc")
+            && read(&root, "opencollection.yml").contains("abc")
+    });
+}
+
+// Until the global environments have loaded, a new name is not written to a file, since a
+// global environment may yet declare it secret.
+#[gpui_kit::test]
+fn a_new_name_waits_for_the_global_environments_to_load(cx: &mut TestAppContext) {
+    let col = tree();
+    let globals = write_tree(&[("h.yml", "name: h\nvariables: []\n")]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    selected(cx, &ws, &root);
+    let dir = globals.path().to_path_buf();
+    ws.update(cx, |w, cx| w.set_global_dir(dir, cx));
+    let early = cx.update(|cx| {
+        set_variable::apply(
+            &ws,
+            &root,
+            "fresh",
+            "abc",
+            &VarTarget::Environment("dev".into()),
+            cx,
+        )
+    });
+    assert!(early.is_err(), "a write before the globals loaded");
+    cx.run_until_parked();
+    apply(
+        cx,
+        &ws,
+        &root,
+        "fresh",
+        VarTarget::Environment("dev".into()),
+    )
+    .expect("loaded now");
+}
+
 #[gpui_kit::test]
 fn the_collection_target_writes_the_collection_file(cx: &mut TestAppContext) {
     let col = tree();

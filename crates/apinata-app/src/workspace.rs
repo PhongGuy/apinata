@@ -724,6 +724,8 @@ pub struct Workspace {
     global_gen: u64,
     // Whether a load has succeeded, which is when the session's saved global applies.
     global_loaded: bool,
+    // Whether the latest load of the directory failed, so nothing more is on its way.
+    global_load_failed: bool,
     // Edits waiting for the one drain task, which runs them in order while `global_draining`;
     // each carries where its outcome goes.
     global_queue: VecDeque<(GlobalOp, async_channel::Sender<Result<(), String>>)>,
@@ -800,6 +802,7 @@ impl Workspace {
             selected_global: None,
             global_gen: 0,
             global_loaded: false,
+            global_load_failed: false,
             global_queue: VecDeque::new(),
             global_draining: false,
             global_reload_waiting: None,
@@ -1774,6 +1777,11 @@ impl Workspace {
         self.save_global(cx);
         self.broadcast_globals(cx);
         cx.notify();
+    }
+
+    /// Whether a global environments directory is named but its first load has not landed yet.
+    pub fn globals_loading(&self) -> bool {
+        self.global_dir.is_some() && !self.global_loaded && !self.global_load_failed
     }
 
     /// The loaded snapshot, if any.
@@ -2799,6 +2807,7 @@ impl Workspace {
         if generation < self.global_gen {
             return;
         }
+        self.global_load_failed = loaded.is_err();
         if let Ok(globals) = loaded {
             self.publish_globals(globals, cause == ReloadCause::Watched, cx);
         }

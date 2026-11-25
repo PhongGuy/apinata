@@ -9,6 +9,7 @@ use apinata_app::env_table::SECRET_HIDDEN;
 use apinata_app::keymap::ToggleConsole;
 use apinata_app::session::Session;
 use apinata_app::shell::{OpenVariablesOverview, ShowVariableAtCaret};
+use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::input::InputState;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, TestAppContext, VisualTestContext};
@@ -435,6 +436,46 @@ fn a_refused_write_stays_pending_for_a_retry(cx: &mut TestAppContext) {
     assert!(panel.read_with(cx, |p, cx| p.pending("x!", cx)));
     settle(cx);
     assert!(!dev_yml(&col).contains("v1"));
+}
+
+// A plain row of the selected environment stays editable when another environment marks
+// the same name secret.
+#[gpui_kit::test]
+fn a_plain_row_shadowing_a_secret_elsewhere_is_still_saved(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("environments/dev.yml", DEV),
+        (
+            "environments/prod.yml",
+            "name: prod\nvariables:\n  - secret: true\n    name: shared\n",
+        ),
+        ("r.yml", &request("r", "http://127.0.0.1:9/{{shared}}")),
+    ]);
+    let s = app(cx, &col, Some("dev"));
+    show_tab(cx, &s);
+    let ix = row_of(cx, &s, "shared");
+    type_and_enter(cx, &s, ("var-overview-input", ix), "edited");
+    wait_for(cx, "the edit in dev.yml", |_| {
+        dev_yml(&col).contains("value: edited")
+    });
+}
+
+// A refused value is reported once; pressing Enter on it again adds no second toast.
+#[gpui_kit::test]
+fn a_refused_value_is_reported_once(cx: &mut TestAppContext) {
+    let col = collection("http://127.0.0.1:9/{{x!}}");
+    let s = app(cx, &col, Some("dev"));
+    show_tab(cx, &s);
+    let toasts = |cx: &mut TestAppContext| {
+        cx.update_window(s.win, |_, w, cx| w.notifications(cx).len())
+            .unwrap()
+    };
+    let before = toasts(cx);
+    type_and_enter(cx, &s, ("var-undefined-input", 0), "v1");
+    assert_eq!(toasts(cx), before + 1);
+    press_key(cx, s.win, "enter");
+    cx.run_until_parked();
+    assert_eq!(toasts(cx), before + 1, "the same value again adds no toast");
 }
 
 // An edit still in a field when the active request changes is written, not dropped.

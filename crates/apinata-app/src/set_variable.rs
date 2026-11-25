@@ -190,8 +190,9 @@ pub fn secret_home(
 /// Sets variable `name` to `value` in `target` of the collection at `root`. A write replaces
 /// a variable of the same name, edits the draft and saves it unless the file already had
 /// unsaved edits (those stay a draft). Errs, changing nothing, on a bad name, a collection
-/// that is not open or switching, and, for a file target, a name any environment or global
-/// environment declares secret (see [`secret_home`]).
+/// that is not open or switching, and, for a file target that does not already hold the name
+/// as plain text, a name any environment or global environment declares secret (see
+/// [`secret_home`]) or any name while the global environments are still loading.
 pub fn apply(
     workspace: &Entity<Workspace>,
     root: &Path,
@@ -207,17 +208,29 @@ pub fn apply(
         .read(cx)
         .snapshot(root, cx)
         .ok_or("The collection is not open")?;
-    // A secret's value never goes into a tracked file as plain text, whichever file declares it.
-    if *target != VarTarget::Runtime
-        && let Some((scope, home)) = secret_home(workspace, root, name, cx)
-    {
-        let kind = match scope {
-            VarScope::GlobalEnvironment => "global environment",
-            _ => "environment",
-        };
-        return Err(format!(
-            "{name} is a secret in the {home} {kind}; pick another name"
-        ));
+    // A secret's value never goes into a tracked file as plain text, whichever file declares
+    // it; a name the file already holds as plain text gains no exposure and is updated.
+    let plain_already = match target {
+        VarTarget::Runtime => true,
+        VarTarget::Environment(env) => (snapshot.content.environments.iter())
+            .filter(|e| e.name == *env)
+            .flat_map(|e| e.variables.iter())
+            .any(|v| v.name == name && !v.secret),
+        VarTarget::Collection => (snapshot.content.collection.vars.iter()).any(|v| v.name == name),
+    };
+    if !plain_already {
+        if workspace.read(cx).globals_loading() {
+            return Err("Global environments are still loading; try again in a moment".into());
+        }
+        if let Some((scope, home)) = secret_home(workspace, root, name, cx) {
+            let kind = match scope {
+                VarScope::GlobalEnvironment => "global environment",
+                _ => "environment",
+            };
+            return Err(format!(
+                "{name} is a secret in the \"{home}\" {kind}; pick another name"
+            ));
+        }
     }
     let (doc, edit, dirty) = match target {
         VarTarget::Runtime => {
