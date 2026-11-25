@@ -849,7 +849,7 @@ pub const RUN_COOKIE_CHOICES: [(&str, RunCookies); 3] = [
     ("Copy of the shared jar", RunCookies::Copy),
 ];
 
-const KEEP_COOKIES_TOOLTIP: &str = "Put the cookies the run ends with into the shared jar. A run on the shared jar always keeps them.";
+const KEEP_COOKIES_TOOLTIP: &str = "Put the cookies the run set or changed into the shared jar; cookies it deleted stay there. A run on the shared jar always keeps them.";
 const KEEP_VARIABLES_TOOLTIP: &str = "Off, the run works on a copy of the variables, and the values it sets are dropped when it ends.";
 
 // A muted caption naming the input beside it.

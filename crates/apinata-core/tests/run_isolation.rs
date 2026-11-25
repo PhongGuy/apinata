@@ -4,8 +4,8 @@
 use crate::common;
 
 use apinata_core::{
-    Collection, ContextOptions, CookieInfo, CookieJar, ExecOptions, Executor, OverlayLayer,
-    VarContext,
+    Collection, ContextOptions, CookieInfo, CookieJar, ExecError, ExecOptions, Executor,
+    OverlayLayer, VarContext,
 };
 use common::{resolved_one, write_tree};
 use std::sync::Arc;
@@ -109,4 +109,55 @@ fn a_sensitive_mark_survives_the_fork() {
     assert!(fork.runtime_vars().is_sensitive("token"));
     fork.runtime_vars().mark_sensitive("other");
     assert!(!ctx.runtime_vars().is_sensitive("other"));
+}
+
+#[tokio::test]
+async fn a_host_policy_still_blocks_through_an_executor_on_its_own_jar() {
+    let exec =
+        Executor::new(ExecOptions::new().host_policy(Arc::new(|_: &str| false))).expect("client");
+    let run = exec.with_cookie_jar(Arc::new(CookieJar::default()));
+    // A documentation address the policy refuses before any connection is tried.
+    let req = resolved_one("GET", "http://192.0.2.1/", "", "");
+    let err = run.send(&req).await.expect_err("refused");
+    assert!(matches!(err, ExecError::HostNotAllowed { .. }), "{err:?}");
+}
+
+fn context_with_secret(value: &str) -> (tempfile::TempDir, VarContext) {
+    let dir = write_tree(&[(
+        "opencollection.yml",
+        "opencollection: 1.0.0\ninfo:\n  name: c\n",
+    )]);
+    let c = Collection::open(dir.path()).expect("opens");
+    let options = ContextOptions::new().sensitive_env_var("key", value);
+    let ctx = VarContext::new(&c, options).expect("builds");
+    (dir, ctx)
+}
+
+#[test]
+fn a_grafted_context_takes_the_forks_variables_over_its_own_fresh_layers() {
+    let (_old_dir, old) = context_with_secret("old-secret-value");
+    let fork = old.fork_variables();
+    fork.runtime_vars().set_text("id", "captured");
+    fork.env_overlay()
+        .set_text(OverlayLayer::Collection, "c", "edited");
+    let (_dir, fresh) = context_with_secret("fresh-secret-value");
+    let grafted = fresh.with_variables_of(&fork);
+    assert_eq!(
+        runtime(&grafted),
+        [("id".to_owned(), Some("captured".to_owned()))]
+    );
+    assert_eq!(
+        overlay(&grafted),
+        [("c".to_owned(), Some("edited".to_owned()))]
+    );
+    let secrets = grafted.secret_values();
+    assert!(
+        secrets.contains(&"fresh-secret-value".to_owned()),
+        "{secrets:?}"
+    );
+    assert!(!secrets.contains(&"old-secret-value".to_owned()));
+    // Writes through the graft land in the fork's own stores, never in `fresh`.
+    grafted.runtime_vars().set_text("later", "1");
+    assert!(runtime(&fork).iter().any(|(n, _)| n == "later"));
+    assert!(fresh.runtime_vars().is_empty());
 }

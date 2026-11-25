@@ -129,6 +129,16 @@ impl EnvOverlay {
         }
     }
 
+    /// A handle on `other`'s store that keeps this handle's pin, so a context built afresh can
+    /// read and write edits another context made.
+    pub(crate) fn on_store_of(&self, other: &EnvOverlay) -> EnvOverlay {
+        EnvOverlay {
+            layers: Arc::clone(&other.layers),
+            revision: Arc::clone(&other.revision),
+            pinned: self.pinned.clone(),
+        }
+    }
+
     /// A handle for one context, fixed to `env` whatever is selected later. Once `env` is
     /// cleared or renamed away or onto, the handle neither reads nor writes the environment layer.
     pub(crate) fn pinned(&self, env: Option<&str>) -> EnvOverlay {

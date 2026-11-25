@@ -472,6 +472,16 @@ impl VarContext {
         ctx
     }
 
+    /// A clone that keeps this context's file, environment and secret layers but reads and
+    /// writes `other`'s runtime variables and script edits, as a re-run of a forked run needs.
+    #[must_use]
+    pub fn with_variables_of(&self, other: &VarContext) -> VarContext {
+        let mut ctx = self.clone();
+        ctx.runtime_vars = other.runtime_vars.clone();
+        ctx.env_overlay = self.env_overlay.on_store_of(&other.env_overlay);
+        ctx
+    }
+
     /// A clone whose requests that inherit their timeout use `timeout`; `None` means no limit.
     pub fn with_default_timeout(&self, timeout: Option<Duration>) -> VarContext {
         let mut ctx = self.clone();
@@ -1633,6 +1643,8 @@ mod secret_values_tests {
         );
         fork.runtime_vars().taint(&["tainted-in-fork".to_owned()]);
         assert!(!ctx.secret_values().contains(&"tainted-in-fork".to_owned()));
+        let grafted = ctx.with_variables_of(&fork);
+        assert!((grafted.secret_values()).contains(&"tainted-in-fork".to_owned()));
     }
 
     /// A one-request collection and a context whose runtime scope the test controls.

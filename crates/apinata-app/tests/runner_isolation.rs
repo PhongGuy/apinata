@@ -3,7 +3,7 @@
 
 use crate::support;
 
-use apinata_app::runner_model::{RunCookies, RunState, RunnerModel};
+use apinata_app::runner_model::{RowState, RunCookies, RunState, RunnerModel};
 use apinata_core::{CookieInfo, ItemPath};
 use gpui_kit::{Entity, TestAppContext};
 use support::*;
@@ -202,4 +202,93 @@ fn a_forked_run_leaves_the_collections_variables_alone_and_its_rerun_reuses_the_
         ["/set", "/check/forked", "/check/forked"]
     );
     assert_eq!(shared_id(cx, &s), None);
+}
+
+/// `a` gets the cookie `run=1` from `/ok`; `b` asks `/need`, which fails once and then passes.
+fn rerun_server(cx: &mut TestAppContext) -> (MockServer, tempfile::TempDir) {
+    let server = cookie_server(cx);
+    let handle = cx.update(|cx| apinata_app::tokio_bridge::handle(cx));
+    handle.block_on(
+        Mock::given(path("/need"))
+            .respond_with(ResponseTemplate::new(500))
+            .up_to_n_times(1)
+            .mount(&server),
+    );
+    handle.block_on(
+        Mock::given(path("/need"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server),
+    );
+    let uri = server.uri();
+    let b = format!(
+        "info:\n  name: b\n  type: http\n  seq: 2\nhttp:\n  method: GET\n  url: \"{uri}/need\"\nruntime:\n  assertions:\n    - expression: res.status\n      operator: eq\n      value: \"200\"\n"
+    );
+    let a = request("a", &format!("{uri}/ok"));
+    let col = write_tree(&[("opencollection.yml", ROOT), ("a.yml", &a), ("b.yml", &b)]);
+    (server, col)
+}
+
+fn empty_jar_rerun(
+    cx: &mut TestAppContext,
+    between: impl FnOnce(&mut TestAppContext),
+) -> Vec<Option<String>> {
+    http_ready(cx);
+    let (server, col) = rerun_server(cx);
+    let s = started(cx, &col);
+    seed_shared_jar(cx);
+    let model = runner(cx, &s);
+    model.update(cx, |m, cx| m.set_run_cookies(RunCookies::Empty, cx));
+    run_to_end(cx, &model, false);
+    between(cx);
+    run_to_end(cx, &model, true);
+    assert!(model.read_with(cx, |m, _| m.failed_items()).is_empty());
+    assert_eq!(shared_names(cx), ["sid"]);
+    cookies_sent(cx, &server)
+}
+
+#[gpui_kit::test]
+fn a_rerun_sends_with_the_runs_own_jar(cx: &mut TestAppContext) {
+    let sent = empty_jar_rerun(cx, |_| {});
+    assert_eq!(
+        sent,
+        [None, Some("run=1".to_owned()), Some("run=1".to_owned())]
+    );
+}
+
+#[gpui_kit::test]
+fn a_rerun_follows_the_cookie_switches_set_since_the_run(cx: &mut TestAppContext) {
+    let sent = empty_jar_rerun(cx, |cx| {
+        cx.update(|cx| {
+            apinata_app::executor::shared(cx)
+                .unwrap()
+                .set_send_cookies(false)
+        });
+    });
+    assert_eq!(sent, [None, Some("run=1".to_owned()), None]);
+}
+
+#[gpui_kit::test]
+fn a_cancelled_run_keeps_no_cookies(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let (_server, col) = rerun_server(cx);
+    let s = started(cx, &col);
+    seed_shared_jar(cx);
+    let model = runner(cx, &s);
+    model.update(cx, |m, cx| {
+        m.set_run_cookies(RunCookies::Empty, cx);
+        m.set_keep_cookies(true, cx);
+        m.set_delay_ms(60_000, cx);
+        assert!(m.start(cx));
+    });
+    // The first request has stored its cookie; the long delay holds the run before the second.
+    wait_real(cx, |cx| {
+        model.read_with(cx, |m, _| {
+            matches!(m.rows().first().map(|r| &r.state), Some(RowState::Done(_)))
+        })
+    });
+    model.update(cx, |m, cx| m.cancel(cx));
+    wait_real(cx, |cx| {
+        model.read_with(cx, |m, _| matches!(m.state(), RunState::Finished(_)))
+    });
+    assert_eq!(shared_names(cx), ["sid"]);
 }
