@@ -29,12 +29,17 @@ fn bar(cx: &mut TestAppContext) -> Bar {
 
 // As `bar`, with `globals` as the global directory's files.
 fn bar_with(cx: &mut TestAppContext, globals: &[(&str, &str)]) -> Bar {
+    bar_from(cx, "name: prod\n", globals)
+}
+
+// As `bar_with`, with `prod` as the collection's prod environment file.
+fn bar_from(cx: &mut TestAppContext, prod: &str, globals: &[(&str, &str)]) -> Bar {
     support::init(cx);
     let col = write_tree(&[
         ("opencollection.yml", ROOT),
         ("a.yml", &request("a", "http://x/0")),
         ("environments/dev.yml", "name: dev\n"),
-        ("environments/prod.yml", "name: prod\n"),
+        ("environments/prod.yml", prod),
     ]);
     let globals = write_tree(globals);
     let (state, ws, _root) = open_dir(cx, &col);
@@ -292,4 +297,63 @@ fn a_cut_name_stays_inside_its_row(cx: &mut TestAppContext) {
         "the cut name ends {} past the menu",
         name - row
     );
+}
+
+// A coloured collection environment leaves every name in the menu, global rows and actions
+// included, starting at the same x as its own.
+#[gpui_kit::test]
+fn every_name_in_the_menu_starts_in_line(cx: &mut TestAppContext) {
+    let globals = [("g.yml", "name: g\n"), ("h.yml", "name: h\n")];
+    let b = bar_from(cx, "name: prod\ncolor: \"#ce4f3b\"\n", &globals);
+    open(cx, b.win);
+    cx.update_window(b.win, |_, w, cx| {
+        w.render_frame(cx);
+        let mut left = |row: &str, name: &str| {
+            w.within(row.to_owned())
+                .find(name.to_owned())
+                .bounds()
+                .left()
+        };
+        let want = left("env-option-prod", "env-row-name");
+        for (row, name) in [
+            ("env-none", "env-row-name"),
+            ("env-option-dev", "env-row-name"),
+            ("global-env-none", "global-env-row-name"),
+            ("global-env-option-g", "global-env-row-name"),
+            ("env-manage", "env-action-name"),
+            ("env-import", "env-action-name"),
+            ("global-env-manage", "global-env-action-name"),
+        ] {
+            assert_eq!(left(row, name), want, "{row}");
+        }
+    })
+    .unwrap();
+}
+
+// Right after a click opens the menu, a pointer resting on the button brings up no tooltip
+// over the menu; once the menu closes, the tooltip comes back.
+#[gpui_kit::test]
+fn the_tip_stays_hidden_while_the_menu_is_open(cx: &mut TestAppContext) {
+    let b = bar(cx);
+    open(cx, b.win);
+    assert!(present(cx, b.win, "popup-menu"), "the menu is open");
+    cx.executor()
+        .advance_clock(std::time::Duration::from_millis(800));
+    frame(cx, b.win);
+    let tip = |cx: &mut TestAppContext| {
+        cx.update_window(b.win, |_, w, cx| {
+            w.render_frame(cx);
+            w.try_find("env-control-tooltip").is_some()
+        })
+        .unwrap()
+    };
+    assert!(!tip(cx), "no tooltip over the open menu");
+    assert!(
+        tip_after_hover(cx, b.win).is_none(),
+        "no tooltip on a fresh hover while open"
+    );
+    cx.simulate_keystrokes(b.win, "escape");
+    cx.run_until_parked();
+    assert!(!present(cx, b.win, "popup-menu"), "the menu is closed");
+    assert_eq!(tip_after_hover(cx, b.win).as_deref(), Some(ENV_SELECT_TIP));
 }
