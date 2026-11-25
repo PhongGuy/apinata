@@ -556,6 +556,106 @@ fn an_already_bound_workspace_opens_its_folder_without_cloning(cx: &mut TestAppC
 }
 
 #[gpui_kit::test]
+fn a_clone_whose_binding_was_busy_is_bound_and_opened_on_retry(cx: &mut TestAppContext) {
+    use crate::git_support::Sandbox;
+    let sb = Sandbox::new();
+    let bare = sb.origin();
+    let dest = sb.path().join("dest");
+    http_ready(cx);
+    let server = potluck_server(cx);
+    answer_me(cx, &server, me(false, listed(&server)));
+    let (_col, s, _secrets) = team_app(cx, |paths, secrets| {
+        signed_in(paths, secrets, &server, false);
+        parent_at(paths, &dest);
+    });
+    s.ws.update(cx, |w, cx| w.set_git(Some(sb.options()), cx));
+    let view = open_list(cx, &s);
+    settle(cx, &view);
+    let root = dest.join("api");
+
+    // This test process stands in for another window holding the team file.
+    let lock = std::fs::File::create(team_file(&s).with_file_name("team.json.lock")).unwrap();
+    lock.try_lock().unwrap();
+    clone_from(cx, &s, &view, &server, &bare);
+    wait_for(cx, "the busy binding", |cx| {
+        section_error(cx, &view).is_some_and(|e| e.contains("Try again"))
+    });
+    assert!(root.join(".git").exists(), "the clone is on disk");
+    assert!(
+        TeamStore::load(&team_file(&s))
+            .unwrap()
+            .binding_at(&root)
+            .is_none()
+    );
+    drop(lock);
+    // A real clone's origin is the workspace's own address.
+    let url = format!("{}/git/core/api.git", server.uri());
+    sb.git(&root, &["remote", "set-url", "origin", &url]);
+
+    let v = view.clone();
+    cx.update_window(s.win, |_, w, cx| {
+        v.update(cx, |v, cx| {
+            v.open_row_with(0, 0, |_, _, _| panic!("no second clone"), w, cx)
+        })
+    })
+    .unwrap();
+    wait_for(cx, "the clone to open", |cx| {
+        s.ws.read_with(cx, |w, _| w.collections().iter().any(|c| c.root() == root))
+    });
+    let store = TeamStore::load(&team_file(&s)).unwrap();
+    let bound = store.binding_at(&root).expect("bound");
+    assert_eq!(
+        (bound.team.as_str(), bound.workspace.as_str()),
+        ("core", "api")
+    );
+}
+
+#[gpui_kit::test]
+fn a_clone_of_another_address_is_not_bound(cx: &mut TestAppContext) {
+    use crate::git_support::Sandbox;
+    let sb = Sandbox::new();
+    http_ready(cx);
+    let server = potluck_server(cx);
+    answer_me(cx, &server, me(false, listed(&server)));
+    let dest = sb.path().join("dest");
+    std::fs::create_dir(&dest).unwrap();
+    let root = sb.repo("dest/api");
+    sb.git(
+        &root,
+        &[
+            "remote",
+            "add",
+            "origin",
+            "http://127.0.0.1:9/git/core/api.git",
+        ],
+    );
+    let (_col, s, _secrets) = team_app(cx, |paths, secrets| {
+        signed_in(paths, secrets, &server, false);
+        parent_at(paths, &dest);
+    });
+    s.ws.update(cx, |w, cx| w.set_git(Some(sb.options()), cx));
+    let view = open_list(cx, &s);
+    settle(cx, &view);
+    let v = view.clone();
+    cx.update_window(s.win, |_, w, cx| {
+        v.update(cx, |v, cx| {
+            v.open_row_with(0, 0, |_, _, _| panic!("must not clone"), w, cx)
+        })
+    })
+    .unwrap();
+    let want = format!("A folder named api already exists in {}.", dest.display());
+    wait_for(cx, "the refusal", |cx| {
+        section_error(cx, &view).as_deref() == Some(want.as_str())
+    });
+    assert!(
+        TeamStore::load(&team_file(&s))
+            .unwrap()
+            .binding_at(&root)
+            .is_none()
+    );
+}
+
+#[gpui_kit::test]
 fn an_existing_folder_is_not_cloned_over(cx: &mut TestAppContext) {
     http_ready(cx);
     let server = potluck_server(cx);

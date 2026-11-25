@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use super::{ServerUrl, TeamError, Workspace, valid_name};
-use crate::CloneRequest;
+use crate::{CloneRequest, GitOptions};
 
 /// A request to clone `ws` into `parent/<slug>`. The workspace's git address must be exactly
 /// `{server}/git/{team}/{slug}.git` and its events address the one `events_url` accepts, since
@@ -27,6 +27,15 @@ pub fn clone_request(
     }
     events_url(server, ws)?;
     Ok(CloneRequest::new(expected, parent, ws.slug.clone()))
+}
+
+/// Whether `root` is a clone of the workspace at `url`: git resolves `root` itself as its
+/// repository's top level (canonical paths compared), and `origin`'s fetch address is exactly
+/// `url`. Anything git cannot answer counts as not a clone.
+pub fn is_clone_of(root: &Path, url: &str, opts: &GitOptions) -> bool {
+    // An empty or broken `.git` would let git fall back to an outer repository's origin.
+    crate::git::is_top_level(root, opts)
+        && crate::git::origin_url(root, opts).is_some_and(|u| u == url)
 }
 
 /// The workspace's change stream, which must be exactly

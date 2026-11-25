@@ -488,6 +488,7 @@ mod team_rebase;
 mod team_resume;
 mod team_session;
 mod team_sso;
+mod team_store_lock;
 mod trash_restore;
 mod tree_clone_folder;
 mod tree_create;

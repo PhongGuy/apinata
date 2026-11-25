@@ -50,6 +50,9 @@ pub fn error_text(e: &TeamError) -> String {
             format!("The sign-in could not be saved in the system keychain: {message}")
         }
         TeamError::Store(message) => format!("The team server list could not be saved: {message}"),
+        TeamError::Busy => {
+            "Another Apinata window or command is changing the team server list. Try again.".into()
+        }
         // Core already words these failures for people.
         TeamError::SsoOff
         | TeamError::SsoRefused

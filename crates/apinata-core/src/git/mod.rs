@@ -8,6 +8,7 @@ pub use autosync::{
     commit_all, discard_changes, is_dirty, remote_tip, squash_unpushed, tracking_tip, unpushed,
 };
 mod branch;
+pub(crate) use branch::{is_top_level, origin_url};
 mod clone;
 mod diff;
 mod discard;
@@ -18,7 +19,7 @@ pub use diff::text_hunks;
 pub use dotenv::{DotenvGit, ignore_dotenv};
 mod porcelain;
 mod renames;
-mod repo_lock;
+pub(crate) mod repo_lock;
 pub(crate) use renames::{
     EnvChanges, blob_at, env_changes, is_ancestor, pre_sync_tip, resolve_commit,
 };

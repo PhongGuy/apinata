@@ -36,6 +36,7 @@ fn all() -> Vec<TeamError> {
         TeamError::Protocol("x".into()),
         TeamError::Secrets("locked".into()),
         TeamError::Store("disk full".into()),
+        TeamError::Busy,
         TeamError::Client("no TLS backend".into()),
     ]
 }
@@ -110,6 +111,14 @@ fn the_workspace_list_texts_name_the_workspace_and_the_folder() {
     assert_eq!(
         clone_stopped_text(),
         "The clone stopped unexpectedly. Try again."
+    );
+}
+
+#[test]
+fn a_busy_team_file_asks_to_try_again() {
+    assert_eq!(
+        error_text(&TeamError::Busy),
+        "Another Apinata window or command is changing the team server list. Try again."
     );
 }
 

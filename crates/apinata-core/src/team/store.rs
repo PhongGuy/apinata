@@ -1,17 +1,55 @@
 //! The team file: the accounts signed in to team servers and the folders bound to their
 //! workspaces. It never holds a token; tokens live in the keychain under `token_key`.
 
+use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, Once};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
 use super::{Identity, Role, ServerUrl, TeamError};
 use crate::SecretKey;
+use crate::git::repo_lock::{Polled, poll_lock};
 
 /// Serializes every `TeamStore::update` in this process, so no two read-change-write cycles
 /// interleave and drop each other's change.
 static UPDATE_LOCK: Mutex<()> = Mutex::new(());
+
+/// How long an update waits for another process to finish with the team file.
+const TEAM_LOCK_WAIT: Duration = Duration::from_secs(2);
+
+/// Takes the cross-process lock on `team.json.lock` beside the file `path` really names, so the
+/// app and the CLI never interleave updates. The lock file is never `path` itself, since the
+/// atomic rename replaces that inode. A filesystem without locks yields `None`: the caller goes
+/// on under the in-process mutex alone, and that is reported once.
+fn lock_file(path: &Path) -> Result<Option<File>, TeamError> {
+    let target = crate::trust::symlink_target(path);
+    let parent = target
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let lock = parent.join("team.json.lock");
+    let store_error = |e: std::io::Error| TeamError::Store(format!("{}: {e}", lock.display()));
+    std::fs::create_dir_all(parent).map_err(store_error)?;
+    let file = File::options()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock)
+        .map_err(store_error)?;
+    match poll_lock(&file, TEAM_LOCK_WAIT, Duration::from_millis(20)) {
+        Polled::Held => Ok(Some(file)),
+        Polled::Busy => Err(TeamError::Busy),
+        Polled::Unsupported(e) => {
+            static UNSUPPORTED: Once = Once::new();
+            UNSUPPORTED.call_once(|| {
+                eprintln!("apinata: the team file cannot be locked ({e}); going on unlocked");
+            });
+            Ok(None)
+        }
+    }
+}
 
 /// The keychain key for the token `username` holds on `server`: a per-install key (empty
 /// collection) in the `team-server` environment, named `{server}#{username}`.
@@ -140,14 +178,17 @@ impl TeamStore {
         }
     }
 
-    /// Under one process-wide lock: load `path`, run `change`, save atomically (creating the
-    /// parent dir), return what `change` returned. The only way anything writes the team file.
+    /// Under one process-wide lock and the cross-process `team.json.lock`: load `path`, run
+    /// `change`, save atomically (creating the parent dir), return what `change` returned. The
+    /// only way anything writes the team file. `Busy` when another process held the lock for
+    /// the whole wait, `Store` when the lock file cannot be opened.
     pub fn update<T>(
         path: &Path,
         change: impl FnOnce(&mut TeamStore) -> T,
     ) -> Result<T, TeamError> {
         // A panic in another update cannot leave the file half-written, so recover the lock.
         let _guard = UPDATE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _file_lock = lock_file(path)?;
         let mut store = TeamStore::load(path)?;
         let out = change(&mut store);
         let bytes = serde_json::to_vec_pretty(&store)
