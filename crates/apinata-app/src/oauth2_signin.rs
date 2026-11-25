@@ -99,6 +99,16 @@ pub fn set_opener(opener: Opener, cx: &mut App) {
     cx.default_global::<SignIn>().opener = Some(opener);
 }
 
+/// Opens `url` with the installed browser opener; false when none is installed, so the caller
+/// shows the address to copy instead.
+pub fn open_in_browser(url: &str, cx: &mut App) -> bool {
+    let Some(open) = cx.try_global::<SignIn>().and_then(|s| s.opener.clone()) else {
+        return false;
+    };
+    open(url, cx);
+    true
+}
+
 /// `AuthorizeOptions` carrying the app authorizer once `install` ran, plain otherwise.
 pub fn authorize_options(cx: &App) -> AuthorizeOptions {
     authorize_options_from(None, cx)
