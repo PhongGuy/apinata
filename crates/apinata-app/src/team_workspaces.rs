@@ -482,15 +482,18 @@ impl WorkspacesView {
             }
             Err(e) => return self.set_error(section, Some(error_text(&e)), cx),
         };
-        let text = match clone_form::check(&req.url, Some(&parent), &req.name) {
-            Ok(_) => None,
-            Err(FormError::Exists) => Some(folder_exists_text(&req.name, &parent)),
-            Err(e) => Some(e.message()),
+        // A repository already in place may be this workspace's clone whose binding was never
+        // saved; it is checked and bound instead of refused.
+        let existing = match clone_form::check(&req.url, Some(&parent), &req.name) {
+            Ok(_) => false,
+            Err(FormError::Exists) if parent.join(&req.name).join(".git").exists() => true,
+            Err(FormError::Exists) => {
+                let text = folder_exists_text(&req.name, &parent);
+                return self.set_error(section, Some(text), cx);
+            }
+            Err(e) => return self.set_error(section, Some(e.message()), cx),
         };
-        if let Some(text) = text {
-            return self.set_error(section, Some(text), cx);
-        }
-        if let Err(e) = clone_form::ensure_parent(&parent) {
+        if !existing && let Err(e) = clone_form::ensure_parent(&parent) {
             return self.set_error(section, Some(e.to_string()), cx);
         }
         let base = (self.workspace.read(cx).git_options().cloned()).unwrap_or_default();
@@ -502,6 +505,9 @@ impl WorkspacesView {
             base,
             file,
         };
+        if existing {
+            return self.bind_existing(open, req, window, cx);
+        }
         self.cloning = true;
         self.set_error(section, None, cx);
         // The keychain blocks, so the token is read on the runtime, not here.
@@ -534,6 +540,51 @@ impl WorkspacesView {
                         Some(error_text(&TeamError::Unavailable(String::new()))),
                         cx,
                     );
+                }
+            });
+        })
+        .detach();
+    }
+
+    // Binds and opens the folder `req` names when it is a clone of the workspace that no
+    // binding claims yet; any other folder there is refused as an existing one.
+    fn bind_existing(
+        &mut self,
+        open: Opening,
+        req: CloneRequest,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let root = req.parent.join(&req.name);
+        let ws = &open.workspace;
+        let binding = Binding::new(root.clone(), &open.account, &ws.team, &ws.slug, ws.role);
+        let (file, base, url) = (open.file.clone(), open.base.clone(), req.url.clone());
+        self.cloning = true;
+        self.set_error_on(&open.server, None, cx);
+        // Git and the team file's lock both block, so the check and the write run off this thread.
+        let bind = cx.background_spawn(async move {
+            if !team::is_clone_of(&binding.root, &url, &base) {
+                return None;
+            }
+            Some(TeamStore::update(&file, |t| {
+                let free = t.binding_at(&binding.root).is_none();
+                if free {
+                    t.put_binding(binding);
+                }
+                free
+            }))
+        });
+        cx.spawn_in(window, async move |this, cx| {
+            let result = bind.await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                this.cloning = false;
+                match result {
+                    Some(Ok(true)) => this.bound(open, root, Ok(()), window, cx),
+                    Some(Err(e)) => this.bound(open, root, Err(e), window, cx),
+                    Some(Ok(false)) | None => {
+                        let text = folder_exists_text(&req.name, &req.parent);
+                        this.set_error_on(&open.server, Some(text), cx);
+                    }
                 }
             });
         })
@@ -574,7 +625,8 @@ impl WorkspacesView {
         .detach();
     }
 
-    // A finished clone is bound and opened; a failed one shows its error.
+    // A finished clone is bound and opened; a failed one shows its error. The binding is
+    // written off the main thread, since the team file's lock may wait for another process.
     fn finished(
         &mut self,
         open: Opening,
@@ -583,16 +635,41 @@ impl WorkspacesView {
         cx: &mut Context<Self>,
     ) {
         self.job = None;
-        self.cloning = false;
         let root = match result {
             Ok(root) => root,
-            Err(e) => return self.set_error_on(&open.server, clone_form::clone_error_text(&e), cx),
+            Err(e) => {
+                self.cloning = false;
+                return self.set_error_on(&open.server, clone_form::clone_error_text(&e), cx);
+            }
         };
         let ws = &open.workspace;
         let binding = Binding::new(root.clone(), &open.account, &ws.team, &ws.slug, ws.role);
-        if let Err(e) = TeamStore::update(&open.file, |t| t.put_binding(binding.clone())) {
+        let file = open.file.clone();
+        let bind = cx
+            .background_spawn(async move { TeamStore::update(&file, |t| t.put_binding(binding)) });
+        cx.spawn_in(window, async move |this, cx| {
+            let result = bind.await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                this.cloning = false;
+                this.bound(open, root, result, window, cx)
+            });
+        })
+        .detach();
+    }
+
+    // Opens a freshly bound clone, or shows why the binding could not be kept.
+    fn bound(
+        &mut self,
+        open: Opening,
+        root: PathBuf,
+        result: Result<(), TeamError>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Err(e) = result {
             return self.set_error_on(&open.server, Some(error_text(&e)), cx);
         }
+        cx.notify();
         window.close_dialog(cx);
         if let Opened::NoCollection(root) = clone_form::classify(&root) {
             let text = clone_form::no_collection_text(&root);

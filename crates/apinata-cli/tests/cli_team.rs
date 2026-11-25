@@ -208,6 +208,27 @@ async fn a_wrong_password_exits_1_and_keeps_nothing() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_team_file_another_process_is_changing_exits_3_and_keeps_nothing() {
+    let s = server(false).await;
+    answer(&s, "POST", "/api/v1/session", signed("Ada Lovelace")).await;
+    answer(&s, "DELETE", "/api/v1/tokens/7", ResponseTemplate::new(204)).await;
+    let stores = Stores::new();
+    // This test process stands in for an app window that is mid-update.
+    let lock = std::fs::File::create(stores.dir.path().join("team.json.lock")).unwrap();
+    lock.try_lock().unwrap();
+
+    let (code, _, stderr) = run(sign_in(&stores, &s.uri(), "hunter2")).await;
+    assert_eq!(code, 3, "{stderr}");
+    assert!(
+        stderr.contains("Another Apinata window or command is changing the team file"),
+        "{stderr}"
+    );
+    drop(lock);
+    assert!(stores.accounts().is_empty());
+    assert!(!stores.secrets_text().contains("plk_"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_server_that_is_down_exits_2() {
     let stores = Stores::new();
     let down = format!("http://127.0.0.1:{}", dead_port());
