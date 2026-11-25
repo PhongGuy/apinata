@@ -75,7 +75,7 @@ pub struct SendArgs {
         default_missing_value = "error"
     )]
     pub fail_on_status: Option<StatusRule>,
-    /// Print each network exchange to stderr.
+    /// Print each network exchange to stderr, with its connection details.
     #[arg(long)]
     pub verbose: bool,
     /// Print the status line, headers and body to stdout.

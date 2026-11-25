@@ -97,6 +97,9 @@ pub struct Hop {
     pub cookies: Vec<SetCookie>,
     pub(crate) version: Option<HttpVersion>,
     pub(crate) remote_addr: Option<SocketAddr>,
+    pub(crate) local_addr: Option<SocketAddr>,
+    pub(crate) tls: Option<crate::TlsDetails>,
+    pub(crate) response_header_size: u64,
     pub(crate) via_proxy: bool,
     pub(crate) override_from: Option<String>,
 }
@@ -128,6 +131,22 @@ impl Hop {
     /// Whether the hop went through a proxy, so [`Hop::remote_addr`] is the proxy's address.
     pub fn via_proxy(&self) -> bool {
         self.via_proxy
+    }
+
+    /// The local end of this hop's connection; `None` when the stack did not report one.
+    pub fn local_addr(&self) -> Option<SocketAddr> {
+        self.local_addr
+    }
+
+    /// The TLS version and peer certificate of this hop's connection; `None` over plain http.
+    pub fn tls(&self) -> Option<&crate::TlsDetails> {
+        self.tls.as_ref()
+    }
+
+    /// The size of the response's header block as HTTP/1.1 text, the status line and the
+    /// blank line included; an HTTP/2 answer is counted uncompressed the same way.
+    pub fn response_header_size(&self) -> u64 {
+        self.response_header_size
     }
 
     /// The host override this hop used, as `name -> address`; `None` when DNS answered.
@@ -192,6 +211,9 @@ impl fmt::Debug for Hop {
             .field("pac", &self.pac)
             .field("version", &self.version)
             .field("remote_addr", &self.remote_addr)
+            .field("local_addr", &self.local_addr)
+            .field("tls", &self.tls)
+            .field("response_header_size", &self.response_header_size)
             .field("via_proxy", &self.via_proxy)
             .field("override_from", &self.override_from)
             .field("cookies", &self.cookies)

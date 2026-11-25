@@ -705,6 +705,7 @@ mod typing_keys;
 mod ui_checkbox;
 mod ui_primitives;
 mod unavailable_entries;
+mod undefined_badge;
 mod update_notice;
 mod update_prepare;
 mod update_restart;

@@ -159,6 +159,9 @@ pub struct LoggedHop {
     pub timing: Option<crate::HopTiming>,
     version: Option<HttpVersion>,
     remote_addr: Option<std::net::SocketAddr>,
+    local_addr: Option<std::net::SocketAddr>,
+    tls: Option<crate::TlsDetails>,
+    response_header_size: u64,
     via_proxy: bool,
     method_cut: Option<Cut>,
     url_cut: Option<Cut>,
@@ -182,6 +185,21 @@ impl LoggedHop {
     /// Whether the hop went through a proxy, so the address is the proxy's.
     pub fn via_proxy(&self) -> bool {
         self.via_proxy
+    }
+
+    /// The local end of the hop's connection; see [`crate::Hop::local_addr`].
+    pub fn local_addr(&self) -> Option<std::net::SocketAddr> {
+        self.local_addr
+    }
+
+    /// The hop's TLS version and peer certificate; `None` over plain http.
+    pub fn tls(&self) -> Option<&crate::TlsDetails> {
+        self.tls.as_ref()
+    }
+
+    /// The response's header block size as HTTP/1.1 text; see [`crate::Hop::response_header_size`].
+    pub fn response_header_size(&self) -> u64 {
+        self.response_header_size
     }
 
     /// The peer as shown to a person: `127.0.0.1:8080` or `proxy 127.0.0.1:3128`; `None` when
