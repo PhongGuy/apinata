@@ -16,6 +16,7 @@ and a quick start, see the [README](README.md).
   - [Environments and secrets](#environments-and-secrets)
   - [Items and folders](#items-and-folders)
   - [Host overrides](#host-overrides)
+  - [Unix sockets](#unix-sockets)
   - [Replace](#replace)
 - [Command line](#command-line)
   - [Exit codes](#exit-codes)
@@ -127,7 +128,14 @@ apinata git commit -m "Update everything" --all
 
 The desktop app marks changed requests in
 the sidebar and tabs, and lists the changes with their diffs in a Changes
-dialog.
+dialog. Its Discard button, Delete, or Discard Changes in a file's right-click
+menu throws away that file's changes after asking: a file in the last commit
+goes back to it, a new file is removed, and your version goes to the system
+trash. Undo on the notice that follows puts your version back. When there is no
+trash, or the file's staged version differs from the one on disk, the question
+says the discard cannot be undone and no Undo is offered. A file with unsaved
+edits in a tab or with conflicts is left alone, and so is a new or renamed file when
+there is no trash to keep it in.
 
 ### Search
 
@@ -364,6 +372,27 @@ deletes it. An address is an IP, optionally with a port, and several can be list
 separated by commas; a port counts only for a URL that names none. The name stays in
 the URL and the `Host` header, and a send to an MCP agent is judged by the address it
 is mapped to, so a mapping off loopback needs approval whatever the name is.
+
+### Unix sockets
+
+On Linux, macOS and other Unix systems, a request can go to a server listening on
+a Unix socket. Write the socket path after `http://unix:`, then a colon and the
+request path:
+
+```text
+http://unix:/var/run/docker.sock:/v1.47/containers/json?all=1
+```
+
+The request goes over that socket as if to `http://localhost`, and never
+through a proxy. Special characters in the socket path, a colon among them, are
+percent-encoded (`%3A`). The request path must start with `/`, the URL takes no
+port, and HTTPS over a socket is not supported. A relative redirect stays on the
+same socket; an absolute one goes where it points. On Windows a socket URL is
+refused with an error, never sent to TCP `localhost`.
+
+For an AI agent a socket is never local, whatever it serves: sending to one needs
+approval, and it is trusted by its path, as `unix:/var/run/docker.sock` (see
+[MCP server](#mcp-server)).
 
 ### Proxy and client certificates
 
@@ -699,6 +728,10 @@ sending it:
 apinata gen ./my-api/users/get-user.yml --target python-requests --env local
 ```
 
+For a [Unix socket](#unix-sockets) URL, the curl target, like the app's Copy as
+curl, names the socket with `--unix-socket` and puts the request path on a
+`http://localhost` URL.
+
 ### GraphQL schema
 
 `apinata graphql schema` fetches a GraphQL request's schema by introspection,
@@ -923,11 +956,45 @@ first, each with the example it got; choosing a call opens that example. The
 server picks up saved edits by itself, and Stop mock server (or the Mock
 button again) stops it.
 
+Run collection and Run folder open a runner tab. Its Cookies choice says which
+cookie jar the run uses: Shared jar (the default) uses the jar every
+send shares, Empty jar gives the run a jar of its own that starts empty, and Copy
+of the shared jar gives it its own copy. With a jar of its own, Keep cookies
+after the run puts the cookies the run set or changed into the shared jar;
+cookies it deleted stay there. Keep variable values set by the run is on by
+default; off, the run works on a copy of the variables and drops the values it
+set when it ends. A collection or folder runner remembers these choices.
+
+The bottom dock has Console, Network and Variables tabs. Variables lists the
+variables the active request sees, grouped by the scope that defines them, after
+the names a send would refuse as undefined. A value a higher scope overrides is
+dimmed, struck through and labelled with the scope that wins, and a secret shows
+a mask. Runtime and environment values, and undefined
+names, are edited in place; any other row opens its scope's own editor. Show
+variables in the command palette, or the variables button in the title bar,
+opens the tab. While the request uses an undefined variable, a warning badge
+before Send shows how many; its tooltip names them, and clicking it opens the
+Variables tab.
+
+The response status line shows the status, the time, the size and the address
+reached, each with a hover card. The status card says what the code means, the
+time card breaks the time down, and the size card splits headers from body. The
+address card shows the connection: the remote address (or the proxy's), the
+local address and the HTTP version, and over TLS the TLS version and the
+server certificate's subject, issuer and expiry date. A response with no
+recorded connection, such as one restored from history, shows only the address.
+
 ### Team workspaces
 
 Join team server in the command palette signs in to a self-hosted
-[Potluck](https://github.com/PhongGuy/potluck) server with its address, your
-username and your password. The password is sent once and never stored; the
+[Potluck](https://github.com/PhongGuy/potluck) server. Enter its address; when
+you leave the field or press Enter, the app asks the server how it takes
+sign-ins. With a password, enter your username and password. When the server
+offers single sign-on, a Sign in with button naming its provider appears
+under the password fields, or replaces them when the server takes single sign-on
+only. It opens the sign-in page in your browser and shows its address with
+Copy URL, in case the browser did not open; the dialog waits up to five minutes
+for the browser to come back. The password is sent once and never stored; the
 sign-in is kept in the system keychain. The Team workspaces dialog then opens,
 and Team workspaces in the command palette brings it back. It lists each
 server's workspaces: Open clones one and opens it as a collection, a server
@@ -1280,8 +1347,9 @@ after about 250 ms.
 The agent may edit collection files freely, since git tracks them. Global
 environments live outside git, so the agent cannot delete one; delete it with
 `apinata env rm --global` or in the app. Sending to a
-host other than `localhost` or a loopback address needs approval: the request waits for you
-to approve it in the desktop app, or you can trust the host beforehand. Denied
+host other than `localhost` or a loopback address, or to any
+[Unix socket](#unix-sockets), needs approval: the request waits for you to
+approve it in the desktop app, or you can trust the host beforehand. Denied
 hosts are refused outright.
 
 ```sh
@@ -1291,7 +1359,7 @@ apinata trust list --collection ./my-api
 
 `apinata trust list` prints the trusted hosts, then the denied ones;
 `apinata trust deny` and `apinata trust remove` change the lists. Each takes a host or a
-pasted `http` or `https` URL, which keeps only its host. In the desktop app the same lists
+pasted `http` or `https` URL, which keeps only its host, or a socket as `unix:/path/to.sock`. In the desktop app the same lists
 are on a collection's AI access settings tab, and Preferences has an AI agents (MCP) section
 with the connect command.
 
