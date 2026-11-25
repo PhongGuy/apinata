@@ -94,3 +94,19 @@ fn an_unknown_tab_entry_is_dropped_alone() {
     assert_eq!(s.collections[Path::new("/c")].tabs, ["a.yml"]);
     assert_rest(&s);
 }
+
+#[test]
+fn an_unknown_cookie_choice_falls_back_to_the_shared_jar_and_keeps_the_rest() {
+    let s = load(&BASE.replace(
+        r#""delay_ms": 5,"#,
+        r#""delay_ms": 5, "run_cookies": "teleport", "keep_cookies": true,"#,
+    ));
+    let saved = &s.collections[Path::new("/c")].runners[""];
+    assert_eq!(
+        saved.run_cookies,
+        apinata_app::runner_model::RunCookies::Shared
+    );
+    assert!(saved.bail && saved.keep_cookies);
+    assert_eq!(saved.delay_ms, 5);
+    assert_rest(&s);
+}

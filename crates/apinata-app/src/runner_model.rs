@@ -7,11 +7,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use apinata_core::{
-    CancelHandle, ItemPath, IterationData, RequestFile, RequestResult, ResultsReport, RunEvent,
-    RunOptions, StatusRule, StreamLimits, Summary, TagFilter, VarContext, iteration_total,
-    rerun_slots,
+    CancelHandle, CookieInfo, CookieJar, Executor, ItemPath, IterationData, RequestFile,
+    RequestResult, ResultsReport, RunEvent, RunOptions, StatusRule, StreamLimits, Summary,
+    TagFilter, VarContext, iteration_total, rerun_slots,
 };
 use gpui_kit::{App, AsyncApp, Context, Entity, Task, WeakEntity};
+use serde::{Deserialize, Serialize};
 
 use crate::command::{Command, Planned};
 use crate::executor;
@@ -93,6 +94,19 @@ pub enum RunTarget {
     Items(Vec<ItemPath>),
 }
 
+/// Which cookie jar a run reads and fills.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunCookies {
+    /// The jar every send shares, as a manual send uses it.
+    #[default]
+    Shared,
+    /// A jar of the run's own that starts empty.
+    Empty,
+    /// A jar of the run's own that starts as a copy of the shared one.
+    Copy,
+}
+
 /// A runner tab's run of one folder, or of the whole collection at `ItemPath::root()`.
 pub struct RunnerModel {
     workspace: Entity<Workspace>,
@@ -108,6 +122,9 @@ pub struct RunnerModel {
     tags: String,
     exclude_tags: String,
     data_file: Option<PathBuf>,
+    run_cookies: RunCookies,
+    keep_cookies: bool,
+    keep_variables: bool,
     state: RunState,
     rows: Vec<RunRow>,
     // The plan's rows as the first data row runs them; each later data row repeats them.
@@ -149,6 +166,15 @@ pub struct RunnerModel {
     // The row (as an index into `rows`) waiting out the pause before a retry, with the attempt
     // about to start and the most there may be.
     retrying: Option<(usize, u32, u32)>,
+    // What the last fresh run kept of its own, so "Re-run failed" continues it: its jar and
+    // whether that goes back into the shared one, and its forked variables.
+    own_jar: Option<(Arc<CookieJar>, bool)>,
+    fork_run: bool,
+    forked: Option<VarContext>,
+    // The own jar's cookies as this pass started, so keeping writes back only what it changed.
+    jar_before: Vec<CookieInfo>,
+    // Cancel was pressed while this pass was sending, so its cookies are not kept.
+    cancelled: bool,
 }
 
 // The plan narrowed to the requests the runner's checkboxes leave in, in plan order.
@@ -202,6 +228,9 @@ impl RunnerModel {
             tags: String::new(),
             exclude_tags: String::new(),
             data_file: None,
+            run_cookies: RunCookies::Shared,
+            keep_cookies: false,
+            keep_variables: true,
             state: RunState::Idle,
             rows: Vec::new(),
             template: Vec::new(),
@@ -227,6 +256,11 @@ impl RunnerModel {
             run_context: None,
             run_secrets: Vec::new(),
             retrying: None,
+            own_jar: None,
+            jar_before: Vec::new(),
+            cancelled: false,
+            fork_run: false,
+            forked: None,
         }
     }
 
@@ -366,6 +400,43 @@ impl RunnerModel {
         cx.notify();
     }
 
+    /// Which cookie jar the next run reads and fills.
+    pub fn run_cookies(&self) -> RunCookies {
+        self.run_cookies
+    }
+
+    /// Sets which cookie jar the next run reads and fills.
+    pub fn set_run_cookies(&mut self, cookies: RunCookies, cx: &mut Context<Self>) {
+        self.run_cookies = cookies;
+        self.save_options(cx);
+        cx.notify();
+    }
+
+    /// Whether a run on its own jar puts its cookies into the shared jar when it finishes.
+    pub fn keep_cookies(&self) -> bool {
+        self.keep_cookies
+    }
+
+    /// Sets whether a run on its own jar puts its cookies into the shared jar.
+    pub fn set_keep_cookies(&mut self, on: bool, cx: &mut Context<Self>) {
+        self.keep_cookies = on;
+        self.save_options(cx);
+        cx.notify();
+    }
+
+    /// Whether variable values the next run sets stay in the collection; off, the run works
+    /// on a copy of them that it drops.
+    pub fn keep_variables(&self) -> bool {
+        self.keep_variables
+    }
+
+    /// Sets whether variable values the next run sets stay in the collection.
+    pub fn set_keep_variables(&mut self, on: bool, cx: &mut Context<Self>) {
+        self.keep_variables = on;
+        self.save_options(cx);
+        cx.notify();
+    }
+
     /// The CSV or JSON file whose rows the next run iterates over, if any.
     pub fn data_file(&self) -> Option<&Path> {
         self.data_file.as_deref()
@@ -405,6 +476,9 @@ impl RunnerModel {
         self.fail_on_status = saved.fail_on_status;
         self.iteration_count = saved.iteration_count.map(|n| n.max(1));
         self.data_file = saved.data_file;
+        self.run_cookies = saved.run_cookies;
+        self.keep_cookies = saved.keep_cookies;
+        self.keep_variables = !saved.fork_variables;
         self.data = self.data_file.as_deref().map(read_data);
         cx.notify();
     }
@@ -425,6 +499,9 @@ impl RunnerModel {
             iteration_count: self.iteration_count,
             // The session file stores paths as strings, so a path that is not UTF-8 stays out.
             data_file: self.data_file.clone().filter(|p| p.to_str().is_some()),
+            run_cookies: self.run_cookies,
+            keep_cookies: self.keep_cookies,
+            fork_variables: !self.keep_variables,
         };
         let session = self.workspace.read(cx).session().clone();
         let stored = session
@@ -761,10 +838,21 @@ impl RunnerModel {
             TagFilter::parse_list(&self.tags),
             TagFilter::parse_list(&self.exclude_tags),
         );
-        let Some(exec) = executor::shared(cx) else {
+        let Some(shared) = executor::shared(cx) else {
             self.finish(RunState::Failed("the HTTP client is not ready".into()), cx);
             return true;
         };
+        if only.is_none() {
+            self.choose_isolation(&shared, cx);
+        }
+        // Built from the current shared executor on every pass, so changed preferences apply.
+        let exec = match &self.own_jar {
+            Some((jar, _)) => Arc::new(shared.with_cookie_jar(Arc::clone(jar))),
+            None => shared,
+        };
+        self.jar_before = (self.own_jar.as_ref()).map_or_else(Vec::new, |(jar, _)| jar.list());
+        self.cancelled = false;
+        let (fork_run, reuse) = (self.fork_run, self.forked.clone());
         let unchecked = self.workspace.read(cx).run_unchecked(&self.root);
         let (sent, answer) = self.send_plan(cx);
         if sent.is_none() {
@@ -795,6 +883,18 @@ impl RunnerModel {
             };
             // Filtered first, so the script question and the rows see only the kept requests.
             let Planned { plan, context } = planned;
+            // A forked run works on copies of the variables; its re-run plans afresh but keeps
+            // working on those copies.
+            let context = match (fork_run, reuse) {
+                (true, Some(fork)) => context.with_variables_of(&fork),
+                (true, None) => {
+                    let fork = context.fork_variables();
+                    let kept = fork.clone();
+                    let _ = this.update(cx, |m, _| m.forked = Some(kept));
+                    fork
+                }
+                (false, _) => context,
+            };
             let plan = plan.filter_tags(&filter);
             let plan = match choose_checked(plan, &unchecked) {
                 Ok(plan) => plan,
@@ -945,12 +1045,35 @@ impl RunnerModel {
                 self.finish(RunState::Cancelled, cx);
             }
             RunState::Running => {
+                self.cancelled = true;
                 if let Some(cancel) = &self.cancel {
                     cancel.cancel();
                 }
             }
             _ => {}
         }
+    }
+
+    // A fresh run's cookie jar, chosen by the cookie option, and its variable choice; both are
+    // kept so "Re-run failed" continues the same run.
+    fn choose_isolation(&mut self, shared: &Executor, cx: &mut App) {
+        self.fork_run = !self.keep_variables;
+        self.forked = None;
+        let jar = match self.run_cookies {
+            RunCookies::Shared => None,
+            RunCookies::Empty => Some(CookieJar::default()),
+            RunCookies::Copy => {
+                let jar = CookieJar::default();
+                copy_cookies(
+                    shared.cookies().list(),
+                    &jar,
+                    "copied into the run's jar",
+                    cx,
+                );
+                Some(jar)
+            }
+        };
+        self.own_jar = jar.map(|jar| (Arc::new(jar), self.keep_cookies));
     }
 
     // The dirty saved requests at or under any target item; a draft has no file, so no run
@@ -1025,6 +1148,16 @@ impl RunnerModel {
             (Some(before), RunState::Cancelled) => before,
             (_, state) => state,
         };
+        // A pass on its own jar that ran to its end puts the cookies it set or changed into the
+        // shared jar when asked to; cookies it deleted stay in the shared jar.
+        if let (RunState::Finished(_), false, Some((jar, true)), Some(shared)) =
+            (&state, self.cancelled, &self.own_jar, executor::shared(cx))
+        {
+            let changed = (jar.list().into_iter())
+                .filter(|c| !self.jar_before.contains(c))
+                .collect();
+            copy_cookies(changed, shared.cookies(), "kept from the run", cx);
+        }
         self.state = state;
         self.retrying = None;
         self.cancel = None;
@@ -1109,6 +1242,17 @@ impl RunnerModel {
             _ => {}
         }
         cx.notify();
+    }
+}
+
+// Inserts `cookies` into `jar`, noting in the console each one the jar refuses, by name only.
+fn copy_cookies(cookies: Vec<CookieInfo>, jar: &CookieJar, what: &str, cx: &mut App) {
+    for cookie in cookies {
+        let (name, domain) = (cookie.name.clone(), cookie.domain.clone());
+        if let Err(e) = jar.insert(cookie) {
+            let text = format!("Cookie {name} for {domain} was not {what}: {e}");
+            crate::log_feed::ensure(cx).note("Runner", apinata_core::ConsoleLevel::Warn, &text);
+        }
     }
 }
 

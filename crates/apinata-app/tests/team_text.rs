@@ -134,6 +134,36 @@ fn only_plain_http_to_another_host_warns() {
 }
 
 #[test]
+fn hidden_characters_in_a_finding_are_shown_escaped() {
+    let found = Finding::new(
+        "secret\u{202E}x",
+        "refs/heads/a\u{2028}b",
+        "x\u{202E}lmy.yml\u{85}\u{200D}",
+        "rule\u{2029}",
+    )
+    .with_detail("key\u{200B}name");
+    assert_eq!(
+        finding_line(&found),
+        "x\\u{202E}lmy.yml\\u{85}\\u{200D}: rule\\u{2029} \
+         (secret\\u{202E}x: key\\u{200B}name) on refs/\u{2060}heads/\u{2060}a\\u{2028}b"
+    );
+}
+
+#[test]
+fn ordinary_non_ascii_in_a_finding_is_shown_unchanged() {
+    let found = Finding::new(
+        "secret_value",
+        "refs/heads/main",
+        "café/日本語.yml",
+        "secret_value",
+    );
+    assert_eq!(
+        finding_line(&found),
+        "café/日本語.yml: secret_value on refs/\u{2060}heads/\u{2060}main"
+    );
+}
+
+#[test]
 fn secret_lines_name_path_rule_code_and_ref_and_count_the_rest() {
     let found = Finding::new(
         "secret_value",
