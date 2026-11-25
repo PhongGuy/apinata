@@ -3,6 +3,7 @@
 use crate::support::*;
 use apinata_app::app::AppState;
 use apinata_app::persist::Paths;
+use apinata_core::team::TeamStore;
 use gpui_kit::TestAppContext;
 use std::path::Path;
 
@@ -10,6 +11,11 @@ use std::path::Path;
 fn a_profile_dir_keeps_the_team_file_beside_the_session() {
     let paths = Paths::in_dir(Path::new("/p"));
     assert_eq!(paths.team, Path::new("/p/team.json"));
+}
+
+#[test]
+fn the_platform_team_file_is_the_one_core_names() {
+    assert_eq!(Paths::platform().map(|p| p.team), TeamStore::default_path());
 }
 
 #[gpui_kit::test]

@@ -123,6 +123,12 @@ pub struct TeamStore {
 }
 
 impl TeamStore {
+    /// `apinata/team.json` under the platform's local data directory, the one file the app and
+    /// the CLI share; `None` when the platform has no such directory.
+    pub fn default_path() -> Option<PathBuf> {
+        dirs::data_local_dir().map(|dir| dir.join("apinata").join("team.json"))
+    }
+
     /// Reads `path`; a missing file is an empty store, an unreadable file or bad JSON is `Store`.
     pub fn load(path: &Path) -> Result<TeamStore, TeamError> {
         let store_error =

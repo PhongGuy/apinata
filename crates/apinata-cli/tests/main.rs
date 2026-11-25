@@ -110,6 +110,7 @@ mod cli_send;
 mod cli_show_response;
 mod cli_stream;
 mod cli_subscription;
+mod cli_team;
 mod cli_trust;
 mod cli_trust_scripts;
 mod cli_undefined_hint;
