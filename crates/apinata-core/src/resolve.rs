@@ -2411,9 +2411,12 @@ pub(crate) fn redact_url(url: &str) -> String {
 /// Prepends `http://` to a URL without an explicit scheme and applies Bruno's `encodeUrl` when
 /// `encode`, as bruno-cli does, then parses it as a WHATWG URL the way axios's `new URL` would.
 fn parse_url(url: &str) -> Result<Url, ResolveError> {
-    Url::parse(url).map_err(|_| ResolveError::InvalidUrl {
-        url: redact_url(url),
-    })
+    Url::parse(url)
+        .ok()
+        .filter(|parsed| !crate::network::uds::dropped_port(url, parsed))
+        .ok_or_else(|| ResolveError::InvalidUrl {
+            url: redact_url(url),
+        })
 }
 
 /// The enabled query params that `set_params` writes into the URL, as `(name, value)` text.

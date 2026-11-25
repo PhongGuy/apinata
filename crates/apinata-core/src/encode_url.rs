@@ -15,7 +15,15 @@ pub(crate) fn encode_url(url: &str, written: &[usize]) -> String {
         Some((head, query)) => (head, Some(query)),
         None => (url, None),
     };
-    let origin_len = authority_span(origin_and_path).map_or(0, |span| span.end);
+    let span = authority_span(origin_and_path);
+    let mut origin_len = span.as_ref().map_or(0, |span| span.end);
+    // A Unix socket path is where the request goes, not part of its path, so it stays verbatim.
+    let unix = |host: &str| host.eq_ignore_ascii_case("unix") || host.eq_ignore_ascii_case("unix:");
+    if span.is_some_and(|span| unix(&origin_and_path[span]))
+        && let Some(colon) = origin_and_path[origin_len..].find(':')
+    {
+        origin_len += colon + 1;
+    }
     let (origin, path) = origin_and_path.split_at(origin_len);
     let mut out = origin.to_owned();
     let segments: Vec<String> = path

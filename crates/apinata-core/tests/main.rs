@@ -41,6 +41,8 @@ mod session_log_support;
 mod tree_support;
 mod undefined_hint;
 mod undefined_variables;
+#[cfg(unix)]
+mod unix_socket;
 #[cfg(feature = "update")]
 mod update_support;
 mod workspace_file;
