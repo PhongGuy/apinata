@@ -89,6 +89,10 @@ struct Layers {
     generations: BTreeMap<String, u64>,
     /// Stores forked from this one, which follow its environment deletes and renames.
     forks: Vec<(Weak<Mutex<Layers>>, Weak<AtomicU64>)>,
+    /// Runs after a delete or rename reached this store and its lock is free again, where
+    /// another thread could fork it; never copied into a fork.
+    #[cfg(test)]
+    after_change: Option<Arc<dyn Fn(&EnvOverlay) + Send + Sync>>,
 }
 
 impl Layers {
@@ -122,11 +126,16 @@ impl EnvOverlay {
 
     /// A store of its own holding a copy of these edits, on the same pin; writes to either
     /// never reach the other, but this store's environment deletes and renames reach the copy
-    /// too, so a handle pinned on it afresh agrees with the files.
+    /// too, so a handle pinned on it afresh agrees with the files. A fork of the copy follows
+    /// them only while the copy lives.
     pub(crate) fn fork(&self) -> EnvOverlay {
         let mut layers = self.lock();
         let mut copy = layers.clone();
         copy.forks.clear();
+        #[cfg(test)]
+        {
+            copy.after_change = None;
+        }
         let fork = EnvOverlay {
             layers: Arc::new(Mutex::new(copy)),
             revision: Arc::new(AtomicU64::new(self.revision())),
@@ -137,11 +146,23 @@ impl EnvOverlay {
         fork
     }
 
-    // Runs `change` on this store, then on every live fork of it and their forks, one lock
-    // at a time.
-    fn on_each_store(&self, change: &dyn Fn(&EnvOverlay)) {
-        change(self);
-        let forks = self.lock().forks.clone();
+    // Runs `change` on this store, then on its live forks and theirs, one lock at a time.
+    // The forks are listed under the change's own lock, so a fork taken meanwhile copies the
+    // changed layers and is not changed twice. Callers serialise changes to one store.
+    fn on_each_store(&self, change: &dyn Fn(&mut Layers)) {
+        let forks = {
+            let mut layers = self.lock();
+            change(&mut layers);
+            layers.forks.clone()
+        };
+        self.bump();
+        #[cfg(test)]
+        {
+            let hook = self.lock().after_change.clone();
+            if let Some(hook) = hook {
+                hook(self);
+            }
+        }
         for (layers, revision) in forks {
             if let (Some(layers), Some(revision)) = (layers.upgrade(), revision.upgrade()) {
                 let fork = EnvOverlay {
@@ -194,22 +215,18 @@ impl EnvOverlay {
         self.bump();
     }
 
-    /// Forget the script values set under environment `name`, here and in every fork.
+    /// Forget the script values set under environment `name`, here and in every live fork.
     pub fn clear_environment(&self, name: &str) {
-        self.on_each_store(&|store| {
-            let mut layers = store.lock();
+        self.on_each_store(&|layers| {
             layers.environments.remove(&Some(name.to_owned()));
             layers.retire(name);
-            drop(layers);
-            store.bump();
         });
     }
 
     /// Move environment `from`'s values to `to`, replacing any there, and the selection with
-    /// them, here and in every fork.
+    /// them, here and in every live fork.
     pub fn rename_environment(&self, from: &str, to: &str) {
-        self.on_each_store(&|store| {
-            let mut layers = store.lock();
+        self.on_each_store(&|layers| {
             match layers.environments.remove(&Some(from.to_owned())) {
                 Some(values) => layers.environments.insert(Some(to.to_owned()), values),
                 None => layers.environments.remove(&Some(to.to_owned())),
@@ -219,8 +236,6 @@ impl EnvOverlay {
             if layers.selected.as_deref() == Some(from) {
                 layers.selected = Some(to.to_owned());
             }
-            drop(layers);
-            store.bump();
         });
     }
 
@@ -558,6 +573,28 @@ mod tests {
         assert_eq!(live.lock().forks.len(), 2);
         drop(live.fork());
         assert_eq!(live.lock().forks.len(), 2, "the dead fork was pruned");
+    }
+
+    // A fork taken just after a rename reached the store already holds the renamed values,
+    // so the rename must not reach it a second time.
+    #[test]
+    fn a_fork_taken_during_a_rename_gets_it_once() {
+        let live = EnvOverlay::new();
+        live.pinned(Some("a"))
+            .set_text(OverlayLayer::Environment, "x", "1");
+        let late: Arc<Mutex<Option<EnvOverlay>>> = Arc::default();
+        let slot = Arc::clone(&late);
+        live.lock().after_change = Some(Arc::new(move |store: &EnvOverlay| {
+            let mut slot = slot.lock().unwrap();
+            if slot.is_none() {
+                *slot = Some(store.fork());
+            }
+        }));
+        live.rename_environment("a", "c");
+        let late = late.lock().unwrap().take().expect("the hook forked");
+        assert_eq!(late.pinned(Some("c")).env_names(), ["x"]);
+        let generation = |o: &EnvOverlay| o.lock().generation("c");
+        assert_eq!(generation(&late), generation(&live));
     }
 
     #[test]
