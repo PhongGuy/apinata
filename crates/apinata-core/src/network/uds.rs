@@ -149,7 +149,8 @@ pub(crate) fn same_origin(a: &Url, b: &Url) -> bool {
     a.origin() == b.origin() && socket(a) == socket(b)
 }
 
-#[cfg(all(test, not(unix)))]
+#[cfg(test)]
+#[cfg(not(unix))]
 mod tests {
     use super::*;
 
@@ -161,7 +162,8 @@ mod tests {
     }
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
+#[cfg(unix)]
 mod tests {
     use super::*;
 
