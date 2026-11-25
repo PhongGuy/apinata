@@ -1647,6 +1647,34 @@ mod secret_values_tests {
         assert!((grafted.secret_values()).contains(&"tainted-in-fork".to_owned()));
     }
 
+    // Renaming the environment between a forked run and its re-run keeps the taint masked.
+    #[test]
+    fn a_graft_after_a_rename_keeps_the_tainted_values() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::create_dir(dir.path().join("environments")).unwrap();
+        for (rel, text) in [
+            (
+                "opencollection.yml",
+                "opencollection: 1.0.0\ninfo:\n  name: c\n",
+            ),
+            ("environments/a.yml", "name: a\nvariables: []\n"),
+            ("environments/c.yml", "name: c\nvariables: []\n"),
+        ] {
+            std::fs::write(dir.path().join(rel), text).unwrap();
+        }
+        let c = Collection::open(dir.path()).unwrap();
+        let live = EnvOverlay::new();
+        let options = |env: &str| ContextOptions::new().env(env).env_overlay(live.clone());
+        let fork = VarContext::new(&c, options("a")).unwrap().fork_variables();
+        fork.runtime_vars()
+            .taint(&["tainted-in-first-run".to_owned()]);
+        live.rename_environment("a", "c");
+        let grafted = VarContext::new(&c, options("c"))
+            .unwrap()
+            .with_variables_of(&fork);
+        assert!((grafted.secret_values()).contains(&"tainted-in-first-run".to_owned()));
+    }
+
     /// A one-request collection and a context whose runtime scope the test controls.
     fn marked_fixture(runtime: &RuntimeVars) -> (tempfile::TempDir, Collection, VarContext) {
         let dir = tempfile::TempDir::new().unwrap();
