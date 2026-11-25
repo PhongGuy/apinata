@@ -9,6 +9,7 @@ use apinata_app::env_table::SECRET_HIDDEN;
 use apinata_app::keymap::ToggleConsole;
 use apinata_app::session::Session;
 use apinata_app::shell::{OpenVariablesOverview, ShowVariableAtCaret};
+use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::input::InputState;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, TestAppContext, VisualTestContext};
@@ -370,6 +371,36 @@ fn an_unstored_global_secret_offers_the_global_editor_not_an_input(cx: &mut Test
     assert!(!dev_yml(&col).contains("gkey"));
 }
 
+// A secret of a global environment that is not active is still a secret: no plain field.
+#[gpui_kit::test]
+fn a_secret_of_an_inactive_global_environment_gets_no_input(cx: &mut TestAppContext) {
+    let globals = write_tree(&[
+        (
+            "g.yml",
+            "name: g\nvariables:\n  - secret: true\n    name: gkey\n",
+        ),
+        ("h.yml", "name: h\nvariables: []\n"),
+    ]);
+    let col = collection("http://127.0.0.1:9/{{gkey}}");
+    let s = started(cx, &col);
+    let dir = globals.path().to_path_buf();
+    s.ws.update(cx, |w, cx| w.set_global_dir(dir, cx));
+    cx.run_until_parked();
+    s.ws.update(cx, |w, cx| {
+        w.select_global_environment(Some("h".into()), cx)
+    });
+    let select = Command::SelectEnvironment(Some("dev".into()));
+    s.ws.update(cx, |w, cx| w.send(&s.root, select, cx));
+    s.ws.update(cx, |w, cx| w.open_item(&s.root, ip("r.yml"), false, cx));
+    cx.run_until_parked();
+    show_tab(cx, &s);
+    assert_eq!(labels(cx, &s, "var-undefined-name"), ["gkey"]);
+    assert!(!present(cx, s.win, ("var-undefined-input", 0usize)));
+    assert!(present(cx, s.win, ("var-undefined-open", 0usize)));
+    settle(cx);
+    assert!(!dev_yml(&col).contains("gkey"));
+}
+
 // A name that is a secret only in another environment is still a secret: no plain field.
 #[gpui_kit::test]
 fn a_secret_of_another_environment_offers_the_editor_not_an_input(cx: &mut TestAppContext) {
@@ -407,6 +438,46 @@ fn a_refused_write_stays_pending_for_a_retry(cx: &mut TestAppContext) {
     assert!(!dev_yml(&col).contains("v1"));
 }
 
+// A plain row of the selected environment stays editable when another environment marks
+// the same name secret.
+#[gpui_kit::test]
+fn a_plain_row_shadowing_a_secret_elsewhere_is_still_saved(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("environments/dev.yml", DEV),
+        (
+            "environments/prod.yml",
+            "name: prod\nvariables:\n  - secret: true\n    name: shared\n",
+        ),
+        ("r.yml", &request("r", "http://127.0.0.1:9/{{shared}}")),
+    ]);
+    let s = app(cx, &col, Some("dev"));
+    show_tab(cx, &s);
+    let ix = row_of(cx, &s, "shared");
+    type_and_enter(cx, &s, ("var-overview-input", ix), "edited");
+    wait_for(cx, "the edit in dev.yml", |_| {
+        dev_yml(&col).contains("value: edited")
+    });
+}
+
+// A refused value is reported once; pressing Enter on it again adds no second toast.
+#[gpui_kit::test]
+fn a_refused_value_is_reported_once(cx: &mut TestAppContext) {
+    let col = collection("http://127.0.0.1:9/{{x!}}");
+    let s = app(cx, &col, Some("dev"));
+    show_tab(cx, &s);
+    let toasts = |cx: &mut TestAppContext| {
+        cx.update_window(s.win, |_, w, cx| w.notifications(cx).len())
+            .unwrap()
+    };
+    let before = toasts(cx);
+    type_and_enter(cx, &s, ("var-undefined-input", 0), "v1");
+    assert_eq!(toasts(cx), before + 1);
+    press_key(cx, s.win, "enter");
+    cx.run_until_parked();
+    assert_eq!(toasts(cx), before + 1, "the same value again adds no toast");
+}
+
 // An edit still in a field when the active request changes is written, not dropped.
 #[gpui_kit::test]
 fn switching_tabs_commits_an_edit_in_progress(cx: &mut TestAppContext) {
@@ -427,6 +498,39 @@ fn switching_tabs_commits_an_edit_in_progress(cx: &mut TestAppContext) {
     wait_for(cx, "the pending edit in dev.yml", |_| {
         dev_yml(&col).contains("value: pending")
     });
+}
+
+// Text a failed leave-save left behind never follows into the next request's field of the
+// same name, so a later blur there cannot write it.
+#[gpui_kit::test]
+fn a_failed_save_on_leaving_leaves_no_text_in_the_next_request(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("environments/dev.yml", DEV),
+        ("environments/prod.yml", "name: prod\nvariables: []\n"),
+        ("r.yml", &request("r", "http://127.0.0.1:9/{{x!}}")),
+        ("q.yml", &request("q", "http://127.0.0.1:9/{{x!}}")),
+    ]);
+    let s = app(cx, &col, Some("dev"));
+    // Both tabs are open first, so q's undefined names are known the moment it is switched to.
+    for item in ["q.yml", "r.yml"] {
+        s.ws.update(cx, |w, cx| w.open_item(&s.root, ip(item), false, cx));
+        cx.run_until_parked();
+        frame(cx, s.win);
+    }
+    show_tab(cx, &s);
+    replace_input(cx, s.win, None, ("var-undefined-input", 0usize), "leftover");
+    s.ws.update(cx, |w, cx| w.open_item(&s.root, ip("q.yml"), false, cx));
+    cx.run_until_parked();
+    frame(cx, s.win);
+    assert_eq!(labels(cx, &s, "var-undefined-name"), ["x!"]);
+    let panel = s.shell.read_with(cx, |sh, cx| {
+        sh.dock().read(cx).variables().cloned().unwrap()
+    });
+    assert!(!panel.read_with(cx, |p, cx| p.pending("x!", cx)));
+    press_key(cx, s.win, "enter");
+    settle(cx);
+    assert!(!dev_yml(&col).contains("leftover"));
 }
 
 // A request whose variables cannot be read says so in the tab.
