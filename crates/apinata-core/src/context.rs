@@ -1344,7 +1344,8 @@ impl fmt::Debug for VarContext {
 }
 
 /// Builds `{"env": ...}` from the given pairs or the real environment, with `<root>/.env` on top,
-/// and lists the keys the `.env` file set.
+/// and lists the keys the `.env` file set. An inherited team token is left out, so neither a
+/// template nor a script can read it.
 fn process_namespace(
     root: &Path,
     given: Option<Vec<(String, String)>>,
@@ -1356,6 +1357,8 @@ fn process_namespace(
     });
     let mut env: Vars = pairs
         .into_iter()
+        // Any letter case, since a Windows environment finds the variable regardless of it.
+        .filter(|(k, _)| !k.eq_ignore_ascii_case(crate::team::TEAM_TOKEN_VAR))
         .map(|(k, v)| (k, Value::String(v)))
         .collect();
     let path = root.join(".env");

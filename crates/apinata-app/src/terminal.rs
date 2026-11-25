@@ -114,7 +114,8 @@ impl Setup {
                     .current_dir(cwd)
                     .stdin(std::process::Stdio::null())
                     .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null());
+                    .stderr(std::process::Stdio::null())
+                    .env_remove(apinata_core::team::TEAM_TOKEN_VAR);
                 // Its own process group, so closing the app does not signal the terminal.
                 #[cfg(unix)]
                 std::os::unix::process::CommandExt::process_group(&mut cmd, 0);

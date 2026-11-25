@@ -128,6 +128,8 @@ fn stream_body(
             None => cmd.env_remove(key),
         };
     }
+    // Removed last, so no caller's env entry can hand the team token to the child.
+    cmd.env_remove(crate::team::TEAM_TOKEN_VAR);
     #[cfg(unix)]
     std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
 
@@ -430,6 +432,24 @@ mod tests {
         )
         .unwrap();
         assert_eq!(lines, ["x=1 home=unset"]);
+    }
+
+    #[test]
+    fn the_team_token_never_reaches_the_child_even_when_the_caller_sets_it() {
+        let env: Vec<EnvChange> = vec![(
+            crate::team::TEAM_TOKEN_VAR.into(),
+            Some("plk_from-the-caller".into()),
+        )];
+        let mut lines = Vec::new();
+        sh(
+            r#"echo "${APINATA_TEAM_TOKEN-unset}" >&2"#,
+            &[],
+            &env,
+            &CancelFlag::new(),
+            &mut |l| lines.push(l.to_owned()),
+        )
+        .unwrap();
+        assert_eq!(lines, ["unset"]);
     }
 
     #[test]

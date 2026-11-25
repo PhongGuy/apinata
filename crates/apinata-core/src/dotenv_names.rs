@@ -59,6 +59,7 @@ pub fn dotenv_tracked_by_git(root: &Path) -> bool {
         .arg("-C")
         .arg(root)
         .args(["ls-files", "--error-unmatch", "--", ".env"])
+        .env_remove(crate::team::TEAM_TOKEN_VAR)
         .env_remove("GIT_DIR")
         .env_remove("GIT_WORK_TREE")
         .env_remove("GIT_INDEX_FILE")
