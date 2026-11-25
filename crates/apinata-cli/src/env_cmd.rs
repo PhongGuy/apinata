@@ -659,7 +659,6 @@ fn read_secret_value() -> anyhow::Result<String> {
     read_secret_line("Secret value: ")
 }
 
-/// [`read_secret_value`] with its own prompt, for the other commands that take a secret.
 /// Ctrl+C at a hidden prompt, after the terminal was given back; the caller exits 130.
 #[derive(Debug)]
 pub(crate) struct PromptCancelled;
@@ -680,6 +679,7 @@ pub(crate) fn cancelled_exit(e: &anyhow::Error) -> Option<ExitCode> {
     })
 }
 
+/// [`read_secret_value`] with its own prompt, for the other commands that take a secret.
 pub(crate) fn read_secret_line(prompt: &str) -> anyhow::Result<String> {
     use std::io::{BufRead, IsTerminal};
     if std::io::stdin().is_terminal() {
