@@ -302,15 +302,45 @@ previous_tag() {
   git describe --tags --abbrev=0 --match 'v*' --exclude 'v*-*' "$1^" 2>/dev/null || true
 }
 
-# Write DIR/generated.md, GitHub's generated notes for TAG in REPO, and
-# DIR/published/releases.json, every release REPO lists, page after page: the
-# inputs of notes_json. Runs in the repository, which needs full history and tags.
+# The jq filter that keeps only published releases, and of those only what the
+# notes read; drafts stay private to the repository's writers.
+PUBLISHED_JQ='map(select((.draft or .prerelease) | not) | {tag_name, body, published_at})'
+
+# The newest published stable v* tag in releases pages FILE that is older than
+# TAG, or nothing.
+published_before() {
+  jq -rs --arg tag "${1#v}" '
+    def key: ltrimstr("v") | split(".") | map(tonumber);
+    [add[] | .tag_name | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))]
+    | map(select(key < ($tag | key))) | max_by(key) // empty' "$2"
+}
+
+# Re-fetch every tag, so a lightweight copy a tag-push checkout leaves becomes
+# the annotated tag again. GH_TOKEN, when set, authenticates through the
+# environment, never the command line.
+fetch_tags() {
+  if [[ -z ${GH_TOKEN:-} ]]; then
+    git fetch -q --force --tags
+    return
+  fi
+  local auth
+  auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')
+  GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader \
+    GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth" git fetch -q --force --tags
+}
+
+# Write the inputs of notes_json into DIR: published/releases.json, every
+# published release REPO lists; generated.md, GitHub's notes for TAG since the
+# last of those; and annotation.txt, TAG's annotation. Runs in the repository.
 notes_inputs() {
   local tag=$1 repo=$2 dir=$3 prev
-  prev=$(previous_tag "$tag")
   mkdir -p "$dir/published" || return 1
+  "${GH:-gh}" api --paginate "repos/$repo/releases?per_page=100" --jq "$PUBLISHED_JQ" \
+    >"$dir/published/releases.json" || return 1
+  prev=$(published_before "$tag" "$dir/published/releases.json") || return 1
   generated_body "$tag" "$repo" "$prev" >"$dir/generated.md" || return 1
-  "${GH:-gh}" api --paginate "repos/$repo/releases?per_page=100" >"$dir/published/releases.json"
+  fetch_tags || return 1
+  tag_annotation "$tag" >"$dir/annotation.txt"
 }
 
 # Print TAG's annotation message; a lightweight tag prints nothing.
@@ -320,15 +350,12 @@ tag_annotation() {
 }
 
 # Write DIST/notes.json, the updater's notes for VERSION from notes_inputs'
-# directory INPUTS, with TAG's annotation as the newest release's intro.
+# directory INPUTS.
 notes_json() {
-  local dist=$1 version=$2 tag=$3 inputs=$4 intro
-  intro=$(mktemp) || return 1
-  tag_annotation "$tag" >"$intro" &&
-    "${CARGO:-cargo}" xtask notes-json --version "$version" --date "$(date -u +%F)" \
-      --generated "$inputs/generated.md" --published "$inputs/published" \
-      --intro "$intro" --output "$dist/notes.json" || { rm -f -- "$intro"; return 1; }
-  rm -f -- "$intro"
+  local dist=$1 version=$2 inputs=$3
+  "${CARGO:-cargo}" xtask notes-json --version "$version" --date "$(date -u +%F)" \
+    --generated "$inputs/generated.md" --published "$inputs/published" \
+    --intro "$inputs/annotation.txt" --output "$dist/notes.json"
 }
 
 # "[FILE](BASE/FILE)": FILE as a markdown link to its download under BASE.
@@ -404,7 +431,7 @@ NOTES
 }
 
 usage() {
-  echo "usage: release.sh guard TYPE NAME DRY [PLATFORMS] | package | sums DIR | manifest DIR VERSION BASE_URL TAG OUT | stable DIST OUT | notes TAG REPO OUT | notes-inputs TAG REPO DIR | notes-json DIST VERSION TAG INPUTS" >&2
+  echo "usage: release.sh guard TYPE NAME DRY [PLATFORMS] | package | sums DIR | manifest DIR VERSION BASE_URL TAG OUT | stable DIST OUT | notes TAG REPO OUT | notes-inputs TAG REPO DIR | notes-json DIST VERSION INPUTS" >&2
   exit 2
 }
 
@@ -446,8 +473,8 @@ main() {
       notes_inputs "$2" "$3" "$4"
       ;;
     notes-json)
-      (($# == 5)) || usage
-      notes_json "$2" "$3" "$4" "$5"
+      (($# == 4)) || usage
+      notes_json "$2" "$3" "$4"
       ;;
     *) usage ;;
   esac

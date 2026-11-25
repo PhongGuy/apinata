@@ -240,12 +240,97 @@ fn a_section_with_bullets_but_nothing_readable_fails() {
 }
 
 #[test]
-fn notes_with_no_bullets_give_a_release_with_no_groups() {
-    let generated = format!("**Full Changelog**: {REPO}/compare/v0.2.0...v0.3.0\n");
-    let notes = parsed(&build(&current(&generated, None), Vec::new(), &categories()).unwrap());
-    assert_eq!(notes.releases.len(), 1);
-    assert!(notes.releases[0].groups.is_empty());
-    assert_eq!(notes.releases[0].previous, None);
+fn a_release_with_no_pull_requests_says_maintenance_only() {
+    // GitHub's reply for a tag with no merged pull requests is the changelog link alone.
+    for generated in [
+        format!("**Full Changelog**: {REPO}/compare/v0.2.0...v0.3.0\n"),
+        "## What's Changed\n\n".to_owned(),
+    ] {
+        let json = build(&current(&generated, None), Vec::new(), &categories()).unwrap();
+        let raw: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let groups = raw["releases"][0]["groups"].as_array().unwrap();
+        assert_eq!(groups.len(), 1, "{generated:?}");
+        assert_eq!(groups[0]["title"], "Changes");
+        assert!(groups[0].get("kind").is_none());
+        assert_eq!(
+            groups[0]["items"],
+            serde_json::json!([{"text": "Maintenance only."}])
+        );
+        assert_eq!(parsed(&json).releases[0].previous, None);
+    }
+}
+
+#[test]
+fn generated_notes_without_their_section_fail_but_an_old_body_is_only_empty() {
+    let generated = format!("### Fixes\n* A fix by @dev in {REPO}/pull/4\n");
+    let err = build(&current(&generated, None), Vec::new(), &categories()).unwrap_err();
+    assert!(format!("{err:#}").contains("What's Changed"), "{err:#}");
+
+    let body = "Hand written.\n\n### Fixes\n* A fix\n".to_owned();
+    let notes = parsed(
+        &build(
+            &current("## What's Changed\n* New\n", None),
+            vec![published("0.2.0", body)],
+            &categories(),
+        )
+        .unwrap(),
+    );
+    let old = release(&notes, "0.2.0");
+    assert!(old.groups.is_empty() && old.intro.is_none());
+}
+
+/// The items one published bullet list parses to.
+fn parse_bullets(bullets: &str) -> Vec<(String, Option<u64>)> {
+    let body = format!("## What's Changed\n\n{bullets}");
+    let notes = parsed(
+        &build(
+            &current("", None),
+            vec![published("0.2.0", body)],
+            &categories(),
+        )
+        .unwrap(),
+    );
+    items(release(&notes, "0.2.0"))
+}
+
+#[test]
+fn only_paired_markdown_markers_are_removed() {
+    let got = parse_bullets(
+        "* Read settings from `~/.config/apinata` and *.yml files\n\
+         * Keep a ~ in paths, 2 * 3 and snake_case names\n\
+         * **Bold**, *it*, _under_, __strong__ and ~~gone~~ text\n",
+    );
+    let texts: Vec<&str> = got.iter().map(|(t, _)| t.as_str()).collect();
+    assert_eq!(
+        texts,
+        [
+            "Read settings from ~/.config/apinata and *.yml files",
+            "Keep a ~ in paths, 2 * 3 and snake_case names",
+            "Bold, it, under, strong and gone text",
+        ]
+    );
+}
+
+#[test]
+fn only_a_trailing_parenthesised_reference_is_taken_as_the_pull_request() {
+    assert_eq!(
+        parse_bullets("* Close the dialog, see issue #3 here\n* Fix it #4\n* Squashed (#5)\n"),
+        [
+            ("Close the dialog, see issue #3 here".to_owned(), None),
+            ("Fix it #4".to_owned(), None),
+            ("Squashed".to_owned(), Some(5)),
+        ]
+    );
+}
+
+#[test]
+fn an_annotation_that_starts_with_the_release_name_keeps_only_the_rest() {
+    let annotation = "Apinata 0.3.0\n\nFind any request\nin a large collection.\n";
+    let notes = parsed(&build(&current("", Some(annotation)), Vec::new(), &categories()).unwrap());
+    assert_eq!(
+        notes.releases[0].intro.as_deref(),
+        Some("Find any request in a large collection.")
+    );
 }
 
 #[test]

@@ -224,8 +224,11 @@ test_update_manifest_lists_the_notes_only_when_built() {
   grep -q -- '--notes-asset notes.json ' "$WORK/cargo.log" || fail "cargo args: $(cat "$WORK/cargo.log")"
 }
 
-# A repository with an annotated v1.0.0 and a lightweight v1.1.0, and a gh stub
-# that logs its arguments and answers generate-notes and the releases list.
+# A repository with an annotated v1.0.0, an unpublished v1.0.5 and an annotated
+# v1.1.0 that the working copy holds only as a lightweight tag, as a tag-push
+# checkout can leave it; origin holds the annotated tags. The gh stub logs its
+# arguments, answers generate-notes, and runs the --jq filter over a releases
+# page holding a draft and a pre-release.
 notes_inputs_fixture() {
   local repo=$WORK/inputs-repo
   [[ -d $repo ]] && { echo "$repo"; return 0; }
@@ -239,30 +242,61 @@ notes_inputs_fixture() {
     git commit -q --allow-empty -m 'feat: first'
     git tag -a v1.0.0 -m 'Open collections from disk.' -m 'And send requests.'
     git commit -q --allow-empty -m 'feat: second'
-    git tag v1.1.0-rc.1
+    git tag v1.0.5
     git commit -q --allow-empty -m 'fix: third'
-    git tag v1.1.0
+    git tag -a v1.1.0 -m 'Apinata 1.1.0' -m 'Mend a thing.'
+    git clone -q --bare . "$WORK/inputs-origin.git"
+    git remote add origin "$WORK/inputs-origin.git"
+    git tag -f v1.1.0 HEAD >/dev/null
   )
+  cat >"$WORK/gh-releases.json" <<'JSON'
+[{"tag_name":"v1.1.0","draft":true,"prerelease":false,"body":"secret draft","published_at":null,"author":{"login":"o"}},
+ {"tag_name":"v1.1.0-rc.1","draft":false,"prerelease":true,"body":"rc","published_at":"2026-11-02T00:00:00Z"},
+ {"tag_name":"v1.0.0","draft":false,"prerelease":false,"body":"one","published_at":"2026-11-01T00:00:00Z","assets":[]}]
+JSON
   cat >"$WORK/gh-inputs" <<STUB
 #!/usr/bin/env bash
 printf '%s\n' "\$@" >>"$WORK/gh-inputs.log"
-case \$* in
+all="\$*" filter=
+while ((\$#)); do [[ \$1 == --jq ]] && filter=\$2; shift; done
+case \$all in
   *generate-notes*) echo "## What's Changed" ;;
-  *releases*) echo '[{"tag_name":"v1.0.0"}]' ;;
+  *) jq -c "\$filter" "$WORK/gh-releases.json" ;;
 esac
 STUB
   chmod +x "$WORK/gh-inputs"
   echo "$repo"
 }
 
-test_notes_inputs_fetch_the_generated_notes_and_published_releases() {
-  local repo out=$WORK/inputs
+# Run notes_inputs for v1.1.0 into OUT with a fresh gh log.
+run_notes_inputs() {
+  local repo
   repo=$(notes_inputs_fixture)
-  (cd "$repo" && GH=$WORK/gh-inputs notes_inputs v1.1.0 o/r "$out") || fail "notes_inputs failed"
+  rm -f "$WORK/gh-inputs.log"
+  (cd "$repo" && GH=$WORK/gh-inputs GH_TOKEN=t notes_inputs v1.1.0 o/r "$1")
+}
+
+test_notes_inputs_keep_only_published_releases_and_their_text() {
+  local out=$WORK/inputs-pub
+  run_notes_inputs "$out" || { fail "notes_inputs failed"; return 0; }
   [[ $(cat "$out/generated.md") == "## What's Changed" ]] || fail "generated: $(cat "$out/generated.md")"
-  [[ $(cat "$out/published/releases.json") == '[{"tag_name":"v1.0.0"}]' ]] || fail "published"
-  grep -qx 'previous_tag_name=v1.0.0' "$WORK/gh-inputs.log" || fail "previous tag: $(cat "$WORK/gh-inputs.log")"
+  [[ $(cat "$out/published/releases.json") == '[{"tag_name":"v1.0.0","body":"one","published_at":"2026-11-01T00:00:00Z"}]' ]] \
+    || fail "published: $(cat "$out/published/releases.json")"
   grep -qx -- '--paginate' "$WORK/gh-inputs.log" || fail "releases are not paged"
+}
+
+test_notes_inputs_start_the_generated_notes_at_the_last_published_release() {
+  # v1.0.5 is tagged but never published, so the notes and previous both skip it.
+  local out=$WORK/inputs-prev
+  run_notes_inputs "$out" || { fail "notes_inputs failed"; return 0; }
+  grep -qx 'previous_tag_name=v1.0.0' "$WORK/gh-inputs.log" || fail "previous tag: $(cat "$WORK/gh-inputs.log")"
+}
+
+test_notes_inputs_carry_the_annotation_a_lightweight_checkout_lost() {
+  local out=$WORK/inputs-note
+  run_notes_inputs "$out" || { fail "notes_inputs failed"; return 0; }
+  [[ $(cat "$out/annotation.txt") == $'Apinata 1.1.0\n\nMend a thing.' ]] \
+    || fail "annotation: $(cat "$out/annotation.txt")"
 }
 
 test_tag_annotation_reads_only_annotated_tags() {
@@ -270,20 +304,17 @@ test_tag_annotation_reads_only_annotated_tags() {
   repo=$(notes_inputs_fixture)
   [[ $(cd "$repo" && tag_annotation v1.0.0) == $'Open collections from disk.\n\nAnd send requests.' ]] \
     || fail "annotation: $(cd "$repo" && tag_annotation v1.0.0)"
-  [[ -z $(cd "$repo" && tag_annotation v1.1.0) ]] || fail "a lightweight tag has no annotation"
+  [[ -z $(cd "$repo" && tag_annotation v1.0.5) ]] || fail "a lightweight tag has no annotation"
 }
 
-test_notes_json_passes_the_inputs_and_annotation_to_xtask() {
-  local repo dist=$WORK/nj-dist
-  repo=$(notes_inputs_fixture)
+test_notes_json_passes_the_inputs_to_xtask() {
+  local dist=$WORK/nj-dist
   mkdir -p "$dist"
-  printf '#!/usr/bin/env bash\necho "$*" >"%s/nj.log"\nwhile (($#)); do [[ $1 == --intro ]] && cp "$2" "%s/nj-intro"; shift; done\n' \
-    "$WORK" "$WORK" >"$WORK/nj-cargo"
+  printf '#!/usr/bin/env bash\necho "$*" >"%s/nj.log"\n' "$WORK" >"$WORK/nj-cargo"
   chmod +x "$WORK/nj-cargo"
-  (cd "$repo" && CARGO=$WORK/nj-cargo notes_json "$dist" 1.0.0 v1.0.0 /in) || fail "notes_json failed"
-  grep -qE -- "^xtask notes-json --version 1.0.0 --date [0-9]{4}-[0-9]{2}-[0-9]{2} --generated /in/generated.md --published /in/published --intro [^ ]+ --output $dist/notes.json\$" "$WORK/nj.log" \
+  CARGO=$WORK/nj-cargo notes_json "$dist" 1.0.0 /in || fail "notes_json failed"
+  grep -qE -- "^xtask notes-json --version 1.0.0 --date [0-9]{4}-[0-9]{2}-[0-9]{2} --generated /in/generated.md --published /in/published --intro /in/annotation.txt --output $dist/notes.json\$" "$WORK/nj.log" \
     || fail "cargo args: $(cat "$WORK/nj.log")"
-  grep -qx 'Open collections from disk.' "$WORK/nj-intro" || fail "intro: $(cat "$WORK/nj-intro")"
 }
 
 test_stable_copies_names_each_platform_without_the_version() {

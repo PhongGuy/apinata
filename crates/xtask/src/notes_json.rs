@@ -116,8 +116,13 @@ pub fn build(
     history.sort_by(|(a, _), (b, _)| b.cmp(a));
     history.dedup_by(|(a, _), (b, _)| a == b);
 
-    let newest = parse_body(current.generated, &kinds)
+    let mut newest = parse_body(current.generated, &kinds, true)
         .map_err(|e| anyhow!("the generated notes for {version}: {e}"))?;
+    // A tag with no merged pull requests says so, as its draft does.
+    if newest.groups.is_empty() {
+        let item = NotesItem::new("Maintenance only.");
+        newest.groups = vec![NotesGroup::new(GroupKind::Other, "Changes", vec![item])];
+    }
     let mut releases = vec![NotesRelease::new(
         version.to_string(),
         None,
@@ -132,8 +137,8 @@ pub fn build(
     let previous: Vec<String> = history.iter().map(|(v, _)| v.to_string()).collect();
     releases[0].previous = previous.first().cloned();
     for (i, (v, p)) in history.iter().take(MAX_RELEASES - 1).enumerate() {
-        let parsed =
-            parse_body(&p.body, &kinds).map_err(|e| anyhow!("the published notes for {v}: {e}"))?;
+        let parsed = parse_body(&p.body, &kinds, false)
+            .map_err(|e| anyhow!("the published notes for {v}: {e}"))?;
         let mut r = NotesRelease::new(
             v.to_string(),
             previous.get(i + 1).cloned(),
@@ -188,10 +193,21 @@ struct Parsed {
 }
 
 /// Reads the `## What's Changed` section of a release body, up to the next `##` heading
-/// (Downloads, or the generated New Contributors). The text above it is the intro.
-fn parse_body(body: &str, kinds: &HashMap<String, GroupKind>) -> Result<Parsed, String> {
+/// (Downloads, or the generated New Contributors). The text above it is the intro. An old
+/// body without the section reads as empty; `generated` notes need it unless they hold only
+/// the changelog link GitHub gives a tag with no pull requests.
+fn parse_body(
+    body: &str,
+    kinds: &HashMap<String, GroupKind>,
+    generated: bool,
+) -> Result<Parsed, String> {
     let lines: Vec<&str> = body.lines().collect();
     let Some(start) = lines.iter().position(|l| l.trim() == "## What's Changed") else {
+        let only_link = (lines.iter().map(|l| l.trim()))
+            .all(|l| l.is_empty() || l.starts_with("<!--") || l.starts_with("**Full Changelog**"));
+        if generated && !only_link {
+            return Err("they have no ## What's Changed section".to_owned());
+        }
         return Ok(Parsed {
             intro: None,
             groups: Vec::new(),
@@ -235,7 +251,7 @@ fn parse_body(body: &str, kinds: &HashMap<String, GroupKind>) -> Result<Parsed, 
 }
 
 /// One bullet as plain text and its pull request: the generated ` by @user in URL` tail,
-/// a pull request URL or a trailing `#n` gives the number; links and markdown are dropped.
+/// a pull request URL or a trailing `(#n)` gives the number; links and markdown are dropped.
 fn parse_item(text: &str) -> Option<NotesItem> {
     let mut s = format!(" {}", text.trim());
     let mut pr = None;
@@ -249,17 +265,16 @@ fn parse_item(text: &str) -> Option<NotesItem> {
     }
     let s = strip_urls(&strip_html(&unlink(&s)), &mut pr);
     let mut s = collapse(&strip_emphasis(&s));
-    // A trailing reference such as `(#12)` or `#12`.
-    let bare = s.strip_suffix(')').unwrap_or(&s);
-    if let Some(hash) = bare.rfind('#')
-        && let Ok(n) = bare[hash + 1..].parse::<u64>()
-        && (hash == 0 || bare[..hash].ends_with([' ', '(']))
+    // A squash merge's trailing `(#12)`; a bare `#12` may name an issue, so it stays text.
+    if let Some(bare) = s.strip_suffix(')')
+        && let Some((head, n)) = bare.rsplit_once("(#")
+        && let Ok(n) = n.parse::<u64>()
     {
         pr = pr.or(Some(n));
-        let head = bare[..hash].trim_end_matches('(').trim_end();
-        s = head.to_owned();
+        s = head.trim_end().to_owned();
     }
-    if s.is_empty() || s.starts_with("Full Changelog") {
+    // Text with no letter or digit, such as a stray `**`, says nothing.
+    if !s.chars().any(char::is_alphanumeric) || s.starts_with("Full Changelog") {
         return None;
     }
     let item = NotesItem::new(s);
@@ -343,38 +358,76 @@ fn strip_urls(s: &str, pr: &mut Option<u64>) -> String {
     words.join(" ")
 }
 
-/// Emphasis, strike-through and code markers removed; an underscore inside a word stays.
+/// Paired code, emphasis and strike-through markers removed; a lone `*`, `~` or `_`, as in
+/// `~/.config`, `*.yml` or `snake_case`, stays.
 fn strip_emphasis(s: &str) -> String {
-    let chars: Vec<char> = s.chars().collect();
+    let mut chars: Vec<char> = s.chars().collect();
+    // Single `*` and `_` only pair at word edges, so they go after their doubled forms.
+    for (marker, edges) in [
+        ("`", false),
+        ("**", false),
+        ("__", true),
+        ("~~", false),
+        ("*", true),
+        ("_", true),
+    ] {
+        let marker: Vec<char> = marker.chars().collect();
+        chars = unwrap_pairs(&chars, &marker, edges);
+    }
+    chars.into_iter().collect()
+}
+
+/// `c` with each `marker`-wrapped span replaced by its content. A marker opens before a
+/// non-space and closes after one; with `edges`, not inside a word either.
+fn unwrap_pairs(c: &[char], marker: &[char], edges: bool) -> Vec<char> {
+    let n = marker.len();
+    let at = |i: usize| c.get(i..i + n) == Some(marker);
+    let space = |i: Option<usize>| i.and_then(|i| c.get(i)).is_none_or(|c| c.is_whitespace());
     let word = |i: Option<usize>| {
-        i.and_then(|i| chars.get(i))
+        i.and_then(|i| c.get(i))
             .is_some_and(|c| c.is_alphanumeric())
     };
-    (chars.iter().enumerate())
-        .filter(|&(i, &c)| match c {
-            '*' | '`' | '~' => false,
-            '_' => word(i.checked_sub(1)) && word(Some(i + 1)),
-            _ => true,
-        })
-        .map(|(_, &c)| c)
-        .collect()
+    let opens = |i: usize| at(i) && !space(Some(i + n)) && !(edges && word(i.checked_sub(1)));
+    let closes = |j: usize| at(j) && !space(j.checked_sub(1)) && !(edges && word(Some(j + n)));
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < c.len() {
+        if opens(i)
+            && let Some(j) = (i + n + 1..c.len()).find(|&j| closes(j))
+        {
+            out.extend_from_slice(&c[i + n..j]);
+            i = j + n;
+        } else {
+            out.push(c[i]);
+            i += 1;
+        }
+    }
+    out
 }
 
 fn collapse(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// The intro from a tag annotation, or none when the annotation only names the release.
+/// The intro from a tag annotation, without a first line that only names the release.
 fn tag_intro(annotation: &str, version: &Version) -> Option<String> {
-    let text = plain(annotation);
     let names = [
         version.to_string(),
         format!("v{version}"),
         format!("Apinata {version}"),
         format!("Apinata v{version}"),
     ];
-    let names_it = names.iter().any(|n| n.eq_ignore_ascii_case(&text));
-    (!text.is_empty() && !names_it).then_some(text)
+    let mut lines = annotation
+        .lines()
+        .skip_while(|l| l.trim().is_empty())
+        .peekable();
+    if (lines.peek())
+        .is_some_and(|first| names.iter().any(|n| n.eq_ignore_ascii_case(&plain(first))))
+    {
+        lines.next();
+    }
+    let text = plain(&lines.collect::<Vec<_>>().join(" "));
+    (!text.is_empty()).then_some(text)
 }
 
 fn render(releases: &[NotesRelease]) -> anyhow::Result<String> {

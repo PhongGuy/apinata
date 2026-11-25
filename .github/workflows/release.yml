@@ -114,13 +114,14 @@ jobs:
     permissions:
       contents: write # releases/generate-notes; nothing here writes the repository
     steps:
-      # Full history and tags, so the generated notes start at the previous release.
+      # Full history and tags, so the tag's annotation can be read.
       - if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
-      - name: Fetch the generated and published release notes
+      # Only published releases leave this job, and the artifact expires after a day.
+      - name: Fetch the generated and published release notes and the tag annotation
         if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
         env:
           GH_TOKEN: ${{ github.token }}
@@ -131,6 +132,7 @@ jobs:
           name: notes-inputs-${{ needs.guard.outputs.version }}
           path: notes-inputs/
           if-no-files-found: error
+          retention-days: 1
 
   # Hashes the builds and writes the updater's notes and the unsigned update manifest,
   # with no secrets and no write access.
@@ -157,17 +159,12 @@ jobs:
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: stable
-      # A tag-push checkout can leave the tag lightweight, losing the annotation the intro
-      # is read from.
-      - name: Fetch the tag annotations
-        if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
-        run: git fetch --force --tags
       # Into dist, so SHA256SUMS, the attestation and the release upload all cover it.
       - name: Write the updater's release notes
         if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
         env:
           VERSION: ${{ needs.guard.outputs.version }}
-        run: scripts/release.sh notes-json dist "$VERSION" "$GITHUB_REF_NAME" notes-inputs
+        run: scripts/release.sh notes-json dist "$VERSION" notes-inputs
       - name: Write SHA256SUMS
         run: scripts/release.sh sums dist
       - name: Write the update manifest

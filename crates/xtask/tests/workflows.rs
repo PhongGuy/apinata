@@ -680,10 +680,12 @@ fn the_changes_job_fetches_the_notes_inputs_from_full_history() {
         str_of(&upload["with"]["name"]),
         "notes-inputs-${{ needs.guard.outputs.version }}"
     );
+    // The inputs are readable by anyone who can see the run, so they expire quickly.
+    assert_eq!(upload["with"]["retention-days"], Value::Number(1.into()));
 }
 
 #[test]
-fn the_notes_are_built_from_fetched_tags_before_the_sums_and_manifest() {
+fn the_notes_are_built_from_the_fetched_inputs_before_the_sums_and_manifest() {
     let rel = load("release.yml");
     assert_eq!(
         strs(&rel["jobs"]["assemble"]["needs"]),
@@ -698,7 +700,6 @@ fn the_notes_are_built_from_fetched_tags_before_the_sums_and_manifest() {
         .iter()
         .position(|s| str_of(&s["uses"]).starts_with("dtolnay/rust-toolchain@"))
         .unwrap();
-    let tags = step_running(&all, "git fetch --force --tags");
     let notes = step_running(&all, "release.sh notes-json");
     let (sums, manifest) = (
         step_running(&all, "release.sh sums"),
@@ -708,13 +709,15 @@ fn the_notes_are_built_from_fetched_tags_before_the_sums_and_manifest() {
         download < notes && toolchain < notes,
         "inputs and toolchain first"
     );
-    assert!(tags < notes && notes < sums && sums < manifest);
-    for i in [download, tags, notes] {
+    assert!(notes < sums && sums < manifest);
+    // The annotation travels in the inputs, so this read-only job fetches nothing itself.
+    assert!(!all.iter().any(|s| str_of(&s["run"]).contains("git fetch")));
+    for i in [download, notes] {
         assert_eq!(str_of(&all[i]["if"]), UPDATE_GATE, "assemble step {i}");
     }
     assert_eq!(
         str_of(&all[notes]["run"]).trim(),
-        r#"scripts/release.sh notes-json dist "$VERSION" "$GITHUB_REF_NAME" notes-inputs"#,
+        r#"scripts/release.sh notes-json dist "$VERSION" notes-inputs"#,
         "into dist, which the sums, attestation and draft cover"
     );
 }

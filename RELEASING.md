@@ -45,7 +45,7 @@ The draft also carries version-free copies of the installers, so `https://github
 The app checks a signed `latest.json` and installs the release it names. The workflow's jobs split the work so no job that compiles holds a secret:
 
 - `build` packages each platform with no secrets.
-- `changes` holds `contents: write` and no secrets, which generate-notes needs. It fetches this tag's generated notes and every published release body.
+- `changes` holds `contents: write` and no secrets, which generate-notes needs. It fetches the published releases (drafts and pre-releases are filtered out before anything is saved), this tag's generated notes since the last of them, and the tag's annotation, into an artifact kept for one day.
 - `assemble`, read-only, builds `notes.json` from those, then writes `SHA256SUMS` and the unsigned manifest, whose `notes_asset` names `notes.json` by its versioned URL, size and SHA-256.
 - `sign` is the only job bound to the `release` environment and the only one that reads the signing key. It downloads the assembled files, checks `notes.json` against the manifest's `notes_asset` and `SHA256SUMS`, installs Ubuntu's `minisign` package at a pinned version, signs `update/latest.json` with it (the key and password are piped in, never written to disk), and uploads the result. It runs nothing from the repository.
 - `draft` writes the notes and uploads to the draft after every other artifact, with `latest.json.sig` last.
@@ -74,7 +74,7 @@ Set these repository variables. Builds without them are unconfigured and never o
 
 ### Publishing
 
-The draft lives in this private repository, which anonymous clients cannot reach. When `APINATA_UPDATE_BASE_URL` points at a public repository, mirror every update artifact (the AppImage, the `.app.tar.gz`, the installers, raw CLI binaries and `notes.json`) plus `latest.json`, and then `latest.json.sig`, to that repository's release `<tag>`. Upload the signature last, so no client sees a manifest before the files it names.
+Drafts stay private until a human publishes them. When `APINATA_UPDATE_BASE_URL` points at another repository, mirror every update artifact (the AppImage, the `.app.tar.gz`, the installers, raw CLI binaries and `notes.json`) plus `latest.json`, and then `latest.json.sig`, to that repository's release `<tag>`. Upload the signature last, so no client sees a manifest before the files it names.
 
 ### Rotation and compromise
 
@@ -92,7 +92,7 @@ The release job drafts the notes with `scripts/release.sh notes`, in this order:
 
 Read and reword the draft before publishing it. Preview the notes locally with `scripts/release.sh notes v<version> <owner>/<repo> notes.md`.
 
-The updater shows `notes.json`, rebuilt every release by `cargo xtask notes-json` from all published release bodies plus this tag's generated notes, newest first and at most 20 releases and 48 KiB. Only the text between `## What's Changed` and the next `##` heading is read; `###` titles get their kind from `.github/release.yml`, and bullets outside any `###` form one "Changes" group. The newest release's intro is the tag annotation, unless it only names the version; older intros are the text above `## What's Changed`. An edited published body therefore reaches the next release's notes, and a section whose bullets have no readable text fails the job.
+The updater shows `notes.json`, rebuilt every release by `cargo xtask notes-json` from all published release bodies plus this tag's generated notes, newest first and at most 20 releases and 48 KiB. Only the text between `## What's Changed` and the next `##` heading is read; `###` titles get their kind from `.github/release.yml`, and bullets outside any `###` form one "Changes" group. A release with no pull requests lists "Maintenance only." The newest release's intro is the tag annotation, without a first line that only names the version; older intros are the text above `## What's Changed`. An edited published body therefore reaches the next release's notes, and a section whose bullets have no readable text fails the job.
 
 ## Rehearsal
 
