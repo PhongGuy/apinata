@@ -134,6 +134,7 @@ fn code_for(e: &TeamError) -> u8 {
         | TeamError::Client(_)
         | TeamError::Secrets(_)
         | TeamError::Store(_)
+        | TeamError::Busy
         | TeamError::SsoListen(_) => EXIT_USAGE,
         _ => EXIT_REFUSED,
     }

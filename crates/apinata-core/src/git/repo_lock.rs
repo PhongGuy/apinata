@@ -52,18 +52,37 @@ pub fn repo_lock(root: &Path, wait: Duration, options: &GitOptions) -> Result<Re
     else {
         return Ok(unheld);
     };
-    // Poll rather than block, so the wait stays bounded on every platform.
+    match poll_lock(&file, wait, Duration::from_millis(50)) {
+        Polled::Held => Ok(RepoLock { file: Some(file) }),
+        Polled::Unsupported(_) => Ok(unheld),
+        Polled::Busy => Err(RepoBusy { lock }),
+    }
+}
+
+/// How a bounded wait for an advisory file lock ended.
+pub(crate) enum Polled {
+    /// The lock is held until the file is dropped.
+    Held,
+    /// The filesystem cannot lock this file at all.
+    Unsupported(std::io::Error),
+    /// Another holder kept it for the whole wait.
+    Busy,
+}
+
+/// Tries to lock `file` every `step` until `wait` runs out. It polls rather than blocks, so
+/// the wait stays bounded on every platform.
+pub(crate) fn poll_lock(file: &File, wait: Duration, step: Duration) -> Polled {
     let deadline = Instant::now() + wait;
     loop {
         match file.try_lock() {
-            Ok(()) => return Ok(RepoLock { file: Some(file) }),
-            Err(TryLockError::Error(_)) => return Ok(unheld),
+            Ok(()) => return Polled::Held,
+            Err(TryLockError::Error(e)) => return Polled::Unsupported(e),
             Err(TryLockError::WouldBlock) => {
                 let left = deadline.saturating_duration_since(Instant::now());
                 if left.is_zero() {
-                    return Err(RepoBusy { lock });
+                    return Polled::Busy;
                 }
-                std::thread::sleep(left.min(Duration::from_millis(50)));
+                std::thread::sleep(left.min(step));
             }
         }
     }
