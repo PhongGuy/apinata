@@ -248,8 +248,11 @@ impl VariablesOverview {
             .bound
             .as_ref()
             .is_some_and(|b| Some(b.tab) != active.as_ref().map(|a| a.0));
+        // A field belongs to one request: whatever its leave-save could not write is dropped
+        // with it, so same-named fields of the next request start from their own state.
         if leaving {
             self.flush(window, cx);
+            self.fields.clear();
         }
         let (Some((tab, root, item)), Some(editor)) = (active, editor) else {
             let had = self.bound.take().is_some() | self.built.take().is_some();
@@ -303,14 +306,16 @@ impl VariablesOverview {
     ) {
         let rows = set.map(VariableSet::overview);
         let (secrets, global_secrets) = secret_names(&self.workspace, Some(root), cx);
-        let ws = self.workspace.read(cx);
-        // Every name declared secret in any of the collection's environments, enabled or not.
-        let env_secrets: BTreeSet<String> = (ws.snapshot(root, cx).iter())
-            .flat_map(|snap| snap.content.environments.iter())
-            .flat_map(|e| e.variables.iter().filter(|v| v.secret))
-            .map(|v| v.name.clone())
+        // An undefined name declared secret in any environment or global environment, active
+        // or not, gets the editor that holds it instead of a plain field.
+        let homes: BTreeMap<String, VarScope> = (built.undefined.iter())
+            .filter_map(|n| {
+                let (scope, _) = set_variable::secret_home(&self.workspace, root, n, cx)?;
+                Some((n.to_string(), scope))
+            })
             .collect();
-        let global_list = global_secrets.clone();
+        let global_active = global_secrets.clone();
+        let ws = self.workspace.read(cx);
         self.masking = ws
             .runtime_vars(root, cx)
             .map(|vars| Masking::new(vars, secrets, global_secrets));
@@ -341,9 +346,11 @@ impl VariablesOverview {
             .collect();
         self.unstored = (self.undefined.iter())
             .filter_map(|n| {
-                let scope = if global_list.contains(n) {
+                let scope = if global_active.contains(n) {
                     VarScope::GlobalEnvironment
-                } else if env_secrets.contains(n) || set.is_some_and(|s| s.is_unstored_secret(n)) {
+                } else if let Some(scope) = homes.get(n) {
+                    *scope
+                } else if set.is_some_and(|s| s.is_unstored_secret(n)) {
                     VarScope::Environment
                 } else {
                     return None;

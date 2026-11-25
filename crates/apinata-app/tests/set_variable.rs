@@ -172,6 +172,49 @@ fn a_secret_of_the_environment_is_never_overwritten(cx: &mut TestAppContext) {
     assert_eq!(read(&root, "environments/dev.yml"), before);
 }
 
+// A name declared secret in any environment, or in any global environment, active or not,
+// is never written as plain text to a collection file.
+#[gpui_kit::test]
+fn a_secret_declared_anywhere_is_never_written_to_a_file(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("a.yml", &request("a", "http://{{token}}/0")),
+        ("environments/dev.yml", DEV),
+        (
+            "environments/prod.yml",
+            "name: prod\nvariables:\n  - secret: true\n    name: pkey\n",
+        ),
+    ]);
+    let globals = write_tree(&[
+        (
+            "g.yml",
+            "name: g\nvariables:\n  - secret: true\n    name: gkey\n",
+        ),
+        ("h.yml", "name: h\nvariables: []\n"),
+    ]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let dir = globals.path().to_path_buf();
+    ws.update(cx, |w, cx| w.set_global_dir(dir, cx));
+    cx.run_until_parked();
+    ws.update(cx, |w, cx| {
+        w.select_global_environment(Some("h".into()), cx)
+    });
+    selected(cx, &ws, &root);
+    let files = ["opencollection.yml", "environments/dev.yml"].map(|f| read(&root, f));
+    for name in ["pkey", "gkey"] {
+        for target in [VarTarget::Environment("dev".into()), VarTarget::Collection] {
+            let result = apply(cx, &ws, &root, name, target.clone());
+            assert!(result.is_err(), "{name} to {target:?} was accepted");
+        }
+    }
+    settle(cx);
+    assert_eq!(
+        ["opencollection.yml", "environments/dev.yml"].map(|f| read(&root, f)),
+        files
+    );
+    apply(cx, &ws, &root, "gkey", VarTarget::Runtime).expect("the runtime store takes it");
+}
+
 #[gpui_kit::test]
 fn the_collection_target_writes_the_collection_file(cx: &mut TestAppContext) {
     let col = tree();

@@ -6,7 +6,7 @@ use crate::ui::LockButton as _;
 use crate::ui::SolidRing as _;
 use std::path::{Path, PathBuf};
 
-use apinata_core::{EnvVariable, VarValue, Variable};
+use apinata_core::{EnvVariable, VarScope, VarValue, Variable};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::select::{Select, SelectState};
@@ -44,8 +44,8 @@ impl VarTarget {
 }
 
 /// The picker's choices: the active environment when there is one, the collection, then
-/// runtime only. A secret is never a target; a secret variable of the environment is refused
-/// by name in [`apply`].
+/// runtime only. A secret is never a target; a name declared secret anywhere is refused by
+/// [`apply`] for a file target.
 pub fn targets(environment: Option<&str>) -> Vec<VarTarget> {
     (environment.map(|name| VarTarget::Environment(name.to_owned())))
         .into_iter()
@@ -165,10 +165,33 @@ impl Render for SetVariableForm {
     }
 }
 
+/// Where `name` is declared secret for the collection at `root`: the scope and the name of
+/// the first of its environments, then of the loaded global environments, active or not,
+/// that marks it secret.
+pub fn secret_home(
+    workspace: &Entity<Workspace>,
+    root: &Path,
+    name: &str,
+    cx: &App,
+) -> Option<(VarScope, String)> {
+    let ws = workspace.read(cx);
+    let local = (ws.snapshot(root, cx).iter())
+        .flat_map(|snap| snap.content.environments.iter())
+        .find(|e| e.variables.iter().any(|v| v.secret && v.name == name))
+        .map(|e| (VarScope::Environment, e.name.clone()));
+    local.or_else(|| {
+        let globals = ws.globals()?;
+        (globals.environments().iter())
+            .find(|e| e.variables().iter().any(|v| v.secret && v.name == name))
+            .map(|e| (VarScope::GlobalEnvironment, e.name().to_owned()))
+    })
+}
+
 /// Sets variable `name` to `value` in `target` of the collection at `root`. A write replaces
 /// a variable of the same name, edits the draft and saves it unless the file already had
 /// unsaved edits (those stay a draft). Errs, changing nothing, on a bad name, a collection
-/// that is not open or switching, and a name that is a secret of the environment.
+/// that is not open or switching, and, for a file target, a name any environment or global
+/// environment declares secret (see [`secret_home`]).
 pub fn apply(
     workspace: &Entity<Workspace>,
     root: &Path,
@@ -184,6 +207,18 @@ pub fn apply(
         .read(cx)
         .snapshot(root, cx)
         .ok_or("The collection is not open")?;
+    // A secret's value never goes into a tracked file as plain text, whichever file declares it.
+    if *target != VarTarget::Runtime
+        && let Some((scope, home)) = secret_home(workspace, root, name, cx)
+    {
+        let kind = match scope {
+            VarScope::GlobalEnvironment => "global environment",
+            _ => "environment",
+        };
+        return Err(format!(
+            "{name} is a secret in the {home} {kind}; pick another name"
+        ));
+    }
     let (doc, edit, dirty) = match target {
         VarTarget::Runtime => {
             let vars = workspace.read(cx).runtime_vars(root, cx);
@@ -197,9 +232,6 @@ pub fn apply(
                 .ok_or("That environment is gone")?;
             let mut vars: Vec<EnvVariable> = view.variables.clone();
             match vars.iter_mut().find(|v| v.name == name) {
-                Some(v) if v.secret => {
-                    return Err(format!("{name} is a secret in {env}; pick another name"));
-                }
                 Some(v) => {
                     v.value = VarValue::Text(value.to_owned());
                     v.enabled = true;
