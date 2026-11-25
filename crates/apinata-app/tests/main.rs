@@ -672,6 +672,7 @@ mod team_admin;
 mod team_api;
 mod team_clash_dialog;
 mod team_join;
+mod team_join_sso;
 mod team_paths;
 mod team_renames;
 mod team_resume;
