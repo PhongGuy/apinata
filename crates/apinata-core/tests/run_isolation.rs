@@ -4,8 +4,8 @@
 use crate::common;
 
 use apinata_core::{
-    Collection, ContextOptions, CookieInfo, CookieJar, ExecError, ExecOptions, Executor,
-    OverlayLayer, VarContext,
+    Collection, ContextOptions, CookieInfo, CookieJar, EnvOverlay, ExecError, ExecOptions,
+    Executor, OverlayLayer, VarContext,
 };
 use common::{resolved_one, write_tree};
 use std::sync::Arc;
@@ -160,4 +160,104 @@ fn a_grafted_context_takes_the_forks_variables_over_its_own_fresh_layers() {
     grafted.runtime_vars().set_text("later", "1");
     assert!(runtime(&fork).iter().any(|(n, _)| n == "later"));
     assert!(fresh.runtime_vars().is_empty());
+}
+
+const ENV_A: &str = "name: a\nvariables:\n  - name: host\n    value: a.test\n";
+const ENV_B: &str = "name: b\nvariables:\n  - name: host\n    value: b.test\n";
+const ENV_C: &str = "name: c\nvariables:\n  - name: host\n    value: c.test\n";
+
+/// A collection with environments `a`, `b` and `c`, a live overlay shared like the app's, and
+/// a forked first run in `a` whose scripts set `token` there and a sensitive `session`.
+fn forked_run_in_a() -> (tempfile::TempDir, Collection, EnvOverlay, VarContext) {
+    let dir = write_tree(&[
+        (
+            "opencollection.yml",
+            "opencollection: 1.0.0\ninfo:\n  name: c\n",
+        ),
+        ("environments/a.yml", ENV_A),
+        ("environments/b.yml", ENV_B),
+        ("environments/c.yml", ENV_C),
+    ]);
+    let c = Collection::open(dir.path()).expect("opens");
+    let live = EnvOverlay::new();
+    let first = VarContext::new(&c, ContextOptions::new().env("a").env_overlay(live.clone()))
+        .expect("builds");
+    let fork = first.fork_variables();
+    fork.env_overlay()
+        .set_text(OverlayLayer::Environment, "token", "run-set-token");
+    fork.runtime_vars().set_text("session", "run-set-session");
+    fork.runtime_vars().mark_sensitive("session");
+    (dir, c, live, fork)
+}
+
+/// The re-run's context: planned afresh in `env` on the live overlay, then grafted onto `fork`.
+fn rerun_in(c: &Collection, live: &EnvOverlay, env: &str, fork: &VarContext) -> VarContext {
+    let fresh = VarContext::new(c, ContextOptions::new().env(env).env_overlay(live.clone()))
+        .expect("builds");
+    fresh.with_variables_of(fork)
+}
+
+fn env_values(ctx: &VarContext) -> Vec<(String, Option<String>)> {
+    (ctx.env_overlay().entries().iter())
+        .filter(|v| v.layer() == OverlayLayer::Environment)
+        .map(|v| (v.name().to_owned(), v.value().map(str::to_owned)))
+        .collect()
+}
+
+fn token() -> Vec<(String, Option<String>)> {
+    vec![("token".to_owned(), Some("run-set-token".to_owned()))]
+}
+
+#[test]
+fn a_rerun_in_the_same_environment_keeps_the_forks_environment_values() {
+    let (_dir, c, live, fork) = forked_run_in_a();
+    let grafted = rerun_in(&c, &live, "a", &fork);
+    assert_eq!(env_values(&grafted), token());
+}
+
+// A rename carries script values to the new name, for the fork as for the shared store.
+#[test]
+fn a_rerun_after_a_rename_keeps_the_forks_values_under_the_new_name() {
+    let (_dir, c, live, fork) = forked_run_in_a();
+    live.rename_environment("a", "c");
+    let grafted = rerun_in(&c, &live, "c", &fork);
+    assert_eq!(env_values(&grafted), token());
+    assert!(
+        grafted.runtime_vars().is_sensitive("session"),
+        "the sensitive mark stays"
+    );
+    let shared = VarContext::new(&c, ContextOptions::new().env("c").env_overlay(live.clone()))
+        .expect("builds");
+    assert!(
+        env_values(&shared).is_empty(),
+        "the fork's values stay in the fork"
+    );
+}
+
+// A deleted environment's script values are gone; one recreated under that name starts
+// empty, and the re-run's scripts can still set values in it.
+#[test]
+fn a_rerun_after_a_delete_starts_the_environment_empty_and_can_write_it() {
+    let (_dir, c, live, fork) = forked_run_in_a();
+    live.clear_environment("a");
+    let grafted = rerun_in(&c, &live, "a", &fork);
+    assert!(env_values(&grafted).is_empty());
+    grafted
+        .env_overlay()
+        .set_text(OverlayLayer::Environment, "later", "1");
+    assert_eq!(
+        env_values(&rerun_in(&c, &live, "a", &fork)),
+        [("later".to_owned(), Some("1".to_owned()))]
+    );
+    assert!(live.is_empty(), "the write stays in the fork");
+}
+
+// A switch leaves the values with the environment that set them, as it does without a fork.
+#[test]
+fn a_rerun_after_a_switch_reads_the_new_environment_and_keeps_the_old_ones_values() {
+    let (_dir, c, live, fork) = forked_run_in_a();
+    live.select_environment(Some("b"));
+    assert!(env_values(&rerun_in(&c, &live, "b", &fork)).is_empty());
+    live.select_environment(Some("a"));
+    assert_eq!(env_values(&rerun_in(&c, &live, "a", &fork)), token());
 }

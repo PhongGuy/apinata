@@ -292,3 +292,67 @@ fn a_cancelled_run_keeps_no_cookies(cx: &mut TestAppContext) {
     });
     assert_eq!(shared_names(cx), ["sid"]);
 }
+
+/// `a`'s script sets the environment's `token`; `b` asks `/check/{{token}}`, which fails once
+/// with the script's value and then passes. The file's own `token` reaches no passing path.
+fn env_script_server(cx: &mut TestAppContext) -> (MockServer, tempfile::TempDir) {
+    let handle = cx.update(|cx| apinata_app::tokio_bridge::handle(cx));
+    let server = handle.block_on(MockServer::builder().start());
+    handle.block_on(
+        Mock::given(path("/check/from-script"))
+            .respond_with(ResponseTemplate::new(500))
+            .up_to_n_times(1)
+            .mount(&server),
+    );
+    handle.block_on(
+        Mock::given(path("/check/from-script"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server),
+    );
+    let uri = server.uri();
+    let a = format!(
+        "{}runtime:\n  scripts:\n    - type: before-request\n      code: \"bru.setEnvVar('token', 'from-script')\"\n",
+        request("a", &format!("{uri}/set"))
+    );
+    let b = format!(
+        "info:\n  name: b\n  type: http\n  seq: 2\nhttp:\n  method: GET\n  url: \"{uri}/check/{{{{token}}}}\"\nruntime:\n  assertions:\n    - expression: res.status\n      operator: eq\n      value: \"200\"\n"
+    );
+    let env = "name: a\nvariables:\n  - name: token\n    value: from-file\n";
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("a.yml", &a),
+        ("b.yml", &b),
+        ("environments/a.yml", env),
+    ]);
+    (server, col)
+}
+
+// Renaming the environment between a forked run and its re-run carries the run's own
+// environment values to the new name, as it does for values kept in the collection.
+#[gpui_kit::test]
+fn a_forked_rerun_keeps_its_environment_values_across_a_rename(cx: &mut TestAppContext) {
+    use apinata_app::command::{Command, EnvOp};
+    http_ready(cx);
+    let (server, col) = env_script_server(cx);
+    let root = col.path().to_path_buf();
+    let s = started_with(cx, &col, |p| allow_scripts(p, &root));
+    let select = Command::SelectEnvironment(Some("a".into()));
+    s.ws.update(cx, |w, cx| w.send(&s.root, select, cx));
+    cx.run_until_parked();
+    let model = runner(cx, &s);
+    model.update(cx, |m, cx| m.set_keep_variables(false, cx));
+    run_to_end(cx, &model, false);
+    assert_eq!(model.read_with(cx, |m, _| m.failed_items()), [ip("b.yml")]);
+    let rename = Command::Env(EnvOp::Rename {
+        from: "a".into(),
+        to: "c".into(),
+    });
+    s.ws.update(cx, |w, cx| w.send(&s.root, rename, cx));
+    cx.run_until_parked();
+    run_to_end(cx, &model, true);
+    assert_eq!(
+        served(cx, &server),
+        ["/set", "/check/from-script", "/check/from-script"]
+    );
+    assert!(model.read_with(cx, |m, _| m.failed_items()).is_empty());
+}
