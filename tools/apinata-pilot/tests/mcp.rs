@@ -362,16 +362,14 @@ fn centre(bounds: &Value) -> (f64, f64) {
 }
 
 /// Kit Buttons fire on the key-up of Enter, so this pins that `key` sends a full press. The
-/// title bar's environments button is the fifth tab stop, after the switcher (whose popover
-/// binds Enter on key-down), the two environment selects and the variables button.
+/// title bar's environments button is the fourth tab stop, after the switcher (whose popover
+/// binds Enter on key-down), the environment picker and the variables button.
 #[tokio::test(flavor = "multi_thread")]
 async fn enter_on_a_focused_kit_button_presses_it() {
     let collection = fixture();
     let pilot = Pilot::start().await;
     launch_on(&pilot, &collection).await;
-    pilot
-        .ok("key", json!({ "keys": "tab tab tab tab tab" }))
-        .await;
+    pilot.ok("key", json!({ "keys": "tab tab tab tab" })).await;
     let focused = last_segments(&pilot.ok("tree", json!({})).await);
     assert!(!focused.contains(&"env-editor".to_owned()), "{focused:?}");
 
@@ -908,12 +906,18 @@ async fn a_tests_snippet_inserts_and_undoes() {
     pilot
         .ok("click", json!({ "target": { "id": ["0:health.yml"] } }))
         .await;
-    // Tests is the eighth section tab.
+    // The tests editor sits under the Scripts tab, the sixth section, on its Post-response side.
     pilot
-        .ok("tree", json!({ "wait_for": { "id": ["section-7"] } }))
+        .ok("tree", json!({ "wait_for": { "id": ["section-5"] } }))
         .await;
     pilot
-        .ok("click", json!({ "target": { "id": ["section-7"] } }))
+        .ok("click", json!({ "target": { "id": ["section-5"] } }))
+        .await;
+    pilot
+        .ok("tree", json!({ "wait_for": { "id": ["script-tab-1"] } }))
+        .await;
+    pilot
+        .ok("click", json!({ "target": { "id": ["script-tab-1"] } }))
         .await;
     let before = pilot
         .ok(
