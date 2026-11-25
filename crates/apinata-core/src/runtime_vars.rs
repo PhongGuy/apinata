@@ -128,6 +128,17 @@ impl RuntimeVars {
         tainted.clone()
     }
 
+    /// A store of its own holding a copy of these variables, their sensitive marks and the
+    /// tainted values, so it masks what this one masks; writes to either never reach the other.
+    pub(crate) fn fork(&self) -> RuntimeVars {
+        RuntimeVars {
+            store: Arc::new(Mutex::new(self.snapshot())),
+            revision: Arc::new(AtomicU64::new(self.revision())),
+            tainted: Arc::new(Mutex::new(self.tainted())),
+            sensitive: Arc::new(Mutex::new(self.sensitive_set().clone())),
+        }
+    }
+
     pub(crate) fn snapshot(&self) -> BTreeMap<String, Option<Value>> {
         self.lock().clone()
     }

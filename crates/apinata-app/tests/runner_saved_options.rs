@@ -340,3 +340,24 @@ fn the_fail_on_status_choice_comes_back_after_a_restart(cx: &mut TestAppContext)
         assert_eq!(m.fail_on_status(), Some(apinata_core::StatusRule::Server));
     });
 }
+
+#[gpui_kit::test]
+fn the_cookie_and_variable_options_come_back_after_a_restart(cx: &mut TestAppContext) {
+    use apinata_app::runner_model::RunCookies;
+    let col = collection_with_folder();
+    let (s1, s2) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let first = open_with(cx, &col, &s1, Session::default(), "");
+    first.model.update(cx, |m, cx| {
+        m.set_run_cookies(RunCookies::Copy, cx);
+        m.set_keep_cookies(true, cx);
+        m.set_keep_variables(false, cx);
+    });
+    let saved = session_of(cx, &first);
+    let second = open_with(cx, &col, &s2, saved, "");
+    second.model.read_with(cx, |m, _| {
+        assert_eq!(
+            (m.run_cookies(), m.keep_cookies(), m.keep_variables()),
+            (RunCookies::Copy, true, false)
+        );
+    });
+}

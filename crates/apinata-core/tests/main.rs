@@ -394,6 +394,7 @@ mod resolve_settings;
 mod resolve_url;
 mod resolve_wsse_edgegrid;
 mod restore_parts;
+mod run_isolation;
 mod runner_body_files;
 mod runner_choose;
 mod runner_fail_on_status;

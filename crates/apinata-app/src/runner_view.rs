@@ -28,7 +28,9 @@ use crate::response_pane::{
     check_counts, describe_error, redacted_assertion_line, shows_no_tests, test_line, tests_total,
 };
 use crate::runner_export::{ReportFormat, export_results};
-use crate::runner_model::{PlannedRow, RowState, RunRow, RunState, RunTarget, RunnerModel};
+use crate::runner_model::{
+    PlannedRow, RowState, RunCookies, RunRow, RunState, RunTarget, RunnerModel,
+};
 use crate::style;
 use crate::ui;
 use crate::workspace::Workspace;
@@ -90,6 +92,8 @@ struct OptionInputs {
     retry_delay: Entity<InputState>,
     fail_select: Entity<ui::IdSelect>,
     _select_sub: Subscription,
+    cookie_select: Entity<ui::IdSelect>,
+    _cookie_sub: Subscription,
     _subs: [Subscription; 6],
 }
 
@@ -351,9 +355,34 @@ impl RunnerView {
                     }
                 },
             );
+            let labels = ui::id_items(
+                "run-cookies",
+                RUN_COOKIE_CHOICES.iter().map(|(label, _)| *label),
+            );
+            let current = RUN_COOKIE_CHOICES
+                .iter()
+                .position(|(_, jar)| *jar == self.model.read(cx).run_cookies())
+                .unwrap_or(0);
+            let cookie_select =
+                cx.new(|cx| SelectState::new(labels, Some(IndexPath::new(current)), window, cx));
+            let _cookie_sub = cx.subscribe_in(
+                &cookie_select,
+                window,
+                |this: &mut Self, _, event: &SelectEvent<Vec<ui::IdItem>>, _, cx| {
+                    if let SelectEvent::Confirm(Some(label)) = event
+                        && let Some((_, jar)) = RUN_COOKIE_CHOICES
+                            .iter()
+                            .find(|(l, _)| *l == label.as_ref())
+                    {
+                        this.model.update(cx, |m, cx| m.set_run_cookies(*jar, cx));
+                    }
+                },
+            );
             self.options = Some(OptionInputs {
                 fail_select,
                 _select_sub,
+                cookie_select,
+                _cookie_sub,
                 delay,
                 iterations,
                 tags,
@@ -813,6 +842,16 @@ pub const FAIL_ON_STATUS_CHOICES: [(&str, Option<StatusRule>); 4] = [
     ("5xx only", Some(StatusRule::Server)),
 ];
 
+/// The "Cookies" choices, in the order the select lists them.
+pub const RUN_COOKIE_CHOICES: [(&str, RunCookies); 3] = [
+    ("Shared jar", RunCookies::Shared),
+    ("Empty jar", RunCookies::Empty),
+    ("Copy of the shared jar", RunCookies::Copy),
+];
+
+const KEEP_COOKIES_TOOLTIP: &str = "Put the cookies the run set or changed into the shared jar; cookies it deleted stay there. A run on the shared jar always keeps them.";
+const KEEP_VARIABLES_TOOLTIP: &str = "Off, the run works on a copy of the variables, and the values it sets are dropped when it ends.";
+
 // A muted caption naming the input beside it.
 fn option_label(id: &'static str, text: &'static str, cx: &App) -> impl IntoElement + Styled {
     div()
@@ -970,6 +1009,7 @@ impl Render for RunnerView {
             inputs.retry_delay.clone(),
         );
         let fail_select = inputs.fail_select.clone();
+        let cookie_select = inputs.cookie_select.clone();
         // While a data file decides the count, the empty Iterations field says how many rows.
         let rows = self.model.read(cx).data_summary().map(|(rows, _)| rows);
         let hint = rows.map_or_else(|| "1".to_owned(), all_rows_text);
@@ -1001,6 +1041,7 @@ impl Render for RunnerView {
         let running = model.is_running();
         let (m1, m2, m3) = (self.model.clone(), self.model.clone(), self.model.clone());
         let m5 = self.model.clone();
+        let (m6, m7) = (self.model.clone(), self.model.clone());
         // Options sit in columns of a fixed label and control width, a row per group: what
         // runs, how often, and what counts as a failure. A narrow pane wraps whole
         // options, so the columns still line up. A pane too short for them and the list's
@@ -1008,6 +1049,16 @@ impl Render for RunnerView {
         let bail = ui::checkbox("run-bail", model.bail())
             .label("Stop after the first failure")
             .on_click(move |on: &bool, _, cx| m1.update(cx, |m, cx| m.set_bail(*on, cx)));
+        // Keeping cookies only means something for a run on its own jar.
+        let keep_cookies = ui::checkbox("run-keep-cookies", model.keep_cookies())
+            .label("Keep cookies after the run")
+            .disabled(model.run_cookies() == RunCookies::Shared)
+            .tooltip(KEEP_COOKIES_TOOLTIP)
+            .on_click(move |on: &bool, _, cx| m6.update(cx, |m, cx| m.set_keep_cookies(*on, cx)));
+        let keep_variables = ui::checkbox("run-keep-variables", model.keep_variables())
+            .label("Keep variable values set by the run")
+            .tooltip(KEEP_VARIABLES_TOOLTIP)
+            .on_click(move |on: &bool, _, cx| m7.update(cx, |m, cx| m.set_keep_variables(*on, cx)));
         let data_error = model.data_error().map(sentence);
         let danger = cx.theme().danger;
         let data = h_flex()
@@ -1176,6 +1227,30 @@ impl Render for RunnerView {
                     .gap_2()
                     .child(div().flex_none().w(style::RUN_OPTION_LABEL_WIDTH))
                     .child(bail),
+            )
+            // What the run starts from and what it leaves behind: cookies, then variables.
+            .child(
+                option_row()
+                    .child(option_slot(
+                        Some(option_label("run-cookies-label", "Cookies", cx)),
+                        Select::new(&cookie_select)
+                            .id("run-cookies")
+                            .w(style::FORM_INPUT_WIDTH),
+                    ))
+                    .child(option_slot(
+                        None::<Div>,
+                        h_flex()
+                            .min_h(style::INPUT_HEIGHT)
+                            .items_center()
+                            .child(keep_cookies),
+                    )),
+            )
+            .child(
+                h_flex()
+                    .w_full()
+                    .gap_2()
+                    .child(div().flex_none().w(style::RUN_OPTION_LABEL_WIDTH))
+                    .child(keep_variables),
             )
             // The retry options read as one group: how many, how far apart, and for which methods.
             .child(
