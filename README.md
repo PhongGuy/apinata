@@ -172,6 +172,13 @@ apinata send https://api.example.com/users -X POST -H 'Content-Type: application
 apinata import collection openapi.yaml --into ./collections
 ```
 
+Sign in to a team server from a terminal or CI; the password comes from stdin:
+
+```sh
+printf '%s\n' "$TEAM_PASSWORD" | apinata team sign-in https://team.example.com --username ada
+apinata team status
+```
+
 The exit code is `0` on success, `1` when an assertion or check failed, `2`
 when a request errored and `3` for a usage or setup error. Every
 command, flag and code is in the [guide](GUIDE.md#command-line).

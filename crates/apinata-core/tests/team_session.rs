@@ -812,3 +812,9 @@ async fn a_session_replaced_while_the_check_was_refused_keeps_its_token() {
         Some(tok())
     );
 }
+
+#[test]
+fn the_default_team_file_is_under_the_local_data_dir() {
+    let expected = dirs::data_local_dir().map(|d| d.join("apinata/team.json"));
+    assert_eq!(TeamStore::default_path(), expected);
+}
