@@ -20,6 +20,8 @@ chrono.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
 gethostname.workspace = true
+# Opens the single sign-on address in the default browser; pinned to the version gpui uses.
+open = "=5.4.4"
 rpassword.workspace = true
 serde.workspace = true
 serde_json.workspace = true

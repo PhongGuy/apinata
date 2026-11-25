@@ -19,8 +19,9 @@ pub fn write_tree(files: &[(&str, &str)]) -> TempDir {
 }
 
 /// Variables a spawned binary must not inherit: the machine's proxy, the CGI-mode variable, the
-/// session bus and runtime dir through which the platform keychain is reached, and a team token.
-const SCRUBBED_ENV: [&str; 12] = [
+/// session bus and runtime dir through which the platform keychain is reached, a team token, and
+/// the display, CI and SSH variables that decide whether a browser opens.
+const SCRUBBED_ENV: [&str; 16] = [
     "HTTP_PROXY",
     "http_proxy",
     "HTTPS_PROXY",
@@ -33,6 +34,10 @@ const SCRUBBED_ENV: [&str; 12] = [
     "XDG_RUNTIME_DIR",
     "APINATA_TEAM_TOKEN",
     "APINATA_TEAM_SERVER",
+    "DISPLAY",
+    "WAYLAND_DISPLAY",
+    "CI",
+    "SSH_CONNECTION",
 ];
 
 /// A session bus address with no socket behind it. Unsetting the variable is not enough: zbus

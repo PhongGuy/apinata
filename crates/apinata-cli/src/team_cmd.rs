@@ -47,9 +47,13 @@ pub enum TeamAction {
         /// Sign in as NAME; the password is read from stdin or a hidden prompt.
         #[arg(long, value_name = "NAME")]
         username: Option<String>,
-        /// Sign in in a browser: prints the address to open and waits for it to come back.
+        /// Sign in in a browser: prints the address, opens it in the default browser and waits
+        /// for it to come back.
         #[arg(long)]
         sso: bool,
+        /// With --sso, only print the address; no browser is opened.
+        #[arg(long, requires = "sso")]
+        no_browser: bool,
     },
     /// Revoke the sign-in on the server and forget it here.
     SignOut {
@@ -97,7 +101,14 @@ pub fn run(args: &TeamArgs) -> ExitCode {
             server,
             username,
             sso,
-        } => sign_in(server, username.as_deref(), *sso, args.no_keychain),
+            no_browser,
+        } => sign_in(
+            server,
+            username.as_deref(),
+            *sso,
+            *no_browser,
+            args.no_keychain,
+        ),
         TeamAction::SignOut { server } => sign_out(server, args.no_keychain),
         TeamAction::Status { server, format } => {
             status(server.as_deref(), *format, args.no_keychain)
@@ -247,6 +258,7 @@ fn sign_in(
     server: &str,
     username: Option<&str>,
     sso: bool,
+    no_browser: bool,
     no_keychain: bool,
 ) -> Result<u8, Failure> {
     let server = parse_server(server)?;
@@ -283,7 +295,7 @@ fn sign_in(
             (Some(username), Some(password)) => {
                 team::sign_in(&api, &*secrets, &file, username, &password, &flag).await
             }
-            _ => sso_sign_in(&api, &secrets, &file, &handle, &shown_server).await,
+            _ => sso_sign_in(&api, &secrets, &file, &handle, &shown_server, no_browser).await,
         };
         watcher.abort();
         let cancelled = flag.is_cancelled() || handle.is_cancelled();
@@ -301,14 +313,16 @@ fn sign_in(
     })
 }
 
-/// Single sign-on: the start URL and loopback port go to stderr, and the wait lasts until the
-/// browser comes back, `SSO_TIMEOUT` passes or Ctrl+C cancels `handle`.
+/// Single sign-on: the start URL and loopback port go to stderr, the URL is opened in a browser
+/// unless `no_browser` or the environment rules it out, and the wait lasts until the browser
+/// comes back, `SSO_TIMEOUT` passes or Ctrl+C cancels `handle`.
 async fn sso_sign_in(
     api: &HttpTeamClient,
     secrets: &Arc<dyn SecretStore>,
     file: &Path,
     handle: &CancelHandle,
     shown_server: &str,
+    no_browser: bool,
 ) -> Result<Account, TeamError> {
     let Some(provider) = api_info_sso(api).await? else {
         return Err(TeamError::SsoOff);
@@ -323,6 +337,9 @@ async fn sso_sign_in(
         shown(&provider)
     );
     eprintln!("  {}", shown(pending.url()));
+    if !no_browser && !browser_unlikely() && !open_browser(pending.url()) {
+        eprintln!("could not open a browser; open the address above");
+    }
     eprintln!(
         "Waiting up to {} minutes for the browser on {host} port {port}; press Ctrl+C to cancel.",
         SSO_TIMEOUT.as_secs() / 60
@@ -334,6 +351,39 @@ async fn sso_sign_in(
         TeamError::Unauthenticated => TeamError::SsoRefused,
         e => e,
     })
+}
+
+/// True where a browser would not reach the person at the keyboard: a CI job, a Unix
+/// desktop session with no display, or an SSH login to a Mac or Windows machine.
+fn browser_unlikely() -> bool {
+    let set = |name: &str| std::env::var_os(name).is_some_and(|v| !v.is_empty());
+    if set("CI") {
+        return true;
+    }
+    if cfg!(any(target_os = "macos", windows)) {
+        set("SSH_CONNECTION")
+    } else {
+        !set("DISPLAY") && !set("WAYLAND_DISPLAY")
+    }
+}
+
+/// Starts the first opener that will run, detached from the terminal and without the team
+/// token; it is never waited on, so a slow or failing opener cannot hold up the sign-in.
+fn open_browser(url: &str) -> bool {
+    use std::process::Stdio;
+    for mut opener in open::commands(url) {
+        opener
+            .env_remove(TEAM_TOKEN_VAR)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        if let Ok(mut child) = opener.spawn() {
+            // Reaped off the main thread, so a finished opener leaves no zombie behind.
+            std::thread::spawn(move || child.wait());
+            return true;
+        }
+    }
+    false
 }
 
 async fn api_info_sso(api: &HttpTeamClient) -> Result<Option<String>, TeamError> {

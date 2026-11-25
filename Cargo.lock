@@ -353,6 +353,7 @@ dependencies = [
  "insta",
  "libc",
  "minisign",
+ "open",
  "predicates",
  "rmcp",
  "rpassword",
