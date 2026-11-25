@@ -334,3 +334,15 @@ fn hovering_lists_each_shadowed_line(cx: &mut TestAppContext) {
         ["Collection · 1", "Global environment · 7, overridden"]
     );
 }
+
+#[test]
+fn name_at_finds_the_placeholder_the_caret_touches() {
+    use apinata_app::var_tokens::name_at;
+    let text = "http://{{host}}/{{ id }}/{{par";
+    assert_eq!(name_at(text, 7).as_deref(), Some("host"));
+    assert_eq!(name_at(text, 10).as_deref(), Some("host"));
+    assert_eq!(name_at(text, 15).as_deref(), Some("host"));
+    assert_eq!(name_at(text, 20).as_deref(), Some("id"));
+    assert_eq!(name_at(text, text.len()).as_deref(), Some("par"));
+    assert_eq!(name_at(text, 3), None);
+}

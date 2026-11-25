@@ -47,7 +47,7 @@ use crate::check_dialog::{CheckCollection, FindingTarget, OpenCheckFinding};
 use crate::closing::CloseScope;
 use crate::command::{Command, NoticeKind, Target};
 use crate::commands;
-use crate::console_dock::{ConsoleDock, ExpandDock};
+use crate::console_dock::{ConsoleDock, DockTab, DockTabChanged, ExpandDock};
 use crate::cookie_jar::open_cookie_jar;
 use crate::draft_file::MAX_DRAFTS;
 use crate::draft_store::{
@@ -83,6 +83,7 @@ use crate::team_text::{self, SyncKind};
 use crate::ui::{self, LockButton as _, icon_button, no_window_move};
 use crate::update_install;
 use crate::updates::{CheckForUpdates, Report, Updates, UpdatesEvent, report_text};
+use crate::variables_overview::VariablesOverview;
 use crate::window_drop::{Dropped, classify};
 use crate::workspace::{Workspace, WorkspaceEvent, collection_label, display_name};
 use crate::zoom::{ZoomStep, ZoomTarget};
@@ -136,8 +137,10 @@ actions!(
         OpenCookies,
         /// Opens the current collection's runtime variables dialog.
         OpenRuntimeVariables,
-        /// Opens the active request's variables overview.
+        /// Shows the active request's variables in the dock.
         OpenVariablesOverview,
+        /// Shows the dock's Variables tab on the placeholder at the focused field's caret.
+        ShowVariableAtCaret,
         /// Opens the global environments editor.
         OpenGlobalEnvironments,
         /// Closes the current collection, asking first about unsaved changes.
@@ -254,7 +257,12 @@ impl Shell {
         let autosave = cx.new(|cx| Autosave::new(workspace.clone(), Some(tab_area.clone()), cx));
         let log = crate::log_feed::ensure(cx);
         let dock = cx.new(|cx| ConsoleDock::new(log, window, cx));
-        dock.update(cx, |d, _| d.set_tab_area(tab_area.downgrade()));
+        let variables =
+            cx.new(|cx| VariablesOverview::new(workspace.clone(), &tab_area, window, cx));
+        dock.update(cx, |d, _| {
+            d.set_tab_area(tab_area.downgrade());
+            d.set_variables(variables);
+        });
         let dock_split = cx.new(|_| ResizableState::default());
         let session = workspace.read(cx).session().clone();
         let mut subscriptions = vec![
@@ -391,6 +399,7 @@ impl Shell {
                 this.dock_expanded_short = true;
                 cx.notify();
             }),
+            cx.subscribe(&dock, |this, _, _: &DockTabChanged, cx| this.save_dock(cx)),
             // A hidden sidebar reports no real width, so the saved one is kept.
             cx.subscribe(&split, |this, split, _: &ResizablePanelEvent, cx| {
                 if !this.sidebar_visible {
@@ -603,6 +612,12 @@ impl Shell {
             status: Slot::new(cx.weak_entity(), ShellPart::Status, false, cx),
             _subscriptions: subscriptions,
         };
+        // The dock comes back open on the tab it showed when the session was saved.
+        let saved_dock = shell.session(cx).read(cx).get().dock;
+        if let Some(tab) = saved_dock {
+            shell.dock.update(cx, |d, cx| d.set_tab(tab, cx));
+            shell.set_dock_open(true, window, cx);
+        }
         shell.refresh_branch(true, cx);
         shell.cache_missing_recent_names(cx);
         shell
@@ -807,12 +822,44 @@ impl Shell {
             cx.notify();
             return;
         }
-        self.dock_open = !self.dock_open;
+        self.set_dock_open(!self.dock_open, window, cx);
+    }
+
+    fn set_dock_open(&mut self, open: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.dock_open = open;
         self.dock_split.update(cx, |s, _| s.clear());
-        let open = self.dock_open;
         self.dock.update(cx, |d, cx| d.set_polling(open, cx));
         if !open && self.dock.focus_handle(cx).contains_focused(window, cx) {
             self.hand_back_focus(window, cx);
+        }
+        self.save_dock(cx);
+        cx.notify();
+    }
+
+    // The session keeps the open dock's tab, or nothing while the dock is closed.
+    fn save_dock(&self, cx: &mut Context<Self>) {
+        let dock = self.dock_open.then(|| self.dock.read(cx).tab());
+        self.save_session(cx, move |s| s.dock = dock);
+    }
+
+    /// Shows the dock on its Variables tab, expanded, with `name`'s row marked and focused
+    /// when given.
+    pub fn show_variables(
+        &mut self,
+        name: Option<&str>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.dock
+            .update(cx, |d, cx| d.set_tab(DockTab::Variables, cx));
+        if !self.dock_open {
+            self.set_dock_open(true, window, cx);
+        } else if self.dock_collapsed {
+            self.dock_expanded_short = true;
+        }
+        let view = self.dock.read(cx).variables().cloned();
+        if let (Some(name), Some(view)) = (name, view) {
+            view.update(cx, |v, cx| v.focus_name(name, window, cx));
         }
         cx.notify();
     }
@@ -1840,28 +1887,7 @@ impl Shell {
     // The secret names of `root`'s selected environment, so script rows under them mask, and
     // the active global environment's, so global script rows under them mask.
     fn secret_names(&self, root: Option<&Path>, cx: &App) -> (Vec<String>, Vec<String>) {
-        let ws = self.workspace.read(cx);
-        let secrets = root
-            .and_then(|r| ws.snapshot(r, cx))
-            .map(|s| {
-                let selected = s.selected_environment.as_deref();
-                (s.content.environments.iter())
-                    .filter(|e| Some(e.name.as_str()) == selected)
-                    .flat_map(|e| e.variables.iter().filter(|v| v.secret))
-                    .map(|v| v.name.clone())
-                    .collect()
-            })
-            .unwrap_or_default();
-        let global_secrets = (ws.effective_global())
-            .and_then(|(g, name)| g.environment(&name).map(|e| e.variables()))
-            .map(|vars| {
-                (vars.into_iter())
-                    .filter(|v| v.secret)
-                    .map(|v| v.name)
-                    .collect()
-            })
-            .unwrap_or_default();
-        (secrets, global_secrets)
+        crate::variables_overview::secret_names(&self.workspace, root, cx)
     }
 
     // Shows the current collection's secrets a pull left under an old name: a team collection's
@@ -1905,45 +1931,10 @@ impl Shell {
         }
     }
 
-    // Asks the actor for the active request's variable set, then lists it off the render
-    // path: the set is built and flattened on a worker, so the dialog opens with finished rows.
-    fn open_variables_overview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let target = {
-            let ws = self.workspace.read(cx);
-            ws.tabs().active().and_then(|e| match &e.kind {
-                crate::tabs::TabKind::Request(item) => Some((e.root.clone(), item.clone())),
-                _ => None,
-            })
-        };
-        let Some((root, item)) = target else {
-            crate::variables_overview::open(None, None, window, cx);
-            return;
-        };
-        // The dialog's masking rule, so the overview hides what the dialog hides.
-        let (secrets, global_secrets) = self.secret_names(Some(&root), cx);
-        let masking = (self.workspace.read(cx).runtime_vars(&root, cx))
-            .map(|vars| crate::runtime_vars::Masking::new(vars, secrets, global_secrets));
-        let (reply, answer) = async_channel::bounded(1);
-        let command = Command::Variables { item, reply };
-        self.workspace
-            .update(cx, |w, cx| w.send(&root, command, cx));
-        cx.spawn_in(window, async move |this, cx| {
-            // A context that failed to build, or a stopped actor, still gets an answer.
-            let rows = match answer.recv().await {
-                Ok(Ok(set)) => Some(cx.background_spawn(async move { set.overview() }).await),
-                _ => None,
-            };
-            let _ = this.update_in(cx, |_, window, cx| match rows {
-                Some(rows) => drop(crate::variables_overview::open(
-                    Some(rows),
-                    masking,
-                    window,
-                    cx,
-                )),
-                None => drop(crate::variables_overview::open_failed(window, cx)),
-            });
-        })
-        .detach();
+    // The Variables tab, focused on the placeholder at the caret of the focused field.
+    fn show_variable_at_caret(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let name = crate::var_tokens::caret_name(window, cx);
+        self.show_variables(name.as_deref(), window, cx);
     }
 
     // The title bar's collection switcher: the open collections, the current one checked, each
@@ -3303,7 +3294,10 @@ impl Render for Shell {
                 crate::about::open(window, cx);
             })
             .on_action(cx.listener(|this, _: &OpenVariablesOverview, window, cx| {
-                this.open_variables_overview(window, cx);
+                this.show_variables(None, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &ShowVariableAtCaret, window, cx| {
+                this.show_variable_at_caret(window, cx);
             }))
             .on_action(cx.listener(|this, _: &OpenRuntimeVariables, window, cx| {
                 let ws = this.workspace.read(cx);
