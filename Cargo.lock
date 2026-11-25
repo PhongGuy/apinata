@@ -326,6 +326,7 @@ dependencies = [
  "socket2",
  "tempfile",
  "tokio",
+ "tokio-rustls",
  "tokio-tungstenite",
  "tree-sitter-c-sharp",
  "tree-sitter-graphql",

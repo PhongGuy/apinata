@@ -177,9 +177,11 @@ fn a_narrower_pane_cuts_the_address_and_keeps_every_button(cx: &mut TestAppConte
     cx.executor()
         .advance_clock(std::time::Duration::from_millis(800));
     frame(cx, s.win);
+    // The connection card's first line keeps the whole peer the cut label hides.
+    let card = label(cx, s.win, "response-address-tooltip").unwrap_or_default();
     assert_eq!(
-        label(cx, s.win, "response-address-tooltip"),
-        Some(server.address().to_string())
+        card.lines().next(),
+        Some(format!("Remote  {}", server.address()).as_str())
     );
 }
 
