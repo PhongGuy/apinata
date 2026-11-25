@@ -36,7 +36,8 @@ pub enum SyncFailure {
     },
 }
 
-/// One thing the server's hook refused, as its `potluck-reject` line names it.
+/// One thing the server's hook refused, as its `potluck-reject` line names it. The fields hold the
+/// server's text exactly; pass each through [`escape_hidden`](super::escape_hidden) before showing it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Finding {

@@ -3,7 +3,9 @@
 
 use std::path::Path;
 
-use apinata_core::team::{Block, Finding, ServerUrl, TeamError, TeamState, TeamStatus};
+use apinata_core::team::{
+    Block, Finding, ServerUrl, TeamError, TeamState, TeamStatus, escape_hidden,
+};
 
 /// The user text for `e` anywhere outside sign-in.
 pub fn error_text(e: &TeamError) -> String {
@@ -90,21 +92,25 @@ pub fn server_warning(server: &ServerUrl) -> Option<&'static str> {
 ///
 /// The server reports a finding outside any file (a commit or tag message, or a
 /// tag's target) with the path `/`, which no repository file can have. A word joiner follows
-/// each slash of the ref, so a wrapped line breaks before the ref rather than inside it.
+/// each slash of the ref, so a wrapped line breaks before the ref rather than inside it. Every
+/// field comes from the server, so control, format and separator characters in it are shown
+/// escaped rather than left to reorder or split the line.
 pub fn finding_line(f: &Finding) -> String {
     let place = if f.path == "/" {
-        "not in a file (a commit or tag message, or a tag's target)"
+        "not in a file (a commit or tag message, or a tag's target)".to_owned()
     } else {
-        &f.path
+        escape_hidden(&f.path)
     };
-    let git_ref = f.git_ref.replace('/', "/\u{2060}");
-    let code = (f.code != f.rule).then_some(f.code.as_str());
-    let note = match (code, f.detail.as_deref()) {
+    let git_ref = escape_hidden(&f.git_ref).replace('/', "/\u{2060}");
+    let rule = escape_hidden(&f.rule);
+    let code = (f.code != f.rule).then(|| escape_hidden(&f.code));
+    let detail = f.detail.as_deref().map(escape_hidden);
+    let note = match (code, detail) {
         (Some(code), Some(detail)) => format!(" ({code}: {detail})"),
         (Some(text), None) | (None, Some(text)) => format!(" ({text})"),
         (None, None) => String::new(),
     };
-    format!("{place}: {}{note} on {git_ref}", f.rule)
+    format!("{place}: {rule}{note} on {git_ref}")
 }
 
 /// What the sync dialog says about `status` with `clashes` unsettled and `renames` secrets to
