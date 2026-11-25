@@ -206,6 +206,7 @@ jobs:
           size=$(jq -er '.notes_asset.size' update/latest.json)
           sha=$(jq -er '.notes_asset.sha256' update/latest.json)
           test "$(stat -c %s dist/notes.json)" = "$size"
+          test "$size" -le 49152
           printf '%s  %s\n' "$sha" dist/notes.json | sha256sum -c --strict -
           grep -qxF "$sha  notes.json" dist/SHA256SUMS
       # The distro minisign signs cargo packager's keys; the updater accepts its signature.

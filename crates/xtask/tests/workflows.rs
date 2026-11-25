@@ -736,6 +736,8 @@ fn the_signing_job_checks_the_notes_against_the_manifest_before_signing() {
         "size=$(jq -er '.notes_asset.size' update/latest.json)",
         "sha=$(jq -er '.notes_asset.sha256' update/latest.json)",
         r#"test "$(stat -c %s dist/notes.json)" = "$size""#,
+        // The generator's 48 KiB cap, held again where nothing compiled can loosen it.
+        r#"test "$size" -le 49152"#,
         "sha256sum -c --strict -",
         r#"grep -qxF "$sha  notes.json" dist/SHA256SUMS"#,
     ] {
