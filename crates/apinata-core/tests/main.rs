@@ -40,6 +40,7 @@ mod script_support;
 mod session_log_support;
 mod tree_support;
 mod undefined_hint;
+mod undefined_variables;
 #[cfg(feature = "update")]
 mod update_support;
 mod workspace_file;
@@ -468,6 +469,7 @@ mod session_log_send;
 mod siblings;
 mod sparql_body;
 mod sse;
+mod status_description;
 mod stream_types;
 mod system_trash;
 mod team_adopt;

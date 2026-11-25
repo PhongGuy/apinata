@@ -18,6 +18,7 @@ mod collection;
 mod compare;
 mod config_file;
 mod connect_hint;
+mod connection;
 mod content_type_conflict;
 mod context;
 mod cookies;
@@ -149,6 +150,7 @@ pub use body_filter::{BodyFilterError, filter_body, validate_filter};
 pub use cancel::CancelHandle;
 pub use check::{
     CheckError, CheckOptions, CheckReport, Finding, FindingKind, Severity, check_collection,
+    undefined_variables,
 };
 pub use codegen::{Target, UnknownTarget, generate};
 pub use collection::{
@@ -189,6 +191,7 @@ pub use edit::{
     TokenPlacement, TokenSource, VarValue, Variable, collection_relative, parse_auth_json,
 };
 // The auth JSON parser's two paths, for the test that holds them equal.
+pub use connection::{TlsDetails, TlsVersion, status_description};
 pub use content_type_conflict::{ContentTypeConflict, body_content_type, content_type_conflict};
 #[doc(hidden)]
 pub use edit::auth_json_paths;
