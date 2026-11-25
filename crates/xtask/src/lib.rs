@@ -10,6 +10,7 @@ use anyhow::{Context, bail};
 
 pub mod dev_desktop;
 pub mod icons;
+pub mod notes_json;
 pub mod packager_config;
 pub mod update_manifest;
 pub mod windows_check;

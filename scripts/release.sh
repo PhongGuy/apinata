@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Release helpers for the release workflow: the tag guard and build matrix,
-# macOS ad-hoc signing, SHA256SUMS, the update manifest and the release notes.
+# macOS ad-hoc signing, SHA256SUMS, the update manifest, the release notes and
+# the updater's notes.json.
 # Must stay bash 3.2 safe, since macOS runners run /bin/bash 3.2.
 # Sourcing this file only defines functions; running it dispatches a subcommand.
 source "$(dirname "${BASH_SOURCE[0]}")/package-linux.sh"
@@ -189,7 +190,9 @@ update_map() {
 update_manifest() {
   local dir=$1 version=$2 base=$3 tag=$4 out=$5
   while [[ $base == */ ]]; do base=${base%/}; done
-  local map notes
+  local map notes asset=()
+  # The updater's notes, when this release built them, ride in the signed manifest.
+  [[ ! -f $dir/notes.json ]] || asset=(--notes-asset notes.json)
   map=$(mktemp) || return 1
   notes=$(mktemp) || return 1
   update_map "$dir" "$version" >"$map"
@@ -200,7 +203,7 @@ update_manifest() {
   fi
   echo "Apinata $version" >"$notes"
   "${CARGO:-cargo}" xtask update-manifest --version "$version" --base-url "$base/$tag" \
-    --notes "$notes" --map "$map" "$dir" || { rm -f -- "$map" "$notes"; return 1; }
+    --notes "$notes" --map "$map" ${asset[@]+"${asset[@]}"} "$dir" || { rm -f -- "$map" "$notes"; return 1; }
   rm -f -- "$map" "$notes"
   mkdir -p "$out" && mv "$dir/latest.json" "$out/latest.json"
 }
@@ -270,10 +273,10 @@ notes_intro() {
   esac
 }
 
-# GitHub's list of the pull requests merged into TAG in REPO since PREV (or since
-# the start, when PREV is empty), without the heading and changelog link the
-# notes add themselves. A failed or empty reply fails, so no draft loses its list.
-generated_changes() {
+# GitHub's generated notes for TAG in REPO: the pull requests merged since PREV
+# (or since the start, when PREV is empty). A failed or empty reply fails, so
+# no release loses its list.
+generated_body() {
   local tag=$1 repo=$2 prev=$3 body
   local args=(api "repos/$repo/releases/generate-notes" -f "tag_name=$tag")
   [[ -z $prev ]] || args+=(-f "previous_tag_name=$prev")
@@ -281,9 +284,51 @@ generated_changes() {
     echo "release.sh: gh api generate-notes gave no release notes for $tag in $repo" >&2
     return 1
   fi
+  printf '%s\n' "$body"
+}
+
+# The generated notes without the heading and changelog link the draft adds itself.
+generated_changes() {
+  local body
+  body=$(generated_body "$@") || return 1
   printf '%s\n' "$body" |
     sed -e "/^## What's Changed\$/d" -e '/^\*\*Full Changelog\*\*/d' |
     awk 'NF { for (; blank > 0; blank--) print ""; print; seen = 1; next } seen { blank++ }'
+}
+
+# The v* tag before TAG, or nothing for the first release; a pre-release tag
+# (v1.0.0-rc.1) is never the base of a release.
+previous_tag() {
+  git describe --tags --abbrev=0 --match 'v*' --exclude 'v*-*' "$1^" 2>/dev/null || true
+}
+
+# Write DIR/generated.md, GitHub's generated notes for TAG in REPO, and
+# DIR/published/releases.json, every release REPO lists, page after page: the
+# inputs of notes_json. Runs in the repository, which needs full history and tags.
+notes_inputs() {
+  local tag=$1 repo=$2 dir=$3 prev
+  prev=$(previous_tag "$tag")
+  mkdir -p "$dir/published" || return 1
+  generated_body "$tag" "$repo" "$prev" >"$dir/generated.md" || return 1
+  "${GH:-gh}" api --paginate "repos/$repo/releases?per_page=100" >"$dir/published/releases.json"
+}
+
+# Print TAG's annotation message; a lightweight tag prints nothing.
+tag_annotation() {
+  [[ $(git cat-file -t "refs/tags/$1" 2>/dev/null) == tag ]] || return 0
+  git tag -l --format='%(contents:subject)%0a%0a%(contents:body)' "$1"
+}
+
+# Write DIST/notes.json, the updater's notes for VERSION from notes_inputs'
+# directory INPUTS, with TAG's annotation as the newest release's intro.
+notes_json() {
+  local dist=$1 version=$2 tag=$3 inputs=$4 intro
+  intro=$(mktemp) || return 1
+  tag_annotation "$tag" >"$intro" &&
+    "${CARGO:-cargo}" xtask notes-json --version "$version" --date "$(date -u +%F)" \
+      --generated "$inputs/generated.md" --published "$inputs/published" \
+      --intro "$intro" --output "$dist/notes.json" || { rm -f -- "$intro"; return 1; }
+  rm -f -- "$intro"
 }
 
 # "[FILE](BASE/FILE)": FILE as a markdown link to its download under BASE.
@@ -297,9 +342,9 @@ download_link() {
 # repository, which needs full history and tags.
 release_notes() {
   local tag=$1 repo=$2 out=$3
-  local v=${tag#v} prev="" range=$tag first=true subjects changes feats fixes
-  # A pre-release tag (v1.0.0-rc.1) is never the base of a release.
-  if prev=$(git describe --tags --abbrev=0 --match 'v*' --exclude 'v*-*' "$tag^" 2>/dev/null); then
+  local v=${tag#v} prev range=$tag first=true subjects changes feats fixes
+  prev=$(previous_tag "$tag")
+  if [[ -n $prev ]]; then
     range=$prev..$tag
     first=false
   fi
@@ -359,7 +404,7 @@ NOTES
 }
 
 usage() {
-  echo "usage: release.sh guard TYPE NAME DRY [PLATFORMS] | package | sums DIR | manifest DIR VERSION BASE_URL TAG OUT | stable DIST OUT | notes TAG REPO OUT" >&2
+  echo "usage: release.sh guard TYPE NAME DRY [PLATFORMS] | package | sums DIR | manifest DIR VERSION BASE_URL TAG OUT | stable DIST OUT | notes TAG REPO OUT | notes-inputs TAG REPO DIR | notes-json DIST VERSION TAG INPUTS" >&2
   exit 2
 }
 
@@ -395,6 +440,14 @@ main() {
     notes)
       (($# == 4)) || usage
       release_notes "$2" "$3" "$4"
+      ;;
+    notes-inputs)
+      (($# == 4)) || usage
+      notes_inputs "$2" "$3" "$4"
+      ;;
+    notes-json)
+      (($# == 5)) || usage
+      notes_json "$2" "$3" "$4" "$5"
       ;;
     *) usage ;;
   esac

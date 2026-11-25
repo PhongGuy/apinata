@@ -3,7 +3,7 @@
 use apinata_core::update::{Format, Product, build_config_with, evaluate, target_id};
 use std::process::Command;
 use tempfile::TempDir;
-use xtask::update_manifest::build;
+use xtask::update_manifest::{build, build_with_notes_asset};
 
 const APPIMAGE: &str = "Apinata_1.2.0_x86_64.AppImage";
 const CLI: &str = "apinata-1.2.0-x86_64-unknown-linux-gnu";
@@ -196,4 +196,57 @@ fn the_command_writes_latest_json_into_the_directory() {
         serde_json::from_str::<serde_json::Value>(&text).unwrap()["version"],
         "1.2.0"
     );
+}
+
+#[test]
+fn a_notes_file_is_listed_with_its_versioned_url_size_and_hash() {
+    let d = artifacts();
+    std::fs::write(d.path().join("notes.json"), b"{}\n").unwrap();
+    let json = build_with_notes_asset(
+        "1.2.0",
+        "https://dl.example.com/v1.2.0/",
+        "",
+        &map(),
+        None,
+        Some("notes.json"),
+        d.path(),
+    )
+    .unwrap();
+    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(
+        v["notes_asset"],
+        serde_json::json!({
+            "url": "https://dl.example.com/v1.2.0/notes.json",
+            "size": 3,
+            "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+        })
+    );
+    let cfg = build_config_with(
+        Product::App,
+        Some("https://dl.example.com/latest.json"),
+        Some("https://dl.example.com"),
+        "key",
+        "1.0.0",
+    )
+    .unwrap();
+    assert!(evaluate(json.as_bytes(), &cfg).unwrap().is_some());
+
+    let plain = build("1.2.0", "https://x", "", &map(), None, d.path()).unwrap();
+    assert!(!plain.contains("notes_asset"), "{plain}");
+}
+
+#[test]
+fn a_notes_file_must_exist_and_never_sit_under_latest() {
+    let d = artifacts();
+    std::fs::write(d.path().join("notes.json"), b"{}\n").unwrap();
+    for (base, file, culprit) in [
+        ("https://x/releases/latest/download", "notes.json", "latest"),
+        ("https://x/v1.2.0", "gone.json", "gone.json"),
+        ("https://x/v1.2.0", "../notes.json", "../notes.json"),
+    ] {
+        let err = build_with_notes_asset("1.2.0", base, "", &map(), None, Some(file), d.path())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains(culprit), "{base} {file}: {err}");
+    }
 }

@@ -79,6 +79,14 @@ test_sums_fails_when_nothing_is_hashed() {
   if bash "$RELEASE_SH" sums "$WORK/none" 2>/dev/null; then fail "sums passed with no artifacts"; fi
 }
 
+test_sums_list_the_updater_notes() {
+  local d=$WORK/sums-notes
+  mkdir -p "$d"
+  printf a >"$d/apinata-1-x.tar.gz"; printf '{}' >"$d/notes.json"
+  bash "$RELEASE_SH" sums "$d" || fail "sums failed"
+  grep -q '  notes.json$' "$d/SHA256SUMS" || fail "notes.json not summed: $(cat "$d/SHA256SUMS")"
+}
+
 # Windows has no trusted certificate, so the build neither signs nor renames its files.
 test_windows_is_never_signed_or_renamed() {
   if grep -nE 'WINDOWS_CERTIFICATE|signtool|-unsigned' "$RELEASE_SH"; then
@@ -200,6 +208,82 @@ test_update_manifest_strips_base_slashes_and_moves_the_manifest_out() {
   CARGO=$WORK/cargo-stub update_manifest "$WORK/empty-$$" 1.2.3 https://h v1.2.3 "$out" 2>/dev/null \
     && fail "an empty directory must fail"
   return 0
+}
+
+test_update_manifest_lists_the_notes_only_when_built() {
+  local d=$WORK/man-notes out=$WORK/man-notes-out
+  mkdir -p "$d"
+  touch "$d/apinata-1.2.3-x86_64-unknown-linux-gnu"
+  printf '#!/usr/bin/env bash\necho "$*" >"%s/cargo.log"\nprintf "{}" >"${@: -1}/latest.json"\n' \
+    "$WORK" >"$WORK/cargo-stub"
+  chmod +x "$WORK/cargo-stub"
+  CARGO=$WORK/cargo-stub update_manifest "$d" 1.2.3 https://h v1.2.3 "$out" || fail "update_manifest failed"
+  if grep -q -- '--notes-asset' "$WORK/cargo.log"; then fail "notes listed without notes.json"; fi
+  printf '{}' >"$d/notes.json"
+  CARGO=$WORK/cargo-stub update_manifest "$d" 1.2.3 https://h v1.2.3 "$out" || fail "update_manifest failed"
+  grep -q -- '--notes-asset notes.json ' "$WORK/cargo.log" || fail "cargo args: $(cat "$WORK/cargo.log")"
+}
+
+# A repository with an annotated v1.0.0 and a lightweight v1.1.0, and a gh stub
+# that logs its arguments and answers generate-notes and the releases list.
+notes_inputs_fixture() {
+  local repo=$WORK/inputs-repo
+  [[ -d $repo ]] && { echo "$repo"; return 0; }
+  mkdir -p "$repo"
+  (
+    cd "$repo"
+    git init -q
+    git config user.email t@example.com
+    git config user.name t
+    git config core.hooksPath /dev/null
+    git commit -q --allow-empty -m 'feat: first'
+    git tag -a v1.0.0 -m 'Open collections from disk.' -m 'And send requests.'
+    git commit -q --allow-empty -m 'feat: second'
+    git tag v1.1.0-rc.1
+    git commit -q --allow-empty -m 'fix: third'
+    git tag v1.1.0
+  )
+  cat >"$WORK/gh-inputs" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$@" >>"$WORK/gh-inputs.log"
+case \$* in
+  *generate-notes*) echo "## What's Changed" ;;
+  *releases*) echo '[{"tag_name":"v1.0.0"}]' ;;
+esac
+STUB
+  chmod +x "$WORK/gh-inputs"
+  echo "$repo"
+}
+
+test_notes_inputs_fetch_the_generated_notes_and_published_releases() {
+  local repo out=$WORK/inputs
+  repo=$(notes_inputs_fixture)
+  (cd "$repo" && GH=$WORK/gh-inputs notes_inputs v1.1.0 o/r "$out") || fail "notes_inputs failed"
+  [[ $(cat "$out/generated.md") == "## What's Changed" ]] || fail "generated: $(cat "$out/generated.md")"
+  [[ $(cat "$out/published/releases.json") == '[{"tag_name":"v1.0.0"}]' ]] || fail "published"
+  grep -qx 'previous_tag_name=v1.0.0' "$WORK/gh-inputs.log" || fail "previous tag: $(cat "$WORK/gh-inputs.log")"
+  grep -qx -- '--paginate' "$WORK/gh-inputs.log" || fail "releases are not paged"
+}
+
+test_tag_annotation_reads_only_annotated_tags() {
+  local repo
+  repo=$(notes_inputs_fixture)
+  [[ $(cd "$repo" && tag_annotation v1.0.0) == $'Open collections from disk.\n\nAnd send requests.' ]] \
+    || fail "annotation: $(cd "$repo" && tag_annotation v1.0.0)"
+  [[ -z $(cd "$repo" && tag_annotation v1.1.0) ]] || fail "a lightweight tag has no annotation"
+}
+
+test_notes_json_passes_the_inputs_and_annotation_to_xtask() {
+  local repo dist=$WORK/nj-dist
+  repo=$(notes_inputs_fixture)
+  mkdir -p "$dist"
+  printf '#!/usr/bin/env bash\necho "$*" >"%s/nj.log"\nwhile (($#)); do [[ $1 == --intro ]] && cp "$2" "%s/nj-intro"; shift; done\n' \
+    "$WORK" "$WORK" >"$WORK/nj-cargo"
+  chmod +x "$WORK/nj-cargo"
+  (cd "$repo" && CARGO=$WORK/nj-cargo notes_json "$dist" 1.0.0 v1.0.0 /in) || fail "notes_json failed"
+  grep -qE -- "^xtask notes-json --version 1.0.0 --date [0-9]{4}-[0-9]{2}-[0-9]{2} --generated /in/generated.md --published /in/published --intro [^ ]+ --output $dist/notes.json\$" "$WORK/nj.log" \
+    || fail "cargo args: $(cat "$WORK/nj.log")"
+  grep -qx 'Open collections from disk.' "$WORK/nj-intro" || fail "intro: $(cat "$WORK/nj-intro")"
 }
 
 test_stable_copies_names_each_platform_without_the_version() {

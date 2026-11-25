@@ -430,12 +430,19 @@ fn release_builds_the_guard_matrix_with_make() {
 const PUBLISH_GATE: &str = "github.ref_type == 'tag' && !inputs.dry_run";
 
 #[test]
-fn only_the_draft_job_can_write_and_it_skips_dry_runs() {
+fn only_the_draft_and_changes_jobs_can_write_and_the_draft_skips_dry_runs() {
     let rel = load("release.yml");
     for (job, body) in rel["jobs"].as_mapping().unwrap() {
         let write = str_of(&body["permissions"]["contents"]) == "write";
-        assert_eq!(write, str_of(job) == "draft", "{job:?} contents permission");
+        let writer = ["draft", "changes"].contains(&str_of(job));
+        assert_eq!(write, writer, "{job:?} contents permission");
     }
+    // generate-notes needs contents write, so its job gets nothing else.
+    let changes = &rel["jobs"]["changes"];
+    let perms = changes["permissions"].as_mapping().unwrap();
+    assert_eq!(perms.len(), 1, "changes permissions");
+    let text = yaml_serde::to_string(changes).unwrap();
+    assert!(!text.contains("secrets."), "changes holds no secrets");
     let draft = &rel["jobs"]["draft"];
     assert_eq!(str_of(&draft["if"]), PUBLISH_GATE);
     let create: Vec<Value> = steps(&rel, "draft")
@@ -500,9 +507,10 @@ fn the_signing_job_only_downloads_signs_and_uploads() {
             runs.push(str_of(&step["run"]).trim().to_owned());
         }
     }
-    assert_eq!(runs.len(), 2, "install and sign: {runs:?}");
-    assert_eq!(runs[0], MINISIGN_INSTALL);
-    assert!(runs[1].contains("minisign -S"), "{}", runs[1]);
+    assert_eq!(runs.len(), 3, "check, install and sign: {runs:?}");
+    assert!(runs[0].contains("notes_asset"), "{}", runs[0]);
+    assert_eq!(runs[1], MINISIGN_INSTALL);
+    assert!(runs[2].contains("minisign -S"), "{}", runs[2]);
     let install = steps(&rel, "sign")
         .into_iter()
         .find(|s| str_of(&s["run"]).trim() == MINISIGN_INSTALL)
@@ -641,6 +649,95 @@ fn the_manifest_is_written_before_signing_and_uploaded_last() {
         create < json && json < sig,
         "artifacts, then latest.json, then its signature"
     );
+}
+
+/// The gate on the updater's notes and manifest: configured tag runs.
+const UPDATE_GATE: &str = "github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''";
+
+#[test]
+fn the_changes_job_fetches_the_notes_inputs_from_full_history() {
+    let rel = load("release.yml");
+    assert_eq!(str_of(&rel["jobs"]["changes"]["needs"]), "guard");
+    let all = steps(&rel, "changes");
+    for step in &all {
+        assert_eq!(str_of(&step["if"]), UPDATE_GATE, "{:?}", step["name"]);
+    }
+    let checkout = &all[0];
+    assert!(str_of(&checkout["uses"]).starts_with("actions/checkout@"));
+    assert_eq!(checkout["with"]["fetch-depth"], Value::Number(0.into()));
+    let fetch = step_running(&all, "release.sh notes-inputs");
+    assert_eq!(
+        str_of(&all[fetch]["run"]).trim(),
+        r#"scripts/release.sh notes-inputs "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" notes-inputs"#
+    );
+    assert_eq!(
+        str_of(&all[fetch]["env"]["GH_TOKEN"]),
+        "${{ github.token }}"
+    );
+    let upload = all.last().unwrap();
+    assert!(str_of(&upload["uses"]).starts_with("actions/upload-artifact@"));
+    assert_eq!(
+        str_of(&upload["with"]["name"]),
+        "notes-inputs-${{ needs.guard.outputs.version }}"
+    );
+}
+
+#[test]
+fn the_notes_are_built_from_fetched_tags_before_the_sums_and_manifest() {
+    let rel = load("release.yml");
+    assert_eq!(
+        strs(&rel["jobs"]["assemble"]["needs"]),
+        ["guard", "build", "changes"]
+    );
+    let all = steps(&rel, "assemble");
+    let download = all
+        .iter()
+        .position(|s| str_of(&s["with"]["name"]).starts_with("notes-inputs-"))
+        .expect("downloads the notes inputs");
+    let toolchain = all
+        .iter()
+        .position(|s| str_of(&s["uses"]).starts_with("dtolnay/rust-toolchain@"))
+        .unwrap();
+    let tags = step_running(&all, "git fetch --force --tags");
+    let notes = step_running(&all, "release.sh notes-json");
+    let (sums, manifest) = (
+        step_running(&all, "release.sh sums"),
+        step_running(&all, "release.sh manifest"),
+    );
+    assert!(
+        download < notes && toolchain < notes,
+        "inputs and toolchain first"
+    );
+    assert!(tags < notes && notes < sums && sums < manifest);
+    for i in [download, tags, notes] {
+        assert_eq!(str_of(&all[i]["if"]), UPDATE_GATE, "assemble step {i}");
+    }
+    assert_eq!(
+        str_of(&all[notes]["run"]).trim(),
+        r#"scripts/release.sh notes-json dist "$VERSION" "$GITHUB_REF_NAME" notes-inputs"#,
+        "into dist, which the sums, attestation and draft cover"
+    );
+}
+
+#[test]
+fn the_signing_job_checks_the_notes_against_the_manifest_before_signing() {
+    let rel = load("release.yml");
+    let all = steps(&rel, "sign");
+    let check = step_running(&all, "notes_asset");
+    assert!(check < step_running(&all, "minisign -S"));
+    let step = &all[check];
+    assert!(step["env"].is_null(), "the check sees no secrets");
+    assert_eq!(str_of(&step["if"]), "vars.APINATA_UPDATE_BASE_URL != ''");
+    let run = str_of(&step["run"]);
+    for piece in [
+        "size=$(jq -er '.notes_asset.size' update/latest.json)",
+        "sha=$(jq -er '.notes_asset.sha256' update/latest.json)",
+        r#"test "$(stat -c %s dist/notes.json)" = "$size""#,
+        "sha256sum -c --strict -",
+        r#"grep -qxF "$sha  notes.json" dist/SHA256SUMS"#,
+    ] {
+        assert!(run.contains(piece), "missing {piece:?} in {run}");
+    }
 }
 
 #[test]

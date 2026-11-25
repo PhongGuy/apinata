@@ -45,8 +45,9 @@ The draft also carries version-free copies of the installers, so `https://github
 The app checks a signed `latest.json` and installs the release it names. The workflow's jobs split the work so no job that compiles holds a secret:
 
 - `build` packages each platform with no secrets.
-- `assemble` writes `SHA256SUMS` and the unsigned manifest.
-- `sign` is the only job bound to the `release` environment and the only one that reads the signing key. It downloads the assembled files, installs Ubuntu's `minisign` package at a pinned version, signs `update/latest.json` with it (the key and password are piped in, never written to disk), and uploads the result. It runs nothing from the repository.
+- `changes` holds `contents: write` and no secrets, which generate-notes needs. It fetches this tag's generated notes and every published release body.
+- `assemble`, read-only, builds `notes.json` from those, then writes `SHA256SUMS` and the unsigned manifest, whose `notes_asset` names `notes.json` by its versioned URL, size and SHA-256.
+- `sign` is the only job bound to the `release` environment and the only one that reads the signing key. It downloads the assembled files, checks `notes.json` against the manifest's `notes_asset` and `SHA256SUMS`, installs Ubuntu's `minisign` package at a pinned version, signs `update/latest.json` with it (the key and password are piped in, never written to disk), and uploads the result. It runs nothing from the repository.
 - `draft` writes the notes and uploads to the draft after every other artifact, with `latest.json.sig` last.
 
 ### Keys
@@ -73,7 +74,7 @@ Set these repository variables. Builds without them are unconfigured and never o
 
 ### Publishing
 
-The draft lives in this private repository, which anonymous clients cannot reach. When `APINATA_UPDATE_BASE_URL` points at a public repository, mirror every update artifact (the AppImage, the `.app.tar.gz`, the installers and raw CLI binaries) plus `latest.json`, and then `latest.json.sig`, to that repository's release `<tag>`. Upload the signature last, so no client sees a manifest before the files it names.
+The draft lives in this private repository, which anonymous clients cannot reach. When `APINATA_UPDATE_BASE_URL` points at a public repository, mirror every update artifact (the AppImage, the `.app.tar.gz`, the installers, raw CLI binaries and `notes.json`) plus `latest.json`, and then `latest.json.sig`, to that repository's release `<tag>`. Upload the signature last, so no client sees a manifest before the files it names.
 
 ### Rotation and compromise
 
@@ -90,6 +91,8 @@ The release job drafts the notes with `scripts/release.sh notes`, in this order:
 5. `## Updates`: in-place signed updates, and that macOS may ask for keychain access on first launch after one, since the update replaces the app bundle.
 
 Read and reword the draft before publishing it. Preview the notes locally with `scripts/release.sh notes v<version> <owner>/<repo> notes.md`.
+
+The updater shows `notes.json`, rebuilt every release by `cargo xtask notes-json` from all published release bodies plus this tag's generated notes, newest first and at most 20 releases and 48 KiB. Only the text between `## What's Changed` and the next `##` heading is read; `###` titles get their kind from `.github/release.yml`, and bullets outside any `###` form one "Changes" group. The newest release's intro is the tag annotation, unless it only names the version; older intros are the text above `## What's Changed`. An edited published body therefore reaches the next release's notes, and a section whose bullets have no readable text fails the job.
 
 ## Rehearsal
 
@@ -133,4 +136,4 @@ Each job is billed in whole minutes; Windows bills 2x and macOS 10x.
 - ASSUMED: a full release is about 500: Linux about 50, Windows 25 x 2, macOS 2 x 20 x 10.
 - ASSUMED: a `linux,windows` rehearsal is about 100.
 
-Every job's `timeout-minutes` caps what a hung run can cost (`guard` 5, `gate` 45, `build` 90, `assemble` 45, `sign` 15, `draft` 15), per Decision 11 of plan 4e.
+Every job's `timeout-minutes` caps what a hung run can cost (`guard` 5, `gate` 45, `build` 90, `changes` 10, `assemble` 45, `sign` 15, `draft` 15), per Decision 11 of plan 4e.

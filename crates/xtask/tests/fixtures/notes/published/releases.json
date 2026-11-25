@@ -1,0 +1,57 @@
+[
+  {
+    "tag_name": "v0.3.0",
+    "name": "Apinata 0.3.0",
+    "draft": true,
+    "prerelease": false,
+    "published_at": null,
+    "body": "draft from an earlier run",
+    "html_url": "https://github.com/example/apinata/releases/tag/v0.3.0"
+  },
+  {
+    "tag_name": "v0.2.0",
+    "name": "Apinata 0.2.0",
+    "draft": false,
+    "prerelease": false,
+    "published_at": "2026-11-10T12:00:00Z",
+    "body": "This release adds a sidebar filter and keeps the cookie jar on reload.\n\n## What's Changed\n\n<!-- Release notes generated using configuration in .github/release.yml at master -->\n\n### New features\n* Add a sidebar filter by @dev in https://github.com/example/apinata/pull/7\n### Fixes\n* Keep the cookie jar on reload by @dev in https://github.com/example/apinata/pull/8\n### Other changes\n* Tidy the settings page by @dev in https://github.com/example/apinata/pull/9\n\n## New Contributors\n* @dev made their first contribution in https://github.com/example/apinata/pull/7\n\n**Full Changelog**: https://github.com/example/apinata/compare/v0.1.1...v0.2.0\n\n## Downloads\n\n| Platform | Desktop app | Command line |\n| --- | --- | --- |\n| Linux x86_64 | [apinata-app_0.2.0_x86_64.AppImage](https://github.com/example/apinata/releases/download/v0.2.0/apinata-app_0.2.0_x86_64.AppImage) | [apinata-0.2.0-x86_64-unknown-linux-gnu.tar.gz](https://github.com/example/apinata/releases/download/v0.2.0/apinata-0.2.0-x86_64-unknown-linux-gnu.tar.gz) |\n\nThe AppImage is for most Linux systems and the .deb for Ubuntu and Debian.\n\n## Before you install\n\n- **Windows:** the installer and the zip are not code-signed.\n- **Linux .deb:** open it with your software installer and click Install.\n\n## Updates\n\n- **Command line:** run `apinata self-update` to install a new version after checking its signature.\n",
+    "html_url": "https://github.com/example/apinata/releases/tag/v0.2.0"
+  },
+  {
+    "tag_name": "v0.2.0-rc.1",
+    "name": "Apinata 0.2.0-rc.1",
+    "draft": false,
+    "prerelease": true,
+    "published_at": "2026-11-08T12:00:00Z",
+    "body": "## What's Changed\n\n* A pre-release only change\n",
+    "html_url": "https://github.com/example/apinata/releases/tag/v0.2.0-rc.1"
+  },
+  {
+    "tag_name": "apinata-rules-v0.1.0",
+    "name": "Apinata pinata-rules-v0.1.0",
+    "draft": false,
+    "prerelease": false,
+    "published_at": "2026-11-06T12:00:00Z",
+    "body": "## What's Changed\n\n* The rules crate\n",
+    "html_url": "https://github.com/example/apinata/releases/tag/apinata-rules-v0.1.0"
+  }
+][
+  {
+    "tag_name": "v0.1.1",
+    "name": "Apinata 0.1.1",
+    "draft": false,
+    "prerelease": false,
+    "published_at": "2026-11-05T12:00:00Z",
+    "body": "A **small** fix release.\n\n## What's Changed\n\n### Fixes\n- Fix the **proxy** toggle ([#5](https://github.com/example/apinata/pull/5))\n- Show `curl` errors in plain words (#6)\n- Handle [redirects](https://example.com/docs) again https://github.com/example/apinata/pull/4\n### Something new we called it\n- Name the _active_ environment in the title bar\n\n**Full Changelog**: https://github.com/example/apinata/compare/v0.1.0...v0.1.1\n\n## Downloads\n\n| Platform | Desktop app | Command line |\n| --- | --- | --- |\n| Linux x86_64 | [apinata-app_0.1.1_x86_64.AppImage](https://github.com/example/apinata/releases/download/v0.1.1/apinata-app_0.1.1_x86_64.AppImage) | [apinata-0.1.1-x86_64-unknown-linux-gnu.tar.gz](https://github.com/example/apinata/releases/download/v0.1.1/apinata-0.1.1-x86_64-unknown-linux-gnu.tar.gz) |\n\nThe AppImage is for most Linux systems and the .deb for Ubuntu and Debian.\n\n## Before you install\n\n- **Windows:** the installer and the zip are not code-signed.\n- **Linux .deb:** open it with your software installer and click Install.\n\n## Updates\n\n- **Command line:** run `apinata self-update` to install a new version after checking its signature.\n",
+    "html_url": "https://github.com/example/apinata/releases/tag/v0.1.1"
+  },
+  {
+    "tag_name": "v0.1.0",
+    "name": "Apinata 0.1.0",
+    "draft": false,
+    "prerelease": false,
+    "published_at": "2026-11-01T12:00:00Z",
+    "body": "The first release of Apinata.\n\n## What's Changed\n\n* Open collections from disk by @dev in https://github.com/example/apinata/pull/1\n* Send requests over HTTP/1.1 and HTTP/2 by @dev in https://github.com/example/apinata/pull/2\n\n## Downloads\n\n| Platform | Desktop app | Command line |\n| --- | --- | --- |\n| Linux x86_64 | [apinata-app_0.1.0_x86_64.AppImage](https://github.com/example/apinata/releases/download/v0.1.0/apinata-app_0.1.0_x86_64.AppImage) | [apinata-0.1.0-x86_64-unknown-linux-gnu.tar.gz](https://github.com/example/apinata/releases/download/v0.1.0/apinata-0.1.0-x86_64-unknown-linux-gnu.tar.gz) |\n\nThe AppImage is for most Linux systems and the .deb for Ubuntu and Debian.\n\n## Before you install\n\n- **Windows:** the installer and the zip are not code-signed.\n- **Linux .deb:** open it with your software installer and click Install.\n\n## Updates\n\n- **Command line:** run `apinata self-update` to install a new version after checking its signature.\n",
+    "html_url": "https://github.com/example/apinata/releases/tag/v0.1.0"
+  }
+]

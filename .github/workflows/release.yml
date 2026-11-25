@@ -105,10 +105,37 @@ jobs:
           path: target/dist/${{ runner.os == 'Linux' && 'linux' || runner.os == 'macOS' && 'macos' || 'windows' }}/
           if-no-files-found: error
 
-  # Hashes the builds and writes the unsigned update manifest, with no secrets and no
-  # write access.
+  # Fetches the inputs of the updater's notes: generate-notes needs contents write, so
+  # this job holds that and no secrets, and builds nothing. Only configured tag runs need it.
+  changes:
+    needs: guard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write # releases/generate-notes; nothing here writes the repository
+    steps:
+      # Full history and tags, so the generated notes start at the previous release.
+      - if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Fetch the generated and published release notes
+        if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/release.sh notes-inputs "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" notes-inputs
+      - if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: notes-inputs-${{ needs.guard.outputs.version }}
+          path: notes-inputs/
+          if-no-files-found: error
+
+  # Hashes the builds and writes the updater's notes and the unsigned update manifest,
+  # with no secrets and no write access.
   assemble:
-    needs: [guard, build]
+    needs: [guard, build, changes]
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -120,13 +147,29 @@ jobs:
           pattern: dist-*
           path: dist
           merge-multiple: true
-      - name: Write SHA256SUMS
-        run: scripts/release.sh sums dist
-      # The manifest is built only on tag runs with an update base URL configured.
+      # The notes and the manifest are built only on tag runs with an update base URL configured.
+      - if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: notes-inputs-${{ needs.guard.outputs.version }}
+          path: notes-inputs
       - if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: stable
+      # A tag-push checkout can leave the tag lightweight, losing the annotation the intro
+      # is read from.
+      - name: Fetch the tag annotations
+        if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
+        run: git fetch --force --tags
+      # Into dist, so SHA256SUMS, the attestation and the release upload all cover it.
+      - name: Write the updater's release notes
+        if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
+        env:
+          VERSION: ${{ needs.guard.outputs.version }}
+        run: scripts/release.sh notes-json dist "$VERSION" "$GITHUB_REF_NAME" notes-inputs
+      - name: Write SHA256SUMS
+        run: scripts/release.sh sums dist
       - name: Write the update manifest
         if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
         env:
@@ -158,6 +201,16 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-${{ needs.guard.outputs.version }}
+      # The manifest about to be signed must name exactly the notes.json that ships, and
+      # SHA256SUMS must list the same bytes.
+      - name: Check the notes against the manifest
+        if: vars.APINATA_UPDATE_BASE_URL != ''
+        run: |
+          size=$(jq -er '.notes_asset.size' update/latest.json)
+          sha=$(jq -er '.notes_asset.sha256' update/latest.json)
+          test "$(stat -c %s dist/notes.json)" = "$size"
+          printf '%s  %s\n' "$sha" dist/notes.json | sha256sum -c --strict -
+          grep -qxF "$sha  notes.json" dist/SHA256SUMS
       # The distro minisign signs cargo packager's keys; the updater accepts its signature.
       - name: Install minisign
         if: vars.APINATA_UPDATE_BASE_URL != ''

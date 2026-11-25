@@ -57,6 +57,30 @@ enum Cmd {
         #[arg(long)]
         target: Option<String>,
     },
+    /// Write the updater's notes.json from published release bodies and this tag's notes.
+    NotesJson {
+        /// The release version, a stable semver.
+        #[arg(long)]
+        version: String,
+        /// The release date, YYYY-MM-DD.
+        #[arg(long)]
+        date: String,
+        /// This tag's generate-notes body.
+        #[arg(long)]
+        generated: PathBuf,
+        /// Directory of releases API JSON pages.
+        #[arg(long)]
+        published: PathBuf,
+        /// This tag's annotation, the source of the intro.
+        #[arg(long)]
+        intro: Option<PathBuf>,
+        /// The label categories; .github/release.yml when omitted.
+        #[arg(long)]
+        categories: Option<PathBuf>,
+        /// File notes.json is written to.
+        #[arg(long)]
+        output: PathBuf,
+    },
     /// Write latest.json for the release artifacts in DIR.
     UpdateManifest {
         /// The release version, a stable semver.
@@ -74,6 +98,9 @@ enum Cmd {
         /// Publication time, stated as given.
         #[arg(long)]
         pub_date: Option<String>,
+        /// The updater's notes file in DIR, listed as the manifest's notes_asset.
+        #[arg(long)]
+        notes_asset: Option<String>,
         /// Directory holding the artifacts; latest.json is written here.
         dir: PathBuf,
     },
@@ -95,12 +122,30 @@ fn main() -> anyhow::Result<ExitCode> {
             output,
             target,
         } => xtask::packager_config::run(&out_dir, &output, target.as_deref()),
+        Cmd::NotesJson {
+            version,
+            date,
+            generated,
+            published,
+            intro,
+            categories,
+            output,
+        } => xtask::notes_json::run(
+            &version,
+            &date,
+            &generated,
+            &published,
+            intro.as_deref(),
+            categories.as_deref(),
+            &output,
+        ),
         Cmd::UpdateManifest {
             version,
             base_url,
             notes,
             map,
             pub_date,
+            notes_asset,
             dir,
         } => xtask::update_manifest::run(
             &version,
@@ -108,6 +153,7 @@ fn main() -> anyhow::Result<ExitCode> {
             &notes,
             &map,
             pub_date.as_deref(),
+            notes_asset.as_deref(),
             &dir,
         ),
     }
