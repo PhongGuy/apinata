@@ -99,8 +99,6 @@ struct Row {
     scope: Scope,
     name: SharedString,
     dot: Option<Hsla>,
-    // Whether a row of the same section has a dot, so names line up.
-    any_dot: bool,
     checked: bool,
 }
 
@@ -337,13 +335,11 @@ impl EnvPicker {
                     (_, Scope::Global) => self.global_dot(name, cx),
                 })
                 .collect();
-            let any_dot = dots.iter().any(Option::is_some);
             rows.extend(items.into_iter().zip(dots).map(|(name, dot)| Row {
                 scope,
                 checked: name == checked,
                 name,
                 dot,
-                any_dot,
             }));
         }
         rows
@@ -496,12 +492,12 @@ fn build_menu(
                 ("global-env-row-dot", "global-env-row-name"),
             ),
         };
-        let (name, dot, any) = (row.name.clone(), row.dot, row.any_dot);
+        let (name, dot) = (row.name.clone(), row.dot);
         let item = PopupMenuItem::element(move |_, _| {
             div()
                 .id(id.clone())
                 .test_support()
-                .child(picker_row(ids, dot, any, name.clone()))
+                .child(picker_row(ids, dot, name.clone()))
         })
         .checked(row.checked)
         .on_click(chooser(this.clone(), row.scope, row.name));
@@ -514,13 +510,20 @@ fn build_menu(
         } else {
             Scope::Collection
         };
-        let id = match scope {
-            Scope::Collection => option_id(&action),
-            Scope::Global => global_option_id(&action),
+        let (id, ids) = match scope {
+            Scope::Collection => (option_id(&action), ("env-action-dot", "env-action-name")),
+            Scope::Global => (
+                global_option_id(&action),
+                ("global-env-action-dot", "global-env-action-name"),
+            ),
         };
+        // An action keeps a dot's space too, so its text lines up with the names above.
         let text = action.clone();
         let item = PopupMenuItem::element(move |_, _| {
-            div().id(id.clone()).test_support().child(text.clone())
+            div()
+                .id(id.clone())
+                .test_support()
+                .child(picker_row(ids, None, text.clone()))
         })
         .on_click(chooser(this.clone(), scope, action));
         menu = menu.item(item);
@@ -637,7 +640,10 @@ impl Render for EnvPicker {
             .max_w(ENV_CONTROL_WIDTH)
             .overflow_hidden()
             .rounded(cx.theme().radius)
-            .tooltip(crate::ui::text_tooltip("env-control-tooltip", tip))
+            // The tip would draw over the open menu's first rows, so it shows only while closed.
+            .when(self.menu.is_none(), |d| {
+                d.tooltip(crate::ui::text_tooltip("env-control-tooltip", tip))
+            })
             .child(
                 div()
                     .flex_1()
