@@ -762,6 +762,30 @@ impl Executor {
         })
     }
 
+    /// An executor with this one's settings and current cookie switches that stores and sends
+    /// cookies through `jar` instead. It opens its own connections.
+    #[must_use]
+    pub fn with_cookie_jar(&self, jar: Arc<CookieJar>) -> Executor {
+        Executor {
+            clients: Clients::default(),
+            network: self.network.clone(),
+            system: Arc::clone(&self.system),
+            insecure: self.insecure,
+            lookup: Arc::clone(&self.lookup),
+            jar,
+            max_body_bytes: self.max_body_bytes,
+            host_policy: self.host_policy.clone(),
+            confine_files: self.confine_files.clone(),
+            pac_cache: self.pac_cache,
+            store_cookies: AtomicBool::new(self.store_cookies_enabled()),
+            send_cookies: AtomicBool::new(self.send_cookies_enabled()),
+            session_log: self.session_log.clone(),
+            http_version: self.http_version,
+            timeout_cap: self.timeout_cap,
+            network_check: self.network_check.clone(),
+        }
+    }
+
     /// A client that routes every connection by `key`'s rule. Under a host policy the guarding
     /// resolver is installed and pooling is off, so every connection is judged anew.
     fn build_client(&self, key: &ClientKey) -> Result<Client, ExecError> {
