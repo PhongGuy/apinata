@@ -348,6 +348,43 @@ fn a_new_global_directory_holds_writes_until_it_loads(cx: &mut TestAppContext) {
     .expect("loaded now");
 }
 
+// A failed edit that outran a new directory's load still ends the wait, through a fresh load
+// of that directory, so its secrets are checked and new names are not refused for good.
+#[gpui_kit::test]
+fn a_failed_edit_after_a_directory_switch_still_ends_the_wait(cx: &mut TestAppContext) {
+    let col = tree();
+    let globals = write_tree(&[(
+        "g.yml",
+        "name: g\nvariables:\n  - secret: true\n    name: gkey\n",
+    )]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    selected(cx, &ws, &root);
+    let dir = globals.path().to_path_buf();
+    let outcome = ws.update(cx, |w, cx| {
+        w.set_global_dir(dir, cx);
+        w.edit_globals(
+            apinata_app::workspace::GlobalOp::Delete("missing".into()),
+            cx,
+        )
+    });
+    cx.run_until_parked();
+    assert!(
+        outcome.try_recv().expect("an outcome").is_err(),
+        "the edit fails"
+    );
+    assert!(!ws.read_with(cx, |w, _| w.globals_loading()));
+    let secret = apply(cx, &ws, &root, "gkey", VarTarget::Environment("dev".into()));
+    assert!(secret.is_err(), "the new directory's secret is refused");
+    apply(
+        cx,
+        &ws,
+        &root,
+        "fresh",
+        VarTarget::Environment("dev".into()),
+    )
+    .expect("loaded now");
+}
+
 #[gpui_kit::test]
 fn the_collection_target_writes_the_collection_file(cx: &mut TestAppContext) {
     let col = tree();

@@ -2858,6 +2858,11 @@ impl Workspace {
             Ok(globals) => globals,
             Err(message) => {
                 self.global_error = Some(message);
+                // This edit may have outrun a new directory's first load, so load it again
+                // rather than leave writes waiting on a result that was dropped as stale.
+                if self.global_pending {
+                    self.load_globals(ReloadCause::Asked, cx);
+                }
                 cx.notify();
                 return;
             }
