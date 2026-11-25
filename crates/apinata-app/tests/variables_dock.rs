@@ -9,6 +9,7 @@ use apinata_app::env_table::SECRET_HIDDEN;
 use apinata_app::keymap::ToggleConsole;
 use apinata_app::session::Session;
 use apinata_app::shell::{OpenVariablesOverview, ShowVariableAtCaret};
+use gpui_kit::component::input::InputState;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, TestAppContext, VisualTestContext};
 use support::*;
@@ -79,6 +80,25 @@ fn runtime_text(vars: &apinata_core::RuntimeVars, name: &str) -> Option<String> 
     (vars.entries().into_iter())
         .find(|v| v.name() == name)
         .and_then(|v| v.value().map(str::to_owned))
+}
+
+fn url_input(cx: &mut TestAppContext, s: &Started) -> gpui_kit::Entity<InputState> {
+    let tab = s.ws.read_with(cx, |w, _| w.tabs().active().unwrap().id);
+    let editor = s.shell.read_with(cx, |sh, cx| {
+        sh.tab_area().read(cx).editor(tab).unwrap().clone()
+    });
+    editor.read_with(cx, |e, _| e.url_input().clone())
+}
+
+fn focused_name(cx: &mut TestAppContext, s: &Started) -> Option<String> {
+    let panel = s.shell.read_with(cx, |sh, cx| {
+        sh.dock().read(cx).variables().cloned().unwrap()
+    });
+    panel.read_with(cx, |p, _| p.focused().map(str::to_owned))
+}
+
+fn dev_yml(col: &tempfile::TempDir) -> String {
+    std::fs::read_to_string(col.path().join("environments/dev.yml")).unwrap()
 }
 
 fn dock_tab(cx: &mut TestAppContext, s: &Started) -> (bool, DockTab) {
@@ -277,31 +297,26 @@ fn the_open_variables_tab_is_saved_and_restored(cx: &mut TestAppContext) {
 fn the_command_uses_the_caret_from_before_the_palette_opened(cx: &mut TestAppContext) {
     let col = collection("http://127.0.0.1:9/{{shared}}/{{x}}");
     let s = app(cx, &col, Some("dev"));
-    let tab = s.ws.read_with(cx, |w, _| w.tabs().active().unwrap().id);
-    let editor = s.shell.read_with(cx, |sh, cx| {
-        sh.tab_area().read(cx).editor(tab).unwrap().clone()
-    });
-    let url = editor.read_with(cx, |e, _| e.url_input().clone());
+    let url = url_input(cx, &s);
     let caret = "http://127.0.0.1:9/{{shared}}/{{".len();
     cx.update_window(s.win, |_, w, cx| {
         url.update(cx, |u, cx| {
             u.focus(w, cx);
             u.set_selected_range(caret..caret, cx);
-        });
-        apinata_app::var_tokens::remember_caret(w, cx);
-        url.update(cx, |u, cx| u.set_selected_range(0..0, cx));
+        })
     })
     .unwrap();
-    VisualTestContext::from_window(s.win, cx).dispatch_action(ShowVariableAtCaret);
+    cx.simulate_keystrokes(s.win, &key("shift-p"));
+    frame(cx, s.win);
+    // The caret moves away while the palette holds focus.
+    url.update(cx, |u, cx| u.set_selected_range(0..0, cx));
+    cx.update_window(s.win, |_, w, cx| w.input("Show variable at caret", cx))
+        .unwrap();
+    frame(cx, s.win);
+    cx.simulate_keystrokes(s.win, "enter");
     cx.run_until_parked();
     frame(cx, s.win);
-    let panel = s.shell.read_with(cx, |sh, cx| {
-        sh.dock().read(cx).variables().cloned().unwrap()
-    });
-    assert_eq!(
-        panel.read_with(cx, |p, _| p.focused().map(str::to_owned)),
-        Some("x".to_owned())
-    );
+    assert_eq!(focused_name(cx, &s), Some("x".to_owned()));
 }
 
 // A secret with no stored value is undefined, but its value belongs in the environment editor,
@@ -326,4 +341,150 @@ fn an_unstored_secret_opens_the_environments_instead_of_an_input(cx: &mut TestAp
     let kind =
         s.ws.read_with(cx, |w, _| w.tabs().active().map(|e| e.kind.clone()));
     assert_eq!(kind, Some(apinata_app::tabs::TabKind::Environments));
+}
+
+// A secret of the active global environment with no stored value never gets a plain field,
+// so its value cannot land in a collection file.
+#[gpui_kit::test]
+fn an_unstored_global_secret_offers_the_global_editor_not_an_input(cx: &mut TestAppContext) {
+    let globals = write_tree(&[(
+        "g.yml",
+        "name: g\nvariables:\n  - secret: true\n    name: gkey\n",
+    )]);
+    let col = collection("http://127.0.0.1:9/{{gkey}}");
+    let s = started(cx, &col);
+    let dir = globals.path().to_path_buf();
+    s.ws.update(cx, |w, cx| w.set_global_dir(dir, cx));
+    cx.run_until_parked();
+    s.ws.update(cx, |w, cx| {
+        w.select_global_environment(Some("g".into()), cx)
+    });
+    let select = Command::SelectEnvironment(Some("dev".into()));
+    s.ws.update(cx, |w, cx| w.send(&s.root, select, cx));
+    s.ws.update(cx, |w, cx| w.open_item(&s.root, ip("r.yml"), false, cx));
+    cx.run_until_parked();
+    show_tab(cx, &s);
+    assert_eq!(labels(cx, &s, "var-undefined-name"), ["gkey"]);
+    assert!(!present(cx, s.win, ("var-undefined-input", 0usize)));
+    assert!(present(cx, s.win, ("var-undefined-open", 0usize)));
+    assert!(!dev_yml(&col).contains("gkey"));
+}
+
+// A name that is a secret only in another environment is still a secret: no plain field.
+#[gpui_kit::test]
+fn a_secret_of_another_environment_offers_the_editor_not_an_input(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("environments/dev.yml", "name: dev\nvariables: []\n"),
+        (
+            "environments/prod.yml",
+            "name: prod\nvariables:\n  - secret: true\n    name: pkey\n",
+        ),
+        ("r.yml", &request("r", "http://127.0.0.1:9/{{pkey}}")),
+    ]);
+    let s = app(cx, &col, Some("dev"));
+    show_tab(cx, &s);
+    assert_eq!(labels(cx, &s, "var-undefined-name"), ["pkey"]);
+    assert!(!present(cx, s.win, ("var-undefined-input", 0usize)));
+    assert!(present(cx, s.win, ("var-undefined-open", 0usize)));
+    settle(cx);
+    assert!(!dev_yml(&col).contains("pkey"));
+}
+
+// A refused write leaves the field dirty, so Enter tries again rather than doing nothing.
+#[gpui_kit::test]
+fn a_refused_write_stays_pending_for_a_retry(cx: &mut TestAppContext) {
+    let col = collection("http://127.0.0.1:9/{{x!}}");
+    let s = app(cx, &col, Some("dev"));
+    show_tab(cx, &s);
+    assert_eq!(labels(cx, &s, "var-undefined-name"), ["x!"]);
+    type_and_enter(cx, &s, ("var-undefined-input", 0), "v1");
+    let panel = s.shell.read_with(cx, |sh, cx| {
+        sh.dock().read(cx).variables().cloned().unwrap()
+    });
+    assert!(panel.read_with(cx, |p, cx| p.pending("x!", cx)));
+    settle(cx);
+    assert!(!dev_yml(&col).contains("v1"));
+}
+
+// An edit still in a field when the active request changes is written, not dropped.
+#[gpui_kit::test]
+fn switching_tabs_commits_an_edit_in_progress(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("environments/dev.yml", DEV),
+        ("environments/prod.yml", "name: prod\nvariables: []\n"),
+        ("r.yml", &request("r", "http://127.0.0.1:9/{{shared}}")),
+        ("q.yml", &request("q", "http://127.0.0.1:9/q")),
+    ]);
+    let s = app(cx, &col, Some("dev"));
+    show_tab(cx, &s);
+    let ix = row_of(cx, &s, "shared");
+    replace_input(cx, s.win, None, ("var-overview-input", ix), "pending");
+    s.ws.update(cx, |w, cx| w.open_item(&s.root, ip("q.yml"), false, cx));
+    cx.run_until_parked();
+    frame(cx, s.win);
+    wait_for(cx, "the pending edit in dev.yml", |_| {
+        dev_yml(&col).contains("value: pending")
+    });
+}
+
+// A request whose variables cannot be read says so in the tab.
+#[gpui_kit::test]
+fn a_failed_lookup_shows_a_note(cx: &mut TestAppContext) {
+    let col = collection("http://127.0.0.1:9/{{x}}");
+    std::fs::create_dir(col.path().join(".env")).unwrap();
+    let s = app(cx, &col, None);
+    show_tab(cx, &s);
+    assert!(present(cx, s.win, "var-overview-failed"));
+}
+
+// Opening the tab without a name leaves focus where it was; with one, its field takes it.
+#[gpui_kit::test]
+fn opening_the_tab_keeps_focus_on_the_field_in_use(cx: &mut TestAppContext) {
+    let col = collection("http://127.0.0.1:9/{{shared}}");
+    let s = app(cx, &col, Some("dev"));
+    let url = url_input(cx, &s);
+    cx.update_window(s.win, |_, w, cx| url.update(cx, |u, cx| u.focus(w, cx)))
+        .unwrap();
+    show_tab(cx, &s);
+    assert!(holds_focus(cx, s.win, "url"));
+}
+
+// The badge is a keyboard stop: Tab reaches it and Enter opens the tab.
+#[gpui_kit::test]
+fn the_badge_opens_the_tab_from_the_keyboard(cx: &mut TestAppContext) {
+    let col = collection("http://127.0.0.1:9/{{x}}");
+    let s = app(cx, &col, None);
+    enter_on(cx, s.win, "undefined-variables-button");
+    cx.run_until_parked();
+    frame(cx, s.win);
+    assert_eq!(dock_tab(cx, &s), (true, DockTab::Variables));
+}
+
+#[gpui_kit::test]
+fn console_and_network_come_back_open_too(cx: &mut TestAppContext) {
+    let col = collection("http://127.0.0.1:9/");
+    for tab in [DockTab::Console, DockTab::Network] {
+        let files = blank_data_dir();
+        let paths = apinata_app::persist::Paths::in_dir(files.path());
+        let start = Session {
+            open: vec![col.path().to_path_buf()],
+            dock: Some(tab),
+            ..Session::default()
+        };
+        apinata_app::persist::save_json(&paths.session, &start).unwrap();
+        let s = started_blank(cx, files);
+        assert_eq!(dock_tab(cx, &s), (true, tab));
+    }
+}
+
+#[test]
+fn an_unknown_or_missing_dock_loads_as_closed() {
+    let unknown: Session = serde_json::from_str(r#"{"open": [], "dock": "sidebar"}"#).unwrap();
+    assert_eq!(unknown.dock, None);
+    let old: Session = serde_json::from_str(r#"{"open": []}"#).unwrap();
+    assert_eq!(old.dock, None);
+    let kept: Session = serde_json::from_str(r#"{"dock": "network"}"#).unwrap();
+    assert_eq!(kept.dock, Some(DockTab::Network));
 }

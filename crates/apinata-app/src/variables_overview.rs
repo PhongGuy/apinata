@@ -132,8 +132,8 @@ pub struct VariablesOverview {
     built: Option<Built>,
     sections: Option<Vec<Section>>,
     undefined: Vec<String>,
-    // Undefined names that are secrets of the environment with no stored value yet.
-    unstored: BTreeSet<String>,
+    // Undefined names declared secret somewhere, each with the scope whose editor holds it.
+    unstored: BTreeMap<String, VarScope>,
     masking: Option<Masking>,
     // Rows (by scope and name, so a changed list keeps them) whose masked value is shown.
     revealed: BTreeSet<(String, String)>,
@@ -172,7 +172,7 @@ impl VariablesOverview {
             built: None,
             sections: None,
             undefined: Vec::new(),
-            unstored: BTreeSet::new(),
+            unstored: BTreeMap::new(),
             masking: None,
             revealed: BTreeSet::new(),
             winners: BTreeMap::new(),
@@ -244,6 +244,13 @@ impl VariablesOverview {
             let area = self.tab_area.upgrade()?;
             area.read(cx).editor(*id).cloned()
         });
+        let leaving = self
+            .bound
+            .as_ref()
+            .is_some_and(|b| Some(b.tab) != active.as_ref().map(|a| a.0));
+        if leaving {
+            self.flush(window, cx);
+        }
         let (Some((tab, root, item)), Some(editor)) = (active, editor) else {
             let had = self.bound.take().is_some() | self.built.take().is_some();
             if had {
@@ -297,6 +304,13 @@ impl VariablesOverview {
         let rows = set.map(VariableSet::overview);
         let (secrets, global_secrets) = secret_names(&self.workspace, Some(root), cx);
         let ws = self.workspace.read(cx);
+        // Every name declared secret in any of the collection's environments, enabled or not.
+        let env_secrets: BTreeSet<String> = (ws.snapshot(root, cx).iter())
+            .flat_map(|snap| snap.content.environments.iter())
+            .flat_map(|e| e.variables.iter().filter(|v| v.secret))
+            .map(|v| v.name.clone())
+            .collect();
+        let global_list = global_secrets.clone();
         self.masking = ws
             .runtime_vars(root, cx)
             .map(|vars| Masking::new(vars, secrets, global_secrets));
@@ -326,8 +340,16 @@ impl VariablesOverview {
             .filter(|n| !self.winners.contains_key(n))
             .collect();
         self.unstored = (self.undefined.iter())
-            .filter(|n| set.is_some_and(|s| s.is_unstored_secret(n)))
-            .cloned()
+            .filter_map(|n| {
+                let scope = if global_list.contains(n) {
+                    VarScope::GlobalEnvironment
+                } else if env_secrets.contains(n) || set.is_some_and(|s| s.is_unstored_secret(n)) {
+                    VarScope::Environment
+                } else {
+                    return None;
+                };
+                Some((n.clone(), scope))
+            })
             .collect();
         self.sync_fields(window, cx);
     }
@@ -367,7 +389,7 @@ impl VariablesOverview {
             .collect();
         wanted.extend(
             (self.undefined.iter())
-                .filter(|n| !self.unstored.contains(*n))
+                .filter(|n| !self.unstored.contains_key(*n))
                 .map(|n| (FieldKey::Undefined(n.clone()), String::new())),
         );
         let keys: BTreeSet<FieldKey> = wanted.iter().map(|(k, _)| k.clone()).collect();
@@ -420,12 +442,32 @@ impl VariablesOverview {
     // row to the selected environment's file, an undefined name to the selected environment,
     // else to the runtime store.
     fn commit(&mut self, key: &FieldKey, window: &mut Window, cx: &mut Context<Self>) {
+        if self.write(key, window, cx) {
+            self.refresh(window, cx);
+        }
+    }
+
+    // Writes every field whose text differs from what it was filled with, before the rows
+    // they belong to go away, so leaving the request keeps an edit as blur would.
+    fn flush(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let dirty: Vec<FieldKey> = (self.fields.iter())
+            .filter(|(_, f)| f.input.read(cx).value().as_ref() != f.synced)
+            .map(|(k, _)| k.clone())
+            .collect();
+        for key in dirty {
+            self.write(&key, window, cx);
+        }
+    }
+
+    // Writes one field to its scope; returns whether a write happened. A field is marked
+    // written only once the write is accepted, so a refused one stays pending for a retry.
+    fn write(&mut self, key: &FieldKey, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let (Some(field), Some(bound)) = (self.fields.get(key), &self.bound) else {
-            return;
+            return false;
         };
         let value = field.input.read(cx).value().to_string();
         if value == field.synced || (matches!(key, FieldKey::Undefined(_)) && value.is_empty()) {
-            return;
+            return false;
         }
         let env_target = || self.environment.clone().map(VarTarget::Environment);
         let (name, target) = match key {
@@ -433,19 +475,21 @@ impl VariablesOverview {
                 (name, Some(VarTarget::Runtime))
             }
             FieldKey::Defined(_, name) => (name, env_target()),
+            // A secret never goes into a plain field, whichever scope declares it.
+            FieldKey::Undefined(name) if self.unstored.contains_key(name) => (name, None),
             FieldKey::Undefined(name) => (name, env_target().or(Some(VarTarget::Runtime))),
         };
         let Some(target) = target else {
-            return;
+            return false;
         };
         let (root, tab) = (bound.root.clone(), bound.tab);
         let name = name.clone();
-        if let Some(field) = self.fields.get_mut(key) {
-            field.synced = value.clone();
-        }
         let workspace = self.workspace.clone();
         match set_variable::apply(&workspace, &root, &name, &value, &target, cx) {
             Ok(()) => {
+                if let Some(field) = self.fields.get_mut(key) {
+                    field.synced = value;
+                }
                 // A runtime value is read live, so the editor's badge and this list follow now;
                 // a file write comes back through the collection's next snapshot.
                 if let Some(area) = self.tab_area.upgrade()
@@ -453,12 +497,22 @@ impl VariablesOverview {
                 {
                     editor.update(cx, |_, cx| cx.notify());
                 }
-                self.refresh(window, cx);
+                true
             }
             Err(message) => {
                 window.push_notification(ui::kind_toast(ToastKind::Error, message), cx);
+                false
             }
         }
+    }
+
+    /// Whether the field of `name` holds text not yet written.
+    #[doc(hidden)]
+    pub fn pending(&self, name: &str, cx: &App) -> bool {
+        (self.fields.iter()).any(|(k, f)| {
+            let (FieldKey::Defined(_, n) | FieldKey::Undefined(n)) = k;
+            n == name && f.input.read(cx).value().as_ref() != f.synced
+        })
     }
 
     // Opens the editor of the scope that defines `name` in `scope`.
@@ -671,7 +725,7 @@ impl VariablesOverview {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let secret = self.unstored.contains(name);
+        let secret = self.unstored.get(name).copied();
         let input = (self.fields.get(&FieldKey::Undefined(name.to_owned()))).map(|f| &f.input);
         h_flex()
             .id(("var-undefined-row", i))
@@ -702,18 +756,18 @@ impl VariablesOverview {
                     cx,
                 ))
             }))
-            .when(secret, |d| {
+            .when_some(secret, |d, scope| {
                 d.child(div().flex_1()).child(
                     ui::icon_button(
                         ("var-undefined-open", i),
                         IconName::ExternalLink,
-                        "Set it in the environment editor",
+                        "Set this secret in its editor",
                         None,
                         cx,
                     )
-                    .on_click(cx.listener(|t, _, window, cx| {
-                        t.open_editor(VarScope::Environment, "", window, cx)
-                    })),
+                    .on_click(
+                        cx.listener(move |t, _, window, cx| t.open_editor(scope, "", window, cx)),
+                    ),
                 )
             })
             .into_any_element()

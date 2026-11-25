@@ -118,7 +118,7 @@ pub fn remember_caret(window: &Window, cx: &mut App) {
 }
 
 /// The placeholder name at the focused field's caret: the remembered caret when it was taken
-/// in this field over the same text, else the live one.
+/// in this field over the same text, else the live one. The remembered caret is used once.
 pub fn caret_name(window: &Window, cx: &mut App) -> Option<String> {
     let field = crate::percent_codec::focused_field(window, cx)?;
     let memo = cx
@@ -128,6 +128,10 @@ pub fn caret_name(window: &Window, cx: &mut App) -> Option<String> {
         Some(m) => m.cursor,
         None => field.read(cx).cursor(),
     };
+    // One palette opening, one use: a later run reads the live caret.
+    if cx.has_global::<CaretMemo>() {
+        cx.remove_global::<CaretMemo>();
+    }
     name_at(&field.read(cx).value(), cursor)
 }
 

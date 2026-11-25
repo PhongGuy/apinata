@@ -4136,22 +4136,24 @@ fn undefined_badge(names: &[SharedString], cx: &App) -> Option<AnyElement> {
         return None;
     }
     let label = undefined_label(names);
-    let badge = h_flex()
+    // The container carries the spoken label and the tooltip; the button inside is the
+    // keyboard stop, so Tab reaches it and Enter opens the Variables tab as a click does.
+    let button = Button::new("undefined-variables-button")
+        .solid_ring(cx)
+        .ghost()
+        .xsmall()
+        .icon(Icon::new(IconName::CircleAlert).small())
+        .label(names.len().to_string())
+        .text_color(cx.theme().warning)
+        .on_click(|_, window, cx| {
+            window.dispatch_action(Box::new(crate::shell::OpenVariablesOverview), cx)
+        });
+    let badge = div()
         .id("undefined-variables")
         .test_support()
         .flex_none()
-        .items_center()
-        .gap(style::SPACE_1)
-        .px(style::SPACE_1)
-        .text_size(style::TEXT_SMALL)
-        .text_color(cx.theme().warning)
         .aria_label(label.clone())
         .tooltip(ui::text_tooltip("undefined-variables-tooltip", label))
-        .cursor_pointer()
-        .on_click(|_, window, cx| {
-            window.dispatch_action(Box::new(crate::shell::OpenVariablesOverview), cx)
-        })
-        .child(Icon::new(IconName::CircleAlert).small())
-        .child(names.len().to_string());
+        .child(button);
     Some(badge.into_any_element())
 }
