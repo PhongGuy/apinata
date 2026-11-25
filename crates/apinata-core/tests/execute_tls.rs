@@ -1,10 +1,12 @@
-//! `--insecure`: certificates are verified by default and accepted when asked.
+//! `--insecure`: certificates are verified by default and accepted when asked; a hop records
+//! the connection's TLS details and local address.
 
 use crate::common;
 
-use apinata_core::{ConnectCause, ExecError, ExecOptions, Executor};
+use apinata_core::{ConnectCause, ExecError, ExecOptions, Executor, TlsVersion};
 use common::resolved_one;
 use std::sync::Arc;
+use std::time::{Duration, UNIX_EPOCH};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
@@ -147,4 +149,64 @@ async fn a_self_signed_ca_certificate_is_an_unknown_issuer_unless_insecure() {
     let insecure = Executor::new(ExecOptions::new().insecure(true)).expect("client");
     let res = insecure.send(&req).await.expect("accepted");
     assert_eq!((res.status(), res.text()), (200, "ok"));
+}
+
+#[tokio::test]
+async fn an_https_hop_carries_the_tls_version_and_the_peer_certificate() {
+    let url = https_server().await;
+    let insecure = Executor::new(ExecOptions::new().insecure(true)).expect("client");
+    let res = insecure
+        .send(&resolved_one("GET", &url, "", ""))
+        .await
+        .expect("accepted");
+    let hop = &res.timeline()[0];
+    let tls = hop.tls().expect("tls details");
+    assert_eq!(tls.version, Some(TlsVersion::Tls1_3), "{tls:?}");
+    assert_eq!(
+        tls.version.map(|v| v.to_string()).as_deref(),
+        Some("TLS 1.3")
+    );
+    assert_eq!(tls.subject.as_deref(), Some("CN=apinata-test"));
+    assert_eq!(tls.issuer.as_deref(), Some("CN=apinata-test"));
+    // The fixture's notAfter, 2126-09-15 05:03:13 UTC.
+    let expires = UNIX_EPOCH + Duration::from_secs(4_945_122_193);
+    assert_eq!(tls.expires, Some(expires));
+    assert_eq!(
+        tls.expires_label().as_deref(),
+        Some("2126-09-15 05:03:13 UTC")
+    );
+}
+
+#[tokio::test]
+async fn a_hop_reports_its_local_address_and_its_header_size_as_http11_text() {
+    let url = https_server().await;
+    let insecure = Executor::new(ExecOptions::new().insecure(true)).expect("client");
+    let res = insecure
+        .send(&resolved_one("GET", &url, "", ""))
+        .await
+        .expect("accepted");
+    let hop = &res.timeline()[0];
+    let local = hop.local_addr().expect("local address");
+    assert_eq!(local.ip().to_string(), "127.0.0.1");
+    assert_ne!(Some(local), hop.remote_addr());
+    // The server's reply up to and including the blank line ending its header block.
+    let head = "HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\n";
+    assert_eq!(hop.response_header_size(), head.len() as u64);
+}
+
+#[tokio::test]
+async fn a_plain_http_hop_has_no_tls_details_but_a_local_address() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::any())
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    let exec = Executor::new(ExecOptions::new()).expect("client");
+    let res = exec
+        .send(&resolved_one("GET", &format!("{}/", server.uri()), "", ""))
+        .await
+        .expect("sent");
+    let hop = &res.timeline()[0];
+    assert!(hop.tls().is_none(), "{:?}", hop.tls());
+    assert!(hop.local_addr().is_some());
 }

@@ -229,7 +229,10 @@ async fn verbose_keeps_an_exchange_with_a_capped_url_on_one_line() {
         .output()
         .expect("runs");
     let stderr = String::from_utf8_lossy(&out.stderr);
-    let lines: Vec<&str> = stderr.lines().filter(|l| !l.trim().is_empty()).collect();
+    // The indented connection details follow the line; anything else would be a spill.
+    let lines: Vec<&str> = (stderr.lines())
+        .filter(|l| !l.trim().is_empty() && !l.starts_with("  "))
+        .collect();
     assert_eq!(lines.len(), 1, "{stderr}");
     assert!(
         lines[0].starts_with(&format!("[runner] GET {}/long?pad=aaa", s.uri())),
