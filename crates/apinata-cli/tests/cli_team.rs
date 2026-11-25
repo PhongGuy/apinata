@@ -649,7 +649,7 @@ async fn a_malformed_token_names_the_variable_and_hides_the_value() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_bad_server_variable_names_the_variable() {
     let stores = Stores::new();
-    let mut status = with_env(&stores, "ftp://nope.example");
+    let mut status = with_env(&stores, "ftp://nope.invalid");
     status.args(["team", "status"]);
     let (code, _, stderr) = run_clean(status).await;
     assert_eq!(code, 3, "{stderr}");
@@ -803,7 +803,7 @@ fn a_template_cannot_read_the_env_token() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_plain_http_server_that_is_not_local_is_refused() {
     let stores = Stores::new();
-    let mut status = with_env(&stores, "http://team.example.com");
+    let mut status = with_env(&stores, "http://team.invalid");
     status.args(["team", "status"]);
     let (code, _, stderr) = run_clean(status).await;
     assert_eq!(code, 3, "{stderr}");
@@ -821,7 +821,7 @@ async fn a_bad_env_token_does_not_block_signing_out_of_another_server() {
     stores.keep(&s.uri(), None);
     let mut out = stores.cmd();
     out.env("APINATA_TEAM_TOKEN", "not-a-token")
-        .env("APINATA_TEAM_SERVER", "https://elsewhere.example.com")
+        .env("APINATA_TEAM_SERVER", "https://elsewhere.invalid")
         .args(["team", "sign-out", &s.uri()]);
     let (code, _, stderr) = run_clean(out).await;
     assert_eq!(code, 0, "{stderr}");
