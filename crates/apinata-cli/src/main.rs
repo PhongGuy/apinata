@@ -1153,6 +1153,9 @@ pub struct SelfUpdateArgs {
     /// Install without asking.
     #[arg(long, conflicts_with = "check")]
     pub yes: bool,
+    /// Print the `--check` result as text or as JSON.
+    #[arg(long, value_enum, default_value_t = Format::Text, requires = "check")]
+    pub format: Format,
 }
 
 #[derive(clap::Args)]

@@ -29,6 +29,8 @@ fn offered(cx: &mut TestAppContext) -> (tempfile::TempDir, Started) {
     let offer = Offer {
         version: "9.0.0".into(),
         notes: None,
+        release_notes: None,
+        notes_error: None,
         download_page: "https://example.com/download".into(),
     };
     let checker: Checker =

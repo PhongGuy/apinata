@@ -5,6 +5,7 @@ mod apply;
 mod fetch;
 mod install;
 mod manifest;
+mod notes;
 mod sign;
 
 use std::ffi::OsString;
@@ -17,6 +18,9 @@ pub use apply::{app_staging_dir, install_app, stage_app, start_installer};
 pub use fetch::{check, download};
 pub use install::{install_kind, install_standalone};
 pub use manifest::evaluate;
+pub use notes::{
+    GroupKind, NOTES_SCHEMA, NotesGroup, NotesItem, NotesRelease, ReleaseNotes, UpdateNotes,
+};
 pub use sign::verify_manifest;
 
 /// Which program is asking about updates.
@@ -119,6 +123,11 @@ pub struct Available {
     pub version: String,
     /// Plain-text release notes.
     pub notes: Option<String>,
+    /// The structured notes for every release newer than this build, when the manifest lists
+    /// a notes asset and it loaded.
+    pub release_notes: Option<UpdateNotes>,
+    /// Why the listed notes asset could not be loaded; the update is offered regardless.
+    pub notes_error: Option<String>,
     /// The publication time, as the manifest states it.
     pub pub_date: Option<String>,
     /// How the artifact is packaged.
@@ -130,6 +139,7 @@ pub struct Available {
     /// The artifact's size in bytes.
     pub size: u64,
     pub(crate) limits: Limits,
+    pub(crate) notes_asset: Option<notes::NotesAsset>,
 }
 
 /// A downloaded artifact whose size and checksum matched, ready to install.

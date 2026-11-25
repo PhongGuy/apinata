@@ -1379,8 +1379,14 @@ apinata self-update --check
 apinata self-update
 ```
 
-`--check` only reports, and exits 2 when an update is available (see the [exit codes](#exit-codes)). In the app,
-use Check for updates. The updater replaces a standalone CLI binary, an
+`--check` only reports, and exits 2 when an update is available (see the [exit codes](#exit-codes)). It lists
+what changed in every release newer than yours, newest first, grouped into new
+features, fixes and so on. When the list does not reach back to your version,
+it points at the download page for the older ones; when the notes cannot be
+loaded it says so and still offers the update. `--check --format json` prints
+`current`, `available`, `notes` (the releases, or null) and `notes_error`.
+In the app, use Check for updates; View notes in the update notice shows the
+same lists, and installing stays a separate step. The updater replaces a standalone CLI binary, an
 AppImage, a macOS `.app` or the Windows installer's install. It leaves a `.deb`
 install to the package manager and the CLI that ships with the app to the
 app's own update, and says why. A build without an update source never checks;

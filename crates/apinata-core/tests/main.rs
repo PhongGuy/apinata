@@ -506,6 +506,7 @@ mod update_download;
 mod update_install;
 mod update_install_kind;
 mod update_manifest;
+mod update_notes;
 mod update_signature;
 mod url_password;
 mod url_trim;

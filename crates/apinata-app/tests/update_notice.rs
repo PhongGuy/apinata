@@ -4,6 +4,7 @@ use crate::support;
 
 use apinata_app::app::AppState;
 use apinata_app::updates::{CheckForUpdates, CheckResult, Checker, Offer, Report, Updates};
+use apinata_core::update::{GroupKind, NotesGroup, NotesItem, NotesRelease, UpdateNotes};
 use gpui_kit::component::WindowExt;
 use gpui_kit::{AppContext as _, Entity, Task, TestAppContext};
 use std::sync::Arc;
@@ -31,6 +32,8 @@ fn available(notes: Option<&str>) -> Result<CheckResult, String> {
     Ok(CheckResult::Available(Offer {
         version: "9.0.0".into(),
         notes: notes.map(Into::into),
+        release_notes: None,
+        notes_error: None,
         download_page: PAGE.into(),
     }))
 }
@@ -187,4 +190,94 @@ fn check_now_reports_inside_preferences(cx: &mut TestAppContext) {
     assert_eq!(status, Some(report_text(&Report::UpToDate)));
     assert!(report_text(&Report::UpToDate).ends_with("is up to date."));
     assert!(present(cx, s.win, "prefs-status"));
+}
+
+fn label(cx: &mut TestAppContext, s: &Started, id: &'static str) -> Option<String> {
+    use gpui_kit::test::TestWindowExt as _;
+    cx.update_window(s.win, |_, w, cx| {
+        w.render_frame(cx);
+        w.try_find(id).and_then(|e| e.label().map(str::to_owned))
+    })
+    .unwrap()
+}
+
+fn offer_notes(release_notes: Option<UpdateNotes>, notes_error: Option<&str>) -> Offer {
+    Offer {
+        version: "9.0.0".into(),
+        notes: Some("One line.".into()),
+        release_notes,
+        notes_error: notes_error.map(Into::into),
+        download_page: PAGE.into(),
+    }
+}
+
+fn shown_notes(cx: &mut TestAppContext, offer: Offer) -> (tempfile::TempDir, Started) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    use_fake(cx, Ok(CheckResult::Available(offer)));
+    updates(cx).update(cx, |u, cx| u.check_now(cx));
+    cx.run_until_parked();
+    click(cx, &s, "update-notes");
+    (col, s)
+}
+
+fn two_releases(older_not_listed: bool) -> UpdateNotes {
+    let fixes = |text: &str| NotesGroup::new(GroupKind::Fixes, "Fixes", vec![NotesItem::new(text)]);
+    UpdateNotes::new(
+        vec![
+            NotesRelease::new(
+                "9.0.0",
+                Some("8.0.0".into()),
+                Some("2026-12-01".into()),
+                vec![NotesGroup::new(
+                    GroupKind::Features,
+                    "New features",
+                    vec![NotesItem::new("Search history").with_pr(12)],
+                )],
+            )
+            .with_intro("A bigger release."),
+            NotesRelease::new(
+                "8.0.0",
+                Some("7.0.0".into()),
+                None,
+                vec![fixes("Fixed a crash")],
+            ),
+        ],
+        older_not_listed,
+    )
+}
+
+#[gpui_kit::test]
+fn view_notes_lists_every_newer_release_newest_first(cx: &mut TestAppContext) {
+    let (_col, s) = shown_notes(cx, offer_notes(Some(two_releases(false)), None));
+    assert_eq!(
+        label(cx, &s, "update-notes-text").as_deref(),
+        Some(
+            "9.0.0 (2026-12-01)\nA bigger release.\nNew features\n- Search history (#12)\n\
+             8.0.0\nFixes\n- Fixed a crash"
+        )
+    );
+    assert!(!present(cx, s.win, "update-older-notes"));
+    assert!(
+        present(cx, s.win, "update-download"),
+        "the notice keeps its buttons"
+    );
+}
+
+#[gpui_kit::test]
+fn notes_that_stop_short_point_at_the_download_page(cx: &mut TestAppContext) {
+    let (_col, s) = shown_notes(cx, offer_notes(Some(two_releases(true)), None));
+    assert!(present(cx, s.win, "update-older-notes"));
+    click(cx, &s, "update-older-notes");
+    assert_eq!(cx.opened_url().as_deref(), Some(PAGE));
+}
+
+#[gpui_kit::test]
+fn notes_that_failed_to_load_say_so(cx: &mut TestAppContext) {
+    let (_col, s) = shown_notes(cx, offer_notes(None, Some("the notes answered HTTP 404")));
+    assert_eq!(
+        label(cx, &s, "update-notes-text").as_deref(),
+        Some("Release notes couldn't be loaded.\nOne line.")
+    );
+    assert!(!present(cx, s.win, "update-older-notes"));
 }

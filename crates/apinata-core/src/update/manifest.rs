@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use semver::Version;
 use serde::Deserialize;
 
+use super::notes::{is_sha256, notes_asset};
 use super::{Available, Format, UpdateConfig, UpdateError, allowed};
 
 // Unknown fields are ignored so later manifests can add to the format.
@@ -13,6 +14,8 @@ struct Manifest {
     version: String,
     notes: Option<String>,
     pub_date: Option<String>,
+    // Read loosely, so a malformed pointer costs only the notes.
+    notes_asset: Option<serde_json::Value>,
     targets: BTreeMap<String, Entry>,
 }
 
@@ -61,21 +64,28 @@ pub fn evaluate(manifest: &[u8], cfg: &UpdateConfig) -> Result<Option<Available>
             entry.url
         )));
     }
-    let lower_hex = |c: char| c.is_ascii_digit() || ('a'..='f').contains(&c);
-    if entry.sha256.len() != 64 || !entry.sha256.chars().all(lower_hex) {
+    if !is_sha256(&entry.sha256) {
         return Err(invalid(format!(
             "sha256 {:?} is not 64 lowercase hex",
             entry.sha256
         )));
     }
+    let (asset, notes_error) = match doc.notes_asset.map(notes_asset) {
+        Some(Ok(asset)) => (Some(asset), None),
+        Some(Err(why)) => (None, Some(why)),
+        None => (None, None),
+    };
     Ok(Some(Available {
         version: doc.version,
         notes: doc.notes,
+        release_notes: None,
+        notes_error,
         pub_date: doc.pub_date,
         format,
         url: entry.url,
         sha256: entry.sha256,
         size: entry.size,
         limits: cfg.limits,
+        notes_asset: asset,
     }))
 }

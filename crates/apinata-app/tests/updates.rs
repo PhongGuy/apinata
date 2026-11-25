@@ -23,6 +23,8 @@ fn offer(version: &str) -> Offer {
     Offer {
         version: version.into(),
         notes: Some("Notes.".into()),
+        release_notes: None,
+        notes_error: None,
         download_page: "https://example.com/download".into(),
     }
 }
