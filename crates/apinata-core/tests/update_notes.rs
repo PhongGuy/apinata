@@ -6,6 +6,8 @@ use crate::update_support;
 use apinata_core::update::{
     Available, GroupKind, NotesGroup, NotesItem, NotesRelease, ReleaseNotes, check, evaluate,
 };
+use std::io::{Read as _, Write as _};
+use std::time::{Duration, Instant};
 use update_support::*;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -98,10 +100,16 @@ async fn a_list_that_stops_short_of_the_installed_version_says_so() {
 
 #[tokio::test]
 async fn an_oldest_entry_without_previous_says_older_versions_may_be_missing() {
-    for previous in [serde_json::Value::Null, serde_json::json!("absent")] {
+    for previous in [
+        serde_json::Value::Null,
+        serde_json::json!("absent"),
+        serde_json::json!("not a version"),
+    ] {
         let mut oldest = release("3.0.0", None, "c");
-        if previous.is_string() {
+        if previous == "absent" {
             oldest.as_object_mut().unwrap().remove("previous");
+        } else {
+            oldest["previous"] = previous.clone();
         }
         let doc = notes_doc(vec![release("4.0.0", Some("3.0.0"), "d"), oldest]);
         let a = offer_notes(&doc, "2.0.0").await;
@@ -184,11 +192,11 @@ async fn a_latest_or_insecure_notes_url_is_never_fetched() {
 
 #[tokio::test]
 async fn controls_and_bidi_overrides_are_stripped_and_items_capped() {
-    let long = "x".repeat(600);
+    let long = "\u{e9}\u{1F600}\u{4E2D}".repeat(200);
     let mut r = release(
         "4.0.0",
         Some("3.0.0"),
-        "a\u{0007}b\u{202E}c\u{0085}d\u{2066}e\nf",
+        "a\u{0007}b\u{202E}c\u{0085}d\u{2066}e\nf\u{2028}g\u{2029}h\u{200B}i\u{200C}j\u{200D}k\u{2060}l\u{FEFF}m",
     );
     r["intro"] = serde_json::json!("Hi\u{001B}[31m there\u{200F}");
     r["groups"][0]["title"] = serde_json::json!("New\u{0000} features");
@@ -201,8 +209,13 @@ async fn controls_and_bidi_overrides_are_stripped_and_items_capped() {
     assert_eq!(shown.intro.as_deref(), Some("Hi[31m there"));
     let group = &shown.groups[0];
     assert_eq!(group.title, "New features");
-    assert_eq!(group.items[0].text, "abcde f");
-    assert_eq!(group.items[1].text.chars().count(), 500);
+    assert_eq!(group.items[0].text, "abcde f g hijklm");
+    let capped = &group.items[1].text;
+    assert_eq!(capped.chars().count(), 500);
+    assert!(
+        long.starts_with(capped.as_str()),
+        "cut on a character boundary"
+    );
     assert_eq!(group.items[1].pr, None);
 }
 
@@ -242,11 +255,14 @@ async fn a_manifest_without_notes_asset_has_no_notes_and_no_error() {
 fn the_manifest_parser_accepts_any_notes_asset_shape() {
     let cfg = config("https://example.com", &TestKey::generate(), "3.0.0");
     let base: serde_json::Value = serde_json::from_str(&manifest("4.0.0", ART, b"new")).unwrap();
-    for asset in [
-        serde_json::json!({"url": "https://example.com/v4/notes.json", "size": 10,
-                           "sha256": "0".repeat(64), "extra": true}),
-        serde_json::json!("not an object"),
-        serde_json::json!({"url": 3}),
+    for (asset, valid) in [
+        (
+            serde_json::json!({"url": "https://example.com/v4/notes.json", "size": 10,
+                               "sha256": "0".repeat(64), "extra": true}),
+            true,
+        ),
+        (serde_json::json!("not an object"), false),
+        (serde_json::json!({"url": 3}), false),
     ] {
         let mut doc = base.clone();
         doc["notes_asset"] = asset.clone();
@@ -255,6 +271,12 @@ fn the_manifest_parser_accepts_any_notes_asset_shape() {
             .expect("offered");
         assert_eq!(a.version, "4.0.0", "{asset}");
         assert!(a.release_notes.is_none());
+        assert_eq!(
+            a.notes_error.is_none(),
+            valid,
+            "{asset}: {:?}",
+            a.notes_error
+        );
     }
 }
 
@@ -282,5 +304,84 @@ fn the_notes_types_round_trip_for_a_generator() {
     assert_eq!(
         NotesItem::new("Fixed a crash").with_pr(12).line(),
         "Fixed a crash (#12)"
+    );
+}
+
+#[tokio::test]
+async fn a_stalled_notes_host_costs_only_the_notes_timeout() {
+    let doc = notes_doc(vec![release("4.0.0", Some("3.0.0"), "d")]);
+    let s = MockServer::start().await;
+    let k = TestKey::generate();
+    let url = format!("{}/v4/notes.json", s.uri());
+    publish(&s, &k, &manifest_with(&url, &doc)).await;
+    Mock::given(method("GET"))
+        .and(path("/v4/notes.json"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_bytes(doc.clone())
+                .set_delay(Duration::from_secs(10)),
+        )
+        .mount(&s)
+        .await;
+    let mut cfg = config(&s.uri(), &k, "3.0.0");
+    assert_eq!(cfg.limits.notes, Duration::from_secs(10));
+    cfg.limits.notes = Duration::from_millis(300);
+    let started = Instant::now();
+    let a = check(&cfg).await.unwrap().expect("still offered");
+    assert!(started.elapsed() < Duration::from_secs(5));
+    assert!(a.release_notes.is_none());
+    assert!(a.notes_error.is_some());
+}
+
+/// Serves one HTTP response with `body` chunked, so no Content-Length is sent, then holds
+/// the connection open; returns the URL it answers on.
+fn chunked_server(body: Vec<u8>) -> String {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+        let Ok((mut conn, _)) = listener.accept() else {
+            return;
+        };
+        let mut seen = Vec::new();
+        let mut buf = [0u8; 1024];
+        while !seen.windows(4).any(|w| w == b"\r\n\r\n") {
+            match conn.read(&mut buf) {
+                Ok(0) | Err(_) => return,
+                Ok(n) => seen.extend_from_slice(&buf[..n]),
+            }
+        }
+        let head = format!(
+            "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n{:x}\r\n",
+            body.len()
+        );
+        let _ = conn.write_all(head.as_bytes());
+        let _ = conn.write_all(&body);
+        let _ = conn.write_all(b"\r\n");
+        let _ = conn.flush();
+        // The body never ends, so only the read cap can stop the read early.
+        std::thread::sleep(Duration::from_secs(8));
+    });
+    format!("http://127.0.0.1:{port}/v4/notes.json")
+}
+
+#[tokio::test]
+async fn the_read_stops_at_the_listed_size_without_a_content_length() {
+    let doc = notes_doc(vec![release("4.0.0", Some("3.0.0"), "d")]);
+    let served = [doc.clone(), vec![b' '; 1024]].concat();
+    let s = MockServer::start().await;
+    let k = TestKey::generate();
+    publish(&s, &k, &manifest_with(&chunked_server(served), &doc)).await;
+    let mut cfg = config(&s.uri(), &k, "3.0.0");
+    cfg.limits.notes = Duration::from_secs(6);
+    let started = Instant::now();
+    let a = check(&cfg).await.unwrap().expect("still offered");
+    assert!(
+        started.elapsed() < Duration::from_secs(4),
+        "waited for more bytes"
+    );
+    let why = a.notes_error.expect("refused");
+    assert!(
+        why.contains(&format!("larger than {} bytes", doc.len())),
+        "{why}"
     );
 }

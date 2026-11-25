@@ -117,17 +117,17 @@ fn print_notes(available: &Available, cfg: &UpdateConfig) {
     }
 }
 
-/// `{current, available, notes, notes_error}`, where `notes` lists the releases newer than
-/// this build, newest first, or is null when none loaded.
+/// `{current, available, notes, older_not_listed, notes_error}`, where `notes` lists the
+/// releases newer than this build, newest first, or is null when none loaded, and
+/// `older_not_listed` says the list stops short of this build.
 fn print_json(current: &str, available: Option<&Available>) -> anyhow::Result<()> {
-    let notes = available
-        .and_then(|a| a.release_notes.as_ref())
-        .map(|n| serde_json::to_value(&n.releases))
-        .transpose()?;
+    let release_notes = available.and_then(|a| a.release_notes.as_ref());
+    let notes = (release_notes.map(|n| serde_json::to_value(&n.releases))).transpose()?;
     let doc = serde_json::json!({
         "current": current,
         "available": available.map(|a| &a.version),
         "notes": notes,
+        "older_not_listed": release_notes.is_some_and(|n| n.older_not_listed),
         "notes_error": available.and_then(|a| a.notes_error.as_ref()),
     });
     outln!("{}", serde_json::to_string_pretty(&doc)?);

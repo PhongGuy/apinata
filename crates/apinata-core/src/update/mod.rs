@@ -83,6 +83,8 @@ pub struct Limits {
     pub artifact_total: Duration,
     /// The longest pause between artifact bytes.
     pub artifact_idle: Duration,
+    /// Fetching the release notes, which delays the offer by at most this.
+    pub notes: Duration,
 }
 
 impl Default for Limits {
@@ -92,6 +94,7 @@ impl Default for Limits {
             manifest: Duration::from_secs(30),
             artifact_total: Duration::from_secs(15 * 60),
             artifact_idle: Duration::from_secs(30),
+            notes: Duration::from_secs(10),
         }
     }
 }

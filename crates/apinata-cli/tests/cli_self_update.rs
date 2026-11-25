@@ -409,6 +409,7 @@ async fn check_prints_json_with_the_notes_or_the_reason() {
           ]
         }
       ],
+      "older_not_listed": true,
       "notes_error": null
     }
     "#);
@@ -424,6 +425,7 @@ async fn check_prints_json_with_the_notes_or_the_reason() {
       "current": "<current>",
       "available": "99.0.0",
       "notes": null,
+      "older_not_listed": false,
       "notes_error": "the notes answered HTTP 404"
     }
     "#);

@@ -244,7 +244,7 @@ pub(crate) fn select(bytes: &[u8], current: &str) -> Result<UpdateNotes, String>
         return Err(format!("the notes use unknown schema {}", doc.schema));
     }
     let current = Version::parse(current).map_err(|e| format!("current version: {e}"))?;
-    let newer = |v: &str| Version::parse(v).is_ok_and(|v| v.cmp_precedence(&current).is_gt());
+    let reaches = |v: &str| Version::parse(v).is_ok_and(|v| v.cmp_precedence(&current).is_le());
 
     let mut shown: Vec<(Version, NotesRelease)> = (doc.releases.into_iter())
         .map(clean_release)
@@ -253,11 +253,10 @@ pub(crate) fn select(bytes: &[u8], current: &str) -> Result<UpdateNotes, String>
         .collect();
     shown.sort_by(|(a, _), (b, _)| b.cmp_precedence(a));
     // The list reaches the installed version only when its oldest entry names a `previous`
-    // that is not newer than it; no entry, or no `previous`, cannot prove that.
-    let older_not_listed = match shown.last() {
-        Some((_, oldest)) => oldest.previous.as_deref().is_none_or(newer),
-        None => true,
-    };
+    // that is not newer than it; no entry, or a missing or unreadable `previous`, cannot.
+    let older_not_listed = !(shown.last())
+        .and_then(|(_, oldest)| oldest.previous.as_deref())
+        .is_some_and(reaches);
     Ok(UpdateNotes {
         releases: shown.into_iter().map(|(_, r)| r).collect(),
         older_not_listed,
@@ -286,13 +285,13 @@ fn clean_release(r: NotesRelease) -> NotesRelease {
     }
 }
 
-/// Removes C0 and C1 controls and bidirectional formatting characters, turning line breaks
-/// and tabs into spaces, then trims and keeps at most [`TEXT_CAP`] characters.
+/// Removes C0 and C1 controls, bidirectional formatting and zero-width characters, turning
+/// line breaks and tabs into spaces, then trims and keeps at most [`TEXT_CAP`] characters.
 fn clean(text: &str) -> String {
     let kept: String = (text.chars())
         .filter_map(|c| match c {
-            '\t' | '\n' | '\r' => Some(' '),
-            c if c.is_control() || is_bidi(c) => None,
+            '\t' | '\n' | '\r' | '\u{2028}' | '\u{2029}' => Some(' '),
+            c if c.is_control() || is_bidi(c) || is_zero_width(c) => None,
             c => Some(c),
         })
         .collect();
@@ -301,4 +300,8 @@ fn clean(text: &str) -> String {
 
 fn is_bidi(c: char) -> bool {
     matches!(c, '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+}
+
+fn is_zero_width(c: char) -> bool {
+    matches!(c, '\u{200B}'..='\u{200D}' | '\u{2060}' | '\u{FEFF}')
 }

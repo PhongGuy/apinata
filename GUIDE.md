@@ -1384,7 +1384,9 @@ what changed in every release newer than yours, newest first, grouped into new
 features, fixes and so on. When the list does not reach back to your version,
 it points at the download page for the older ones; when the notes cannot be
 loaded it says so and still offers the update. `--check --format json` prints
-`current`, `available`, `notes` (the releases, or null) and `notes_error`.
+`current`, `available`, `notes` (the releases, or null), `older_not_listed`
+(true when the list stops short of your version, so older notes are on the
+download page) and `notes_error`.
 In the app, use Check for updates; View notes in the update notice shows the
 same lists, and installing stays a separate step. The updater replaces a standalone CLI binary, an
 AppImage, a macOS `.app` or the Windows installer's install. It leaves a `.deb`

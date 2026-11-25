@@ -26,7 +26,7 @@ test:
 # Core must build without the keychain feature, and its public docs must have no broken links.
 core-check:
 	$(CARGO) check -p apinata-core --no-default-features --locked
-	RUSTDOCFLAGS=-Dwarnings $(CARGO) doc --no-deps -p apinata-core --locked
+	RUSTDOCFLAGS=-Dwarnings $(CARGO) doc --no-deps -p apinata-core --features update --locked
 
 # The pilot package sits outside the workspace because its host crate is private, so CI never builds it.
 PILOT := --manifest-path tools/apinata-pilot/Cargo.toml

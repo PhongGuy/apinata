@@ -65,9 +65,12 @@ async fn fetch_notes(
     if asset.size > MANIFEST_CAP {
         return Err(format!("the notes are larger than {MANIFEST_CAP} bytes"));
     }
-    let response = get(client, &asset.url, "application/json", &cfg.limits)
+    let response = (client.get(&asset.url))
+        .header(ACCEPT, "application/json")
+        .timeout(cfg.limits.notes)
+        .send()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| transport(e).to_string())?;
     if !response.status().is_success() {
         return Err(format!(
             "the notes answered HTTP {}",
