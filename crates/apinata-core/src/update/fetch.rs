@@ -10,8 +10,10 @@ use reqwest::header::{ACCEPT, ACCEPT_ENCODING, HeaderMap, HeaderValue, USER_AGEN
 use reqwest::{Client, Response, StatusCode, redirect};
 use sha2::{Digest as _, Sha256};
 
+use super::notes::{NotesAsset, select};
 use super::{
-    Available, Limits, Staged, UpdateConfig, UpdateError, allowed, evaluate, verify_manifest,
+    Available, Limits, Staged, UpdateConfig, UpdateError, UpdateNotes, allowed, evaluate,
+    verify_manifest,
 };
 
 const MANIFEST_CAP: u64 = 64 * 1024;
@@ -41,7 +43,54 @@ pub async fn check(cfg: &UpdateConfig) -> Result<Option<Available>, UpdateError>
 
     // The bytes verified are the bytes parsed; nothing is read from an unverified manifest.
     verify_manifest(&manifest, &signature, &cfg.keys)?;
-    evaluate(&manifest, cfg)
+    let Some(mut available) = evaluate(&manifest, cfg)? else {
+        return Ok(None);
+    };
+    if let Some(asset) = available.notes_asset.take() {
+        match fetch_notes(&client, &asset, cfg).await {
+            Ok(notes) => available.release_notes = Some(notes),
+            Err(why) => available.notes_error = Some(why),
+        }
+    }
+    Ok(Some(available))
+}
+
+/// Fetches the signed notes asset and selects what this build shows. The listed size and
+/// digest come from the verified manifest, so the bytes are checked before they are parsed.
+async fn fetch_notes(
+    client: &Client,
+    asset: &NotesAsset,
+    cfg: &UpdateConfig,
+) -> Result<UpdateNotes, String> {
+    if asset.size > MANIFEST_CAP {
+        return Err(format!("the notes are larger than {MANIFEST_CAP} bytes"));
+    }
+    let response = (client.get(&asset.url))
+        .header(ACCEPT, "application/json")
+        .timeout(cfg.limits.notes)
+        .send()
+        .await
+        .map_err(|e| transport(e).to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "the notes answered HTTP {}",
+            response.status().as_u16()
+        ));
+    }
+    let body = read_capped(response, asset.size, "the notes")
+        .await
+        .map_err(|e| e.to_string())?;
+    if body.len() as u64 != asset.size || sha256_hex(&body) != asset.sha256 {
+        return Err("the notes do not match their checksum".to_owned());
+    }
+    select(&body, &cfg.current_version)
+}
+
+fn sha256_hex(data: &[u8]) -> String {
+    Sha256::digest(data)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 /// Streams the artifact of `a` to `apinata-update-<version>.part` in `staging_dir`, refusing

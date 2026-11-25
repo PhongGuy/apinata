@@ -5,7 +5,9 @@
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use apinata_core::update::{self, InstallKind, Product, Relaunch, Staged, UpdateError};
+use apinata_core::update::{
+    self, InstallKind, Product, Relaunch, Staged, UpdateError, UpdateNotes,
+};
 use gpui_kit::{App, AppContext, Context, Entity, EventEmitter, Task, actions};
 use serde::{Deserialize, Serialize};
 
@@ -36,8 +38,70 @@ pub struct Offer {
     pub version: String,
     /// Plain-text release notes.
     pub notes: Option<String>,
+    /// The notes of every release newer than this build, when they loaded.
+    pub release_notes: Option<UpdateNotes>,
+    /// Why the release's notes could not be loaded.
+    pub notes_error: Option<String>,
     /// The page the release downloads from.
     pub download_page: String,
+}
+
+/// One line of the notes the update notice shows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NotesLine {
+    /// A release's version and date.
+    Heading(String),
+    /// A release's introduction.
+    Intro(String),
+    /// A group's title.
+    Group(String),
+    /// One change, `- text (#pr)`.
+    Item(String),
+    /// Text that stands alone, such as the old one-line notes or a load failure.
+    Plain(String),
+}
+
+/// Says the release notes listed for an offer did not load.
+pub const NOTES_FAILED: &str = "Release notes couldn't be loaded.";
+
+impl Offer {
+    /// Whether the notice has notes to show: release notes, the old one-line notes, or the
+    /// reason they could not load.
+    pub fn has_notes(&self) -> bool {
+        self.release_notes.is_some() || self.notes.is_some() || self.notes_error.is_some()
+    }
+
+    /// The notes as plain lines, newest release first; a failure shows its sentence and an
+    /// offer without release notes shows its one-line notes.
+    pub fn notes_lines(&self) -> Vec<NotesLine> {
+        let Some(notes) = &self.release_notes else {
+            let failed = self.notes_error.as_ref().map(|_| NOTES_FAILED.to_owned());
+            let lines = self.notes.iter().flat_map(|n| n.lines()).map(str::to_owned);
+            return failed
+                .into_iter()
+                .chain(lines)
+                .map(NotesLine::Plain)
+                .collect();
+        };
+        let mut lines = Vec::new();
+        for release in &notes.releases {
+            lines.push(NotesLine::Heading(release.heading()));
+            lines.extend(release.intro.clone().map(NotesLine::Intro));
+            for group in &release.groups {
+                lines.push(NotesLine::Group(group.title.clone()));
+                (group.items.iter())
+                    .for_each(|i| lines.push(NotesLine::Item(format!("- {}", i.line()))));
+            }
+        }
+        lines
+    }
+
+    /// Whether older releases' notes are only on the download page.
+    pub fn older_not_listed(&self) -> bool {
+        self.release_notes
+            .as_ref()
+            .is_some_and(|n| n.older_not_listed)
+    }
 }
 
 /// What a checker found.
@@ -220,6 +284,8 @@ impl Updates {
                     Ok(Ok(Some(a))) => Ok(CheckResult::Available(Offer {
                         version: a.version,
                         notes: a.notes,
+                        release_notes: a.release_notes,
+                        notes_error: a.notes_error,
                         download_page,
                     })),
                     Ok(Ok(None)) => Ok(CheckResult::UpToDate),

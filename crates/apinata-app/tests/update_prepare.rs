@@ -25,6 +25,8 @@ fn offer_version(cx: &mut TestAppContext, version: &str) {
     let offer = Offer {
         version: version.into(),
         notes: None,
+        release_notes: None,
+        notes_error: None,
         download_page: "https://example.com/download".into(),
     };
     let checker: Checker =

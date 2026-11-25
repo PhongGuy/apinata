@@ -82,7 +82,9 @@ use crate::team_sync_dialog;
 use crate::team_text::{self, SyncKind};
 use crate::ui::{self, LockButton as _, icon_button, no_window_move};
 use crate::update_install;
-use crate::updates::{CheckForUpdates, Report, Updates, UpdatesEvent, report_text};
+use crate::updates::{
+    CheckForUpdates, NotesLine, Offer, Report, Updates, UpdatesEvent, report_text,
+};
 use crate::variables_overview::VariablesOverview;
 use crate::window_drop::{Dropped, classify};
 use crate::workspace::{Workspace, WorkspaceEvent, collection_label, display_name};
@@ -1839,7 +1841,7 @@ impl Shell {
             .flex_row()
             .gap_2()
             .child(format!("Apinata {} is available", offer.version))
-            .when(offer.notes.is_some(), |el| {
+            .when(offer.has_notes(), |el| {
                 el.child(
                     Button::new("update-notes")
                         .solid_ring(cx)
@@ -1870,7 +1872,7 @@ impl Shell {
                 &self.workspace,
                 cx,
             ));
-        let notes = offer.notes.filter(|_| notes_shown);
+        let notes = notes_shown.then(|| update_notes(&offer, cx));
         Some(
             div()
                 .id("update-notice")
@@ -1878,9 +1880,7 @@ impl Shell {
                 .flex()
                 .flex_col()
                 .child(buttons)
-                .when_some(notes, |el, notes| {
-                    el.child(div().id("update-notes-text").test_support().child(notes))
-                }),
+                .children(notes),
         )
     }
 
@@ -4044,5 +4044,53 @@ fn renamed_secrets_toast(workspace: &Entity<Workspace>, root: &Path) -> Notifica
                     crate::renames_dialog::open(&workspace, root.clone(), window, cx);
                     this.update(cx, |n, cx| n.dismiss(window, cx));
                 })
+        })
+}
+
+// The offer's notes as plain grouped lists, newest release first, with the download page
+// offered for older releases only when the list stops short of this build.
+fn update_notes(offer: &Offer, cx: &App) -> impl IntoElement {
+    let lines = offer.notes_lines();
+    let label = (lines.iter())
+        .map(|l| match l {
+            NotesLine::Heading(t)
+            | NotesLine::Intro(t)
+            | NotesLine::Group(t)
+            | NotesLine::Item(t)
+            | NotesLine::Plain(t) => t.as_str(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let muted = cx.theme().muted_foreground;
+    let page = offer.download_page.clone();
+    div()
+        .id("update-notes-text")
+        .test_support()
+        .aria_label(label)
+        .flex()
+        .flex_col()
+        .children(lines.into_iter().map(|line| {
+            match line {
+                NotesLine::Heading(t) => div()
+                    .pt_1()
+                    .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                    .child(t),
+                NotesLine::Intro(t) => div().pl_2().text_color(muted).child(t),
+                NotesLine::Group(t) => div().pl_2().child(t),
+                NotesLine::Item(t) => div().pl_4().child(t),
+                NotesLine::Plain(t) => div().child(t),
+            }
+        }))
+        .when(offer.older_not_listed(), |el| {
+            el.child(
+                div().pt_1().child(
+                    Button::new("update-older-notes")
+                        .solid_ring(cx)
+                        .link()
+                        .label("Older versions: see the release page")
+                        .tooltip(page.clone())
+                        .on_click(move |_, _, cx| cx.open_url(&page)),
+                ),
+            )
         })
 }

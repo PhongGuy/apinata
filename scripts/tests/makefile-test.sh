@@ -21,7 +21,7 @@ expect() {
   [[ $got == "$want" ]] || fail "make -n $* printed [$got], want [$want]"
 }
 
-GATE=$'cargo fmt --check\ncargo clippy --all-targets --all-features --locked -- -Dwarnings\nenv -u WAYLAND_DISPLAY -u DISPLAY cargo test --workspace --locked\ncargo check -p apinata-core --no-default-features --locked\nRUSTDOCFLAGS=-Dwarnings cargo doc --no-deps -p apinata-core --locked\nbash scripts/readme-images-check.sh'
+GATE=$'cargo fmt --check\ncargo clippy --all-targets --all-features --locked -- -Dwarnings\nenv -u WAYLAND_DISPLAY -u DISPLAY cargo test --workspace --locked\ncargo check -p apinata-core --no-default-features --locked\nRUSTDOCFLAGS=-Dwarnings cargo doc --no-deps -p apinata-core --features update --locked\nbash scripts/readme-images-check.sh'
 
 test_check_runs_format_lint_and_tests_in_order() {
   expect "$GATE" check
