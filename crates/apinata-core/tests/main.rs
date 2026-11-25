@@ -41,6 +41,8 @@ mod session_log_support;
 mod tree_support;
 mod undefined_hint;
 mod undefined_variables;
+#[cfg(unix)]
+mod unix_socket;
 #[cfg(feature = "update")]
 mod update_support;
 mod workspace_file;
@@ -199,6 +201,7 @@ mod git_clone_env;
 mod git_commit;
 mod git_create_branch;
 mod git_diff;
+mod git_discard;
 mod git_dotenv;
 mod git_edges;
 mod git_identity;

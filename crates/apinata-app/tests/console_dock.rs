@@ -410,13 +410,15 @@ fn arrows_home_and_end_move_focus_without_choosing(cx: &mut TestAppContext) {
     cx.simulate_keystrokes(win, "right");
     assert_eq!(at(cx), (DockTab::Console, Some(1)));
     cx.simulate_keystrokes(win, "right");
+    assert_eq!(at(cx), (DockTab::Console, Some(2)));
+    cx.simulate_keystrokes(win, "right");
     assert_eq!(at(cx), (DockTab::Console, Some(0)), "wraps");
     cx.simulate_keystrokes(win, "left");
-    assert_eq!(at(cx), (DockTab::Console, Some(1)), "wraps back");
+    assert_eq!(at(cx), (DockTab::Console, Some(2)), "wraps back");
     cx.simulate_keystrokes(win, "home");
     assert_eq!(at(cx), (DockTab::Console, Some(0)));
     cx.simulate_keystrokes(win, "end");
-    assert_eq!(at(cx), (DockTab::Console, Some(1)));
+    assert_eq!(at(cx), (DockTab::Console, Some(2)));
 }
 
 #[gpui_kit::test]

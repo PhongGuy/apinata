@@ -9,6 +9,7 @@ use std::time::Duration;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::notification::Notification;
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, ElementId, InteractiveElement as _, IntoElement as _, ParentElement as _,
     SharedString, StatefulInteractiveElement as _, Styled as _, TestSupportExt as _, Window, div,
@@ -71,9 +72,33 @@ pub fn show_undo_toast(
     window: &mut Window,
     cx: &mut App,
 ) {
+    show(message, toast_key(entry), true, on_undo, window, cx);
+}
+
+/// Shows the Undo toast of a file's discarded changes, numbered `ticket`; no key undoes it, so
+/// its button names none.
+pub fn show_discard_undo_toast(
+    message: impl Into<SharedString>,
+    ticket: u64,
+    on_undo: impl Fn(&mut Window, &mut App) + 'static,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let key = ElementId::Name(format!("discard-{ticket}").into());
+    show(message, key, false, on_undo, window, cx);
+}
+
+fn show(
+    message: impl Into<SharedString>,
+    key: ElementId,
+    tip: bool,
+    on_undo: impl Fn(&mut Window, &mut App) + 'static,
+    window: &mut Window,
+    cx: &mut App,
+) {
     let hover = Rc::new(Hover::default());
     let watch = Rc::downgrade(&hover);
-    window.push_notification(undo_toast(message, entry, on_undo, hover), cx);
+    window.push_notification(undo_toast(message, key.clone(), tip, on_undo, hover), cx);
     // The kit's own timeout is fixed at five seconds, so the toast stays up and this timer
     // closes it. A pointer on the toast holds it open, and one that came by restarts the
     // countdown; the toast only holds `hover`, so once it is gone the timer stops.
@@ -92,7 +117,7 @@ pub fn show_undo_toast(
                     None => return,
                 }
             }
-            cx.update(|window, cx| window.remove_notification1::<UndoToast>(toast_key(entry), cx))
+            cx.update(|window, cx| window.remove_notification1::<UndoToast>(key, cx))
                 .ok();
         })
         .detach();
@@ -100,14 +125,15 @@ pub fn show_undo_toast(
 
 fn undo_toast(
     message: impl Into<SharedString>,
-    entry: u64,
+    key: ElementId,
+    tip: bool,
     on_undo: impl Fn(&mut Window, &mut App) + 'static,
     hover: Rc<Hover>,
 ) -> Notification {
     let on_undo = Rc::new(on_undo);
     // Setting an action turns the kit's timer off, which `show_undo_toast` replaces.
     Notification::new()
-        .id1::<UndoToast>(toast_key(entry))
+        .id1::<UndoToast>(key)
         .message(message)
         // The message column and the Undo button each carry a watch layer: the kit's button
         // spends its own hover listener on its tooltip.
@@ -123,7 +149,9 @@ fn undo_toast(
                 .solid_ring(cx)
                 .ghost()
                 .label("Undo")
-                .key_tooltip(crate::ui::KeyTip::new("Undo", &UndoDelete, cx))
+                .when(tip, |b| {
+                    b.key_tooltip(crate::ui::KeyTip::new("Undo", &UndoDelete, cx))
+                })
                 .child(hover.watch("undo-button-hover"))
                 .on_click(move |_, window, cx| {
                     on_undo(window, cx);

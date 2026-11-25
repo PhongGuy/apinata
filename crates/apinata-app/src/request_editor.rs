@@ -3405,9 +3405,9 @@ impl RequestEditor {
         slot.child(button).into_any_element()
     }
 
-    // The actor's undefined names, less any the live set now resolves: a runtime value set
-    // since the last fetch clears its name at once, while new names wait for the next fetch.
-    fn undefined_shown(&self) -> Vec<SharedString> {
+    /// The actor's undefined names, less any the live set now resolves: a runtime value set
+    /// since the last fetch clears its name at once, while new names wait for the next fetch.
+    pub fn undefined_shown(&self) -> Vec<SharedString> {
         let defined = |name: &str| (self.variables.as_ref()).is_some_and(|v| v.get(name).is_some());
         (self.undefined.iter())
             .filter(|name| !defined(name))
@@ -4129,24 +4129,31 @@ fn undefined_label(names: &[SharedString]) -> String {
 }
 
 // A small warning mark before Send with the count of names a send would refuse; its tooltip
-// names them. Nothing shows while every name resolves.
+// names them, and a click opens the Variables tab where they can be defined. Nothing shows
+// while every name resolves.
 fn undefined_badge(names: &[SharedString], cx: &App) -> Option<AnyElement> {
     if names.is_empty() {
         return None;
     }
     let label = undefined_label(names);
-    let badge = h_flex()
+    // The container carries the spoken label and the tooltip; the button inside is the
+    // keyboard stop, so Tab reaches it and Enter opens the Variables tab as a click does.
+    let button = Button::new("undefined-variables-button")
+        .solid_ring(cx)
+        .ghost()
+        .xsmall()
+        .icon(Icon::new(IconName::CircleAlert).small())
+        .label(names.len().to_string())
+        .text_color(cx.theme().warning)
+        .on_click(|_, window, cx| {
+            window.dispatch_action(Box::new(crate::shell::OpenVariablesOverview), cx)
+        });
+    let badge = div()
         .id("undefined-variables")
         .test_support()
         .flex_none()
-        .items_center()
-        .gap(style::SPACE_1)
-        .px(style::SPACE_1)
-        .text_size(style::TEXT_SMALL)
-        .text_color(cx.theme().warning)
         .aria_label(label.clone())
         .tooltip(ui::text_tooltip("undefined-variables-tooltip", label))
-        .child(Icon::new(IconName::CircleAlert).small())
-        .child(names.len().to_string());
+        .child(button);
     Some(badge.into_any_element())
 }

@@ -51,14 +51,19 @@ fn echo_is_on(master: &std::fs::File) -> bool {
     }
 }
 
-#[test]
-fn env_set_secret_prompts_on_a_terminal_without_echo() {
-    let dir = write_tree(&[("opencollection.yml", ROOT), ("environments/dev.yml", DEV)]);
+/// What a run on a pty left behind: its exit status, everything it printed, and whether the
+/// terminal echoes again once it is gone.
+struct PtyRun {
+    status: std::process::ExitStatus,
+    seen: String,
+    echo_after: bool,
+}
+
+/// Runs `cmd` with a pty as its controlling terminal, waits for `prompt` and for echo to go off,
+/// types `typed`, and collects the rest until the child exits.
+fn on_pty(mut cmd: std::process::Command, prompt: &str, typed: &[u8]) -> PtyRun {
     let (mut master, slave) = open_pty();
-    let mut cmd = apinata_std();
-    cmd.current_dir(dir.path())
-        .args(["env", "set", "--secret", "--no-keychain", "dev", "apikey"])
-        .stdin(Stdio::from(slave.try_clone().unwrap()))
+    cmd.stdin(Stdio::from(slave.try_clone().unwrap()))
         .stdout(Stdio::from(slave.try_clone().unwrap()))
         .stderr(Stdio::from(slave.try_clone().unwrap()));
     // SAFETY: setsid and TIOCSCTTY run between fork and exec and touch only the child's own
@@ -104,7 +109,7 @@ fn env_set_secret_prompts_on_a_terminal_without_echo() {
         }
     };
 
-    pump(&mut seen, &|s| s.contains("Secret value:"));
+    pump(&mut seen, &|s| s.contains(prompt));
     // The prompt can print just before echo goes off; type only once it is off.
     let echo_deadline = Instant::now() + LIMIT;
     while echo_is_on(&master) {
@@ -115,14 +120,61 @@ fn env_set_secret_prompts_on_a_terminal_without_echo() {
         }
         std::thread::sleep(Duration::from_millis(10));
     }
-    master.write_all(b"hunter2\n").unwrap();
+    master.write_all(typed).unwrap();
     pump(&mut seen, &|_| false);
-
     let status = child.wait().unwrap();
-    assert_eq!(status.code(), Some(3), "{seen:?}");
+    PtyRun {
+        status,
+        seen,
+        echo_after: echo_is_on(&master),
+    }
+}
+
+fn env_set_secret(dir: &std::path::Path) -> std::process::Command {
+    let mut cmd = apinata_std();
+    cmd.current_dir(dir)
+        .args(["env", "set", "--secret", "--no-keychain", "dev", "apikey"]);
+    cmd
+}
+
+#[test]
+fn env_set_secret_prompts_on_a_terminal_without_echo() {
+    let dir = write_tree(&[("opencollection.yml", ROOT), ("environments/dev.yml", DEV)]);
+    let run = on_pty(env_set_secret(dir.path()), "Secret value:", b"hunter2\n");
+    let seen = run.seen;
+    assert_eq!(run.status.code(), Some(3), "{seen:?}");
     assert!(seen.contains("keychain"), "{seen:?}");
     assert!(!seen.contains("hunter2"), "the value was echoed: {seen:?}");
     assert!(!seen.contains("no secret value"), "{seen:?}");
     let file = std::fs::read_to_string(dir.path().join("environments/dev.yml")).unwrap();
     assert_eq!(file, DEV);
+}
+
+#[test]
+fn ctrl_c_at_the_secret_prompt_exits_130_with_echo_back_on() {
+    let dir = write_tree(&[("opencollection.yml", ROOT), ("environments/dev.yml", DEV)]);
+    let run = on_pty(env_set_secret(dir.path()), "Secret value:", b"hun\x03");
+    assert_eq!(run.status.code(), Some(130), "{:?}", run.seen);
+    assert!(run.seen.contains("Cancelled"), "{:?}", run.seen);
+    assert!(run.echo_after, "the terminal was left without echo");
+    let file = std::fs::read_to_string(dir.path().join("environments/dev.yml")).unwrap();
+    assert_eq!(file, DEV);
+}
+
+#[test]
+fn ctrl_c_at_the_team_password_prompt_exits_130_with_echo_back_on() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let mut cmd = apinata_std();
+    cmd.env("APINATA_TEST_TEAM_FILE", dir.path().join("team.json"))
+        .env("APINATA_TEST_SECRETS_FILE", dir.path().join("secrets.json"))
+        .args(["team", "sign-in", "http://127.0.0.1:9", "--username", "ada"]);
+    let run = on_pty(cmd, "Password:", b"\x03");
+    assert_eq!(run.status.code(), Some(130), "{:?}", run.seen);
+    assert!(
+        run.seen.contains("Cancelled; nothing was kept."),
+        "{:?}",
+        run.seen
+    );
+    assert!(run.echo_after, "the terminal was left without echo");
+    assert!(!dir.path().join("team.json").exists());
 }

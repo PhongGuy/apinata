@@ -24,7 +24,17 @@ pub fn to_curl(req: &ResolvedRequest) -> String {
     } else {
         format!("curl --request {}", quote(req.method()))
     }];
-    args.push(format!("--url {}", quote(req.url())));
+    // A socket URL names its file to curl and puts the request path on a localhost URL.
+    let socket = url::Url::parse(req.url())
+        .ok()
+        .and_then(|url| crate::network::uds::split(&url).ok().flatten());
+    match &socket {
+        Some(target) => {
+            args.push(format!("--unix-socket {}", quote(&target.socket)));
+            args.push(format!("--url {}", quote(target.wire.as_str())));
+        }
+        None => args.push(format!("--url {}", quote(req.url()))),
+    }
     if req.url().contains(['[', ']', '{', '}']) {
         args.push("--globoff".to_owned());
     }

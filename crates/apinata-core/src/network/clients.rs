@@ -18,6 +18,8 @@ pub(crate) struct ClientKey {
     /// True for a WebSocket handshake: the client offers only HTTP/1.1 whatever the policy, since an
     /// h2 connection cannot be upgraded.
     pub(crate) http1_only: bool,
+    /// The Unix socket every connection goes to instead of TCP, for a `http://unix:` URL.
+    pub(crate) unix_socket: Option<Arc<std::path::Path>>,
 }
 
 /// Most recently used first; at most `CAPACITY`. Evicting only costs a rebuild and a new connection.

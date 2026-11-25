@@ -258,6 +258,19 @@ pub fn drop_staged_past_cap_ask(listed: usize, action: &'static str) -> Ask {
     careful_ask(title, detail, "confirm-drop", action)
 }
 
+/// Discarding the changes to `path`, with `notes` naming what goes with them: `[Cancel,
+/// Discard]`, Cancel the default.
+pub fn discard_file_ask(path: &str, notes: &[&str]) -> Ask {
+    let mut ask = careful_ask(
+        format!("Discard the changes to {path}?"),
+        "",
+        "confirm-discard-file",
+        "Discard",
+    );
+    ask.detail = Some(notes.join(" ").into());
+    ask
+}
+
 // A question whose safe answer is Cancel: the default, and Escape's answer too, so an accidental
 // Enter changes nothing. The confirming button is index 1.
 fn careful_ask(title: String, detail: &'static str, id: &'static str, label: &'static str) -> Ask {

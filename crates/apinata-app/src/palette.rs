@@ -682,6 +682,7 @@ fn show(
         updates,
     } = views.unwrap_or_default();
     let target = window.focused(cx).unwrap_or(fallback);
+    crate::var_tokens::remember_caret(window, cx);
     // Opened from the tree, the request commands act on its selected request row.
     let opening = Opening {
         git_repo: in_repo,
