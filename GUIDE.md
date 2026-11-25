@@ -16,6 +16,7 @@ and a quick start, see the [README](README.md).
   - [Environments and secrets](#environments-and-secrets)
   - [Items and folders](#items-and-folders)
   - [Host overrides](#host-overrides)
+  - [Unix sockets](#unix-sockets)
   - [Replace](#replace)
 - [Command line](#command-line)
   - [Exit codes](#exit-codes)
@@ -28,6 +29,7 @@ and a quick start, see the [README](README.md).
   - [GraphQL schema](#graphql-schema)
   - [GraphQL queries](#graphql-queries)
   - [OAuth 2.0 and scripts](#oauth-20-and-scripts)
+  - [Team servers](#team-servers)
   - [Timeouts, streams and body size](#timeouts-streams-and-body-size)
   - [Reading responses](#reading-responses)
 - [Mock server](#mock-server)
@@ -126,7 +128,14 @@ apinata git commit -m "Update everything" --all
 
 The desktop app marks changed requests in
 the sidebar and tabs, and lists the changes with their diffs in a Changes
-dialog.
+dialog. Its Discard button, Delete, or Discard Changes in a file's right-click
+menu throws away that file's changes after asking: a file in the last commit
+goes back to it, a new file is removed, and your version goes to the system
+trash. Undo on the notice that follows puts your version back. When there is no
+trash, or the file's staged version differs from the one on disk, the question
+says the discard cannot be undone and no Undo is offered. A file with unsaved
+edits in a tab or with conflicts is left alone, and so is a new or renamed file when
+there is no trash to keep it in.
 
 ### Search
 
@@ -364,6 +373,27 @@ separated by commas; a port counts only for a URL that names none. The name stay
 the URL and the `Host` header, and a send to an MCP agent is judged by the address it
 is mapped to, so a mapping off loopback needs approval whatever the name is.
 
+### Unix sockets
+
+On Linux, macOS and other Unix systems, a request can go to a server listening on
+a Unix socket. Write the socket path after `http://unix:`, then a colon and the
+request path:
+
+```text
+http://unix:/var/run/docker.sock:/v1.47/containers/json?all=1
+```
+
+The request goes over that socket as if to `http://localhost`, and never
+through a proxy. Special characters in the socket path, a colon among them, are
+percent-encoded (`%3A`). The request path must start with `/`, the URL takes no
+port, and HTTPS over a socket is not supported. A relative redirect stays on the
+same socket; an absolute one goes where it points. On Windows a socket URL is
+refused with an error, never sent to TCP `localhost`.
+
+For an AI agent a socket is never local, whatever it serves: sending to one needs
+approval, and it is trusted by its path, as `unix:/var/run/docker.sock` (see
+[MCP server](#mcp-server)).
+
 ### Proxy and client certificates
 
 `apinata network proxy show` prints the collection's proxy mode (`inherit`, `off` or
@@ -437,6 +467,7 @@ the command never exits with that code.
 | `network` | listed, set or removed | - | - | usage or collection error, or a refused edit |
 | `item` | created, copied, renamed, moved, removed, or a folder updated or left unchanged | - | - | usage or collection error, an unknown path, an invalid name, a move that is not allowed, no trash to remove into, a broken folder.yml, an unknown header or variable to unset, or a refused edit |
 | `oauth2` | shown, cleared, or nothing to clear | - | - | usage or collection error, an unknown path, auth that is not OAuth 2.0, or settings that do not resolve |
+| `team` | signed in, signed out, or every sign-in shown is valid | signed out, expired, or the server refused the sign-in | the server could not be reached or its answer was not understood | usage or local error, such as `--no-keychain` with `sign-in` or `sign-out`, or a team file or keychain failure |
 | `trust` | done | - | - | any failure |
 | `gen` | printed | - | - | usage, collection or resolve error |
 | `graphql` | printed or written | the server answered without a schema (an error status, not JSON, GraphQL errors), a syntax error, a validation error, or `fmt --check` found a change | the request or its token fetch errored (no response) | usage, collection or resolve error, not a GraphQL request, the file could not be written, or an unreadable query or schema file |
@@ -450,8 +481,8 @@ the command never exits with that code.
 | `completions` | script printed | - | - | usage error, such as an unknown shell |
 
 One more code exists. `130` is a `git clone`, `git branches --fetch`,
-`git pull` or `git push` stopped with Ctrl+C, and a `run --watch` stopped with
-Ctrl+C before any run finished. A usage error from the argument parser (an unknown flag, a missing
+`git pull` or `git push` stopped with Ctrl+C, a `team sign-in` stopped with
+Ctrl+C, and a `run --watch` stopped with Ctrl+C before any run finished. A usage error from the argument parser (an unknown flag, a missing
 value) exits 3 for every command, not clap's usual 2. `--help` and `--version`
 exit 0.
 
@@ -697,6 +728,10 @@ sending it:
 apinata gen ./my-api/users/get-user.yml --target python-requests --env local
 ```
 
+For a [Unix socket](#unix-sockets) URL, the curl target, like the app's Copy as
+curl, names the socket with `--unix-socket` and puts the request path on a
+`http://localhost` URL.
+
 ### GraphQL schema
 
 `apinata graphql schema` fetches a GraphQL request's schema by introspection,
@@ -758,6 +793,40 @@ apinata run ./my-api --no-scripts
 ```
 
 Scripts can `require("crypto")` for Node's hashes and HMACs, random bytes, `pbkdf2` and `scrypt`, AES-CBC, AES-CTR and AES-GCM ciphers, RSA (PKCS#1 v1.5 and PSS), ECDSA (P-256, P-384 and P-521) and Ed25519 signatures, and `KeyObject`s made from PEM, DER or JWK keys (RSA, P-256, P-384, P-521 and Ed25519; `export({ format: "jwk" })` too). RSA-PSS keys open from PEM or DER, encrypted or not, and report their hash, MGF1 hash and salt length in `asymmetricKeyDetails`; they sign and verify only within those parameters, as in Node, and have no JWK form. Encrypted PKCS#8 private keys open with `passphrase`, if they use PBES2 with PBKDF2 (SHA-1 or SHA-224 to SHA-512) or scrypt and AES or 3DES (DES-EDE3-CBC); other schemes, including Camellia and legacy `Proc-Type` PEM, are refused by name. `export({ format: "pem", type: "pkcs8", cipher, passphrase })` writes encrypted PKCS#8 with PBES2, PBKDF2-HMAC-SHA256 and AES-128, AES-192 or AES-256 in CBC mode, as Node does; other ciphers are refused by name. Key derivation cannot be stopped by the script timeout once it starts, so it is capped: PBKDF2 takes at most 10,000,000 iterations, and iterations x ceil(key length / digest length) must be at most 16,777,216; scrypt needs N x r x p at most 33,554,432 and `maxmem` at most 256 MiB; derived keys are at most 65,536 bytes. An encrypted key whose file asks for more is refused before any derivation. RSA-PSS signatures made with a plain RSA key and no `saltLength` use a salt as long as the digest; RSA-PSS keys salt as Node does. Other members throw an error that names them, and `require("crypto-js")` covers more algorithms.
+
+### Team servers
+
+`apinata team` signs in to a self-hosted team server the way the desktop app
+does, and both share the sign-in: the token is kept in the system keychain and
+the account in the same team file, so signing in from either works for both.
+
+```sh
+printf '%s\n' "$TEAM_PASSWORD" | apinata team sign-in https://team.example.com --username ada
+apinata team sign-in https://team.example.com --sso
+apinata team status
+apinata team status https://team.example.com --format json
+apinata team sign-out https://team.example.com
+```
+
+The password is read from stdin, or from a hidden prompt in a terminal, and is
+never taken from the command line or an environment variable. `--sso` prints
+the address to open in a browser and the local port it waits on, then waits up
+to five minutes; it opens no browser itself. Ctrl+C at the password prompt or
+during the sign-in cancels it, exits 130 and keeps nothing. Signing in
+on another machine over SSH, forward the printed port first, for example
+`ssh -L 53682:127.0.0.1:53682 build-box`, then open the address in your local
+browser.
+
+`status` checks each kept sign-in with its server and exits 1 when one is
+signed out or has expired; an expired sign-in is reported without asking the
+server, as `the sign-in to <server> has expired; run "apinata team sign-in
+<server>"`. As in the app, a token the server no longer accepts is forgotten,
+while the account stays listed as signed out, and the name the server gives
+is kept. `sign-out` revokes the token on the server, then forgets it.
+With `--no-keychain`, `sign-in` and `sign-out` refuse to run, so a token is
+never forgotten here while it still works on the server, and `status` shows
+only the kept account and its expiry. Tokens and token ids are never printed,
+and hidden characters in what the server sends are shown as `\u{...}` escapes.
 
 ### Timeouts, streams and body size
 
@@ -887,11 +956,45 @@ first, each with the example it got; choosing a call opens that example. The
 server picks up saved edits by itself, and Stop mock server (or the Mock
 button again) stops it.
 
+Run collection and Run folder open a runner tab. Its Cookies choice says which
+cookie jar the run uses: Shared jar (the default) uses the jar every
+send shares, Empty jar gives the run a jar of its own that starts empty, and Copy
+of the shared jar gives it its own copy. With a jar of its own, Keep cookies
+after the run puts the cookies the run set or changed into the shared jar;
+cookies it deleted stay there. Keep variable values set by the run is on by
+default; off, the run works on a copy of the variables and drops the values it
+set when it ends. A collection or folder runner remembers these choices.
+
+The bottom dock has Console, Network and Variables tabs. Variables lists the
+variables the active request sees, grouped by the scope that defines them, after
+the names a send would refuse as undefined. A value a higher scope overrides is
+dimmed, struck through and labelled with the scope that wins, and a secret shows
+a mask. Runtime and environment values, and undefined
+names, are edited in place; any other row opens its scope's own editor. Show
+variables in the command palette, or the variables button in the title bar,
+opens the tab. While the request uses an undefined variable, a warning badge
+before Send shows how many; its tooltip names them, and clicking it opens the
+Variables tab.
+
+The response status line shows the status, the time, the size and the address
+reached, each with a hover card. The status card says what the code means, the
+time card breaks the time down, and the size card splits headers from body. The
+address card shows the connection: the remote address (or the proxy's), the
+local address and the HTTP version, and over TLS the TLS version and the
+server certificate's subject, issuer and expiry date. A response with no
+recorded connection, such as one restored from history, shows only the address.
+
 ### Team workspaces
 
 Join team server in the command palette signs in to a self-hosted
-[Potluck](https://github.com/PhongGuy/potluck) server with its address, your
-username and your password. The password is sent once and never stored; the
+[Potluck](https://github.com/PhongGuy/potluck) server. Enter its address; when
+you leave the field or press Enter, the app asks the server how it takes
+sign-ins. With a password, enter your username and password. When the server
+offers single sign-on, a Sign in with button naming its provider appears
+under the password fields, or replaces them when the server takes single sign-on
+only. It opens the sign-in page in your browser and shows its address with
+Copy URL, in case the browser did not open; the dialog waits up to five minutes
+for the browser to come back. The password is sent once and never stored; the
 sign-in is kept in the system keychain. The Team workspaces dialog then opens,
 and Team workspaces in the command palette brings it back. It lists each
 server's workspaces: Open clones one and opens it as a collection, a server
@@ -1244,8 +1347,9 @@ after about 250 ms.
 The agent may edit collection files freely, since git tracks them. Global
 environments live outside git, so the agent cannot delete one; delete it with
 `apinata env rm --global` or in the app. Sending to a
-host other than `localhost` or a loopback address needs approval: the request waits for you
-to approve it in the desktop app, or you can trust the host beforehand. Denied
+host other than `localhost` or a loopback address, or to any
+[Unix socket](#unix-sockets), needs approval: the request waits for you to
+approve it in the desktop app, or you can trust the host beforehand. Denied
 hosts are refused outright.
 
 ```sh
@@ -1255,7 +1359,7 @@ apinata trust list --collection ./my-api
 
 `apinata trust list` prints the trusted hosts, then the denied ones;
 `apinata trust deny` and `apinata trust remove` change the lists. Each takes a host or a
-pasted `http` or `https` URL, which keeps only its host. In the desktop app the same lists
+pasted `http` or `https` URL, which keeps only its host, or a socket as `unix:/path/to.sock`. In the desktop app the same lists
 are on a collection's AI access settings tab, and Preferences has an AI agents (MCP) section
 with the connect command.
 

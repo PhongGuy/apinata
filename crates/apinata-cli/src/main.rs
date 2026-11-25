@@ -37,6 +37,7 @@ mod search_cmd;
 mod self_update;
 mod send;
 mod show;
+mod team_cmd;
 #[cfg(debug_assertions)]
 mod test_store;
 mod trust;
@@ -234,6 +235,14 @@ enum Command {
         3  usage or collection error, an unknown path, auth that is not OAuth 2.0, \
         or settings that do not resolve")]
     Oauth2(OAuth2Args),
+    /// Sign in to a team server, show the kept sign-ins, and sign out; tokens are never shown.
+    #[command(after_help = "Exit codes:\n  \
+        0  signed in, signed out, or every sign-in shown is valid\n  \
+        1  signed out, expired, or the server refused the sign-in\n  \
+        2  the server could not be reached or its answer was not understood\n  \
+        3  usage or local error, such as --no-keychain with sign-in or sign-out, or a team file or keychain failure\n  \
+        130  sign-in stopped with Ctrl+C")]
+    Team(team_cmd::TeamArgs),
 }
 
 #[derive(clap::Args)]
@@ -1715,6 +1724,7 @@ fn main() -> ExitCode {
         Command::Item(args) => return item_cmd::run(&args),
         Command::Network(args) => return hosts_cmd::run(&args),
         Command::Oauth2(args) => return oauth2_cmd::run(&args),
+        Command::Team(args) => return team_cmd::run(&args),
     };
     // Fold `--collection` into the positional so the rest of the run sees one path.
     match collection_arg::require(

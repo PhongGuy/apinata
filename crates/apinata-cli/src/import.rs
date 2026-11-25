@@ -1045,6 +1045,16 @@ pub(crate) fn platform_store() -> Arc<dyn SecretStore> {
     )
 }
 
+/// The team file the app also uses. Debug builds only: `APINATA_TEST_TEAM_FILE` names another,
+/// so the suite never touches the real data directory.
+pub(crate) fn team_file() -> Option<PathBuf> {
+    #[cfg(debug_assertions)]
+    if let Some(path) = std::env::var_os("APINATA_TEST_TEAM_FILE") {
+        return Some(path.into());
+    }
+    apinata_core::team::TeamStore::default_path()
+}
+
 /// `store`, naming itself on stderr at its first call when `APINATA_TEST_REPORT_STORE` is set,
 /// so the line says what a command actually opened, not what it constructed. Release builds
 /// return `store` unchanged.

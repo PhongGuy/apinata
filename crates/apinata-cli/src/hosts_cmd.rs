@@ -26,6 +26,9 @@ pub fn run(args: &NetworkCmdArgs) -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(e) => {
+            if let Some(code) = crate::env_cmd::cancelled_exit(&e) {
+                return code;
+            }
             eprintln!("error: {}", shown(&format!("{e:#}")));
             ExitCode::from(EXIT_USAGE)
         }

@@ -1,5 +1,6 @@
 //! Reading and atomically writing the app's JSON files.
 
+use apinata_core::team::TeamStore;
 use apinata_core::{ApprovalInbox, ScriptTrust, TokenCache, TrustStore};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -71,7 +72,7 @@ impl Paths {
             themes: dirs::config_dir()?.join("apinata/themes"),
             schemas: dirs::data_local_dir()?.join("apinata/graphql-schemas"),
             conflicts: dirs::data_local_dir()?.join("apinata/conflicts"),
-            team: dirs::data_local_dir()?.join("apinata/team.json"),
+            team: TeamStore::default_path()?,
         })
     }
 
