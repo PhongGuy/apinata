@@ -1,14 +1,16 @@
 //! `apinata team`: sign in to a team server by password or single sign-on, show the kept
 //! sign-ins and sign out, through the same core flows and keychain entries as the app. Server
 //! text is shown with hidden characters escaped, and no token or token id is ever printed.
+//! A CI job can instead hand `status` a token through `APINATA_TEAM_TOKEN` for the one server
+//! in `APINATA_TEAM_SERVER`; that token never touches the keychain or the team file.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
 
 use apinata_core::team::{
-    self, Account, HttpTeamClient, SSO_TIMEOUT, ServerUrl, TeamError, TeamStore, escape_hidden,
-    redact_token,
+    self, Account, HttpTeamClient, Me, SSO_TIMEOUT, ServerUrl, TEAM_SERVER_VAR, TEAM_TOKEN_VAR,
+    TeamError, TeamStore, TeamToken, escape_hidden, redact_token,
 };
 use apinata_core::{CancelFlag, CancelHandle, SecretStore};
 use clap::Subcommand;
@@ -29,7 +31,8 @@ pub struct TeamArgs {
     #[command(subcommand)]
     pub action: TeamAction,
     /// Do not use the keychain: sign-in and sign-out refuse to run, and status shows only the
-    /// kept account and its expiry without checking the token.
+    /// kept account and its expiry without checking the token (a token in APINATA_TEAM_TOKEN
+    /// is still checked).
     #[arg(long, global = true)]
     pub no_keychain: bool,
 }
@@ -53,7 +56,8 @@ pub enum TeamAction {
         /// The server address.
         server: String,
     },
-    /// Show the kept sign-ins and check each with its server.
+    /// Show the kept sign-ins, and the token in APINATA_TEAM_TOKEN, and check each with its
+    /// server.
     Status {
         /// Only this server; every kept sign-in when absent.
         server: Option<String>,
@@ -151,6 +155,57 @@ fn refuse_without_keychain(no_keychain: bool, what: &str) -> Result<(), Failure>
         )));
     }
     Ok(())
+}
+
+/// A token a CI job supplies through the environment, and the one server it may go to.
+struct EnvToken {
+    server: ServerUrl,
+    token: TeamToken,
+}
+
+/// The variable's text, an empty one counting as unset; the error never shows the value.
+fn read_var(name: &str) -> Result<Option<String>, Failure> {
+    match std::env::var_os(name) {
+        None => Ok(None),
+        Some(value) if value.is_empty() => Ok(None),
+        Some(value) => value
+            .into_string()
+            .map(Some)
+            .map_err(|_| Failure::usage(format!("{name} is not valid text"))),
+    }
+}
+
+/// Reads `APINATA_TEAM_TOKEN` and `APINATA_TEAM_SERVER`. A token needs its server, both are
+/// parsed here, and plain http to another machine is refused, since the token is long-lived.
+fn env_token() -> Result<Option<EnvToken>, Failure> {
+    let Some(token) = read_var(TEAM_TOKEN_VAR)? else {
+        return Ok(None);
+    };
+    let token = TeamToken::parse(&token).map_err(|_| {
+        Failure::usage(format!(
+            "{TEAM_TOKEN_VAR} does not hold a team token; copy the whole token the server showed"
+        ))
+    })?;
+    let Some(server) = read_var(TEAM_SERVER_VAR)? else {
+        return Err(Failure::usage(format!(
+            "{TEAM_TOKEN_VAR} is set but {TEAM_SERVER_VAR} is not; set it to the server the token is for"
+        )));
+    };
+    let server =
+        ServerUrl::parse(&server).map_err(|e| Failure::usage(format!("{TEAM_SERVER_VAR}: {e}")))?;
+    if server.is_unencrypted() {
+        return Err(Failure::usage(format!(
+            "{TEAM_SERVER_VAR} is a plain http address, so the token would be sent unencrypted; use https"
+        )));
+    }
+    Ok(Some(EnvToken { server, token }))
+}
+
+/// The server a token in the environment is meant for, however well-formed the token is, so
+/// sign-out can refuse for it alone.
+fn env_server() -> Option<ServerUrl> {
+    read_var(TEAM_TOKEN_VAR).ok().flatten()?;
+    ServerUrl::parse(&read_var(TEAM_SERVER_VAR).ok().flatten()?).ok()
 }
 
 fn runtime() -> Result<tokio::runtime::Runtime, Failure> {
@@ -321,9 +376,14 @@ fn signed_in_line(account: &Account, shown_server: &str) -> String {
 
 fn sign_out(server: &str, no_keychain: bool) -> Result<u8, Failure> {
     let server = parse_server(server)?;
+    let shown_server = shown(server.as_str());
+    if env_server().is_some_and(|env| env == server) {
+        return Err(Failure::usage(format!(
+            "{shown_server} uses {TEAM_TOKEN_VAR}, and the token comes from the environment; unset the variable, or revoke the token on the server"
+        )));
+    }
     refuse_without_keychain(no_keychain, "sign-out")?;
     let file = the_team_file()?;
-    let shown_server = shown(server.as_str());
     if TeamStore::load(&file)?.account(&server).is_none() {
         outln!("Not signed in to {shown_server}; nothing to sign out of.");
         return Ok(0);
@@ -345,6 +405,9 @@ struct Row {
     expires_at: Option<String>,
     /// `signed_in`, `unchecked`, `expired`, `signed_out` or `error`.
     state: &'static str,
+    /// `environment` for the token from `APINATA_TEAM_TOKEN`; absent for a kept sign-in.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source: Option<&'static str>,
 }
 
 impl Row {
@@ -356,11 +419,31 @@ impl Row {
             server_admin: account.server_admin,
             expires_at: account.expires_at.as_deref().map(shown),
             state,
+            source: None,
+        }
+    }
+
+    /// The user the environment's token belongs to on `server`.
+    fn from_env(server: &ServerUrl, me: &Me) -> Row {
+        Row {
+            server: shown(server.as_str()),
+            username: shown(&me.user.username),
+            display_name: shown(&me.user.display_name),
+            server_admin: me.user.server_admin,
+            expires_at: None,
+            state: "signed_in",
+            source: Some("environment"),
         }
     }
 
     fn text(&self) -> String {
         let who = format!("{} ({})", self.display_name, self.username);
+        if self.source.is_some() {
+            return format!(
+                "{}: signed in as {who} (token from {TEAM_TOKEN_VAR})",
+                self.server
+            );
+        }
         let expiry = match &self.expires_at {
             Some(at) if self.state == "expired" => format!("expired at {at}"),
             Some(at) => format!("expires at {at}"),
@@ -380,18 +463,36 @@ impl Row {
 }
 
 fn status(server: Option<&str>, format: Format, no_keychain: bool) -> Result<u8, Failure> {
+    let env = env_token()?;
     let file = the_team_file()?;
-    let store = TeamStore::load(&file)?;
-    let accounts: Vec<Account> = match server {
-        Some(text) => {
-            let server = parse_server(text)?;
-            store.account(&server).cloned().into_iter().collect()
-        }
+    let wanted = server.map(parse_server).transpose()?;
+    // The environment's server is checked with its token alone; its kept account, if any, is
+    // left out, and every other server is checked through the keychain as before.
+    let env = env.filter(|env| wanted.as_ref().is_none_or(|w| *w == env.server));
+    // Asked about the env server alone, the team file is not read; asked about all, a file that
+    // cannot be read fails only the other servers.
+    let (store, unreadable) = match (env.is_some(), wanted.is_some()) {
+        (true, true) => (TeamStore::default(), None),
+        (true, false) => match TeamStore::load(&file) {
+            Ok(store) => (store, None),
+            Err(e) => (TeamStore::default(), Some(Failure::from(e))),
+        },
+        (false, _) => (TeamStore::load(&file)?, None),
+    };
+    let accounts: Vec<Account> = match &wanted {
+        Some(server) => store.account(server).cloned().into_iter().collect(),
         None => store.accounts().to_vec(),
     };
+    let accounts: Vec<Account> = accounts
+        .into_iter()
+        .filter(|a| {
+            env.as_ref()
+                .is_none_or(|env| a.server != env.server.as_str())
+        })
+        .collect();
     let mut code = 0;
     let mut rows = Vec::new();
-    if accounts.is_empty() {
+    if accounts.is_empty() && env.is_none() {
         code = EXIT_REFUSED;
         match server.map(ServerUrl::parse) {
             Some(Ok(server)) => {
@@ -401,8 +502,18 @@ fn status(server: Option<&str>, format: Format, no_keychain: bool) -> Result<u8,
             _ => eprintln!("error: not signed in to any team server"),
         }
     }
-    let secrets = (!no_keychain).then(platform_store);
+    // The keychain opens only when a kept sign-in needs its token.
+    let secrets = (!no_keychain && !accounts.is_empty()).then(platform_store);
     let runtime = runtime()?;
+    if let Some(env) = &env {
+        let (row, row_code) = check_env(env, &runtime);
+        code = code.max(row_code);
+        rows.extend(row);
+    }
+    if let Some(failure) = unreadable {
+        eprintln!("error: {}", shown(&failure.message));
+        code = code.max(failure.code);
+    }
     for account in &accounts {
         let (row, row_code) = check(account, secrets.as_ref(), &file, &runtime);
         code = code.max(row_code);
@@ -462,6 +573,25 @@ fn check(
         Err(e) => {
             eprintln!("error: {server}: {}", shown(&e.to_string()));
             (Row::new(account, "error"), code_for(&e))
+        }
+    }
+}
+
+/// The environment's token checked with its server, touching neither store. A refused or
+/// unreachable check gives no row, only its error line and exit code.
+fn check_env(env: &EnvToken, runtime: &tokio::runtime::Runtime) -> (Option<Row>, u8) {
+    let server = shown(env.server.as_str());
+    let checked = HttpTeamClient::new(env.server.clone())
+        .map(|api| runtime.block_on(async { team::whoami(&api, &env.token).await }));
+    match checked.and_then(|r| r) {
+        Ok(me) => (Some(Row::from_env(&env.server, &me)), 0),
+        Err(TeamError::Unauthenticated) => {
+            eprintln!("error: {server} does not accept the token in {TEAM_TOKEN_VAR}");
+            (None, EXIT_REFUSED)
+        }
+        Err(e) => {
+            eprintln!("error: {server}: {}", shown(&e.to_string()));
+            (None, code_for(&e))
         }
     }
 }

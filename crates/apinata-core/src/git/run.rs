@@ -20,8 +20,8 @@ pub(super) const PREFIX: [&str; 5] = [
     "protocol.ext.allow=never",
 ];
 
-/// Variables that would point discovery away from the collection root.
-pub(super) const SCRUBBED: [&str; 8] = [
+/// Variables that would point discovery away from the collection root, and the team token.
+pub(super) const SCRUBBED: [&str; 9] = [
     "GIT_DIR",
     "GIT_WORK_TREE",
     "GIT_INDEX_FILE",
@@ -30,6 +30,7 @@ pub(super) const SCRUBBED: [&str; 8] = [
     "GIT_COMMON_DIR",
     "GIT_NAMESPACE",
     "GIT_PREFIX",
+    crate::team::TEAM_TOKEN_VAR,
 ];
 
 /// Set last, so neither the caller's environment nor `GitOptions::env` can override them.
@@ -324,6 +325,7 @@ fn stop_tree(child: &mut Child) -> bool {
 fn signal_group(child: &Child, signal: &str) -> bool {
     Command::new("kill")
         .args([signal, "--", &format!("-{}", child.id())])
+        .env_remove(crate::team::TEAM_TOKEN_VAR)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

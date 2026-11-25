@@ -393,3 +393,30 @@ async fn a_substituted_os_value_in_a_refused_url_is_redacted_in_the_result() {
     assert!(error.contains(HOST), "the error quotes the URL: {error}");
     assert!(!r.redact(&error).contains(HOST), "{}", r.redact(&error));
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_script_cannot_read_the_team_token() {
+    let s = MockServer::start().await;
+    Mock::given(any())
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&s)
+        .await;
+    let code = "console.log([bru.getProcessEnv('APINATA_TEAM_TOKEN'), bru.getProcessEnv('B')].map(String).join('|'));";
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        (
+            "r.yml",
+            &scripted(
+                "R",
+                &format!("{}/a", s.uri()),
+                &script("before-request", code),
+                "",
+            ),
+        ),
+    ]);
+    let ctx = ContextOptions::new()
+        .process_env([("APINATA_TEAM_TOKEN", "plk_from-the-ci-job"), ("B", "b")]);
+    let (result, _) = send_full(dir.path(), "r.yml", on(), ctx, ExecOptions::new()).await;
+    assert!(result.error.is_none(), "{:?}", result.error);
+    assert_eq!(console(&result), ["log:undefined|b"]);
+}

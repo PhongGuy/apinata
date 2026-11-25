@@ -527,3 +527,371 @@ async fn ctrl_c_during_single_sign_on_exits_130_and_keeps_nothing() {
     assert!(stores.accounts().is_empty());
     assert!(!stores.secrets_text().contains("plk_"));
 }
+
+/// A token as a CI job would hold it, distinct from the one the keychain keeps.
+fn env_tok() -> String {
+    format!("plk_{}", "E".repeat(43))
+}
+
+/// The command with the token for `server` in the environment.
+fn with_env(stores: &Stores, server: &str) -> assert_cmd::Command {
+    let mut cmd = stores.cmd();
+    cmd.env("APINATA_TEAM_TOKEN", env_tok())
+        .env("APINATA_TEAM_SERVER", server);
+    cmd
+}
+
+/// Runs `cmd` and also checks no token of any kind reached stdout or stderr.
+async fn run_clean(cmd: assert_cmd::Command) -> (i32, String, String) {
+    let (code, stdout, stderr) = run(cmd).await;
+    assert!(
+        !stdout.contains("plk_") && !stderr.contains("plk_"),
+        "{stdout}{stderr}"
+    );
+    (code, stdout, stderr)
+}
+
+/// The Authorization headers `s` received.
+async fn bearers(s: &MockServer) -> Vec<String> {
+    s.received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter_map(|r| r.headers.get("authorization"))
+        .map(|v| v.to_str().unwrap().to_owned())
+        .collect()
+}
+
+/// Both store files with content, so a test can show neither was rewritten.
+fn seed_files(stores: &Stores) -> (Vec<u8>, Vec<u8>) {
+    TeamStore::update(&stores.team_file(), |_| {}).unwrap();
+    std::fs::write(stores.secrets_file(), "[]").unwrap();
+    (
+        std::fs::read(stores.team_file()).unwrap(),
+        std::fs::read(stores.secrets_file()).unwrap(),
+    )
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn env_status_needs_no_account_and_changes_no_store() {
+    let s = server(false).await;
+    me(&s, "Ada Lovelace").await;
+    let stores = Stores::new();
+    let (team, secrets) = seed_files(&stores);
+    let mut status = with_env(&stores, &s.uri());
+    status
+        .env("APINATA_TEST_REPORT_STORE", "1")
+        .args(["team", "status"]);
+    let (code, stdout, stderr) = run_clean(status).await;
+    assert_eq!(code, 0, "{stderr}");
+    assert!(
+        stdout.contains("signed in as Ada Lovelace (ada)")
+            && stdout.contains("(token from APINATA_TEAM_TOKEN)"),
+        "{stdout}"
+    );
+    assert!(!stderr.contains("secret store:"), "{stderr}");
+    assert_eq!(bearers(&s).await, [format!("Bearer {}", env_tok())]);
+    assert_eq!(std::fs::read(stores.team_file()).unwrap(), team);
+    assert_eq!(std::fs::read(stores.secrets_file()).unwrap(), secrets);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn env_status_in_json_names_the_environment_as_the_source() {
+    let s = server(false).await;
+    me(&s, "Ada Lovelace").await;
+    let stores = Stores::new();
+    let mut status = with_env(&stores, &s.uri());
+    status.args(["team", "status", &s.uri(), "--format", "json"]);
+    let (code, stdout, stderr) = run_clean(status).await;
+    assert_eq!(code, 0, "{stderr}");
+    let rows: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(rows[0]["source"], "environment", "{rows}");
+    assert_eq!(rows[0]["state"], "signed_in", "{rows}");
+    assert_eq!(rows[0]["username"], "ada", "{rows}");
+    assert_eq!(rows.as_array().unwrap().len(), 1, "{rows}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_refused_env_token_exits_1_and_keeps_the_kept_sign_in() {
+    let s = server(false).await;
+    let refused = ResponseTemplate::new(401)
+        .set_body_json(json!({"error": {"code": "unauthenticated", "message": "no"}}));
+    answer(&s, "GET", "/api/v1/me", refused).await;
+    let stores = Stores::new();
+    stores.keep(&s.uri(), None);
+    let team = std::fs::read(stores.team_file()).unwrap();
+    let secrets = std::fs::read(stores.secrets_file()).unwrap();
+    let mut status = with_env(&stores, &s.uri());
+    status.args(["team", "status"]);
+    let (code, _, stderr) = run_clean(status).await;
+    assert_eq!(code, 1, "{stderr}");
+    assert!(stderr.contains("APINATA_TEAM_TOKEN"), "{stderr}");
+    assert_eq!(bearers(&s).await, [format!("Bearer {}", env_tok())]);
+    assert_eq!(std::fs::read(stores.team_file()).unwrap(), team);
+    assert_eq!(std::fs::read(stores.secrets_file()).unwrap(), secrets);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_token_without_a_server_exits_3_before_any_request() {
+    let s = server(false).await;
+    me(&s, "Ada Lovelace").await;
+    let stores = Stores::new();
+    stores.keep(&s.uri(), None);
+    for server in [None, Some("")] {
+        let mut status = stores.cmd();
+        status.env("APINATA_TEAM_TOKEN", env_tok());
+        if let Some(server) = server {
+            status.env("APINATA_TEAM_SERVER", server);
+        }
+        status.args(["team", "status"]);
+        let (code, _, stderr) = run_clean(status).await;
+        assert_eq!(code, 3, "{stderr}");
+        assert!(stderr.contains("APINATA_TEAM_SERVER"), "{stderr}");
+    }
+    assert_eq!(calls(&s).await, 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_malformed_token_names_the_variable_and_hides_the_value() {
+    let s = server(false).await;
+    let stores = Stores::new();
+    let mut status = stores.cmd();
+    status
+        .env("APINATA_TEAM_TOKEN", "plk_not-a-real-token-Zq81")
+        .env("APINATA_TEAM_SERVER", s.uri())
+        .args(["team", "status"]);
+    let (code, stdout, stderr) = run_clean(status).await;
+    assert_eq!(code, 3, "{stderr}");
+    assert!(stderr.contains("APINATA_TEAM_TOKEN"), "{stderr}");
+    assert!(!format!("{stdout}{stderr}").contains("Zq81"), "{stderr}");
+    assert_eq!(calls(&s).await, 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_bad_server_variable_names_the_variable() {
+    let stores = Stores::new();
+    let mut status = with_env(&stores, "ftp://nope.invalid");
+    status.args(["team", "status"]);
+    let (code, _, stderr) = run_clean(status).await;
+    assert_eq!(code, 3, "{stderr}");
+    assert!(stderr.contains("APINATA_TEAM_SERVER"), "{stderr}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_empty_token_counts_as_unset() {
+    let s = server(false).await;
+    let stores = Stores::new();
+    let mut status = stores.cmd();
+    status
+        .env("APINATA_TEAM_TOKEN", "")
+        .env("APINATA_TEAM_SERVER", s.uri())
+        .args(["team", "status"]);
+    let (code, _, stderr) = run_clean(status).await;
+    assert_eq!(code, 1, "{stderr}");
+    assert!(stderr.contains("not signed in to any"), "{stderr}");
+    assert_eq!(calls(&s).await, 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_env_token_never_goes_to_another_server() {
+    let kept = server(false).await;
+    me(&kept, "Ada Lovelace").await;
+    let env_server = server(false).await;
+    me(&env_server, "Ada Lovelace").await;
+    let stores = Stores::new();
+    stores.keep(&kept.uri(), None);
+    let mut status = with_env(&stores, &env_server.uri());
+    status.args(["team", "status", "--format", "json"]);
+    let (code, stdout, stderr) = run_clean(status).await;
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    let sent = bearers(&kept).await;
+    assert!(!sent.is_empty());
+    assert!(sent.iter().all(|b| !b.contains(&env_tok())), "{sent:?}");
+    assert_eq!(
+        bearers(&env_server).await,
+        [format!("Bearer {}", env_tok())]
+    );
+    let rows: Vec<Value> = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(rows.len(), 2, "{stdout}");
+
+    // Asked about the kept server only, the environment's server is not reached at all.
+    let mut one = with_env(&stores, &env_server.uri());
+    one.args(["team", "status", &kept.uri()]);
+    let (code, _, stderr) = run_clean(one).await;
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(bearers(&env_server).await.len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_env_token_wins_over_the_keychain_for_its_server() {
+    let s = server(false).await;
+    me(&s, "Ada Lovelace").await;
+    let stores = Stores::new();
+    stores.keep(&s.uri(), None);
+    let mut status = with_env(&stores, &s.uri());
+    status.args(["team", "status", "--format", "json"]);
+    let (code, stdout, stderr) = run_clean(status).await;
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(bearers(&s).await, [format!("Bearer {}", env_tok())]);
+    let rows: Vec<Value> = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(rows.len(), 1, "{stdout}");
+    assert_eq!(rows[0]["source"], "environment");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn env_status_works_with_no_keychain() {
+    let s = server(false).await;
+    me(&s, "Ada Lovelace").await;
+    let stores = Stores::new();
+    let mut status = with_env(&stores, &s.uri());
+    status
+        .env("APINATA_TEST_REPORT_STORE", "1")
+        .args(["team", "status", "--no-keychain"]);
+    let (code, stdout, stderr) = run_clean(status).await;
+    assert_eq!(code, 0, "{stderr}");
+    assert!(
+        stdout.contains("(token from APINATA_TEAM_TOKEN)"),
+        "{stdout}"
+    );
+    assert!(!stderr.contains("secret store:"), "{stderr}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn sign_out_refuses_for_the_env_server_and_deletes_nothing() {
+    let s = server(false).await;
+    answer(&s, "DELETE", "/api/v1/tokens/7", ResponseTemplate::new(204)).await;
+    let stores = Stores::new();
+    stores.keep(&s.uri(), None);
+    let secrets = stores.secrets_text();
+    let mut out = with_env(&stores, &s.uri());
+    out.args(["team", "sign-out", &s.uri()]);
+    let (code, _, stderr) = run_clean(out).await;
+    assert_eq!(code, 3, "{stderr}");
+    assert!(
+        stderr.contains("the token comes from the environment"),
+        "{stderr}"
+    );
+    assert_eq!(stores.accounts().len(), 1);
+    assert_eq!(stores.secrets_text(), secrets);
+    assert_eq!(calls(&s).await, 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn sign_in_ignores_the_variables() {
+    let s = server(false).await;
+    answer(&s, "POST", "/api/v1/session", signed("Ada Lovelace")).await;
+    let stores = Stores::new();
+    let mut cmd = sign_in(&stores, &s.uri(), "hunter2");
+    cmd.env("APINATA_TEAM_TOKEN", env_tok());
+    let (code, _, stderr) = run_clean(cmd).await;
+    assert_eq!(code, 0, "{stderr}");
+    assert!(stores.secrets_text().contains(&tok()));
+    assert!(!stores.secrets_text().contains(&env_tok()));
+}
+
+#[test]
+fn a_template_cannot_read_the_env_token() {
+    let dir = crate::common::write_tree(&[
+        ("opencollection.yml", crate::common::ROOT),
+        (
+            "r.yml",
+            "info:\n  name: r\n  type: http\n  seq: 1\nhttp:\n  method: GET\n  url: \"http://127.0.0.1:1/{{process.env.APINATA_TEAM_TOKEN}}\"\n",
+        ),
+    ]);
+    let home = TempDir::new().unwrap();
+    let out = apinata()
+        .env("HOME", home.path())
+        .env("XDG_CONFIG_HOME", home.path().join("config"))
+        .env("XDG_DATA_HOME", home.path().join("data"))
+        .env("APINATA_TEAM_TOKEN", env_tok())
+        .args(["run", "--no-keychain"])
+        .arg(dir.path())
+        .output()
+        .unwrap();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(!out.status.success(), "{text}");
+    assert!(!text.contains("plk_"), "{text}");
+    assert!(
+        text.contains("variable `process.env.APINATA_TEAM_TOKEN` is not defined"),
+        "{text}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_plain_http_server_that_is_not_local_is_refused() {
+    let stores = Stores::new();
+    let mut status = with_env(&stores, "http://team.invalid");
+    status.args(["team", "status"]);
+    let (code, _, stderr) = run_clean(status).await;
+    assert_eq!(code, 3, "{stderr}");
+    assert!(
+        stderr.contains("APINATA_TEAM_SERVER") && stderr.contains("https"),
+        "{stderr}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_bad_env_token_does_not_block_signing_out_of_another_server() {
+    let s = server(false).await;
+    answer(&s, "DELETE", "/api/v1/tokens/7", ResponseTemplate::new(204)).await;
+    let stores = Stores::new();
+    stores.keep(&s.uri(), None);
+    let mut out = stores.cmd();
+    out.env("APINATA_TEAM_TOKEN", "not-a-token")
+        .env("APINATA_TEAM_SERVER", "https://elsewhere.invalid")
+        .args(["team", "sign-out", &s.uri()]);
+    let (code, _, stderr) = run_clean(out).await;
+    assert_eq!(code, 0, "{stderr}");
+    assert!(stores.accounts().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_bad_env_token_for_this_server_still_refuses_sign_out() {
+    let s = server(false).await;
+    let stores = Stores::new();
+    stores.keep(&s.uri(), None);
+    let mut out = stores.cmd();
+    out.env("APINATA_TEAM_TOKEN", "not-a-token")
+        .env("APINATA_TEAM_SERVER", s.uri())
+        .args(["team", "sign-out", &s.uri()]);
+    let (code, _, stderr) = run_clean(out).await;
+    assert_eq!(code, 3, "{stderr}");
+    assert_eq!(stores.accounts().len(), 1);
+    assert_eq!(calls(&s).await, 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_corrupt_team_file_does_not_hide_the_env_server() {
+    let s = server(false).await;
+    me(&s, "Ada Lovelace").await;
+    let stores = Stores::new();
+    std::fs::write(stores.team_file(), "{ not json").unwrap();
+
+    // Asked about the environment's server alone, the team file is never needed.
+    let mut one = with_env(&stores, &s.uri());
+    one.args(["team", "status", &s.uri()]);
+    let (code, stdout, stderr) = run_clean(one).await;
+    assert_eq!(code, 0, "{stderr}");
+    assert!(
+        stdout.contains("(token from APINATA_TEAM_TOKEN)"),
+        "{stdout}"
+    );
+
+    // Asked about every server, the env row comes first and the file problem still fails.
+    let mut all = with_env(&stores, &s.uri());
+    all.args(["team", "status", "--format", "json"]);
+    let (code, stdout, stderr) = run_clean(all).await;
+    assert_eq!(code, 3, "{stderr}");
+    let rows: Vec<Value> = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(rows.len(), 1, "{stdout}");
+    assert_eq!(rows[0]["source"], "environment");
+    assert!(stderr.contains("error:"), "{stderr}");
+    assert_eq!(
+        std::fs::read_to_string(stores.team_file()).unwrap(),
+        "{ not json"
+    );
+}

@@ -141,6 +141,12 @@ pub async fn sign_out(
     TeamStore::update(team_file, |t| t.remove_account(api.server()))
 }
 
+/// The user `token` belongs to on the server `api` talks to, with no keychain or team file;
+/// a refused token is `Unauthenticated`.
+pub async fn whoami(api: &dyn TeamApi, token: &TeamToken) -> Result<Me, TeamError> {
+    api.me(token).await
+}
+
 /// The signed-in user on this server, refreshing the account's name, admin flag and identity.
 /// Without an account or token it is `Unauthenticated` with no request; a refused token is
 /// deleted while the account stays, so the list can show the server as signed out.

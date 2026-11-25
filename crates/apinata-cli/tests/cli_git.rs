@@ -816,3 +816,26 @@ fn commit_refuses_a_parent_or_absolute_path_outside_the_collection() {
     }
     assert_eq!(head_subject(&sb, &col), "base");
 }
+
+#[cfg(unix)]
+#[test]
+fn git_never_sees_the_team_token() {
+    let sb = Sandbox::new();
+    let col = clean(&sb);
+    let log = sb.path().join("token.log");
+    let body = format!(
+        "#!/bin/sh\nprintf '%s\\n' \"${{APINATA_TEAM_TOKEN-unset}}\" >> '{}'\nexec '{}' \"$@\"\n",
+        log.display(),
+        real_git().display()
+    );
+    let bin = sb.fake_git("token", &body);
+    cli(&sb, &col)
+        .env("PATH", &bin)
+        .env("APINATA_TEAM_TOKEN", format!("plk_{}", "E".repeat(43)))
+        .args(["git", "status"])
+        .assert()
+        .code(0);
+    let seen = fs::read_to_string(&log).unwrap();
+    assert!(!seen.is_empty());
+    assert!(seen.lines().all(|l| l == "unset"), "{seen}");
+}
