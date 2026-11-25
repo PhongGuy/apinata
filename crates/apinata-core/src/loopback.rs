@@ -270,13 +270,18 @@ fn callback_query(head: &str, path: &str, state: Option<&str>) -> Answer {
         .collect();
     let state_ok = state.is_none_or(|want| {
         let got = pairs.iter().find(|(k, _)| k == "state").map(|(_, v)| v);
-        got.is_some_and(|got| got == want)
+        got.is_some_and(|got| same_secret(got, want))
     });
     if state_ok && pairs.iter().any(|(k, _)| k == "code" || k == "error") {
         Answer::Done(pairs)
     } else {
         Answer::Incomplete
     }
+}
+
+/// Compares two secrets in time that does not depend on where they differ.
+pub(crate) fn same_secret(got: &str, want: &str) -> bool {
+    aws_lc_rs::constant_time::verify_slices_are_equal(got.as_bytes(), want.as_bytes()).is_ok()
 }
 
 #[cfg(test)]

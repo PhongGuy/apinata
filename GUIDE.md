@@ -824,15 +824,16 @@ browser.
 
 When the browser cannot reach the waiting port, for example because it runs on
 another machine, paste the address the browser ended on (it starts with
-`http://127.0.0.1:` and ends in `/callback?...`) into the terminal within a
-minute and press Enter; the first valid answer, pasted or from the browser,
-signs you in. A pasted address must be this sign-in's own: the same scheme,
-host, port and path, and the state it was started with. Otherwise the command
-says why, for example "that address belongs to another sign-in", and keeps
-waiting. Lines over 8 KiB are refused, and the end of input stops only the
-pasting, not the wait. The pasted text is shown as you type; the code in it is
-single-use, expires after a minute and only works with a key that never leaves
-the command.
+`http://127.0.0.1:`, or `http://[::1]:` on a machine without IPv4 loopback, and
+ends in `/callback?...`) into the terminal within a minute and press Enter; the
+first valid answer, pasted or from the browser, signs you in. A pasted address
+must be this sign-in's own: the same scheme, host, port and path, and the state
+it was started with. Otherwise the command says why, for example "that address
+belongs to another sign-in", and keeps waiting. Lines over 8 KiB are refused,
+and the end of input stops only the pasting, not the wait. Run as a background
+job (`&`), the command does not offer the paste and waits for the browser only.
+The pasted text is shown as you type; the code in it is single-use, expires
+after a minute and only works with a key that never leaves the command.
 
 `status` checks each kept sign-in with its server and exits 1 when one is
 signed out or has expired; an expired sign-in is reported without asking the

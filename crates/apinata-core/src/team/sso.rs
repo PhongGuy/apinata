@@ -9,14 +9,13 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use aws_lc_rs::constant_time::verify_slices_are_equal;
 use tokio::sync::oneshot;
 use url::Url;
 
 use super::client::api_url;
 use super::session::keep_session;
 use super::{Account, TeamApi, TeamError};
-use crate::loopback::{ListenError, Listener};
+use crate::loopback::{ListenError, Listener, same_secret};
 use crate::pkce::{Pkce, random_b64url};
 use crate::{CancelHandle, SecretStore};
 
@@ -32,7 +31,7 @@ pub struct PendingSso {
     state: String,
     verifier: String,
     paste: SsoPaste,
-    pasted: oneshot::Receiver<Vec<(String, String)>>,
+    pasted: oneshot::Receiver<Answer>,
 }
 
 /// The query pairs of the one answer that ends the wait.
@@ -42,6 +41,7 @@ type Answer = Vec<(String, String)>;
 /// loopback port. Clones share one sign-in; only the first valid answer, pasted or from the
 /// listener, is used.
 #[derive(Clone)]
+#[non_exhaustive]
 pub struct SsoPaste {
     gate: Arc<PasteGate>,
 }
@@ -129,8 +129,20 @@ impl PasteGate {
         if !state_ok {
             return Err(PasteRefused::WrongState);
         }
-        let has = |key: &str| pairs.iter().any(|(k, v)| k == key && !v.is_empty());
-        if !has("error") && !has("code") {
+        // One non-empty error, or else one non-empty code, so `finish` reads what was checked.
+        let only = |key: &str| {
+            let mut found = pairs.iter().filter(|(k, _)| k == key);
+            match (found.next(), found.next()) {
+                (None, _) => None,
+                (Some((_, v)), None) => Some(!v.is_empty()),
+                (Some(_), Some(_)) => Some(false),
+            }
+        };
+        let usable = match only("error") {
+            Some(ok) => ok,
+            None => only("code") == Some(true),
+        };
+        if !usable {
             return Err(PasteRefused::NoCode);
         }
         Ok(pairs)
@@ -141,11 +153,6 @@ impl PasteGate {
         let mut slot = self.slot.lock().unwrap_or_else(PoisonError::into_inner);
         slot.take().is_some()
     }
-}
-
-/// Compares two secrets in time that does not depend on where they differ.
-fn same_secret(got: &str, want: &str) -> bool {
-    verify_slices_are_equal(got.as_bytes(), want.as_bytes()).is_ok()
 }
 
 impl fmt::Debug for PendingSso {

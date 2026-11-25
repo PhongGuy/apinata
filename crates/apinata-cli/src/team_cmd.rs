@@ -345,8 +345,11 @@ async fn sso_sign_in(
         SSO_TIMEOUT.as_secs() / 60
     );
     eprintln!("Over SSH, forward the port first: ssh -L {port}:{host}:{port} <host>");
-    eprintln!("Or paste the address your browser ended on (within a minute):");
-    read_pastes(pending.paste_handle());
+    // A background job that reads the terminal is stopped whole, listener included.
+    if !stdin_is_background_terminal() {
+        eprintln!("Or paste the address your browser ended on (within a minute):");
+        read_pastes(pending.paste_handle());
+    }
     let finished = pending.finish(api, &**secrets, file, SSO_TIMEOUT, handle);
     // A refused redeem is about the browser sign-in, not a username and password.
     finished.await.map_err(|e| match e {
@@ -383,6 +386,19 @@ fn read_pastes(paste: team::SsoPaste) {
             }
         }
     });
+}
+
+/// True when stdin is a terminal whose foreground job is not this process, as for `cmd &`.
+#[cfg(unix)]
+fn stdin_is_background_terminal() -> bool {
+    // SAFETY: isatty, tcgetpgrp and getpgrp only read the state of descriptor 0 and this
+    // process.
+    unsafe { libc::isatty(0) == 1 && libc::tcgetpgrp(0) != libc::getpgrp() }
+}
+
+#[cfg(not(unix))]
+fn stdin_is_background_terminal() -> bool {
+    false
 }
 
 enum Pasted {

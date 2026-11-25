@@ -203,3 +203,121 @@ fn ctrl_c_while_single_sign_on_waits_for_a_paste_exits_130_with_the_terminal_int
     assert!(run.echo_after, "the terminal was left without echo");
     assert!(!dir.path().join("team.json").exists());
 }
+
+/// Kills the child and fails the test with what it printed.
+fn fail(child: &mut std::process::Child, why: &str, seen: &str) -> ! {
+    let _ = child.kill();
+    let _ = child.wait();
+    panic!("{why}; output so far: {seen:?}");
+}
+
+/// Plays the browser landing on the loopback `port` with a code; true once it got a page.
+fn browser_returns(port: u16, state: &str) -> bool {
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    let Ok(mut s) = std::net::TcpStream::connect_timeout(&addr, LIMIT) else {
+        return false;
+    };
+    let _ = s.set_read_timeout(Some(Duration::from_secs(5)));
+    let request = format!(
+        "GET /callback?code=the-code&state={state} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n"
+    );
+    let mut page = String::new();
+    s.write_all(request.as_bytes()).is_ok()
+        && s.read_to_string(&mut page).is_ok()
+        && page.starts_with("HTTP/1.1 200")
+}
+
+#[test]
+fn a_sign_in_run_as_a_background_job_skips_the_paste_and_still_signs_in() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let s = runtime.block_on(async {
+        let s = crate::cli_team::server(true).await;
+        let redeem = crate::cli_team::signed("Ada Lovelace");
+        crate::cli_team::answer(&s, "POST", "/api/v1/oidc/redeem", redeem).await;
+        s
+    });
+    let dir = tempfile::TempDir::new().unwrap();
+    // A job-control shell on the pty runs the sign-in as a background job, as `cmd &` does.
+    let inner = apinata_std();
+    let mut cmd = std::process::Command::new("bash");
+    cmd.args(["-c", "set -m; \"$@\" & wait $!", "job"])
+        .arg(inner.get_program())
+        .args(["team", "sign-in", &s.uri(), "--sso", "--no-browser"]);
+    for (key, value) in inner.get_envs() {
+        match value {
+            Some(value) => cmd.env(key, value),
+            None => cmd.env_remove(key),
+        };
+    }
+    cmd.env("APINATA_TEST_TEAM_FILE", dir.path().join("team.json"))
+        .env("APINATA_TEST_SECRETS_FILE", dir.path().join("secrets.json"));
+    let (master, slave) = open_pty();
+    cmd.stdin(Stdio::from(slave.try_clone().unwrap()))
+        .stdout(Stdio::from(slave.try_clone().unwrap()))
+        .stderr(Stdio::from(slave.try_clone().unwrap()));
+    // SAFETY: as in `on_pty`, only the child's own session is touched between fork and exec.
+    unsafe {
+        cmd.pre_exec(|| {
+            if libc::setsid() < 0 || libc::ioctl(0, libc::TIOCSCTTY as _, 0) < 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    let mut child = cmd.spawn().unwrap();
+    drop(cmd);
+    drop(slave);
+    let (tx, rx) = mpsc::channel();
+    let mut reader = master.try_clone().unwrap();
+    std::thread::spawn(move || {
+        let mut buf = [0u8; 256];
+        while let Ok(n) = reader.read(&mut buf) {
+            if n == 0 || tx.send(buf[..n].to_vec()).is_err() {
+                break;
+            }
+        }
+    });
+    let mut seen = String::new();
+    let deadline = Instant::now() + LIMIT;
+    while !seen.contains("Ctrl+C") {
+        match rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+            Ok(bytes) => seen.push_str(&String::from_utf8_lossy(&bytes)),
+            Err(_) => fail(&mut child, "no wait line", &seen),
+        }
+    }
+    let start = seen
+        .split_whitespace()
+        .find_map(|word| {
+            url::Url::parse(word)
+                .ok()
+                .filter(|u| u.path() == "/api/v1/oidc/start")
+        })
+        .unwrap_or_else(|| fail(&mut child, "no start URL", &seen));
+    let value = |key: &str| {
+        start
+            .query_pairs()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.into_owned())
+            .unwrap_or_default()
+    };
+    let port: u16 = value("port").parse().unwrap();
+    // A process stopped for reading the terminal from the background never answers.
+    if !browser_returns(port, &value("state")) {
+        fail(&mut child, "the loopback did not answer", &seen);
+    }
+    let status = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break status;
+        }
+        if Instant::now() >= deadline + LIMIT {
+            fail(&mut child, "the sign-in did not finish", &seen);
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    while let Ok(bytes) = rx.recv_timeout(Duration::from_millis(200)) {
+        seen.push_str(&String::from_utf8_lossy(&bytes));
+    }
+    assert_eq!(status.code(), Some(0), "{seen:?}");
+    assert!(!seen.contains("Or paste"), "{seen:?}");
+    assert!(dir.path().join("team.json").exists(), "{seen:?}");
+}

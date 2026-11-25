@@ -3,7 +3,7 @@
 
 use crate::common::potluck::*;
 use crate::team_sso::{
-    callback_addr, file, fresh, nothing_kept, param, port_closes, redeem_bodies, redeemed,
+    callback_addr, file, fresh, land, nothing_kept, param, port_closes, redeem_bodies, redeemed,
 };
 use apinata_core::CancelHandle;
 use apinata_core::team::{self, PasteRefused, TeamError};
@@ -23,7 +23,9 @@ async fn settle() {
 /// Plays a browser landing on the loopback that may already have closed, as when a paste won.
 async fn land_quietly(addr: SocketAddr, query: String) {
     let _ = tokio::task::spawn_blocking(move || {
-        let mut s = TcpStream::connect(addr).ok()?;
+        let mut s = TcpStream::connect_timeout(&addr, LONG).ok()?;
+        s.set_read_timeout(Some(LONG)).ok()?;
+        s.set_write_timeout(Some(LONG)).ok()?;
         write!(s, "GET /callback?{query} HTTP/1.1\r\nHost: {addr}\r\n\r\n").ok()?;
         let mut out = String::new();
         s.read_to_string(&mut out).ok()
@@ -94,6 +96,40 @@ async fn each_bad_paste_is_refused_for_its_reason_and_the_wait_goes_on() {
         (
             at(&format!("/callback?code=&state={state}")),
             PasteRefused::NoCode,
+        ),
+        (
+            at(&format!("/callback?code=&code=forged-code&state={state}")),
+            PasteRefused::NoCode,
+        ),
+        (
+            at(&format!("/callback?code=forged-code&code=c&state={state}")),
+            PasteRefused::NoCode,
+        ),
+        (
+            at(&format!("/callback?error=&code=forged-code&state={state}")),
+            PasteRefused::NoCode,
+        ),
+        (
+            at(&format!(
+                "/callback?error=oidc_refused&error=x&state={state}"
+            )),
+            PasteRefused::NoCode,
+        ),
+        (
+            at(&format!("/callback/?code=forged-code&state={state}")),
+            PasteRefused::NotThisAddress,
+        ),
+        (
+            at(&format!("/%63allback?code=forged-code&state={state}")),
+            PasteRefused::NotThisAddress,
+        ),
+        (
+            format!("http://[::1]:{port}/callback?code=forged-code&state={state}"),
+            PasteRefused::NotThisAddress,
+        ),
+        (
+            at(&format!("/callback#code=forged-code&state={state}")),
+            PasteRefused::WrongState,
         ),
     ];
     let user = async {
@@ -223,4 +259,61 @@ async fn a_paste_racing_the_listener_redeems_exactly_one_code() {
         }
         assert!(port_closes(addr), "the listener is still open");
     }
+}
+
+#[tokio::test]
+async fn a_paste_after_the_listener_won_is_finished_and_only_the_browser_code_is_redeemed() {
+    let (s, dir, secrets) = fresh().await;
+    answer(&s, "POST", REDEEM, redeemed(9, EXPIRES)).await;
+    let api = client(&s);
+    let pending = team::begin_sso(&api).await.unwrap();
+    let start = pending.url().to_owned();
+    let (state, addr) = (param(&start, "state"), callback_addr(&start));
+    let paste = pending.paste_handle();
+    let (cancel, team_file) = (CancelHandle::new(), file(&dir));
+    let (got, page) = tokio::join!(
+        pending.finish(&api, &secrets, &team_file, LONG, &cancel),
+        land(addr, format!("code=from-listener&state={state}"))
+    );
+    assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+    assert_eq!(got.unwrap().token_id, "9");
+    let text = format!(
+        "http://127.0.0.1:{}/callback?code=from-paste&state={state}",
+        addr.port()
+    );
+    assert_eq!(paste.submit(&text), Err(PasteRefused::Finished));
+    let bodies = redeem_bodies(&s).await;
+    assert_eq!(bodies.len(), 1);
+    assert_eq!(bodies[0]["code"], "from-listener");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_browser_return_just_after_a_paste_is_not_redeemed() {
+    let (s, dir, secrets) = fresh().await;
+    answer(&s, "POST", REDEEM, redeemed(9, EXPIRES)).await;
+    let api = client(&s);
+    let pending = team::begin_sso(&api).await.unwrap();
+    let start = pending.url().to_owned();
+    let (state, addr) = (param(&start, "state"), callback_addr(&start));
+    let paste = pending.paste_handle();
+    let text = format!(
+        "http://127.0.0.1:{}/callback?code=from-paste&state={state}",
+        addr.port()
+    );
+    let (cancel, team_file) = (CancelHandle::new(), file(&dir));
+    let (got, sent) = tokio::join!(
+        pending.finish(&api, &secrets, &team_file, LONG, &cancel),
+        async {
+            settle().await;
+            let sent = paste.submit(&text);
+            land_quietly(addr, format!("code=from-listener&state={state}")).await;
+            sent
+        }
+    );
+    assert_eq!(sent, Ok(()));
+    assert_eq!(got.unwrap().token_id, "9");
+    let bodies = redeem_bodies(&s).await;
+    assert_eq!(bodies.len(), 1);
+    assert_eq!(bodies[0]["code"], "from-paste");
+    assert!(port_closes(addr), "the listener is still open");
 }
