@@ -374,3 +374,30 @@ fn the_team_token_is_not_in_the_process_environment() {
         url_of(&c, &ctx, "r.yml")
     );
 }
+
+#[test]
+fn the_team_token_is_left_out_in_any_letter_case() {
+    let dir = write_tree(&[
+        (
+            "opencollection.yml",
+            "opencollection: \"1.0.0\"\ninfo:\n  name: t\n",
+        ),
+        (
+            "r.yml",
+            &http("https://x.test/{{process.env.apinata_team_token}}", ""),
+        ),
+    ]);
+    let c = Collection::open(dir.path()).expect("open");
+    let options =
+        ContextOptions::new().process_env([("apinata_team_token", "plk_from-the-ci-job")]);
+    let ctx = VarContext::new(&c, options).expect("context");
+    assert!(
+        matches!(
+            url_of(&c, &ctx, "r.yml"),
+            Err(ResolveError::UndefinedVariable { name, .. })
+                if name == "process.env.apinata_team_token"
+        ),
+        "{:?}",
+        url_of(&c, &ctx, "r.yml")
+    );
+}

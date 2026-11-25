@@ -1357,7 +1357,8 @@ fn process_namespace(
     });
     let mut env: Vars = pairs
         .into_iter()
-        .filter(|(k, _)| k != crate::team::TEAM_TOKEN_VAR)
+        // Any letter case, since a Windows environment finds the variable regardless of it.
+        .filter(|(k, _)| !k.eq_ignore_ascii_case(crate::team::TEAM_TOKEN_VAR))
         .map(|(k, v)| (k, Value::String(v)))
         .collect();
     let path = root.join(".env");

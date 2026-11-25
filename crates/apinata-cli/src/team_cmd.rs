@@ -162,18 +162,22 @@ struct EnvToken {
     token: TeamToken,
 }
 
-/// Reads `APINATA_TEAM_TOKEN` and `APINATA_TEAM_SERVER`, an empty one counting as unset. A token
-/// needs its server, and both are parsed here; no error ever shows either value.
-fn env_token() -> Result<Option<EnvToken>, Failure> {
-    let read = |name: &str| match std::env::var_os(name) {
+/// The variable's text, an empty one counting as unset; the error never shows the value.
+fn read_var(name: &str) -> Result<Option<String>, Failure> {
+    match std::env::var_os(name) {
         None => Ok(None),
         Some(value) if value.is_empty() => Ok(None),
         Some(value) => value
             .into_string()
             .map(Some)
             .map_err(|_| Failure::usage(format!("{name} is not valid text"))),
-    };
-    let Some(token) = read(TEAM_TOKEN_VAR)? else {
+    }
+}
+
+/// Reads `APINATA_TEAM_TOKEN` and `APINATA_TEAM_SERVER`. A token needs its server, both are
+/// parsed here, and plain http to another machine is refused, since the token is long-lived.
+fn env_token() -> Result<Option<EnvToken>, Failure> {
+    let Some(token) = read_var(TEAM_TOKEN_VAR)? else {
         return Ok(None);
     };
     let token = TeamToken::parse(&token).map_err(|_| {
@@ -181,14 +185,26 @@ fn env_token() -> Result<Option<EnvToken>, Failure> {
             "{TEAM_TOKEN_VAR} does not hold a team token; copy the whole token the server showed"
         ))
     })?;
-    let Some(server) = read(TEAM_SERVER_VAR)? else {
+    let Some(server) = read_var(TEAM_SERVER_VAR)? else {
         return Err(Failure::usage(format!(
             "{TEAM_TOKEN_VAR} is set but {TEAM_SERVER_VAR} is not; set it to the server the token is for"
         )));
     };
     let server =
         ServerUrl::parse(&server).map_err(|e| Failure::usage(format!("{TEAM_SERVER_VAR}: {e}")))?;
+    if server.is_unencrypted() {
+        return Err(Failure::usage(format!(
+            "{TEAM_SERVER_VAR} is a plain http address, so the token would be sent unencrypted; use https"
+        )));
+    }
     Ok(Some(EnvToken { server, token }))
+}
+
+/// The server a token in the environment is meant for, however well-formed the token is, so
+/// sign-out can refuse for it alone.
+fn env_server() -> Option<ServerUrl> {
+    read_var(TEAM_TOKEN_VAR).ok().flatten()?;
+    ServerUrl::parse(&read_var(TEAM_SERVER_VAR).ok().flatten()?).ok()
 }
 
 fn runtime() -> Result<tokio::runtime::Runtime, Failure> {
@@ -360,7 +376,7 @@ fn signed_in_line(account: &Account, shown_server: &str) -> String {
 fn sign_out(server: &str, no_keychain: bool) -> Result<u8, Failure> {
     let server = parse_server(server)?;
     let shown_server = shown(server.as_str());
-    if env_token()?.is_some_and(|env| env.server == server) {
+    if env_server().is_some_and(|env| env == server) {
         return Err(Failure::usage(format!(
             "{shown_server} uses {TEAM_TOKEN_VAR}, and the token comes from the environment; unset the variable, or revoke the token on the server"
         )));
@@ -448,11 +464,20 @@ impl Row {
 fn status(server: Option<&str>, format: Format, no_keychain: bool) -> Result<u8, Failure> {
     let env = env_token()?;
     let file = the_team_file()?;
-    let store = TeamStore::load(&file)?;
     let wanted = server.map(parse_server).transpose()?;
     // The environment's server is checked with its token alone; its kept account, if any, is
     // left out, and every other server is checked through the keychain as before.
     let env = env.filter(|env| wanted.as_ref().is_none_or(|w| *w == env.server));
+    // Asked about the env server alone, the team file is not read; asked about all, a file that
+    // cannot be read fails only the other servers.
+    let (store, unreadable) = match (env.is_some(), wanted.is_some()) {
+        (true, true) => (TeamStore::default(), None),
+        (true, false) => match TeamStore::load(&file) {
+            Ok(store) => (store, None),
+            Err(e) => (TeamStore::default(), Some(Failure::from(e))),
+        },
+        (false, _) => (TeamStore::load(&file)?, None),
+    };
     let accounts: Vec<Account> = match &wanted {
         Some(server) => store.account(server).cloned().into_iter().collect(),
         None => store.accounts().to_vec(),
@@ -483,6 +508,10 @@ fn status(server: Option<&str>, format: Format, no_keychain: bool) -> Result<u8,
         let (row, row_code) = check_env(env, &runtime);
         code = code.max(row_code);
         rows.extend(row);
+    }
+    if let Some(failure) = unreadable {
+        eprintln!("error: {}", shown(&failure.message));
+        code = code.max(failure.code);
     }
     for account in &accounts {
         let (row, row_code) = check(account, secrets.as_ref(), &file, &runtime);

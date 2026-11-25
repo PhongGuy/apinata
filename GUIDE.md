@@ -845,11 +845,14 @@ APINATA_TEAM_TOKEN)` (`"source": "environment"` in JSON), and a token the server
 refuses exits 1 without changing the keychain or the team file. `sign-out`
 refuses for that server, since the token comes from the environment, and
 `sign-in` ignores both variables. An empty variable counts as unset. A token
-without `APINATA_TEAM_SERVER`, or a value that is not a token or an address,
-exits 3 before any request, naming the variable but never its value. The
-token is kept out of `{{process.env.*}}` and scripts, so
+without `APINATA_TEAM_SERVER`, a value that is not a token or an address, or a
+plain `http://` address to another machine, exits 3 before any request, naming
+the variable but never its value; use `https://`. The token is kept out of
+`{{process.env.*}}` and scripts in any letter case, so
 `{{process.env.APINATA_TEAM_TOKEN}}` is an undefined variable, and out of every
-program Apinata starts, git included. The desktop app ignores both variables.
+program the CLI starts, git included. The desktop app never reads either
+variable, but if it is started from a shell that holds the token, the browser
+or system app it opens a link or file with can inherit it.
 
 To get a token for CI, have a server admin create a dedicated user with only
 the grants the job needs, sign in as that user, and mint a personal access
