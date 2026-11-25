@@ -74,20 +74,18 @@ pub fn scoped(
 }
 
 /// A picker row's content: `name` (`name_id`) led by its dot (`dot_id`) when it has a `fill`,
-/// or by a dot's space when another row has one (`any`), so every name starts in line.
+/// or by a dot's space without one, so every name in the menu starts in line.
 pub fn picker_row(
     (dot_id, name_id): (&'static str, &'static str),
     fill: Option<Hsla>,
-    any: bool,
     name: SharedString,
 ) -> impl IntoElement {
-    let dot = (fill.is_some() || any).then(|| dot_or_space(dot_id, fill));
     // The end padding keeps a cut name's ellipsis off the kit's check mark.
     h_flex()
         .min_w_0()
         .gap(SPACE_1)
         .pr(SPACE_1)
-        .children(dot)
+        .child(dot_or_space(dot_id, fill))
         .child(
             div()
                 .id(name_id)

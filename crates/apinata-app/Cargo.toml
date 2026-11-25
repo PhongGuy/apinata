@@ -54,6 +54,7 @@ gpui-kit = { workspace = true, features = ["test-support"] }
 wiremock.workspace = true
 tokio = { workspace = true, features = ["net", "io-util"] }
 tokio-tungstenite = { workspace = true, features = ["handshake"] }
+tokio-rustls.workspace = true
 
 # Packaging config without secrets; `cargo xtask packager-config` completes it per build.
 [package.metadata.packager]

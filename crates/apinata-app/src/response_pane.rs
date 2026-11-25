@@ -41,7 +41,7 @@ use gpui_kit::{
 };
 
 use crate::app::AppState;
-use crate::body_text::{encoded_size_label, format_size, format_time, size_labels};
+use crate::body_text::{format_size, format_time, size_labels};
 use crate::body_view::{BodyView, SCRUBBED_TIP, SetVariable, Shown};
 use crate::compare_rows::{ComparePalette, RevealHeader, RowActions, Toggle, compare_row};
 use crate::compare_source::{self, CompareSide, CompareSource, HeaderValue, SourceChoice};
@@ -61,6 +61,7 @@ use crate::follow_url::{OPEN_URL, OpenUrl, follow_target};
 use crate::kv_grid::{ActionShow, KvColumn, action_slot};
 use crate::last_response::{self, KeptAs, KeptSend, ResponseStore, StoreOp, Stored};
 use crate::live_stream::{self, EventFilter, EventRow, EventTimes, FilterSource};
+use crate::network_cards;
 use crate::request_editor::{SendRequest, ShowRequestSettings};
 use crate::save_example;
 use crate::scroll_follow::{FocusFollow, Followed};
@@ -2521,7 +2522,12 @@ impl ResponsePane {
         // and the tooltip keeps the whole peer.
         let peer = r.peer_label().filter(|_| !compact);
         let address = peer.map(|peer| {
-            let tip = SharedString::from(peer.clone());
+            // Its hover card says how the answer travelled, the whole peer on the first line.
+            let card = network_cards::connection_lines(r);
+            let tip = match card.is_empty() {
+                true => SharedString::from(peer.clone()),
+                false => SharedString::from(card.join("\n")),
+            };
             div()
                 .id("response-address")
                 .test_support()
@@ -2615,7 +2621,14 @@ impl ResponsePane {
                 .into_any_element()
         }));
         if self.elapsed {
-            before.push(muted("response-time", format_time(r.response_time())).into_any_element());
+            // The time's hover card is the timing bar's breakdown; an untimed response has none.
+            let time = muted("response-time", format_time(r.response_time()));
+            let tip = timing_lines(r).join("\n");
+            let time = match tip.is_empty() {
+                true => time,
+                false => time.tooltip(ui::text_tooltip("response-time-tooltip", tip)),
+            };
+            before.push(time.into_any_element());
         }
         let kept = self.send.read(cx).restored().is_some();
         // An ended stream keeps the slot its live line reserved, timed or not.
@@ -2634,14 +2647,8 @@ impl ResponsePane {
                 .aria_label(format!("{size_text}, cut at {cut}")),
             None => size,
         };
-        let wire = (r.encoded_size().filter(|&wire| wire > 0))
-            .map(|wire| encoded_size_label(wire, r.size()));
-        let cut_tip = cut_text.map(|cut| format!("Cut at {cut}"));
-        let tip = [cut_tip, wire].into_iter().flatten().collect::<Vec<_>>();
-        let size = match tip.is_empty() {
-            true => size,
-            false => size.tooltip(ui::text_tooltip("response-size-tooltip", tip.join("\n"))),
-        };
+        let tip = network_cards::size_lines(r, &size_text, cut_text.as_deref()).join("\n");
+        let size = size.tooltip(ui::text_tooltip("response-size-tooltip", tip));
         before.push(size.into_any_element());
         let mut after: Vec<AnyElement> = r
             .stream_end()
@@ -2699,7 +2706,7 @@ impl ResponsePane {
         if segs.is_empty() {
             return None;
         }
-        let tip = timing_bar::tooltip_lines(&phases).join("\n");
+        let tip = timing_lines(r).join("\n");
         let theme = cx.theme();
         let parts = segs.into_iter().map(|seg| {
             let (id, colour) = match seg.kind {
@@ -6796,6 +6803,8 @@ fn status_cell(status: u16, reason: &str, probe: &Rc<Cell<Pixels>>) -> AnyElemen
         "" => status.to_string(),
         reason => format!("{status} {reason}"),
     };
+    // Its hover card says what the code means; an unregistered code has none.
+    let tip = apinata_core::status_description(status);
     div()
         .id("response-status")
         .test_support()
@@ -6804,7 +6813,19 @@ fn status_cell(status: u16, reason: &str, probe: &Rc<Cell<Pixels>>) -> AnyElemen
         .aria_label(words)
         .child(ui::status_pill(status, reason))
         .child(width_probe(probe))
+        .when_some(tip, |cell, tip| {
+            cell.tooltip(ui::text_tooltip("response-status-tooltip", tip))
+        })
         .into_any_element()
+}
+
+// The final hop's timing breakdown, which the timing bar and the time label both show on
+// hover; empty when that hop was not timed.
+fn timing_lines(r: &Response) -> Vec<String> {
+    (r.timeline().last())
+        .and_then(|hop| hop.timing.as_ref())
+        .map(|timing| timing_bar::tooltip_lines(&Phases::from(timing)))
+        .unwrap_or_default()
 }
 
 // The timing bar's room with nothing in it, so a bar that lands later moves nothing.
