@@ -160,6 +160,7 @@ mod button_focus_ring;
 mod changes_dialog;
 mod changes_dialog_commit;
 mod changes_dialog_diff_edges;
+mod changes_dialog_discard;
 mod changes_dialog_dotenv;
 mod changes_dialog_gone;
 mod changes_dialog_identity;

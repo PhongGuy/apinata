@@ -10,6 +10,8 @@ pub use autosync::{
 mod branch;
 mod clone;
 mod diff;
+mod discard;
+pub use discard::{DiscardError, Discarded, discard, undo_discard};
 mod dotenv;
 pub(crate) use diff::hunks_within;
 pub use diff::text_hunks;
