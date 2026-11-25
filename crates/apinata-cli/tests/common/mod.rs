@@ -78,6 +78,21 @@ pub fn apinata_std() -> std::process::Command {
     cmd
 }
 
+/// [`apinata_std`] started through `wrapper` with `before` ahead of the binary's path, such
+/// as a shell that runs it as a job; it carries the same pinned environment.
+pub fn apinata_wrapped(wrapper: &str, before: &[&str]) -> std::process::Command {
+    let inner = apinata_std();
+    let mut cmd = std::process::Command::new(wrapper);
+    cmd.args(before).arg(inner.get_program());
+    for (key, value) in inner.get_envs() {
+        match value {
+            Some(value) => cmd.env(key, value),
+            None => cmd.env_remove(key),
+        };
+    }
+    cmd
+}
+
 /// [`apinata`] as a `tokio::process::Command`.
 pub fn apinata_tokio() -> tokio::process::Command {
     tokio::process::Command::from(apinata_std())

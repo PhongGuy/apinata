@@ -238,17 +238,8 @@ fn a_sign_in_run_as_a_background_job_skips_the_paste_and_still_signs_in() {
     });
     let dir = tempfile::TempDir::new().unwrap();
     // A job-control shell on the pty runs the sign-in as a background job, as `cmd &` does.
-    let inner = apinata_std();
-    let mut cmd = std::process::Command::new("bash");
-    cmd.args(["-c", "set -m; \"$@\" & wait $!", "job"])
-        .arg(inner.get_program())
-        .args(["team", "sign-in", &s.uri(), "--sso", "--no-browser"]);
-    for (key, value) in inner.get_envs() {
-        match value {
-            Some(value) => cmd.env(key, value),
-            None => cmd.env_remove(key),
-        };
-    }
+    let mut cmd = common::apinata_wrapped("bash", &["-c", "set -m; \"$@\" & wait $!", "job"]);
+    cmd.args(["team", "sign-in", &s.uri(), "--sso", "--no-browser"]);
     cmd.env("APINATA_TEST_TEAM_FILE", dir.path().join("team.json"))
         .env("APINATA_TEST_SECRETS_FILE", dir.path().join("secrets.json"));
     let (master, slave) = open_pty();
