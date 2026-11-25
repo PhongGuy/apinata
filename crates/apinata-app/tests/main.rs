@@ -720,6 +720,7 @@ mod var_fields;
 mod var_prompt;
 mod var_tokens;
 mod var_url;
+mod variables_dock;
 mod variables_overview;
 mod version;
 mod watch_dirs;

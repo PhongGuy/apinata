@@ -109,17 +109,6 @@ fn the_zoom_keys_reach_the_global_environments(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn the_zoom_keys_reach_the_variables_overview(cx: &mut TestAppContext) {
-    let col = two_requests();
-    let s = started(cx, &col);
-    cx.update_window(s.win, |_, w, cx| {
-        apinata_app::variables_overview::open_failed(w, cx);
-    })
-    .unwrap();
-    zoom_keys_reach(cx, &s, "Variables overview", None);
-}
-
-#[gpui_kit::test]
 fn the_zoom_keys_reach_the_search_dialog(cx: &mut TestAppContext) {
     let col = two_requests();
     let s = started(cx, &col);

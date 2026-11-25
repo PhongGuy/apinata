@@ -79,6 +79,21 @@ impl Token {
     }
 }
 
+/// The name of the placeholder the caret at byte `cursor` touches, braces included, else the
+/// partial name being typed after an open `{{`.
+pub fn name_at(text: &str, cursor: usize) -> Option<String> {
+    let whole = placeholders(text)
+        .into_iter()
+        .find(|(range, _)| range.start <= cursor && cursor <= range.end)
+        .map(|(_, name)| name.trim().to_owned());
+    whole
+        .or_else(|| {
+            let q = var_complete::query_at(text, cursor)?;
+            text.get(q.replace).map(str::to_owned)
+        })
+        .filter(|name| !name.is_empty())
+}
+
 /// Every placeholder in `text`, classified against `vars`.
 pub fn tokens(text: &str, vars: &VariableSet) -> Vec<Token> {
     placeholders(text)
