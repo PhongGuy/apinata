@@ -8,7 +8,7 @@ use crate::git_sync::local_commit;
 use std::fs;
 
 use apinata_core::team::{
-    Finding, Identity, SyncFailure, TeamAuth, classify, redact_token, team_options,
+    Finding, Identity, SyncFailure, TeamAuth, classify, escape_hidden, redact_token, team_options,
 };
 use apinata_core::{CancelFlag, SyncError, commit_all, push};
 
@@ -176,6 +176,34 @@ fn a_line_with_a_malformed_escape_is_ignored() {
         "potluck-reject c r ok rule",
     ]);
     assert_eq!(got, [("r".to_owned(), "ok".to_owned())]);
+}
+
+#[test]
+fn a_decoded_ref_and_path_keep_format_characters_exactly() {
+    let got =
+        refused(&["potluck-reject c refs/heads/a%E2%80%AEb x%E2%80%A8%C2%85y%E2%80%8Dz.yml rule"]);
+    assert_eq!(
+        got,
+        [(
+            "refs/heads/a\u{202E}b".to_owned(),
+            "x\u{2028}\u{85}y\u{200D}z.yml".to_owned()
+        )]
+    );
+}
+
+#[test]
+fn hidden_characters_are_shown_escaped() {
+    assert_eq!(
+        escape_hidden("a\u{202E}b\u{2028}c\u{2029}d\u{85}e\u{200D}f\u{7}g\ttab"),
+        "a\\u{202E}b\\u{2028}c\\u{2029}d\\u{85}e\\u{200D}f\\u{7}g\\u{9}tab"
+    );
+}
+
+#[test]
+fn ordinary_text_is_shown_unchanged() {
+    for text in ["café/日本語.yml", "refs/heads/main", "naïve Ünïcode ✓", ""] {
+        assert_eq!(escape_hidden(text), text);
+    }
 }
 
 /// The (rule, detail) pairs the findings of a refusal carry, for the lines given.

@@ -19,6 +19,7 @@ mod resume;
 mod session;
 mod sso;
 mod store;
+mod visible;
 
 pub use auth::{Identity, TeamAuth, redact_token, team_options};
 pub use client::{HttpTeamClient, TOKEN_NAME, TeamApi, TeamFuture};
@@ -37,6 +38,7 @@ pub use resume::{Resumed, Standing, resume};
 pub use session::{current, kept_token, sign_in, sign_out};
 pub use sso::{PendingSso, SSO_TIMEOUT, begin_sso};
 pub use store::{Account, Binding, TeamStore, token_key};
+pub use visible::escape_hidden;
 
 /// The workspace kind the server keeps for Apinata collections.
 pub const APINATA_KIND: &str = "apinata";
