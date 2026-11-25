@@ -101,6 +101,10 @@ pub fn run(args: &TeamArgs) -> ExitCode {
     };
     match result {
         Ok(code) => ExitCode::from(code),
+        Err(failure) if failure.code == EXIT_CANCELLED => {
+            eprintln!("{}", failure.message);
+            ExitCode::from(failure.code)
+        }
         Err(failure) => {
             eprintln!("error: {}", shown(&failure.message));
             ExitCode::from(failure.code)
@@ -114,7 +118,7 @@ fn shown(text: &str) -> String {
     escape_hidden(&redact_token(text))
 }
 
-/// The Decision's exit codes: refusals are 1, the server's own trouble 2, local trouble 3.
+/// Refusals and signed-out or expired sign-ins are 1, the server's own trouble 2, local trouble 3.
 fn code_for(e: &TeamError) -> u8 {
     match e {
         TeamError::Offline(_)
@@ -162,11 +166,23 @@ fn sign_in_hint(server: &str) -> String {
 
 /// The password from stdin or a hidden prompt, without its line ending; empty is refused.
 fn password() -> Result<String, Failure> {
-    let line = crate::env_cmd::read_secret_line("Password: ")
-        .map_err(|e| Failure::usage(format!("{e:#}")))?;
+    use std::io::IsTerminal as _;
+    let line = crate::env_cmd::read_secret_line("Password: ").map_err(|e| {
+        match e.downcast_ref::<crate::env_cmd::PromptCancelled>() {
+            Some(cancelled) => Failure {
+                code: EXIT_CANCELLED,
+                message: cancelled.to_string(),
+            },
+            None => Failure::usage(format!("{e:#}")),
+        }
+    })?;
     let line = line.trim_end_matches(['\r', '\n']);
     if line.is_empty() {
-        return Err(Failure::usage("the password on stdin is empty"));
+        return Err(Failure::usage(if std::io::stdin().is_terminal() {
+            "the password is empty"
+        } else {
+            "the password on stdin is empty"
+        }));
     }
     Ok(line.to_owned())
 }
@@ -180,7 +196,7 @@ fn sign_in(
     let server = parse_server(server)?;
     refuse_without_keychain(no_keychain, "sign-in")?;
     let file = the_team_file()?;
-    // Read before the Ctrl+C handler exists, so Ctrl+C at the prompt ends the process at once.
+    // The prompt handles its own Ctrl+C, so it comes before the handler for the sign-in.
     let password = match username {
         Some(_) if !sso => Some(password()?),
         _ => None,
@@ -195,15 +211,15 @@ fn sign_in(
         // The handler must exist before anything is sent, or an early Ctrl+C kills the process
         // with nothing revoked.
         #[cfg(unix)]
-        let mut interrupt =
-            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
-                .map_err(|e| Failure::usage(e.to_string()))?;
+        let interrupt = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt());
+        #[cfg(windows)]
+        let interrupt = tokio::signal::windows::ctrl_c();
+        let mut interrupt = interrupt.map_err(|e| Failure::usage(e.to_string()))?;
         let (watch_flag, watch_handle) = (flag.clone(), handle.clone());
         let watcher = tokio::spawn(async move {
-            #[cfg(unix)]
             interrupt.recv().await;
-            #[cfg(not(unix))]
-            let _ = tokio::signal::ctrl_c().await;
+            // A call in flight runs to its end, so core can give back a token already issued.
+            eprintln!("Cancelling...");
             watch_flag.cancel();
             watch_handle.cancel();
         });

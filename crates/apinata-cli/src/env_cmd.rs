@@ -388,6 +388,9 @@ pub fn run(args: &EnvArgs) -> ExitCode {
     match go(args) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
+            if let Some(code) = cancelled_exit(&e) {
+                return code;
+            }
             eprintln!("error: {e:#}");
             ExitCode::from(EXIT_USAGE)
         }
@@ -657,15 +660,81 @@ fn read_secret_value() -> anyhow::Result<String> {
 }
 
 /// [`read_secret_value`] with its own prompt, for the other commands that take a secret.
+/// Ctrl+C at a hidden prompt, after the terminal was given back; the caller exits 130.
+#[derive(Debug)]
+pub(crate) struct PromptCancelled;
+
+impl std::fmt::Display for PromptCancelled {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Cancelled; nothing was kept.")
+    }
+}
+
+impl std::error::Error for PromptCancelled {}
+
+/// The exit for an error that is a cancelled prompt: its line on stderr and 130.
+pub(crate) fn cancelled_exit(e: &anyhow::Error) -> Option<ExitCode> {
+    e.downcast_ref::<PromptCancelled>().map(|c| {
+        eprintln!("{c}");
+        ExitCode::from(130)
+    })
+}
+
 pub(crate) fn read_secret_line(prompt: &str) -> anyhow::Result<String> {
     use std::io::{BufRead, IsTerminal};
     if std::io::stdin().is_terminal() {
-        return Ok(rpassword::prompt_password(prompt)?);
+        let held = HeldInterrupt::hold();
+        let read = rpassword::prompt_password(prompt);
+        drop(held);
+        return match read {
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => Err(PromptCancelled.into()),
+            other => Ok(other?),
+        };
     }
     let mut line = String::new();
     let n = std::io::stdin().lock().read_line(&mut line)?;
     anyhow::ensure!(n > 0, "no secret value on stdin");
     Ok(line)
+}
+
+/// SIGINT ignored until dropped, then put back as it was. The prompt reads Ctrl+C as a byte
+/// and raises SIGINT itself; ignored, that raise returns, so the prompt restores the terminal's
+/// echo before it reports the interrupt.
+struct HeldInterrupt {
+    #[cfg(unix)]
+    previous: Option<libc::sigaction>,
+}
+
+impl HeldInterrupt {
+    fn hold() -> HeldInterrupt {
+        #[cfg(unix)]
+        {
+            // SAFETY: sigaction is given a zeroed action set to SIG_IGN with an empty mask, and
+            // writes the old action into a zeroed struct this function owns.
+            let previous = unsafe {
+                let mut ignore: libc::sigaction = std::mem::zeroed();
+                ignore.sa_sigaction = libc::SIG_IGN;
+                libc::sigemptyset(&mut ignore.sa_mask);
+                let mut previous: libc::sigaction = std::mem::zeroed();
+                (libc::sigaction(libc::SIGINT, &ignore, &mut previous) == 0).then_some(previous)
+            };
+            HeldInterrupt { previous }
+        }
+        #[cfg(not(unix))]
+        HeldInterrupt {}
+    }
+}
+
+impl Drop for HeldInterrupt {
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        if let Some(previous) = &self.previous {
+            // SAFETY: puts back the action sigaction returned in `hold`.
+            unsafe {
+                libc::sigaction(libc::SIGINT, previous, std::ptr::null_mut());
+            }
+        }
+    }
 }
 
 /// Run the action with the secret store and the secret value source given, so tests supply both.

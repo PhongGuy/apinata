@@ -65,9 +65,11 @@ impl Stores {
         let mut account = Account::new(&url, "ada", "Ada Lovelace", "7", false);
         account.expires_at = expires_at.map(str::to_owned);
         TeamStore::update(&self.team_file(), |t| t.put_account(account)).unwrap();
-        let entries = json!([{"collection": "", "environment": "team-server",
-            "variable": format!("{url}#ada"), "value": tok()}]);
-        std::fs::write(self.secrets_file(), entries.to_string()).unwrap();
+        let mut entries: Vec<Value> =
+            serde_json::from_str(&self.secrets_text()).unwrap_or_default();
+        entries.push(json!({"collection": "", "environment": "team-server",
+            "variable": format!("{url}#ada"), "value": tok()}));
+        std::fs::write(self.secrets_file(), Value::from(entries).to_string()).unwrap();
     }
 }
 
@@ -265,6 +267,87 @@ async fn no_keychain_status_shows_the_local_account_unchecked() {
         "{stdout}"
     );
     assert!(stdout.contains("not checked"), "{stdout}");
+    assert_eq!(calls(&s).await, 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn no_keychain_status_opens_no_secret_store() {
+    let s = server(false).await;
+    me(&s, "Ada Lovelace").await;
+    let stores = Stores::new();
+    stores.keep(&s.uri(), None);
+    // The report line shows when a store is used, so the run with the keychain proves it works.
+    let mut checked = stores.cmd();
+    checked
+        .env("APINATA_TEST_REPORT_STORE", "1")
+        .args(["team", "status"]);
+    let (_, _, stderr) = run(checked).await;
+    assert!(stderr.contains("secret store:"), "{stderr}");
+    let mut local = stores.cmd();
+    local
+        .env("APINATA_TEST_REPORT_STORE", "1")
+        .args(["team", "status", "--no-keychain"]);
+    let (code, _, stderr) = run(local).await;
+    assert_eq!(code, 0, "{stderr}");
+    assert!(!stderr.contains("secret store:"), "{stderr}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn status_over_several_servers_exits_with_the_highest_code() {
+    let valid = server(false).await;
+    me(&valid, "Ada Lovelace").await;
+    let expired = server(false).await;
+    let stores = Stores::new();
+    stores.keep(&valid.uri(), None);
+    stores.keep(&expired.uri(), Some("2020-01-01T00:00:00Z"));
+    let mut status = stores.cmd();
+    status.args(["team", "status"]);
+    let (code, stdout, stderr) = run(status).await;
+    assert_eq!(code, 1, "{stdout}{stderr}");
+    assert!(stdout.contains("signed in as"), "{stdout}");
+
+    let down = format!("http://127.0.0.1:{}", dead_port());
+    stores.keep(&down, None);
+    let mut status = stores.cmd();
+    status.args(["team", "status", "--format", "json"]);
+    let (code, stdout, stderr) = run(status).await;
+    assert_eq!(code, 2, "{stdout}{stderr}");
+    let states: Vec<String> = serde_json::from_str::<Vec<Value>>(&stdout)
+        .unwrap()
+        .iter()
+        .map(|r| r["state"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(states, ["signed_in", "expired", "error"]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn status_with_a_refused_token_reports_signed_out_and_forgets_the_token() {
+    let s = server(false).await;
+    let refused = ResponseTemplate::new(401)
+        .set_body_json(json!({"error": {"code": "unauthenticated", "message": "no"}}));
+    answer(&s, "GET", "/api/v1/me", refused).await;
+    let stores = Stores::new();
+    stores.keep(&s.uri(), None);
+    let mut status = stores.cmd();
+    status.args(["team", "status", "--format", "json"]);
+    let (code, stdout, stderr) = run(status).await;
+    assert_eq!(code, 1, "{stderr}");
+    let rows: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(rows[0]["state"], "signed_out");
+    assert!(stderr.contains("no longer accepted"), "{stderr}");
+    assert!(!stores.secrets_text().contains("plk_"));
+    assert_eq!(stores.accounts().len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn sign_out_when_not_signed_in_exits_0_without_a_call() {
+    let s = server(false).await;
+    let stores = Stores::new();
+    let mut out = stores.cmd();
+    out.args(["team", "sign-out", &s.uri()]);
+    let (code, stdout, stderr) = run(out).await;
+    assert_eq!(code, 0, "{stderr}");
+    assert!(stdout.contains("Not signed in"), "{stdout}");
     assert_eq!(calls(&s).await, 0);
 }
 

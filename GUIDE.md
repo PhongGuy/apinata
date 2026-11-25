@@ -778,7 +778,8 @@ apinata team sign-out https://team.example.com
 The password is read from stdin, or from a hidden prompt in a terminal, and is
 never taken from the command line or an environment variable. `--sso` prints
 the address to open in a browser and the local port it waits on, then waits up
-to five minutes; it opens no browser itself, and Ctrl+C cancels it. Signing in
+to five minutes; it opens no browser itself. Ctrl+C at the password prompt or
+during the sign-in cancels it, exits 130 and keeps nothing. Signing in
 on another machine over SSH, forward the printed port first, for example
 `ssh -L 53682:127.0.0.1:53682 build-box`, then open the address in your local
 browser.
@@ -786,7 +787,9 @@ browser.
 `status` checks each kept sign-in with its server and exits 1 when one is
 signed out or has expired; an expired sign-in is reported without asking the
 server, as `the sign-in to <server> has expired; run "apinata team sign-in
-<server>"`. `sign-out` revokes the token on the server, then forgets it.
+<server>"`. As in the app, a token the server no longer accepts is forgotten,
+while the account stays listed as signed out, and the name the server gives
+is kept. `sign-out` revokes the token on the server, then forgets it.
 With `--no-keychain`, `sign-in` and `sign-out` refuse to run, so a token is
 never forgotten here while it still works on the server, and `status` shows
 only the kept account and its expiry. Tokens and token ids are never printed,
