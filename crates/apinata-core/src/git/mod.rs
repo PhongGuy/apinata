@@ -18,7 +18,7 @@ pub use diff::text_hunks;
 pub use dotenv::{DotenvGit, ignore_dotenv};
 mod porcelain;
 mod renames;
-mod repo_lock;
+pub(crate) mod repo_lock;
 pub(crate) use renames::{
     EnvChanges, blob_at, env_changes, is_ancestor, pre_sync_tip, resolve_commit,
 };

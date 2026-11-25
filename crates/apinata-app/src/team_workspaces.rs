@@ -574,7 +574,8 @@ impl WorkspacesView {
         .detach();
     }
 
-    // A finished clone is bound and opened; a failed one shows its error.
+    // A finished clone is bound and opened; a failed one shows its error. The binding is
+    // written off the main thread, since the team file's lock may wait for another process.
     fn finished(
         &mut self,
         open: Opening,
@@ -583,16 +584,41 @@ impl WorkspacesView {
         cx: &mut Context<Self>,
     ) {
         self.job = None;
-        self.cloning = false;
         let root = match result {
             Ok(root) => root,
-            Err(e) => return self.set_error_on(&open.server, clone_form::clone_error_text(&e), cx),
+            Err(e) => {
+                self.cloning = false;
+                return self.set_error_on(&open.server, clone_form::clone_error_text(&e), cx);
+            }
         };
         let ws = &open.workspace;
         let binding = Binding::new(root.clone(), &open.account, &ws.team, &ws.slug, ws.role);
-        if let Err(e) = TeamStore::update(&open.file, |t| t.put_binding(binding.clone())) {
+        let file = open.file.clone();
+        let bind = cx
+            .background_spawn(async move { TeamStore::update(&file, |t| t.put_binding(binding)) });
+        cx.spawn_in(window, async move |this, cx| {
+            let result = bind.await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                this.cloning = false;
+                this.bound(open, root, result, window, cx)
+            });
+        })
+        .detach();
+    }
+
+    // Opens a freshly bound clone, or shows why the binding could not be kept.
+    fn bound(
+        &mut self,
+        open: Opening,
+        root: PathBuf,
+        result: Result<(), TeamError>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Err(e) = result {
             return self.set_error_on(&open.server, Some(error_text(&e)), cx);
         }
+        cx.notify();
         window.close_dialog(cx);
         if let Opened::NoCollection(root) = clone_form::classify(&root) {
             let text = clone_form::no_collection_text(&root);

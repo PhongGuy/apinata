@@ -67,6 +67,9 @@ pub enum TeamError {
     /// The team file could not be read or written.
     #[error("The team file could not be used: {0}")]
     Store(String),
+    /// Another process kept the team file locked for the whole wait.
+    #[error("Another Apinata window or command is changing the team file; try again.")]
+    Busy,
     /// The caller cancelled the call before it kept anything.
     #[error("Cancelled.")]
     Cancelled,
