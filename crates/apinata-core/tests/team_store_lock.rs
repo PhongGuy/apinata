@@ -30,9 +30,33 @@ fn wait_for(file: &Path, what: &str) {
     }
 }
 
+/// A child process killed when the guard drops, so a failed assertion never leaves it running.
+struct Killed(Child);
+
+impl Killed {
+    // Waits up to 60 s for the child to exit, true when it succeeded.
+    fn finish(&mut self) -> bool {
+        let deadline = Instant::now() + Duration::from_secs(60);
+        loop {
+            if let Some(status) = self.0.try_wait().unwrap() {
+                return status.success();
+            }
+            assert!(Instant::now() < deadline, "the child never finished");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+}
+
+impl Drop for Killed {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
 // Re-runs this binary as the child test `name`, pointed at the team file and a signal dir.
-fn spawn_child(name: &str, team_file: &Path, dir: &Path, tag: &str) -> Child {
-    Command::new(std::env::current_exe().unwrap())
+fn spawn_child(name: &str, team_file: &Path, dir: &Path, tag: &str) -> Killed {
+    let child = Command::new(std::env::current_exe().unwrap())
         .args([
             &format!("team_store_lock::{name}"),
             "--exact",
@@ -43,7 +67,8 @@ fn spawn_child(name: &str, team_file: &Path, dir: &Path, tag: &str) -> Child {
         .env(TAG_VAR, tag)
         .stdout(Stdio::null())
         .spawn()
-        .unwrap()
+        .unwrap();
+    Killed(child)
 }
 
 fn child_env() -> Option<(PathBuf, PathBuf, String)> {
@@ -67,13 +92,14 @@ fn child_holds_the_team_file() {
     .unwrap();
 }
 
-// The child half of the race: once told to go, it binds 20 folders named by its tag, one
-// update each. Run on its own, it does nothing.
+// The child half of the race: it says it is ready, and once told to go it binds 20 folders
+// named by its tag, one update each. Run on its own, it does nothing.
 #[test]
 fn child_binds_twenty_folders() {
     let Some((file, dir, tag)) = child_env() else {
         return;
     };
+    std::fs::write(dir.join(format!("ready-{tag}")), "").unwrap();
     wait_for(&dir.join("go"), "never told to go");
     for i in 0..20 {
         TeamStore::update(&file, |t| t.put_binding(binding(&format!("/{tag}/{i}")))).unwrap();
@@ -84,7 +110,7 @@ fn child_binds_twenty_folders() {
 fn another_process_mid_update_makes_this_one_busy_until_it_is_killed() {
     let dir = TempDir::new().unwrap();
     let file = dir.path().join("nested/team.json");
-    let mut child = spawn_child("child_holds_the_team_file", &file, dir.path(), "");
+    let child = spawn_child("child_holds_the_team_file", &file, dir.path(), "");
     wait_for(&dir.path().join("held"), "the child never took the lock");
 
     let started = Instant::now();
@@ -100,8 +126,7 @@ fn another_process_mid_update_makes_this_one_busy_until_it_is_killed() {
     assert!(waited >= Duration::from_millis(1500), "waited {waited:?}");
     assert!(TeamStore::load(&file).unwrap().accounts().is_empty());
 
-    child.kill().unwrap();
-    child.wait().unwrap();
+    drop(child);
     TeamStore::update(&file, |t| t.put_account(account())).unwrap();
     assert_eq!(TeamStore::load(&file).unwrap().accounts().len(), 1);
     assert!(
@@ -118,11 +143,16 @@ fn two_processes_updating_at_once_keep_every_change() {
         spawn_child("child_binds_twenty_folders", &file, dir.path(), "a"),
         spawn_child("child_binds_twenty_folders", &file, dir.path(), "b"),
     ];
-    // Let both start their test harness before releasing them together.
-    std::thread::sleep(Duration::from_millis(300));
+    // Both wait at the start line, so their updates always overlap.
+    for tag in ["a", "b"] {
+        wait_for(
+            &dir.path().join(format!("ready-{tag}")),
+            "a child never got ready",
+        );
+    }
     std::fs::write(dir.path().join("go"), "").unwrap();
     for child in &mut children {
-        assert!(child.wait().unwrap().success());
+        assert!(child.finish(), "a child failed");
     }
     let bound = TeamStore::load(&file).unwrap().bindings().len();
     assert_eq!(bound, 40, "every update survives");

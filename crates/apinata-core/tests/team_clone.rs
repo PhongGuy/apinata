@@ -165,3 +165,33 @@ fn the_writer_reproduces_the_rules_seed_byte_for_byte() {
     );
     assert_eq!(got, want);
 }
+
+#[test]
+fn only_the_top_of_a_repository_whose_origin_is_the_workspace_counts_as_its_clone() {
+    let sb = Sandbox::new();
+    let url = "http://127.0.0.1:9/git/core/api.git";
+    let opts = sb.options();
+    let clone = sb.repo("api");
+    sb.git(&clone, &["remote", "add", "origin", url]);
+    fs::create_dir(clone.join("sub")).unwrap();
+    let other = sb.repo("other");
+    sb.git(
+        &other,
+        &[
+            "remote",
+            "add",
+            "origin",
+            "http://127.0.0.1:9/git/core/web.git",
+        ],
+    );
+    let unlinked = sb.repo("unlinked");
+    let plain = sb.path().join("plain");
+    fs::create_dir(&plain).unwrap();
+
+    assert!(team::is_clone_of(&clone, url, &opts));
+    assert!(!team::is_clone_of(&clone.join("sub"), url, &opts));
+    assert!(!team::is_clone_of(&other, url, &opts));
+    assert!(!team::is_clone_of(&unlinked, url, &opts));
+    assert!(!team::is_clone_of(&plain, url, &opts));
+    assert!(!team::is_clone_of(&sb.path().join("missing"), url, &opts));
+}

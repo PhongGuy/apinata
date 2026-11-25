@@ -91,6 +91,13 @@ pub fn remotes(root: &Path, opts: &GitOptions) -> Result<Vec<String>, GitError> 
     Ok(text.lines().map(str::to_owned).collect())
 }
 
+/// The fetch address of `origin` in the repository at `root`; `None` without one.
+pub(crate) fn origin_url(root: &Path, opts: &GitOptions) -> Option<String> {
+    check_root(root).ok()?;
+    let text = lines(root, &["remote", "get-url", "--", "origin"], opts).ok()?;
+    Some(text.trim_end_matches(['\n', '\r']).to_owned())
+}
+
 /// `git fetch --prune` from `remote`, stopping on `cancel`. Only the name of a configured remote
 /// is accepted; anything else is refused without running the fetch.
 pub fn fetch(
