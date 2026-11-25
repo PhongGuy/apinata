@@ -416,11 +416,31 @@ async fn a_hidden_character_in_the_display_name_is_escaped() {
     assert!(stdout.contains("Ada\\\\u{202E}evil"), "{stdout}");
 }
 
-/// Starts an SSO sign-in and reads the start URL off stderr; returns the child and the URL.
+/// Starts an SSO sign-in that opens no browser and reads the start URL off stderr.
 async fn start_sso(stores: &Stores, s: &MockServer) -> (tokio::process::Child, url::Url) {
-    let mut child = stores
-        .tokio_cmd()
-        .args(["team", "sign-in", &s.uri(), "--sso"])
+    let (child, url, _, _) = start_sso_with(stores, s, |cmd| {
+        cmd.arg("--no-browser");
+    })
+    .await;
+    (child, url)
+}
+
+/// Starts an SSO sign-in after `setup` adjusts the command; returns the child, the start URL
+/// the stderr seen up to the wait line, and a task yielding the rest of stderr.
+async fn start_sso_with(
+    stores: &Stores,
+    s: &MockServer,
+    setup: impl FnOnce(&mut tokio::process::Command),
+) -> (
+    tokio::process::Child,
+    url::Url,
+    String,
+    tokio::task::JoinHandle<String>,
+) {
+    let mut cmd = stores.tokio_cmd();
+    cmd.args(["team", "sign-in", &s.uri(), "--sso"]);
+    setup(&mut cmd);
+    let mut child = cmd
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -452,12 +472,16 @@ async fn start_sso(stores: &Stores, s: &MockServer) -> (tokio::process::Child, u
     let port = param(&url, "port");
     assert!(seen.contains(&format!("port {port}")), "{seen}");
     // The rest of stderr must still drain, or the child blocks on a full pipe.
-    tokio::spawn(async move {
+    let rest = tokio::spawn(async move {
+        let mut rest = String::new();
         while let Ok(Some(line)) = lines.next_line().await {
             assert!(!line.contains("plk_A"));
+            rest.push_str(&line);
+            rest.push('\n');
         }
+        rest
     });
-    (child, url)
+    (child, url, seen, rest)
 }
 
 fn param(url: &url::Url, key: &str) -> String {
@@ -467,32 +491,35 @@ fn param(url: &url::Url, key: &str) -> String {
         .unwrap_or_else(|| panic!("{key} missing from {url}"))
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn single_sign_on_redeems_the_code_the_browser_brings_back() {
-    let s = server(true).await;
-    answer(&s, "POST", "/api/v1/oidc/redeem", signed("Ada Lovelace")).await;
-    let stores = Stores::new();
-    let (child, url) = start_sso(&stores, &s).await;
-    let port: u16 = param(&url, "port").parse().unwrap();
-    let state = param(&url, "state");
-    let back = format!("http://127.0.0.1:{port}/callback?code=the-code&state={state}");
+/// Plays the browser coming back to the loopback port with a code, then waits for the child.
+async fn come_back(child: tokio::process::Child, url: &url::Url) -> std::process::Output {
+    let port: u16 = param(url, "port").parse().unwrap();
+    let state = param(url, "state");
     let _ = tokio::task::spawn_blocking(move || {
         use std::io::{Read, Write};
         let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
-        let target = back.trim_start_matches(&format!("http://127.0.0.1:{port}"));
         write!(
             s,
-            "GET {target} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
+            "GET /callback?code=the-code&state={state} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
         )
         .unwrap();
         let mut page = String::new();
         let _ = s.read_to_string(&mut page);
     })
     .await;
-    let out = tokio::time::timeout(std::time::Duration::from_secs(30), child.wait_with_output())
+    tokio::time::timeout(std::time::Duration::from_secs(30), child.wait_with_output())
         .await
         .unwrap()
-        .unwrap();
+        .unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn single_sign_on_redeems_the_code_the_browser_brings_back() {
+    let s = server(true).await;
+    answer(&s, "POST", "/api/v1/oidc/redeem", signed("Ada Lovelace")).await;
+    let stores = Stores::new();
+    let (child, url) = start_sso(&stores, &s).await;
+    let out = come_back(child, &url).await;
     let stdout = String::from_utf8(out.stdout).unwrap();
     no_token(&stdout, "");
     assert_eq!(out.status.code(), Some(0), "{stdout}");
@@ -894,4 +921,160 @@ async fn a_corrupt_team_file_does_not_hide_the_env_server() {
         std::fs::read_to_string(stores.team_file()).unwrap(),
         "{ not json"
     );
+}
+
+/// The opener `team sign-in --sso` starts, played by a fake `xdg-open` first on PATH.
+#[cfg(all(unix, not(target_os = "macos")))]
+mod browser {
+    use super::*;
+    use std::path::Path;
+    use std::time::{Duration, Instant};
+
+    const FALLBACK: &str = "could not open a browser; open the address above";
+
+    /// A directory holding an `xdg-open` that records its argv and env to `record`, prints
+    /// junk on both streams and then sleeps far longer than a sign-in takes.
+    fn fake_opener(record: &Path) -> TempDir {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = TempDir::new().unwrap();
+        let script = dir.path().join("xdg-open");
+        let tmp = record.with_extension("tmp");
+        std::fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\n{{ echo \"pid $$\"; for a in \"$@\"; do echo \"arg $a\"; done; env | sed 's/^/env /'; }} > '{tmp}'\nmv '{tmp}' '{rec}'\necho OPENER-JUNK-OUT\necho OPENER-JUNK-ERR >&2\nexec sleep 30\n",
+                tmp = tmp.display(),
+                rec = record.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        dir
+    }
+
+    fn path_with(dir: &Path) -> String {
+        format!(
+            "{}:{}",
+            dir.display(),
+            std::env::var("PATH").unwrap_or_default()
+        )
+    }
+
+    /// The record the fake wrote, waiting up to ten seconds for it.
+    async fn recorded(record: &Path) -> String {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if let Ok(text) = std::fs::read_to_string(record) {
+                return text;
+            }
+            assert!(Instant::now() < deadline, "the opener never ran");
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
+
+    /// Stops the sleeping fake by the pid it recorded.
+    fn stop(record: &str) {
+        if let Some(pid) = record.lines().find_map(|l| l.strip_prefix("pid ")) {
+            let _ = std::process::Command::new("kill").arg(pid).status();
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_start_url_opens_in_the_browser_without_holding_up_the_sign_in() {
+        let s = server(true).await;
+        answer(&s, "POST", "/api/v1/oidc/redeem", signed("Ada Lovelace")).await;
+        let stores = Stores::new();
+        let scratch = TempDir::new().unwrap();
+        let record = scratch.path().join("opened.txt");
+        let fake = fake_opener(&record);
+        let begun = Instant::now();
+        let (child, url, seen, rest) = start_sso_with(&stores, &s, |cmd| {
+            cmd.env("PATH", path_with(fake.path()))
+                .env("DISPLAY", ":99")
+                .env("CI", "")
+                .env("APINATA_TEAM_TOKEN", env_tok());
+        })
+        .await;
+        let out = come_back(child, &url).await;
+        let rest = tokio::time::timeout(Duration::from_secs(30), rest)
+            .await
+            .expect("stderr closed")
+            .unwrap();
+        let elapsed = begun.elapsed();
+        let opened = recorded(&record).await;
+        stop(&opened);
+        let stdout = String::from_utf8(out.stdout).unwrap();
+        assert_eq!(out.status.code(), Some(0), "{seen}{rest}");
+        assert!(elapsed < Duration::from_secs(20), "took {elapsed:?}");
+        assert!(opened.contains(&format!("arg {url}")), "{opened}");
+        assert!(!opened.contains("APINATA_TEAM_TOKEN"), "{opened}");
+        let all = format!("{stdout}{seen}{rest}");
+        assert!(!all.contains("OPENER-JUNK"), "{all}");
+        assert!(!all.contains(FALLBACK), "{all}");
+        assert_eq!(stores.accounts().len(), 1);
+    }
+
+    /// Signs in with the fake opener on PATH after `setup`, and checks it was never started.
+    async fn assert_not_opened(setup: impl FnOnce(&mut tokio::process::Command)) {
+        let s = server(true).await;
+        answer(&s, "POST", "/api/v1/oidc/redeem", signed("Ada Lovelace")).await;
+        let stores = Stores::new();
+        let scratch = TempDir::new().unwrap();
+        let record = scratch.path().join("opened.txt");
+        let fake = fake_opener(&record);
+        let (child, url, seen, _) = start_sso_with(&stores, &s, |cmd| {
+            cmd.env("PATH", path_with(fake.path()));
+            setup(cmd);
+        })
+        .await;
+        let out = come_back(child, &url).await;
+        assert_eq!(out.status.code(), Some(0), "{seen}");
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        if let Ok(opened) = std::fs::read_to_string(&record) {
+            stop(&opened);
+            panic!("the opener ran: {opened}");
+        }
+        assert!(!seen.contains(FALLBACK), "{seen}");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn no_browser_opens_nothing() {
+        assert_not_opened(|cmd| {
+            cmd.env("DISPLAY", ":99").arg("--no-browser");
+        })
+        .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn ci_opens_nothing() {
+        assert_not_opened(|cmd| {
+            cmd.env("DISPLAY", ":99").env("CI", "1");
+        })
+        .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn no_display_opens_nothing() {
+        assert_not_opened(|cmd| {
+            cmd.env("DISPLAY", "").env_remove("WAYLAND_DISPLAY");
+        })
+        .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn with_no_opener_the_address_is_left_to_the_user() {
+        let s = server(true).await;
+        answer(&s, "POST", "/api/v1/oidc/redeem", signed("Ada Lovelace")).await;
+        let stores = Stores::new();
+        let empty = TempDir::new().unwrap();
+        let (child, url, seen, _) = start_sso_with(&stores, &s, |cmd| {
+            cmd.env("PATH", empty.path())
+                .env("WAYLAND_DISPLAY", "wayland-9");
+        })
+        .await;
+        assert!(seen.contains(FALLBACK), "{seen}");
+        let out = come_back(child, &url).await;
+        assert_eq!(out.status.code(), Some(0), "{seen}");
+        assert_eq!(stores.accounts().len(), 1);
+    }
 }
