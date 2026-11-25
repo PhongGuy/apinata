@@ -101,17 +101,86 @@ async fn authorization_code_with_pkce_signs_in_through_the_loopback() {
     assert_eq!(browser.prompts().len(), 1, "a cached token signed in again");
 }
 
+/// The raw responses to loopback callbacks that carry no state or a forged one.
+async fn forge(prompt: &apinata_core::AuthorizationPrompt) -> Vec<String> {
+    let mut pages = Vec::new();
+    for query in [
+        "error=access_denied",
+        "error=access_denied&state=forged",
+        "code=evil&state=forged",
+    ] {
+        let url = format!("{}?{query}", prompt.callback);
+        pages.push(
+            tokio::task::spawn_blocking(move || browser_get(&url))
+                .await
+                .unwrap(),
+        );
+    }
+    pages
+}
+
 #[tokio::test]
-async fn a_wrong_state_is_state_mismatch_and_exchanges_nothing() {
+async fn a_wrong_state_callback_is_refused_and_the_real_one_still_signs_in() {
+    use std::time::Duration;
+    let server = wiremock::MockServer::start().await;
+    on_grant(&server, "authorization_code", token_response(json!({})), 1).await;
+    let f = single(&server, &authorization_code(&server.uri(), ""));
+    let browser = FakeBrowser::new(Play::Silent);
+    let how = signing_in(&browser);
+    let signing = tokio::time::timeout(Duration::from_secs(10), f.prepare("a.yml", &how));
+    let page = async {
+        let prompt = first_prompt(&browser).await;
+        let forged = forge(&prompt).await;
+        answer(&prompt, ("code", "c0de")).await;
+        forged
+    };
+    let (signed, forged) = tokio::join!(signing, page);
+    signed.expect("the sign-in never finished").unwrap();
+    for page in &forged {
+        assert!(page.starts_with("HTTP/1.1 400"), "{page}");
+        assert!(page.contains("Cache-Control: no-store"), "{page}");
+        assert!(!page.contains("forged") && !page.contains("evil"), "{page}");
+    }
+    let form = forms(&server, "authorization_code").await.remove(0);
+    assert!(
+        form.contains(&("code".to_owned(), "c0de".to_owned())),
+        "{form:?}"
+    );
+    assert!(authorization(&f).is_some());
+}
+
+#[tokio::test]
+async fn a_wrong_state_callback_still_leaves_the_sign_in_cancellable() {
     let server = wiremock::MockServer::start().await;
     let f = single(&server, &authorization_code(&server.uri(), ""));
-    let err = f
-        .prepare(
-            "a.yml",
-            &signing_in(&FakeBrowser::new(Play::WrongState("c0de"))),
-        )
-        .await
-        .unwrap_err();
+    let browser = FakeBrowser::new(Play::Silent);
+    let cancel = CancelHandle::new();
+    let (exec, how) = (executor(), signing_in(&browser));
+    let signing = exec.prepare_auth(f.request("a.yml"), &f.ctx, &how, &cancel);
+    let page = async {
+        let prompt = first_prompt(&browser).await;
+        forge(&prompt).await;
+        cancel.cancel();
+    };
+    let (err, ()) = tokio::join!(signing, page);
+    assert!(matches!(err, Err(OAuth2Error::Cancelled)), "{err:?}");
+    assert_eq!(posts(&server).await, 0);
+}
+
+#[tokio::test]
+async fn a_pasted_wrong_state_is_state_mismatch_and_exchanges_nothing() {
+    let server = wiremock::MockServer::start().await;
+    let f = single(
+        &server,
+        &authorization_code(
+            &server.uri(),
+            "    callbackUrl: https://app.example.test/cb\n",
+        ),
+    );
+    let browser = FakeBrowser::new(Play::Paste(
+        "https://app.example.test/cb?code=c0de&state=forged",
+    ));
+    let err = f.prepare("a.yml", &signing_in(&browser)).await.unwrap_err();
     assert!(matches!(err, OAuth2Error::StateMismatch), "{err:?}");
     assert_eq!(posts(&server).await, 0);
 }
@@ -333,15 +402,13 @@ async fn first_prompt(browser: &FakeBrowser) -> apinata_core::AuthorizationPromp
     }
 }
 
-/// Answers `prompt`'s loopback callback with `code` and `state` from a blocking browser thread.
-async fn answer(prompt: &apinata_core::AuthorizationPrompt, code: &str, state: Option<&str>) {
-    let state = state
-        .map(str::to_owned)
-        .or_else(|| query_param(&prompt.url, "state"))
-        .unwrap_or_default();
+/// Answers `prompt`'s loopback callback with `key=value` and the prompt's state from a
+/// blocking browser thread.
+async fn answer(prompt: &apinata_core::AuthorizationPrompt, (key, value): (&str, &str)) {
+    let state = query_param(&prompt.url, "state").unwrap_or_default();
     let mut url = url::Url::parse(&prompt.callback).unwrap();
     url.query_pairs_mut()
-        .append_pair("code", code)
+        .append_pair(key, value)
         .append_pair("state", &state);
     let url = String::from(url);
     tokio::task::spawn_blocking(move || browser_get(&url))
@@ -374,7 +441,7 @@ async fn a_caller_queued_behind_a_sign_in_can_be_cancelled() {
         .await
         .expect("the queued caller ignored its cancel");
         assert!(matches!(queued, Err(OAuth2Error::Cancelled)), "{queued:?}");
-        answer(&prompt, "c0de", None).await;
+        answer(&prompt, ("code", "c0de")).await;
     };
     let (first, ()) = tokio::join!(first, rest);
     first.unwrap();
@@ -431,14 +498,20 @@ async fn concurrent_callers_share_a_failed_sign_in() {
             .await
             .expect("the queued caller signed in again")
     };
-    let forge = async {
+    let deny = async {
         let prompt = first_prompt(&browser).await;
         tokio::time::sleep(Duration::from_millis(200)).await;
-        answer(&prompt, "c0de", Some("forged")).await;
+        answer(&prompt, ("error", "access_denied")).await;
     };
-    let (a, b, ()) = tokio::join!(first, second, forge);
-    assert!(matches!(a, Err(OAuth2Error::StateMismatch)), "{a:?}");
-    assert!(matches!(b, Err(OAuth2Error::StateMismatch)), "{b:?}");
+    let (a, b, ()) = tokio::join!(first, second, deny);
+    assert!(
+        matches!(a, Err(OAuth2Error::AuthorizationDenied { .. })),
+        "{a:?}"
+    );
+    assert!(
+        matches!(b, Err(OAuth2Error::AuthorizationDenied { .. })),
+        "{b:?}"
+    );
     assert_eq!(browser.prompts().len(), 1);
     assert_eq!(posts(&server).await, 0);
 
@@ -471,13 +544,16 @@ async fn a_caller_with_a_cached_token_ignores_a_failed_refetch_it_queued_behind(
         .await
         .expect("the queued caller never finished")
     };
-    let forge = async {
+    let deny = async {
         let prompt = first_prompt(&browser).await;
         tokio::time::sleep(Duration::from_millis(200)).await;
-        answer(&prompt, "c0de", Some("forged")).await;
+        answer(&prompt, ("error", "access_denied")).await;
     };
-    let (a, b, ()) = tokio::join!(first, second, forge);
-    assert!(matches!(a, Err(OAuth2Error::StateMismatch)), "{a:?}");
+    let (a, b, ()) = tokio::join!(first, second, deny);
+    assert!(
+        matches!(a, Err(OAuth2Error::AuthorizationDenied { .. })),
+        "{a:?}"
+    );
     b.expect("the cached token still serves the queued caller");
     assert_eq!(browser.prompts().len(), 1);
 }

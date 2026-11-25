@@ -22,6 +22,7 @@ use crate::secrets::SecretStore;
 use crate::{Collection, FileError};
 
 pub use report::{CheckReport, Finding, FindingKind, Severity};
+pub use vars::undefined_variables;
 pub(crate) use vars::unset_names;
 
 /// Why a collection could not be checked at all.
