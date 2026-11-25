@@ -23,6 +23,10 @@ struct FakeBin {
     dir: TempDir,
     next: Mutex<u32>,
     available: bool,
+    // The trash call, from 1, that fails; later ones fail too.
+    refuse_from: Option<u32>,
+    // What every restore fails with, instead of restoring.
+    restore_fails: Option<fn() -> TrashError>,
 }
 
 impl FakeBin {
@@ -31,6 +35,8 @@ impl FakeBin {
             dir: TempDir::new().expect("tempdir"),
             next: Mutex::new(0),
             available: true,
+            refuse_from: None,
+            restore_fails: None,
         }
     }
     fn none() -> FakeBin {
@@ -58,12 +64,18 @@ impl Trash for FakeBin {
         }
         let mut n = self.next.lock().expect("lock");
         *n += 1;
+        if self.refuse_from.is_some_and(|from| *n >= from) {
+            return Err(TrashError::Failed("refused".into()));
+        }
         let id = OsString::from(format!("item{n}"));
         fs::rename(path, self.dir.path().join(&id))
             .map_err(|e| TrashError::Failed(e.to_string()))?;
         Ok(TrashHandle::new(path.to_path_buf(), id))
     }
     fn restore(&self, handle: &TrashHandle) -> Result<(), TrashError> {
+        if let Some(fail) = self.restore_fails {
+            return Err(fail());
+        }
         fs::rename(self.dir.path().join(handle.id()), handle.original())
             .map_err(|e| TrashError::Failed(e.to_string()))
     }
@@ -110,7 +122,8 @@ fn a_modified_file_goes_to_the_trash_and_head_comes_back_staged_and_on_disk() {
         changes(&sb, &col).is_empty(),
         "index and worktree match HEAD"
     );
-    assert!(done.undoable());
+    // The staged version differed from the file on disk and nothing kept it.
+    assert!(!done.undoable());
 }
 
 #[test]
@@ -346,7 +359,10 @@ fn a_symlink_is_never_followed_out_of_the_collection() {
     let bin = FakeBin::new();
     // Git sees the link, not what lies behind it, so a path through it is not a change here.
     let got = discard(&col, &["link/x.yml"], &bin, &sb.options());
-    assert!(got.is_err(), "{got:?}");
+    assert!(
+        matches!(got, Err(DiscardError::Git(GitError::Malformed(_)))),
+        "{got:?}"
+    );
     assert_eq!(bin.len(), 0);
     // Discarding the untracked link trashes the link itself.
     discard(&col, &["link"], &bin, &sb.options()).expect("discards the link");
@@ -356,4 +372,107 @@ fn a_symlink_is_never_followed_out_of_the_collection() {
         b"outside\n",
         "the target is untouched"
     );
+}
+
+#[test]
+fn a_restore_the_trash_cannot_do_leaves_gits_copy_in_place() {
+    for fail in [(|| TrashError::Missing) as fn() -> TrashError, || {
+        TrashError::RestoreUnsupported
+    }] {
+        let sb = Sandbox::new();
+        let (_repo, col) = committed(&sb);
+        write(&col, "a.yml", "mine\n");
+        let mut bin = FakeBin::new();
+        let done = discard(&col, &["a.yml"], &bin, &sb.options()).expect("discards");
+        bin.restore_fails = Some(fail);
+        let got = undo_discard(&col, &done, &bin, &sb.options());
+        assert!(matches!(got, Err(DiscardError::Trash { .. })), "{got:?}");
+        assert_eq!(read(&col, "a.yml"), b"a\n", "the path is never left empty");
+        assert_eq!(bin.held(1), b"mine\n");
+        let names: Vec<_> = fs::read_dir(&col)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names.len(), 3, "no copy is left aside: {names:?}");
+    }
+}
+
+#[test]
+fn dropping_staged_content_nothing_else_holds_is_not_undoable() {
+    let sb = Sandbox::new();
+    let (repo, col) = committed(&sb);
+    // MM: the staged version differs from the file on disk.
+    write(&col, "a.yml", "staged\n");
+    sb.git(&repo, &["add", "col/a.yml"]);
+    write(&col, "a.yml", "mine\n");
+    // MD: a staged change whose file is gone.
+    write(&col, "b.yml", "staged b\n");
+    sb.git(&repo, &["add", "col/b.yml"]);
+    fs::remove_file(col.join("b.yml")).unwrap();
+    // AD: a new file staged, then gone.
+    write(&col, "new.yml", "new\n");
+    sb.git(&repo, &["add", "col/new.yml"]);
+    fs::remove_file(col.join("new.yml")).unwrap();
+    let bin = FakeBin::new();
+    for rel in ["a.yml", "b.yml", "new.yml"] {
+        let done = discard(&col, &[rel], &bin, &sb.options()).expect(rel);
+        assert!(!done.undoable(), "{rel}");
+        let got = undo_discard(&col, &done, &bin, &sb.options());
+        assert!(
+            matches!(got, Err(DiscardError::CannotUndo)),
+            "{rel}: {got:?}"
+        );
+    }
+    assert_eq!(read(&col, "a.yml"), b"a\n");
+    assert_eq!(read(&col, "b.yml"), b"b\n");
+    assert!(!col.join("new.yml").exists());
+}
+
+#[test]
+fn a_trash_refusing_midway_through_a_rename_leaves_the_worktree_as_it_was() {
+    let sb = Sandbox::new();
+    let (repo, col) = committed(&sb);
+    sb.git(&repo, &["mv", "col/c.yml", "col/c2.yml"]);
+    write(&col, "c.yml", "recreated\n");
+    let before = sb.git(&repo, &["status", "--porcelain"]);
+    let bin = FakeBin {
+        refuse_from: Some(2),
+        ..FakeBin::new()
+    };
+    let got = discard(&col, &["c2.yml"], &bin, &sb.options());
+    assert!(matches!(got, Err(DiscardError::Trash { .. })), "{got:?}");
+    assert_eq!(read(&col, "c2.yml"), b"c\n");
+    assert_eq!(read(&col, "c.yml"), b"recreated\n");
+    assert_eq!(bin.len(), 0);
+    assert_eq!(sb.git(&repo, &["status", "--porcelain"]), before);
+}
+
+#[test]
+fn a_git_restore_that_fails_after_the_trash_took_the_file_puts_it_back() {
+    let sb = Sandbox::new();
+    let (repo, col) = committed(&sb);
+    let mine: &[u8] = b"mine\r\n\xff";
+    fs::write(col.join("a.yml"), mine).unwrap();
+    fs::write(repo.join(".git/index.lock"), "").unwrap();
+    let bin = FakeBin::new();
+    let got = discard(&col, &["a.yml"], &bin, &sb.options());
+    assert!(got.is_err(), "{got:?}");
+    assert_eq!(read(&col, "a.yml"), mine);
+    assert_eq!(bin.len(), 0);
+}
+
+#[test]
+fn an_untracked_folder_is_refused() {
+    let sb = Sandbox::new();
+    let (_repo, col) = committed(&sb);
+    sb.git(&col, &["init", "-q", "nested"]);
+    write(&col, "nested/x.yml", "x\n");
+    let bin = FakeBin::new();
+    let got = discard(&col, &["nested"], &bin, &sb.options());
+    assert!(
+        matches!(got, Err(DiscardError::Git(GitError::Malformed(_)))),
+        "{got:?}"
+    );
+    assert_eq!(read(&col, "nested/x.yml"), b"x\n");
+    assert_eq!(bin.len(), 0);
 }

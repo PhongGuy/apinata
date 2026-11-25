@@ -215,3 +215,68 @@ fn delete_in_the_list_asks_to_discard_the_selected_row(cx: &mut TestAppContext) 
     assert!(confirm_open(cx), "Delete asks");
     answer_confirm(cx, "confirm-cancel");
 }
+
+// `a.yml` holds a staged edit and is gone from disk (MD).
+fn staged_then_deleted(sb: &Sandbox) -> tempfile::TempDir {
+    let col = changed(sb);
+    sb.git(col.path(), &["add", "a.yml"]);
+    std::fs::remove_file(col.path().join("a.yml")).unwrap();
+    col
+}
+
+#[gpui_kit::test]
+fn dropping_a_staged_version_says_it_cannot_be_undone_and_offers_no_undo(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let col = staged_then_deleted(&sb);
+    let s = git_started(cx, &sb, &col);
+    with_trash(cx, &s, FakeTrash::new());
+    open_on(cx, &s, col.path());
+    ask_discard(cx, &s, "a.yml");
+    let (_, detail) = confirm_text(cx);
+    assert!(detail.contains("cannot be brought back"), "{detail}");
+    assert!(detail.contains("This cannot be undone"), "{detail}");
+    answer_confirm(cx, "confirm-discard-file");
+    idle(cx, &s);
+    wait_for(cx, "the commit's version", |_| {
+        col.path().join("a.yml").exists()
+    });
+    assert!(!has(cx, &s, "undo-delete"), "no Undo for what nothing kept");
+}
+
+#[gpui_kit::test]
+fn without_a_trash_a_staged_version_gone_from_disk_cannot_be_undone(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let col = staged_then_deleted(&sb);
+    let s = git_started(cx, &sb, &col);
+    with_trash(cx, &s, FakeTrash::broken());
+    open_on(cx, &s, col.path());
+    ask_discard(cx, &s, "a.yml");
+    let (_, detail) = confirm_text(cx);
+    assert!(detail.contains("This cannot be undone"), "{detail}");
+    answer_confirm(cx, "confirm-cancel");
+}
+
+#[gpui_kit::test]
+fn a_tab_edited_while_the_question_is_open_is_refused(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let col = changed(&sb);
+    let mine = std::fs::read(col.path().join("a.yml")).unwrap();
+    let s = git_started(cx, &sb, &col);
+    let bin = with_trash(cx, &s, FakeTrash::new());
+    open_on(cx, &s, col.path());
+    ask_discard(cx, &s, "a.yml");
+    assert!(confirm_open(cx));
+    s.ws.update(cx, |w, cx| {
+        w.send(&s.root, edit_url("a.yml", "http://x/late"), cx)
+    });
+    cx.run_until_parked();
+    answer_confirm(cx, "confirm-discard-file");
+    idle(cx, &s);
+    assert_eq!(std::fs::read(col.path().join("a.yml")).unwrap(), mine);
+    assert_eq!(bin.len(), 0);
+    let notice = view(cx).read_with(cx, |v, _| v.notice().cloned());
+    assert!(
+        matches!(&notice, Some(apinata_app::changes_dialog::Notice::Failed(t)) if t.contains("unsaved")),
+        "{notice:?}"
+    );
+}
