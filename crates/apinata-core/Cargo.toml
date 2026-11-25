@@ -44,6 +44,7 @@ cookie_store.workspace = true
 cookie.workspace = true
 publicsuffix.workspace = true
 time.workspace = true
+x509-cert.workspace = true
 encoding_rs.workspace = true
 mime.workspace = true
 tokio-util = { workspace = true, features = ["io"] }

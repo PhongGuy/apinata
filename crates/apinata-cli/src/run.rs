@@ -19,7 +19,7 @@ use crate::import::{default_keychain, platform_store, secret_store};
 use crate::network;
 use crate::show::Show;
 use crate::{EnvVar, RunArgs, collection_arg};
-use apinata_core::{ConnectCause, ResultsReport, WorkspaceFile};
+use apinata_core::{ConnectCause, ResultsReport, WorkspaceFile, status_description};
 
 /// An opened collection, the run planned from the selected path and its variable context.
 pub struct Target {
@@ -543,6 +543,9 @@ fn drain(log: &SessionLog, next: &AtomicU64) {
     let slice = log.network_since(next.load(Ordering::Relaxed));
     for entry in &slice.entries {
         eprintln!("{}", verbose_line(entry));
+        for line in connection_lines(entry) {
+            eprintln!("{line}");
+        }
     }
     next.store(slice.next, Ordering::Relaxed);
 }
@@ -582,6 +585,34 @@ fn verbose_line(entry: &NetworkEntry) -> String {
         outcome,
         entry.duration.as_millis()
     )
+}
+
+/// The indented lines under an exchange's `--verbose` line that describe how its answer
+/// travelled: the status in words, the local address, the response header size and, over
+/// TLS, the version and peer certificate. Each detail is left out when unknown.
+fn connection_lines(entry: &NetworkEntry) -> Vec<String> {
+    let mut lines = Vec::new();
+    if let Some(text) = entry.status.and_then(status_description) {
+        lines.push(format!("  status: {text}"));
+    }
+    let Some(hop) = entry.hops.last() else {
+        return lines;
+    };
+    if let Some(local) = hop.local_addr() {
+        lines.push(format!("  local: {local}"));
+    }
+    lines.push(format!(
+        "  response headers: {} B",
+        hop.response_header_size()
+    ));
+    if let Some(tls) = hop.tls() {
+        let mut parts = vec![tls.version.map_or("TLS".to_owned(), |v| v.to_string())];
+        parts.extend(tls.subject.as_ref().map(|s| format!("subject {s}")));
+        parts.extend(tls.issuer.as_ref().map(|s| format!("issuer {s}")));
+        parts.extend(tls.expires_label().map(|at| format!("expires {at}")));
+        lines.push(format!("  tls: {}", parts.join(", ")));
+    }
+    lines
 }
 
 /// One `--verbose` line per cookie set for `result`, in the order it was set, as core words
