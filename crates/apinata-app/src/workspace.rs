@@ -724,8 +724,9 @@ pub struct Workspace {
     global_gen: u64,
     // Whether a load has succeeded, which is when the session's saved global applies.
     global_loaded: bool,
-    // Whether the latest load of the directory failed, so nothing more is on its way.
-    global_load_failed: bool,
+    // Set when a directory is named and cleared once a load or edit of it reports back, so
+    // secret checks never run against another directory's environments.
+    global_pending: bool,
     // Edits waiting for the one drain task, which runs them in order while `global_draining`;
     // each carries where its outcome goes.
     global_queue: VecDeque<(GlobalOp, async_channel::Sender<Result<(), String>>)>,
@@ -802,7 +803,7 @@ impl Workspace {
             selected_global: None,
             global_gen: 0,
             global_loaded: false,
-            global_load_failed: false,
+            global_pending: false,
             global_queue: VecDeque::new(),
             global_draining: false,
             global_reload_waiting: None,
@@ -1630,6 +1631,7 @@ impl Workspace {
     /// session's saved global becomes active, or none (and the session forgets it) when gone.
     pub fn set_global_dir(&mut self, dir: PathBuf, cx: &mut Context<Self>) {
         self.global_dir = Some(dir);
+        self.global_pending = true;
         self.sync_global_watch(cx);
         self.reload_globals(cx);
     }
@@ -1779,9 +1781,10 @@ impl Workspace {
         cx.notify();
     }
 
-    /// Whether a global environments directory is named but its first load has not landed yet.
+    /// Whether a global environments directory was just named and no load or edit of it has
+    /// reported back yet.
     pub fn globals_loading(&self) -> bool {
-        self.global_dir.is_some() && !self.global_loaded && !self.global_load_failed
+        self.global_dir.is_some() && self.global_pending
     }
 
     /// The loaded snapshot, if any.
@@ -2807,7 +2810,7 @@ impl Workspace {
         if generation < self.global_gen {
             return;
         }
-        self.global_load_failed = loaded.is_err();
+        self.global_pending = false;
         if let Ok(globals) = loaded {
             self.publish_globals(globals, cause == ReloadCause::Watched, cx);
         }
@@ -2889,6 +2892,7 @@ impl Workspace {
             self.session.read(cx).get().global_environment.clone()
         };
         self.globals = Some(Arc::new(globals));
+        self.global_pending = false;
         self.globals_watched = watched;
         self.selected_global = wanted.filter(|n| self.is_global(n));
         self.save_global(cx);

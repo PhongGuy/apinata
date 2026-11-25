@@ -243,8 +243,14 @@ pub fn apply(
             let view = (snapshot.content.environments.iter())
                 .find(|e| e.name == *env)
                 .ok_or("That environment is gone")?;
+            // A secret entry of that name is never touched, even beside a plain one.
+            if (view.variables.iter()).any(|v| v.name == name && v.secret) {
+                return Err(format!(
+                    "{name} is a secret in the \"{env}\" environment; pick another name"
+                ));
+            }
             let mut vars: Vec<EnvVariable> = view.variables.clone();
-            match vars.iter_mut().find(|v| v.name == name) {
+            match vars.iter_mut().find(|v| v.name == name && !v.secret) {
                 Some(v) => {
                     v.value = VarValue::Text(value.to_owned());
                     v.enabled = true;
