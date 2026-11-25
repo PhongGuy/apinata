@@ -172,6 +172,219 @@ fn a_secret_of_the_environment_is_never_overwritten(cx: &mut TestAppContext) {
     assert_eq!(read(&root, "environments/dev.yml"), before);
 }
 
+// A name declared secret in any environment, or in any global environment, active or not,
+// is never written as plain text to a collection file.
+#[gpui_kit::test]
+fn a_secret_declared_anywhere_is_never_written_to_a_file(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("a.yml", &request("a", "http://{{token}}/0")),
+        ("environments/dev.yml", DEV),
+        (
+            "environments/prod.yml",
+            "name: prod\nvariables:\n  - secret: true\n    name: pkey\n",
+        ),
+    ]);
+    let globals = write_tree(&[
+        (
+            "g.yml",
+            "name: g\nvariables:\n  - secret: true\n    name: gkey\n",
+        ),
+        ("h.yml", "name: h\nvariables: []\n"),
+    ]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let dir = globals.path().to_path_buf();
+    ws.update(cx, |w, cx| w.set_global_dir(dir, cx));
+    cx.run_until_parked();
+    ws.update(cx, |w, cx| {
+        w.select_global_environment(Some("h".into()), cx)
+    });
+    selected(cx, &ws, &root);
+    let files = ["opencollection.yml", "environments/dev.yml"].map(|f| read(&root, f));
+    for name in ["pkey", "gkey"] {
+        for target in [VarTarget::Environment("dev".into()), VarTarget::Collection] {
+            let result = apply(cx, &ws, &root, name, target.clone());
+            assert!(result.is_err(), "{name} to {target:?} was accepted");
+        }
+    }
+    settle(cx);
+    assert_eq!(
+        ["opencollection.yml", "environments/dev.yml"].map(|f| read(&root, f)),
+        files
+    );
+    apply(cx, &ws, &root, "gkey", VarTarget::Runtime).expect("the runtime store takes it");
+}
+
+// A name some other environment marks secret can still be updated where the target file
+// already holds it as plain text: the write exposes nothing new.
+#[gpui_kit::test]
+fn a_plain_variable_already_in_the_target_is_still_updated(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        (
+            "opencollection.yml",
+            "opencollection: 1.0.0\ninfo:\n  name: c\nrequest:\n  variables:\n    - name: pkey\n      value: c0\n",
+        ),
+        ("a.yml", &request("a", "http://{{token}}/0")),
+        (
+            "environments/dev.yml",
+            "name: dev\nvariables:\n  - name: pkey\n    value: d0\n",
+        ),
+        (
+            "environments/prod.yml",
+            "name: prod\nvariables:\n  - secret: true\n    name: pkey\n",
+        ),
+    ]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    selected(cx, &ws, &root);
+    apply(cx, &ws, &root, "pkey", VarTarget::Environment("dev".into())).expect("dev holds it");
+    apply(cx, &ws, &root, "pkey", VarTarget::Collection).expect("the collection holds it");
+    wait_for(cx, "both saves", |_| {
+        read(&root, "environments/dev.yml").contains("abc")
+            && read(&root, "opencollection.yml").contains("abc")
+    });
+}
+
+// Until the global environments have loaded, a new name is not written to a file, since a
+// global environment may yet declare it secret.
+#[gpui_kit::test]
+fn a_new_name_waits_for_the_global_environments_to_load(cx: &mut TestAppContext) {
+    let col = tree();
+    let globals = write_tree(&[("h.yml", "name: h\nvariables: []\n")]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    selected(cx, &ws, &root);
+    let dir = globals.path().to_path_buf();
+    ws.update(cx, |w, cx| w.set_global_dir(dir, cx));
+    let early = cx.update(|cx| {
+        set_variable::apply(
+            &ws,
+            &root,
+            "fresh",
+            "abc",
+            &VarTarget::Environment("dev".into()),
+            cx,
+        )
+    });
+    assert!(early.is_err(), "a write before the globals loaded");
+    cx.run_until_parked();
+    apply(
+        cx,
+        &ws,
+        &root,
+        "fresh",
+        VarTarget::Environment("dev".into()),
+    )
+    .expect("loaded now");
+}
+
+// A file listing a name twice, once secret and once plain, never gets a value on the secret
+// entry: the write is refused and the file is left as it was.
+#[gpui_kit::test]
+fn a_name_listed_as_secret_and_plain_in_the_target_is_refused(cx: &mut TestAppContext) {
+    let dev = "name: dev\nvariables:\n  - secret: true\n    name: token\n  - name: token\n    value: plain\n";
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("a.yml", &request("a", "http://{{token}}/0")),
+        ("environments/dev.yml", dev),
+    ]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    selected(cx, &ws, &root);
+    let before = read(&root, "environments/dev.yml");
+    let result = apply(
+        cx,
+        &ws,
+        &root,
+        "token",
+        VarTarget::Environment("dev".into()),
+    );
+    assert!(
+        result.is_err(),
+        "a write touching the secret entry was accepted"
+    );
+    settle(cx);
+    assert_eq!(read(&root, "environments/dev.yml"), before);
+}
+
+// Switching the global environments directory checks new names against the new one only
+// once it has loaded; until then a new name is not written to a file.
+#[gpui_kit::test]
+fn a_new_global_directory_holds_writes_until_it_loads(cx: &mut TestAppContext) {
+    let col = tree();
+    let first = write_tree(&[("h.yml", "name: h\nvariables: []\n")]);
+    let second = write_tree(&[(
+        "g.yml",
+        "name: g\nvariables:\n  - secret: true\n    name: gkey\n",
+    )]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    selected(cx, &ws, &root);
+    let dir = first.path().to_path_buf();
+    ws.update(cx, |w, cx| w.set_global_dir(dir, cx));
+    cx.run_until_parked();
+    assert!(!ws.read_with(cx, |w, _| w.globals_loading()));
+    let dir = second.path().to_path_buf();
+    ws.update(cx, |w, cx| w.set_global_dir(dir, cx));
+    assert!(ws.read_with(cx, |w, _| w.globals_loading()));
+    let early = cx.update(|cx| {
+        set_variable::apply(
+            &ws,
+            &root,
+            "gkey",
+            "abc",
+            &VarTarget::Environment("dev".into()),
+            cx,
+        )
+    });
+    assert!(early.is_err(), "a write before the new directory loaded");
+    cx.run_until_parked();
+    assert!(!ws.read_with(cx, |w, _| w.globals_loading()));
+    let after = apply(cx, &ws, &root, "gkey", VarTarget::Environment("dev".into()));
+    assert!(after.is_err(), "the new directory's secret is refused");
+    apply(
+        cx,
+        &ws,
+        &root,
+        "fresh",
+        VarTarget::Environment("dev".into()),
+    )
+    .expect("loaded now");
+}
+
+// A failed edit that outran a new directory's load still ends the wait, through a fresh load
+// of that directory, so its secrets are checked and new names are not refused for good.
+#[gpui_kit::test]
+fn a_failed_edit_after_a_directory_switch_still_ends_the_wait(cx: &mut TestAppContext) {
+    let col = tree();
+    let globals = write_tree(&[(
+        "g.yml",
+        "name: g\nvariables:\n  - secret: true\n    name: gkey\n",
+    )]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    selected(cx, &ws, &root);
+    let dir = globals.path().to_path_buf();
+    let outcome = ws.update(cx, |w, cx| {
+        w.set_global_dir(dir, cx);
+        w.edit_globals(
+            apinata_app::workspace::GlobalOp::Delete("missing".into()),
+            cx,
+        )
+    });
+    cx.run_until_parked();
+    assert!(
+        outcome.try_recv().expect("an outcome").is_err(),
+        "the edit fails"
+    );
+    assert!(!ws.read_with(cx, |w, _| w.globals_loading()));
+    let secret = apply(cx, &ws, &root, "gkey", VarTarget::Environment("dev".into()));
+    assert!(secret.is_err(), "the new directory's secret is refused");
+    apply(
+        cx,
+        &ws,
+        &root,
+        "fresh",
+        VarTarget::Environment("dev".into()),
+    )
+    .expect("loaded now");
+}
+
 #[gpui_kit::test]
 fn the_collection_target_writes_the_collection_file(cx: &mut TestAppContext) {
     let col = tree();
