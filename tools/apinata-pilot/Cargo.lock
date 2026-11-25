@@ -354,11 +354,13 @@ dependencies = [
  "tokio-util",
  "tower",
  "trash",
+ "unicode-properties",
  "uppsala",
  "url",
  "uuid",
  "windows-native-keyring-store",
  "windows-sys 0.61.2",
+ "x509-cert",
  "yaml_serde",
  "zbus-secret-service-keyring-store",
 ]
