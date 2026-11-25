@@ -45,6 +45,7 @@ fn key() -> ClientKey {
         identity: None,
         overrides: Default::default(),
         http1_only: false,
+        unix_socket: None,
     }
 }
 

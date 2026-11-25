@@ -10,6 +10,7 @@ mod model;
 mod pac;
 mod resolved;
 mod route;
+pub(crate) mod uds;
 
 pub use check::{NetworkAnswer, NetworkCheck, NetworkQuestion, QuestionKind, ShownNetwork};
 pub(crate) use check::{NetworkBasis, Preloaded};

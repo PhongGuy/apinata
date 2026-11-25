@@ -52,9 +52,14 @@ pub fn is_loopback(ip: IpAddr) -> bool {
 
 /// The host in `input` as the URL parser reads it: lowercase, IDNA-encoded, percent-decoded,
 /// IPv4 number forms expanded, IPv6 bracketed, without a trailing dot. `input` may be a bare
-/// host, an authority or a whole URL. `None` when it names no host.
+/// host, an authority or a whole URL. A Unix socket key, `unix:/path`, is kept as given.
+/// `None` when it names no host.
 pub fn normalize_host(input: &str) -> Option<String> {
     let input = input.trim();
+    // A Unix socket is trusted by its path, `unix:/path`, which no URL host can spell.
+    if input.starts_with("unix:/") {
+        return Some(input.to_owned());
+    }
     let parsed = if input.contains("://") {
         Url::parse(input).ok()
     } else {

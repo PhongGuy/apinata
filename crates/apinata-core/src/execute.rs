@@ -35,7 +35,7 @@ use crate::network::{
     ClientKey, Clients, FetchOptions, GlobalProxy, NetworkCheck, NetworkSettings, OverrideResolve,
     PAC_CACHE, PacCache, PacSend, PacWarning, Preloaded, ProxyRule, RequestProxy,
     ResolvedHostOverride, ResolvedProxy, SystemProxy, apply_rule, label_for, load_identity,
-    overridden, read_ca, resolve_hop, route, rule_for,
+    overridden, read_ca, resolve_hop, route, rule_for, uds,
 };
 use crate::ntlm;
 use crate::oauth1;
@@ -829,6 +829,12 @@ impl Executor {
             builder = builder.identity(identity);
         }
         let builder = apply_rule(builder, &key.rule, &self.system);
+        // reqwest drops the proxy and DNS for a socket client, so only the policy check remains.
+        #[cfg(unix)]
+        let builder = match &key.unix_socket {
+            Some(path) => builder.unix_socket(Arc::clone(path)),
+            None => builder,
+        };
         Ok(builder)
     }
 
@@ -863,6 +869,9 @@ impl Executor {
         // Accepted limit: through an HTTP(S) proxy or remote-DNS SOCKS (socks5h, socks4a) only
         // the proxy host is resolved here; the target is judged by name and the proxy resolves it.
         self.check_hop(url, hop, overrides)?;
+        if matches!(uds::split(url), Ok(Some(_))) {
+            return Ok(None);
+        }
         let proxy = route(rule, &self.system, url);
         if let Some(proxy) = &proxy {
             self.check_hop(&proxy.address(), hop, overrides)
@@ -897,6 +906,10 @@ impl Executor {
         let ProxyRule::Pac(source) = rule else {
             return Ok((rule.clone(), None));
         };
+        // A socket hop never asks a PAC script: the client ignores any proxy it would name.
+        if matches!(uds::split(url), Ok(Some(_))) {
+            return Ok((ProxyRule::Direct, None));
+        }
         // A refused target never reaches the script, its fetch or its DNS helpers.
         self.check_hop(url, hop, overrides)?;
         let fetch_opts = FetchOptions::new(
@@ -1174,6 +1187,13 @@ impl Executor {
         }
         let mut url = Url::parse(req.url())
             .map_err(|e| invalid(format!("{}: {e}", redact_url(req.url()))))?;
+        let socket = uds::split(&url).map_err(invalid)?;
+        #[cfg(not(unix))]
+        if socket.is_some() {
+            return Err(invalid(
+                "Unix sockets are not supported on this platform".to_owned(),
+            ));
+        }
         let mut method = Method::from_bytes(req.method().as_bytes())
             .map_err(|_| invalid(format!("bad method {:?}", req.method())))?;
         let rule = rule_for(req.network().proxy(), &self.network);
@@ -1289,13 +1309,14 @@ impl Executor {
             identity,
             overrides: Arc::clone(&overrides),
             http1_only: subscription.is_some(),
+            unix_socket: socket.as_ref().map(uds::SocketTarget::path),
         };
         let mut client = self.clients.get(&key, |key| self.build_client(key))?;
         let mut followed = 0;
         let mut total = Duration::ZERO;
         // SigV4 signs hops on the first URL's origin until a hop leaves it; digest answers one
         // challenge per send, its header living only on the retried hop.
-        let first_origin = url.origin();
+        let first_url = url.clone();
         let mut left_origin = false;
         let mut digest_tried = false;
         let mut digest_header: Option<String> = None;
@@ -1305,7 +1326,7 @@ impl Executor {
         loop {
             // Hops pushed from here on are this pass's, NTLM legs included.
             let first_new_hop = buf.hops.len();
-            left_origin |= url.origin() != first_origin;
+            left_origin |= !uds::same_origin(&url, &first_url);
             // OAuth 1.0 signs before the hop's headers are built, so the length rule sees the
             // signed body; a later hop first sheds the previous hop's oauth_* parameters.
             let mut oauth1_authorization = None;
@@ -1470,7 +1491,12 @@ impl Executor {
             if userinfo.is_some() {
                 sending.retain(|(n, _)| !n.eq_ignore_ascii_case("authorization"));
             }
-            let mut builder = client.request(method.clone(), url.clone());
+            // A socket hop puts its request path on a localhost URL, as curl does.
+            let wire = match uds::split(&url).map_err(invalid)? {
+                Some(target) => target.wire,
+                None => url.clone(),
+            };
+            let mut builder = client.request(method.clone(), wire);
             for (name, value) in &sending {
                 builder = builder.header(name, value);
             }
@@ -1638,7 +1664,7 @@ impl Executor {
             let target = (challenge.is_none() && REDIRECTS.contains(&status.as_u16()))
                 .then(|| hop_headers.get("location")?.to_str().ok())
                 .flatten()
-                .and_then(|location| url.join(location).ok());
+                .and_then(|location| uds::join(&url, location));
             let stopped_at_limit = target.is_some() && limit > 0 && followed >= limit;
             let next = target.filter(|_| followed < limit);
             // A refused handshake names the ws URL and why; it is a response, not an ExecError.
@@ -1921,8 +1947,13 @@ impl Executor {
                 )
                 .await?;
             proxy = self.check_route(&next_rule, &next, followed as usize, &overrides)?;
-            if next_rule != key.rule {
+            let next_socket = uds::split(&next)
+                .map_err(invalid)?
+                .as_ref()
+                .map(uds::SocketTarget::path);
+            if next_rule != key.rule || next_socket != key.unix_socket {
                 key.rule = next_rule;
+                key.unix_socket = next_socket;
                 client = self.clients.get(&key, |key| self.build_client(key))?;
             }
             pac_line = next_line;
@@ -1938,7 +1969,7 @@ impl Executor {
             }
             // A cross-origin hop loses AWS signing headers always, as bruno-cli's does, and the
             // credentials (X-WSSE among them) unless forwardAuthorizationHeader is on.
-            if next.origin() != url.origin() {
+            if !uds::same_origin(&next, &url) {
                 headers.retain(|(name, _)| {
                     !name
                         .get(..6)
@@ -2874,6 +2905,7 @@ mod tests {
             identity: None,
             overrides: Arc::default(),
             http1_only,
+            unix_socket: None,
         };
         let uri = server.uri();
         let h1 = exec.build_client(&key(true)).unwrap();

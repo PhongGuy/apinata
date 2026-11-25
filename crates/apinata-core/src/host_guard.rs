@@ -26,6 +26,11 @@ pub(crate) fn is_local_name(host: &str) -> bool {
 /// otherwise returns the normalised host, empty when the URL has none. The policy is never
 /// asked about loopback or local hosts.
 pub(crate) fn judge(url: &Url, policy: &HostPolicy) -> Result<(), String> {
+    // A socket is asked about by its path and never counts as local: some give root.
+    if let Ok(Some(target)) = crate::network::uds::split(url) {
+        let key = target.trust_key();
+        return if policy(&key) { Ok(()) } else { Err(key) };
+    }
     let name = url.host_str().and_then(normalize_host).unwrap_or_default();
     let allowed = match url.host() {
         Some(Host::Ipv4(ip)) => is_loopback(ip.into()) || policy(&name),
@@ -52,7 +57,10 @@ pub(crate) fn judge_with_overrides(
     overrides: &[ResolvedHostOverride],
 ) -> Result<(), Refusal> {
     let name = url.host_str().and_then(normalize_host).unwrap_or_default();
-    if let (Some(Host::Domain(_)), Some(found)) = (url.host(), overridden(overrides, &name)) {
+    let socket = matches!(crate::network::uds::split(url), Ok(Some(_)));
+    if let (false, Some(Host::Domain(_)), Some(found)) =
+        (socket, url.host(), overridden(overrides, &name))
+    {
         return judge_addresses(found, policy);
     }
     judge(url, policy).map_err(|host| Refusal {
