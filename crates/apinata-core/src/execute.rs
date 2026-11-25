@@ -1188,12 +1188,6 @@ impl Executor {
         let mut url = Url::parse(req.url())
             .map_err(|e| invalid(format!("{}: {e}", redact_url(req.url()))))?;
         let socket = uds::split(&url).map_err(invalid)?;
-        #[cfg(not(unix))]
-        if socket.is_some() {
-            return Err(invalid(
-                "Unix sockets are not supported on this platform".to_owned(),
-            ));
-        }
         let mut method = Method::from_bytes(req.method().as_bytes())
             .map_err(|_| invalid(format!("bad method {:?}", req.method())))?;
         let rule = rule_for(req.network().proxy(), &self.network);
@@ -1392,7 +1386,12 @@ impl Executor {
             // When the jar has cookies for this hop, the first hop merges them into the own Cookie
             // headers as one header in the first one's place, the jar winning; a redirect hop sends
             // the jar's alone. A hop the jar has nothing for keeps the own headers intact.
-            let jar_cookie = send_cookies.then(|| self.jar.header_for(&url)).flatten();
+            // The jar keys by host, and every socket shares the host `unix`, so a socket hop
+            // neither sends nor stores cookies.
+            let socket_hop = matches!(uds::split(&url), Ok(Some(_)));
+            let jar_cookie = (send_cookies && !socket_hop)
+                .then(|| self.jar.header_for(&url))
+                .flatten();
             let is_cookie = |(name, _): &&(String, String)| name.eq_ignore_ascii_case("cookie");
             let mut sending: Vec<(String, String)> = match jar_cookie {
                 None => headers.clone(),
@@ -1634,7 +1633,7 @@ impl Executor {
             let hop_headers = res.headers().clone();
             // Decoded as UTF-8 rather than visible ASCII, as reqwest's jar did, so `sid=café` is kept.
             let set_cookies = hop_headers.get_all(SET_COOKIE).iter().map(|v| v.as_bytes());
-            let hop_cookies = if store_cookies {
+            let hop_cookies = if store_cookies && !socket_hop {
                 self.jar.store(set_cookies, &url)
             } else {
                 crate::cookies::not_stored(set_cookies)
