@@ -103,12 +103,18 @@ pub enum GroupKind {
     Other,
 }
 
+impl GroupKind {
+    fn is_other(&self) -> bool {
+        *self == GroupKind::Other
+    }
+}
+
 /// One titled group of changes.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NotesGroup {
-    /// What kind of change it lists.
-    #[serde(default)]
+    /// What kind of change it lists; `Other` is written as no kind, which reads back the same.
+    #[serde(default, skip_serializing_if = "GroupKind::is_other")]
     pub kind: GroupKind,
     /// The English title shown above the items.
     pub title: String,

@@ -385,3 +385,50 @@ async fn the_read_stops_at_the_listed_size_without_a_content_length() {
         "{why}"
     );
 }
+
+/// The notes.json xtask's generator writes from its recorded release bodies; its own tests
+/// check it still writes exactly these bytes.
+const GENERATED_NOTES: &[u8] = include_bytes!("../../xtask/tests/fixtures/notes/notes.json");
+
+#[tokio::test]
+async fn the_release_generators_notes_load_through_the_update_check() {
+    let a = offer_notes(GENERATED_NOTES, "0.1.1").await;
+    assert_eq!(a.notes_error, None);
+    assert_eq!(versions(&a), ["0.3.0", "0.2.0"]);
+    let notes = a.release_notes.unwrap();
+    assert!(!notes.older_not_listed, "0.2.0 follows 0.1.1");
+    let kinds: Vec<GroupKind> = notes.releases[1].groups.iter().map(|g| g.kind).collect();
+    assert_eq!(
+        kinds,
+        [GroupKind::Features, GroupKind::Fixes, GroupKind::Other]
+    );
+    assert_eq!(
+        notes.releases[0].groups[0].items[1].line(),
+        "Add --json output to apinata run (#21)"
+    );
+
+    let a = offer_notes(GENERATED_NOTES, "0.0.1").await;
+    assert_eq!(versions(&a), ["0.3.0", "0.2.0", "0.1.1", "0.1.0"]);
+    assert!(
+        a.release_notes.unwrap().older_not_listed,
+        "the first release has no previous"
+    );
+}
+
+#[test]
+fn a_group_of_other_changes_is_written_without_a_kind_and_reads_back_the_same() {
+    let doc = ReleaseNotes::new(vec![NotesRelease::new(
+        "1.0.0",
+        None,
+        None,
+        vec![
+            NotesGroup::new(GroupKind::Other, "Changes", vec![NotesItem::new("a")]),
+            NotesGroup::new(GroupKind::Fixes, "Fixes", vec![NotesItem::new("b")]),
+        ],
+    )]);
+    let v = serde_json::to_value(&doc).unwrap();
+    let groups = &v["releases"][0]["groups"];
+    assert!(groups[0].get("kind").is_none(), "{groups}");
+    assert_eq!(groups[1]["kind"], "fixes");
+    assert_eq!(serde_json::from_value::<ReleaseNotes>(v).unwrap(), doc);
+}
