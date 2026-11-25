@@ -147,18 +147,6 @@ fn enter_on_the_close_button_closes_the_global_environments(cx: &mut TestAppCont
 }
 
 #[gpui_kit::test]
-fn enter_on_the_close_button_closes_the_variables_overview(cx: &mut TestAppContext) {
-    let col = two_requests();
-    let s = started(cx, &col);
-    enter_closes(cx, &s, |cx| {
-        cx.update_window(s.win, |_, w, cx| {
-            apinata_app::variables_overview::open_failed(w, cx);
-        })
-        .unwrap();
-    });
-}
-
-#[gpui_kit::test]
 fn enter_on_the_close_button_closes_generate_code(cx: &mut TestAppContext) {
     let col = two_requests();
     let s = started(cx, &col);

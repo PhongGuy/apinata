@@ -93,6 +93,8 @@ mod subscription;
 mod tree_tools;
 mod trusted_hosts;
 mod undefined_hint;
+#[cfg(unix)]
+mod unix_socket;
 mod update_environment;
 mod update_folder;
 mod update_request;

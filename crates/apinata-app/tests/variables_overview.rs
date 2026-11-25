@@ -1,5 +1,5 @@
-//! The Variables overview: a title bar button opens a read-only list of the active request's
-//! variables grouped by scope, with overridden rows marked and secrets masked.
+//! The Variables overview: a title bar button opens the dock's Variables tab, a list of the
+//! active request's variables grouped by scope, with overridden rows marked and secrets masked.
 
 use crate::support;
 
@@ -73,7 +73,7 @@ fn the_button_opens_the_active_requests_variables_grouped_and_marked(cx: &mut Te
 }
 
 #[gpui_kit::test]
-fn without_an_active_request_the_dialog_says_so(cx: &mut TestAppContext) {
+fn without_an_active_request_the_tab_says_so(cx: &mut TestAppContext) {
     let col = collection();
     let s = started(cx, &col);
     cx.update_window(s.win, |_, w, cx| w.click("variables-button", cx))
@@ -101,18 +101,6 @@ fn a_narrow_window_drops_the_button_but_the_palette_keeps_the_command(cx: &mut T
 }
 
 #[gpui_kit::test]
-fn a_failed_lookup_opens_the_dialog_with_a_note(cx: &mut TestAppContext) {
-    let col = collection();
-    let s = started(cx, &col);
-    cx.update_window(s.win, |_, w, cx| {
-        apinata_app::variables_overview::open_failed(w, cx)
-    })
-    .unwrap();
-    frame(cx, s.win);
-    assert!(present(cx, s.win, "var-overview-failed"));
-}
-
-#[gpui_kit::test]
 fn shadowed_rows_leave_the_scrollbar_its_gutter_in_a_narrow_window(cx: &mut TestAppContext) {
     use apinata_app::style::SCROLLBAR_GUTTER;
     use gpui_kit::{VisualTestContext, px, size};
@@ -125,7 +113,7 @@ fn shadowed_rows_leave_the_scrollbar_its_gutter_in_a_narrow_window(cx: &mut Test
     cx.update_window(s.win, |_, w, cx| w.click("variables-button", cx))
         .unwrap();
     frame(cx, s.win);
-    VisualTestContext::from_window(s.win, cx).simulate_resize(size(px(440.), px(500.)));
+    VisualTestContext::from_window(s.win, cx).simulate_resize(size(px(440.), px(1400.)));
     frame(cx, s.win);
     cx.update_window(s.win, |_, w, cx| {
         w.render_frame(cx);
@@ -143,7 +131,7 @@ fn shadowed_rows_leave_the_scrollbar_its_gutter_in_a_narrow_window(cx: &mut Test
     .unwrap();
 }
 
-// The read-only overview leads to the editable runtime variables dialog.
+// The overview leads to the runtime variables dialog, where masked values are edited.
 #[gpui_kit::test]
 fn the_overview_offers_to_edit_the_runtime_variables(cx: &mut TestAppContext) {
     let col = collection();
@@ -161,38 +149,6 @@ fn the_overview_offers_to_edit_the_runtime_variables(cx: &mut TestAppContext) {
     cx.run_until_parked();
     frame(cx, s.win);
     assert!(present(cx, s.win, "runtime-vars"));
-    assert!(!present(cx, s.win, "variables-overview"));
-}
-
-// The overview's scroll box clips on every side, flush with the full-width button.
-#[gpui_kit::test]
-fn the_edit_button_keeps_its_ring_inside_the_scroll_box(cx: &mut TestAppContext) {
-    use apinata_app::style::FOCUS_RING_ROOM;
-    let col = collection();
-    let s = started(cx, &col);
-    s.ws.update(cx, |w, cx| w.open_item(&s.root, ip("a/r.yml"), false, cx));
-    cx.run_until_parked();
-    cx.update_window(s.win, |_, w, cx| w.click("variables-button", cx))
-        .unwrap();
-    frame(cx, s.win);
-    cx.update_window(s.win, |_, w, cx| {
-        w.render_frame(cx);
-        let clip = w.find("variables-overview-scroll").bounds();
-        let b = w.find("var-overview-edit-runtime").bounds();
-        assert!(
-            b.left() - FOCUS_RING_ROOM >= clip.left(),
-            "{b:?} in {clip:?}"
-        );
-        assert!(
-            b.right() + FOCUS_RING_ROOM <= clip.right(),
-            "{b:?} in {clip:?}"
-        );
-        assert!(
-            b.bottom() + FOCUS_RING_ROOM <= clip.bottom(),
-            "{b:?} in {clip:?}"
-        );
-    })
-    .unwrap();
 }
 
 #[gpui_kit::test]
@@ -258,21 +214,11 @@ fn enter_after_clicking_an_eye_keeps_the_overview_open(cx: &mut TestAppContext) 
     press(cx, &s, "enter");
     assert!(
         overview_open(cx, &s),
-        "Enter after a click keeps the dialog"
+        "Enter after a click keeps the overview"
     );
     assert!(
         present(cx, s.win, ("var-overview-hide", eye)),
-        "Enter on the dialog host toggles nothing"
-    );
-}
-
-#[gpui_kit::test]
-fn enter_right_after_opening_keeps_the_overview_open(cx: &mut TestAppContext) {
-    let (_col, s, _eye) = overview_with_secret(cx);
-    press(cx, &s, "enter");
-    assert!(
-        overview_open(cx, &s),
-        "Enter with nothing focused keeps the dialog"
+        "Enter elsewhere toggles nothing"
     );
 }
 
@@ -285,25 +231,7 @@ fn enter_on_a_focused_eye_reveals_and_keeps_the_overview_open(cx: &mut TestAppCo
         present(cx, s.win, ("var-overview-hide", eye)),
         "Enter revealed"
     );
-    assert!(overview_open(cx, &s), "Enter on the eye keeps the dialog");
-}
-
-#[gpui_kit::test]
-fn escape_still_closes_the_overview(cx: &mut TestAppContext) {
-    let (_col, s, eye) = overview_with_secret(cx);
-    cx.update_window(s.win, |_, w, cx| w.click(("var-overview-eye", eye), cx))
-        .unwrap();
-    frame(cx, s.win);
-    press(cx, &s, "escape");
-    assert!(!overview_open(cx, &s), "Escape closes");
-}
-
-#[gpui_kit::test]
-fn enter_on_the_focused_x_closes_the_overview(cx: &mut TestAppContext) {
-    let (_col, s, _eye) = overview_with_secret(cx);
-    enter_on(cx, s.win, "close");
-    frame(cx, s.win);
-    assert!(!overview_open(cx, &s), "Enter on the x closes");
+    assert!(overview_open(cx, &s), "Enter on the eye keeps the overview");
 }
 
 // Braces read as variables; an eye would read as showing or hiding secrets.
@@ -336,7 +264,7 @@ fn narrow_overview_with_long_value(cx: &mut TestAppContext) -> (tempfile::TempDi
     cx.update_window(s.win, |_, w, cx| w.click("variables-button", cx))
         .unwrap();
     frame(cx, s.win);
-    VisualTestContext::from_window(s.win, cx).simulate_resize(size(px(440.), px(500.)));
+    VisualTestContext::from_window(s.win, cx).simulate_resize(size(px(440.), px(1400.)));
     frame(cx, s.win);
     (col, s)
 }

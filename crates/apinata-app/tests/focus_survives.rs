@@ -131,22 +131,7 @@ fn escape_on_a_keyboard_opened_dialog_rings_its_opener(cx: &mut TestAppContext) 
     let (_col, s) = three_requests_started(cx);
     key_to(cx, s.win, "variables-button");
     press_drawn(cx, s.win, "enter");
-    assert!(dialog_open(cx, s.win), "Enter opens the overview");
-    platform_press(cx, s.win, "escape");
-    after_close(cx, s.win);
-    assert!(!dialog_open(cx, s.win), "Escape closes it");
-    assert!(keyboard(cx));
-    assert!(
-        ring_on(cx, s.win, "variables-button"),
-        "the opener shows its ring"
-    );
-}
-
-#[gpui_kit::test]
-fn escape_on_runtime_variables_opened_by_key_rings_the_first_opener(cx: &mut TestAppContext) {
-    let (_col, s) = three_requests_started(cx);
-    key_to(cx, s.win, "variables-button");
-    press_drawn(cx, s.win, "enter");
+    assert!(!dialog_open(cx, s.win), "the overview opens in the dock");
     key_to(cx, s.win, "var-overview-edit-runtime");
     press_drawn(cx, s.win, "enter");
     assert!(
@@ -156,8 +141,9 @@ fn escape_on_runtime_variables_opened_by_key_rings_the_first_opener(cx: &mut Tes
     platform_press(cx, s.win, "escape");
     after_close(cx, s.win);
     assert!(!dialog_open(cx, s.win), "Escape closes it");
+    assert!(keyboard(cx));
     assert!(
-        ring_on(cx, s.win, "variables-button"),
+        ring_on(cx, s.win, "var-overview-edit-runtime"),
         "the opener shows its ring"
     );
 }
@@ -747,21 +733,6 @@ fn pointer_on_tree(cx: &mut TestAppContext, s: &Started, rel: &str) {
 }
 
 #[gpui_kit::test]
-fn the_variables_button_dialog_closed_by_its_x_returns_to_the_tree(cx: &mut TestAppContext) {
-    let (_col, s) = three_requests_started(cx);
-    pointer_on_tree(cx, &s, "a.yml");
-    platform_click(cx, s.win, "variables-button");
-    next_frame(cx, s.win);
-    next_frame(cx, s.win);
-    assert!(dialog_open(cx, s.win), "the button opens the overview");
-    platform_click(cx, s.win, "close");
-    after_close(cx, s.win);
-    assert!(!dialog_open(cx, s.win), "the x closes it");
-    assert!(!keyboard(cx), "pointer mode stays, so no ring");
-    assert!(ring_on(cx, s.win, "sidebar-tree"), "the tree holds focus");
-}
-
-#[gpui_kit::test]
 fn runtime_variables_from_the_menu_closed_by_its_x_returns_to_the_tree(cx: &mut TestAppContext) {
     let (_col, s) = three_requests_started(cx);
     pointer_on_tree(cx, &s, "a.yml");
@@ -771,26 +742,6 @@ fn runtime_variables_from_the_menu_closed_by_its_x_returns_to_the_tree(cx: &mut 
     assert!(!dialog_open(cx, s.win), "the x closes it");
     assert!(!keyboard(cx), "pointer mode stays, so no ring");
     assert!(ring_on(cx, s.win, "sidebar-tree"), "the tree holds focus");
-}
-
-// The keyboard path from the tree: Tab to the variables button, Enter, then Escape.
-#[gpui_kit::test]
-fn the_variables_button_by_key_from_the_tree_rings_it_on_escape(cx: &mut TestAppContext) {
-    let (_col, s) = three_requests_started(cx);
-    open_tab(cx, &s.ws, &s.root, "a.yml");
-    frame(cx, s.win);
-    keyboard_on_tree(cx, &s);
-    key_to(cx, s.win, "variables-button");
-    press_drawn(cx, s.win, "enter");
-    assert!(dialog_open(cx, s.win), "Enter opens the overview");
-    platform_press(cx, s.win, "escape");
-    after_close(cx, s.win);
-    assert!(!dialog_open(cx, s.win), "Escape closes it");
-    assert!(keyboard(cx));
-    assert!(
-        ring_on(cx, s.win, "variables-button"),
-        "the opener, still drawn, shows its ring"
-    );
 }
 
 // Tab from the tree to the app menu: the menu button, not the tree, held focus before the

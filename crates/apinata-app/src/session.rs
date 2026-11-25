@@ -1,5 +1,6 @@
 //! The window and collection session, stored in `session.json`.
 
+use crate::console_dock::DockTab;
 use crate::tabs::TabKind;
 use apinata_core::{ItemPath, StatusRule};
 use gpui_kit::{Bounds, Pixels, Size, WindowBounds, point, px, size};
@@ -44,6 +45,13 @@ pub struct Session {
     /// The active global environment's name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub global_environment: Option<String>,
+    /// The dock tab shown when the session was saved; `None` while the dock was closed.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "lenient::option"
+    )]
+    pub dock: Option<DockTab>,
 }
 
 impl Session {
