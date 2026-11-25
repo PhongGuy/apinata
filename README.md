@@ -23,7 +23,8 @@ source under MIT or Apache-2.0.
   against it as you type and run subscriptions over WebSocket. From the command
   line, `apinata graphql` fetches a schema and formats or checks a query. Event-stream responses show each event as it arrives. WebSocket
   and gRPC request files appear in the sidebar but cannot be opened or sent
-  yet.
+  yet. On Linux and macOS, a URL such as `http://unix:/var/run/docker.sock:/info`
+  sends over a Unix socket.
 
 - **Many kinds of auth.** Basic, Bearer, API key, Digest, AWS SigV4, NTLM,
   OAuth 1.0, OAuth 2.0 (client credentials, password, authorization code
@@ -32,8 +33,8 @@ source under MIT or Apache-2.0.
 
 - **AI through MCP.** An AI assistant can read and edit your collections and
   send requests through the built-in MCP server, `apinata mcp`. Edits are plain
-  git-tracked files, and sending to a non-local host needs your approval in the
-  app, with a trusted-host list per collection.
+  git-tracked files, and sending to a non-local host or a Unix socket needs your
+  approval in the app, with a trusted-host list per collection.
 
   ![The approval prompt before an AI assistant sends a request to a remote host](assets/screenshots/mcp-approval.png)
 
@@ -43,8 +44,8 @@ source under MIT or Apache-2.0.
   ![The environments editor](assets/screenshots/environments.png)
 
 - **Team workspaces on your own server.** Join a self-hosted
-  [Potluck](https://github.com/PhongGuy/potluck) team server to share
-  collections as team workspaces. Saved changes sync in the background, the
+  [Potluck](https://github.com/PhongGuy/potluck) team server, with a password
+  or the server's single sign-on, to share collections as team workspaces. Saved changes sync in the background, the
   status bar shows the sync state, and when two people change the same request
   the app lets you compare both versions and keep one. Nothing leaves your
   machine unless you join a server.
@@ -53,7 +54,9 @@ source under MIT or Apache-2.0.
   in the app and from `apinata run`, with JSON, JUnit and HTML reports for CI.
   Scripts run before and after each request and can hold tests, with chai,
   crypto and JWT helpers. Data-driven runs repeat a collection once per row of
-  a CSV or JSON file (`--csv-file-path`, `--json-file-path`).
+  a CSV or JSON file (`--csv-file-path`, `--json-file-path`). The app's runner
+  can use the shared cookie jar, an empty one or a copy, and can drop the
+  variable values a run sets.
 
   ![A test run with passed and failed assertions](assets/screenshots/tests.png)
 
@@ -234,9 +237,9 @@ is never sent.
 
 The agent may read and edit collection files freely, since git tracks every
 change. Sending a request to a host other than `localhost` or a loopback
-address needs your approval: the request waits until you approve it in the
-desktop app, or you trust the host beforehand. Denied hosts are refused
-outright.
+address, or to any Unix socket, needs your approval: the request waits until
+you approve it in the desktop app, or you trust the host (or the socket, as
+`unix:/path/to.sock`) beforehand. Denied hosts are refused outright.
 
 ```sh
 apinata trust add api.example.com --collection ./my-api
