@@ -1,7 +1,7 @@
 //! Global environments: environment files in the profile directory that every collection can
 //! select, created, renamed and deleted with the same operations as a collection's own.
 
-use crate::collection::{Environment, load_environment_dir};
+use crate::collection::{Environment, load_environment_dir, sort_load_errors};
 use crate::env_ops::{self, EnvHost, OrphanReport};
 use crate::error::{EnvError, FileError, OpenError};
 use crate::secrets::{EnvWarning, SecretKey, SecretStore};
@@ -37,6 +37,7 @@ impl GlobalEnvironments {
                     source,
                 }
             })?;
+        sort_load_errors(&mut load_errors);
         Ok(GlobalEnvironments {
             dir,
             environments,

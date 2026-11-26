@@ -612,7 +612,7 @@ impl Collection {
         };
         sort_lists(folder);
         self.load_errors.retain(|e| !e.path().starts_with(full));
-        self.load_errors.extend(errors);
+        self.add_load_errors(errors);
         vec![Change {
             path: full.to_path_buf(),
             kind,
@@ -652,7 +652,7 @@ impl Collection {
     /// Make `errors` the only load errors that name `path`.
     pub(super) fn replace_errors(&mut self, path: &Path, errors: Vec<FileError>) {
         self.load_errors.retain(|e| e.path() != path);
-        self.load_errors.extend(errors);
+        self.add_load_errors(errors);
     }
 }
 

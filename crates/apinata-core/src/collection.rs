@@ -154,6 +154,7 @@ impl Collection {
         let mut load_errors = Vec::new();
         let tree = walk(root, &ignore, &mut load_errors)?;
         let environments = load_environments(root, &ignore, &mut load_errors);
+        sort_load_errors(&mut load_errors);
         let dotenv_hash = read_regular(&root.join(".env"))
             .ok()
             .map(|b| hash_bytes(&b));
@@ -215,9 +216,15 @@ impl Collection {
         &self.environments
     }
 
-    /// Files that could not be loaded.
+    /// Files that could not be loaded, in path order.
     pub fn load_errors(&self) -> &[FileError] {
         &self.load_errors
+    }
+
+    /// Add load errors found after opening, keeping the list in path order.
+    pub(crate) fn add_load_errors(&mut self, errors: impl IntoIterator<Item = FileError>) {
+        self.load_errors.extend(errors);
+        sort_load_errors(&mut self.load_errors);
     }
 
     /// The parsed `opencollection.yml`.
@@ -527,6 +534,12 @@ pub(crate) fn name_order(a: &str, b: &str) -> Ordering {
     a.to_lowercase()
         .cmp(&b.to_lowercase())
         .then_with(|| a.cmp(b))
+}
+
+/// Put load errors in path order, so they list alike on every filesystem and in every shell.
+/// The sort is stable: errors on one path keep the order they were found in.
+pub(crate) fn sort_load_errors(errors: &mut [FileError]) {
+    errors.sort_by(|a, b| a.path().cmp(b.path()));
 }
 
 /// Whether `walk` loads a file of this name as a request or opaque item.

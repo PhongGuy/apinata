@@ -184,9 +184,10 @@ fn requests_of_a_type_the_app_cannot_send_are_named_as_skipped(cx: &mut TestAppC
     assert!(errors.is_empty(), "{errors:?}");
     assert_eq!(
         skipped,
+        // Path order: api/chat.yml sorts before hello.yml, whatever their seqs.
         [
-            "Say hello (gRPC) was skipped: gRPC requests cannot be sent yet",
             "Chat (WebSocket) was skipped: WebSocket requests cannot be sent yet",
+            "Say hello (gRPC) was skipped: gRPC requests cannot be sent yet",
         ]
     );
 }
