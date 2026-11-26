@@ -1,7 +1,9 @@
 //! Tree operations: create, clone, rename, delete and move for requests and folders, written
 //! to disk at once with Bruno's file names, layout and `seq` values.
 
-use super::{Collection, ENVIRONMENTS_DIR, FOLDER_FILE, Folder, sort_lists, walk};
+use super::{
+    Collection, ENVIRONMENTS_DIR, FOLDER_FILE, Folder, sort_lists, sort_load_errors, walk,
+};
 use crate::config_file::FolderFile;
 use crate::document::{DiskState, Document, set_value};
 use crate::error::TreeError;
@@ -494,7 +496,7 @@ impl Collection {
         let folder = walk(&path, &self.ignore, &mut errors)
             .map_err(|e| io_error(&path, std::io::Error::other(e.to_string())))?;
         let dir_name = folder.dir_name.clone();
-        self.load_errors.extend(errors);
+        self.add_load_errors(errors);
         let parent_folder = self
             .folder_mut(parent)
             .expect("the parent folder was found before the write");
@@ -1182,6 +1184,7 @@ impl Collection {
         for error in &mut self.load_errors {
             error.relocate(from, to);
         }
+        sort_load_errors(&mut self.load_errors);
         self.drafts.iter_mut().for_each(|d| d.relocate(from, to));
         let Some(folder) = self.folder_mut(dir) else {
             return;

@@ -373,7 +373,7 @@ impl Collection {
         let folder = walk(path, &self.ignore, &mut errors)
             .map_err(|e| io_error(path, std::io::Error::other(e.to_string())))?;
         let dir_name = folder.dir_name.clone();
-        self.load_errors.extend(errors);
+        self.add_load_errors(errors);
         let parent_folder = self
             .folder_mut(parent)
             .expect("the parent folder was found before the write");
