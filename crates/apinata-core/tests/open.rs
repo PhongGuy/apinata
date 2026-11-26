@@ -130,6 +130,49 @@ fn a_broken_file_is_a_load_error_and_the_rest_loads() {
     assert!(c.load_errors()[0].path().ends_with("bad.yml"));
 }
 
+fn error_paths(c: &Collection) -> Vec<PathBuf> {
+    c.load_errors()
+        .iter()
+        .map(|e| e.path().to_path_buf())
+        .collect()
+}
+
+#[test]
+fn load_errors_are_in_path_order_whatever_the_directory_order() {
+    // Enough broken files, in the root, a folder, a nested folder and the environments,
+    // that a directory listing returning them already sorted would be a coincidence.
+    let names: Vec<String> = (0..24)
+        .map(|i| format!("{:02x}{}", (i * 37) % 256, i))
+        .collect();
+    let mut files = vec![("opencollection.yml".to_owned(), ROOT.to_owned())];
+    for dir in ["", "api/", "api/deep/", "zeta/", "environments/"] {
+        for name in &names {
+            files.push((format!("{dir}{name}.yml"), "info: [\n".to_owned()));
+        }
+    }
+    let refs: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(p, t)| (p.as_str(), t.as_str()))
+        .collect();
+    let dir = write_tree(&refs);
+    let c = Collection::open(dir.path()).expect("opens");
+    let got = error_paths(&c);
+    assert_eq!(got.len(), names.len() * 5);
+    let mut sorted = got.clone();
+    sorted.sort();
+    assert_eq!(got, sorted);
+}
+
+#[test]
+fn a_reload_keeps_load_errors_in_path_order() {
+    let dir = write_tree(&[("opencollection.yml", ROOT), ("m.yml", "info: [\n")]);
+    let mut c = Collection::open(dir.path()).expect("opens");
+    let early = dir.path().join("a.yml");
+    fs::write(&early, "info: [\n").expect("write");
+    c.reload_path(&early);
+    assert_eq!(error_paths(&c), [early, dir.path().join("m.yml")]);
+}
+
 #[test]
 fn a_broken_folder_file_keeps_the_folder_and_reports_the_error() {
     let dir = write_tree(&[
