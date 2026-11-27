@@ -94,6 +94,7 @@ pub mod import_report;
 pub mod inherited_headers_section;
 pub mod inherited_section;
 pub mod input_rest;
+pub mod jwt_editor;
 pub mod keyboard_prefs;
 pub mod keymap;
 pub mod kv_bulk;

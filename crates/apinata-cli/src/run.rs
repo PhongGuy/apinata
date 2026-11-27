@@ -538,7 +538,7 @@ pub async fn run(
     // Only `--show-response` with the JSON report puts the response into it.
     Ok(
         if args.show_response && matches!(args.format, crate::Format::Json) {
-            results.with_responses(rows())
+            results.with_responses(rows(), &args.response_detail())
         } else {
             results
         },

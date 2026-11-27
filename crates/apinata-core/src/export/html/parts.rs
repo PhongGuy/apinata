@@ -9,7 +9,7 @@ use crate::export::{
 use crate::js::js_trim;
 
 /// The mode label: "No auth", "Basic", "Bearer token", "API key", "Digest", "OAuth 1.0",
-/// "OAuth 2.0", "AWS Signature v4", "WSSE", "NTLM", "Akamai EdgeGrid", or an `Unsupported` mode as
+/// "OAuth 2.0", "AWS Signature v4", "WSSE", "NTLM", "Akamai EdgeGrid", "JWT Bearer", or an `Unsupported` mode as
 /// written. Unescaped.
 pub(super) fn auth_label(spec: &AuthSpec) -> String {
     match spec {
@@ -25,6 +25,7 @@ pub(super) fn auth_label(spec: &AuthSpec) -> String {
         AuthSpec::Wsse { .. } => "WSSE",
         AuthSpec::Ntlm { .. } => "NTLM",
         AuthSpec::EdgeGrid(_) => "Akamai EdgeGrid",
+        AuthSpec::Jwt(_) => "JWT Bearer",
         AuthSpec::Unsupported { mode } => mode,
     }
     .to_owned()

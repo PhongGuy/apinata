@@ -400,3 +400,150 @@ async fn a_followed_redirect_in_a_parser_only_shape_never_prints_its_password() 
         }
     }
 }
+
+/// The JSON report `-i --format json` prints, plus the same report written by --reporter-json.
+fn json_reports(dir: &std::path::Path, extra: &[&str]) -> [serde_json::Value; 2] {
+    let out_dir = tempfile::tempdir().unwrap();
+    let file = out_dir.path().join("report.json");
+    let mut args = vec![
+        "-i",
+        "--format",
+        "json",
+        "--reporter-json",
+        file.to_str().unwrap(),
+    ];
+    args.extend_from_slice(extra);
+    let out = run(dir, &args);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = serde_json::from_slice(&out.stdout).expect("stdout is the report");
+    let saved = serde_json::from_slice(&std::fs::read(&file).unwrap()).expect("the file is JSON");
+    [stdout, saved]
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn report_omit_headers_drops_the_headers_from_both_json_reports() {
+    let s = server().await;
+    let dir = one(&format!("{}/json", s.uri()), "");
+    for v in json_reports(dir.path(), &[]) {
+        assert!(v["results"][0]["response"].get("headers").is_some(), "{v}");
+    }
+    for v in json_reports(dir.path(), &["--report-omit-headers"]) {
+        let r = &v["results"][0]["response"];
+        assert!(r.get("headers").is_none(), "{v}");
+        assert_eq!(r["body"], r#"{"id":7,"b":1}"#);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn report_omit_header_drops_each_named_header_whatever_its_case() {
+    let s = server().await;
+    let dir = one(&format!("{}/json", s.uri()), "");
+    let named = [
+        "--report-omit-header",
+        "X-Extra",
+        "--report-omit-header",
+        "content-type",
+    ];
+    for v in json_reports(dir.path(), &named) {
+        let headers = v["results"][0]["response"]["headers"]
+            .as_array()
+            .unwrap()
+            .clone();
+        assert!(!headers.is_empty(), "other headers stay: {v}");
+        assert!(
+            headers
+                .iter()
+                .all(|h| h[0] != "x-extra" && h[0] != "content-type"),
+            "{v}"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn report_omit_body_drops_the_body_and_keeps_its_size() {
+    let s = server().await;
+    let dir = one(&format!("{}/json", s.uri()), "");
+    for v in json_reports(dir.path(), &[]) {
+        assert_eq!(v["results"][0]["response"]["body"], r#"{"id":7,"b":1}"#);
+    }
+    for v in json_reports(dir.path(), &["--report-omit-body"]) {
+        let r = &v["results"][0]["response"];
+        assert!(r.get("body").is_none(), "{v}");
+        assert_eq!(r["body_size"], 14);
+        assert!(r.get("headers").is_some(), "{v}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn report_omit_flags_leave_the_printed_response_alone() {
+    let s = server().await;
+    let dir = one(&format!("{}/json", s.uri()), "");
+    let out = run(
+        dir.path(),
+        &["-i", "--report-omit-headers", "--report-omit-body"],
+    );
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert!(stdout.contains("\nx-extra: hello\n"), "{stdout}");
+    assert!(stdout.ends_with("\n\n{\"id\":7,\"b\":1}\n"), "{stdout}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_empty_or_malformed_omitted_header_name_is_a_usage_error() {
+    let s = server().await;
+    let dir = one(&format!("{}/json", s.uri()), "");
+    for name in ["", "x extra", "x-extra:"] {
+        let out = run(dir.path(), &["--report-omit-header", name]);
+        assert_eq!(out.status.code(), Some(3), "{name:?}");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stderr.contains("--report-omit-header") && stderr.contains("not a header name"),
+            "{stderr}"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn junit_and_html_reports_never_carry_headers_or_bodies() {
+    let s = server().await;
+    let dir = one(&format!("{}/json", s.uri()), "");
+    let out_dir = tempfile::tempdir().unwrap();
+    let junit = out_dir.path().join("r.xml");
+    let html = out_dir.path().join("r.html");
+    let reporters = [
+        "--reporter-junit",
+        junit.to_str().unwrap(),
+        "--reporter-html",
+        html.to_str().unwrap(),
+    ];
+    for extra in [
+        &[][..],
+        &["--report-omit-headers", "--report-omit-body"][..],
+    ] {
+        let mut args = vec!["-i", "--format", "json"];
+        args.extend_from_slice(&reporters);
+        args.extend_from_slice(extra);
+        let out = run(dir.path(), &args);
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        for file in [&junit, &html] {
+            let text = std::fs::read_to_string(file).unwrap();
+            assert!(
+                !text.contains("x-extra") && !text.contains("hello"),
+                "{text}"
+            );
+            assert!(
+                !text.contains(r#""b":1"#) && !text.contains("&quot;b&quot;"),
+                "{text}"
+            );
+        }
+    }
+}

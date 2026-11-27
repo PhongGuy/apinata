@@ -26,9 +26,9 @@ source under MIT or Apache-2.0.
   yet. On Linux and macOS, a URL such as `http://unix:/var/run/docker.sock:/info`
   sends over a Unix socket.
 
-- **Many kinds of auth.** Basic, Bearer, API key, Digest, AWS SigV4, NTLM,
-  OAuth 1.0, OAuth 2.0 (client credentials, password, authorization code
-  with PKCE, and implicit), WSSE and Akamai EdgeGrid. A cookie jar keeps
+- **Many kinds of auth.** Basic, Bearer, JWT Bearer, API key, Digest, AWS
+  SigV4, NTLM, OAuth 1.0, OAuth 2.0 (client credentials, password,
+  authorization code with PKCE, and implicit), WSSE and Akamai EdgeGrid. A cookie jar keeps
   cookies between requests.
 
 - **AI through MCP.** An AI assistant can read and edit your collections and
