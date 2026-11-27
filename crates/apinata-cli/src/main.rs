@@ -1459,6 +1459,11 @@ pub struct RunArgs {
     /// Use no environment, even when the collection names a default one.
     #[arg(long, conflicts_with = "env")]
     pub no_env: bool,
+    /// Read the environment from this file instead: an OpenCollection environment or a Postman
+    /// environment export, anywhere on disk. It is not copied into the collection, and its
+    /// secrets never come from the keychain; supply them with --env-var.
+    #[arg(long, value_name = "PATH", conflicts_with_all = ["env", "no_env"])]
+    pub env_file: Option<PathBuf>,
     /// Set or override an environment variable; repeatable. `KEY=VALUE`, or `KEY` to read the value
     /// from the process environment (empty if set but empty; kept secret).
     #[arg(long = "env-var", value_name = "KEY[=VALUE]", value_parser = parse_env_var)]

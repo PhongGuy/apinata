@@ -5,9 +5,10 @@
 //! repeat an input value, since auth JSON is full of credentials.
 
 use super::{
-    ApiKeyPlacement, AuthSpec, ClientAuth, EdgeGridSpec, OAuth1KeyKind, OAuth1Placement,
-    OAuth1PrivateKey, OAuth1SignatureMethod, OAuth1Spec, OAuth2Flow, OAuth2Param,
-    OAuth2ParamPlacement, OAuth2Spec, OAuth2Stage, TokenPlacement, TokenSource,
+    ApiKeyPlacement, AuthSpec, ClientAuth, EdgeGridSpec, JwtAlgorithm, JwtPlacement, JwtSpec,
+    OAuth1KeyKind, OAuth1Placement, OAuth1PrivateKey, OAuth1SignatureMethod, OAuth1Spec,
+    OAuth2Flow, OAuth2Param, OAuth2ParamPlacement, OAuth2Spec, OAuth2Stage, TokenPlacement,
+    TokenSource,
 };
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
@@ -187,6 +188,7 @@ fn spec(mode: String, rest: impl Fields) -> Result<AuthSpec, AuthJsonError> {
             }
         }
         "edgegrid" => rest.read::<EdgeGridJson>()?.into_spec(),
+        "jwt" => rest.read::<JwtJson>()?.into_spec(),
         _ => {
             return Err(AuthJsonError::UnknownType {
                 mode,
@@ -397,6 +399,23 @@ struct EdgeGridJson {
     max_body_size: Option<MaxBodySize>,
 }
 
+/// `algorithm` and `placement` keep any spelling, since a variable may supply them; the send
+/// refuses one it does not know.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct JwtJson {
+    algorithm: String,
+    secret: String,
+    secret_base64: bool,
+    private_key: Option<OAuth1KeyJson>,
+    headers: String,
+    payload: String,
+    expires_in: String,
+    placement: String,
+    header_prefix: Option<String>,
+    query_param_key: String,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum ApiKeyPlacementJson {
@@ -595,6 +614,33 @@ impl AwsV4Json {
     }
 }
 
+impl OAuth1KeyJson {
+    fn into_key(self) -> OAuth1PrivateKey {
+        let kind = match self.kind {
+            OAuth1KeyKindJson::Text => OAuth1KeyKind::Text,
+            OAuth1KeyKindJson::File => OAuth1KeyKind::File,
+        };
+        OAuth1PrivateKey::new(kind, self.value)
+    }
+}
+
+impl JwtJson {
+    fn into_spec(self) -> AuthSpec {
+        AuthSpec::Jwt(JwtSpec {
+            algorithm: JwtAlgorithm::parse(&self.algorithm),
+            secret: self.secret,
+            secret_base64: self.secret_base64,
+            private_key: self.private_key.map(OAuth1KeyJson::into_key),
+            headers: self.headers,
+            payload: self.payload,
+            expires_in: self.expires_in,
+            placement: JwtPlacement::parse(&self.placement),
+            header_prefix: self.header_prefix,
+            query_param_key: self.query_param_key,
+        })
+    }
+}
+
 impl OAuth1Json {
     fn into_spec(self) -> AuthSpec {
         AuthSpec::OAuth1(OAuth1Spec {
@@ -605,13 +651,7 @@ impl OAuth1Json {
             callback_url: self.callback_url,
             verifier: self.verifier,
             signature_method: OAuth1SignatureMethod::parse(&self.signature_method),
-            private_key: self.private_key.map(|k| {
-                let kind = match k.kind {
-                    OAuth1KeyKindJson::Text => OAuth1KeyKind::Text,
-                    OAuth1KeyKindJson::File => OAuth1KeyKind::File,
-                };
-                OAuth1PrivateKey::new(kind, k.value)
-            }),
+            private_key: self.private_key.map(OAuth1KeyJson::into_key),
             timestamp: self.timestamp,
             nonce: self.nonce,
             version: self.version,

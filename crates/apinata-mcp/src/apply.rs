@@ -457,8 +457,8 @@ mod tests {
     /// One spec of every mode core's JSON parser takes, each with non-default values.
     fn every_mode() -> Vec<AuthSpec> {
         use apinata_core::{
-            ClientAuth, EdgeGridSpec, OAuth2Flow, OAuth2Param, OAuth2ParamPlacement, OAuth2Spec,
-            OAuth2Stage, TokenPlacement, TokenSource,
+            ClientAuth, EdgeGridSpec, JwtAlgorithm, JwtPlacement, JwtSpec, OAuth2Flow, OAuth2Param,
+            OAuth2ParamPlacement, OAuth2Spec, OAuth2Stage, TokenPlacement, TokenSource,
         };
         let mut eg = EdgeGridSpec::default();
         eg.access_token = "at".into();
@@ -480,6 +480,12 @@ mod tests {
             OAuth2Param::new(OAuth2Stage::Refresh, "a", "1", OAuth2ParamPlacement::Body),
             OAuth2Param::new(OAuth2Stage::Token, "b", "", OAuth2ParamPlacement::Header),
         ];
+        let mut jwt = JwtSpec::default();
+        jwt.algorithm = JwtAlgorithm::Other("{{alg}}".into());
+        jwt.private_key = None;
+        jwt.placement = JwtPlacement::Other("cookie".into());
+        jwt.header_prefix = None;
+        jwt.expires_in = "60".into();
         let mut code = OAuth2Spec::new(OAuth2Flow::AuthorizationCode);
         code.client_auth = None;
         code.pkce = true;
@@ -523,6 +529,8 @@ mod tests {
                 domain: "d".into(),
             },
             AuthSpec::EdgeGrid(eg),
+            AuthSpec::Jwt(JwtSpec::default()),
+            AuthSpec::Jwt(jwt),
         ]
     }
 
