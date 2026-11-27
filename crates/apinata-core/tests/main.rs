@@ -386,6 +386,7 @@ mod reload_items;
 mod reload_root;
 mod replace;
 mod replace_secrets_forms;
+mod request_tls_settings;
 mod resolve_auth;
 mod resolve_auth_modes;
 mod resolve_body;

@@ -55,9 +55,14 @@ fn one_offer(seen: &Offers) -> Vec<String> {
 
 /// The ALPN list one GET under `opts` offers to the recorder.
 async fn offered(opts: ExecOptions) -> Vec<String> {
+    offered_for(opts, "").await
+}
+
+/// Like `offered`, for a request file with `top` after its `http` block.
+async fn offered_for(opts: ExecOptions, top: &str) -> Vec<String> {
     let (port, seen) = alpn_recorder().await;
     let exec = Executor::new(opts).expect("executor");
-    let req = resolved_one("GET", &format!("https://127.0.0.1:{port}/"), "", "");
+    let req = resolved_one("GET", &format!("https://127.0.0.1:{port}/"), "", top);
     let sent = tokio::time::timeout(Duration::from_secs(10), exec.send(&req))
         .await
         .expect("the handshake ends");
@@ -103,6 +108,25 @@ async fn each_policy_offers_its_alpn_protocols() {
         let offer = offered(ExecOptions::new().http_version(policy)).await;
         assert_eq!(offer, alpn, "{policy}");
     }
+}
+
+#[tokio::test]
+async fn a_request_picks_its_own_version_over_the_default() {
+    let top = "settings:\n  httpVersion: auto\n";
+    assert_eq!(
+        offered_for(ExecOptions::new(), top).await,
+        ["h2", "http/1.1"]
+    );
+    let top = "settings:\n  httpVersion: \"1.1\"\n";
+    let auto = ExecOptions::new().http_version(HttpVersionPolicy::Auto);
+    assert_eq!(offered_for(auto, top).await, ["http/1.1"]);
+}
+
+#[tokio::test]
+async fn a_forced_version_beats_the_request() {
+    let top = "settings:\n  httpVersion: auto\n";
+    let forced = ExecOptions::new().force_http_version(Some(HttpVersionPolicy::Http1Only));
+    assert_eq!(offered_for(forced, top).await, ["http/1.1"]);
 }
 
 #[tokio::test]

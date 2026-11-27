@@ -62,6 +62,8 @@ use wire_body::{BodyError, WireBody};
 #[non_exhaustive]
 pub struct ExecOptions {
     insecure: bool,
+    force_insecure: bool,
+    force_http_version: Option<HttpVersionPolicy>,
     max_body_bytes: Option<u64>,
     host_policy: Option<HostPolicy>,
     confine_files: Option<PathBuf>,
@@ -82,6 +84,8 @@ impl fmt::Debug for ExecOptions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ExecOptions")
             .field("insecure", &self.insecure)
+            .field("force_insecure", &self.force_insecure)
+            .field("force_http_version", &self.force_http_version)
             .field("max_body_bytes", &self.max_body_bytes)
             .field("host_policy", &self.host_policy.is_some())
             .field("confine_files", &self.confine_files)
@@ -103,9 +107,24 @@ impl ExecOptions {
         ExecOptions::default()
     }
 
-    /// Accept invalid certificates (self-signed, expired, wrong host) when `insecure` is true.
+    /// Accept invalid certificates (self-signed, expired, wrong host) when `insecure` is true,
+    /// for every request whose own `verifySsl` does not say otherwise.
     pub fn insecure(mut self, insecure: bool) -> ExecOptions {
         self.insecure = insecure;
+        self
+    }
+
+    /// Accept invalid certificates for every request, whatever its own `verifySsl` says: an
+    /// explicit command-line `--insecure`.
+    pub fn force_insecure(mut self, force: bool) -> ExecOptions {
+        self.force_insecure = force;
+        self
+    }
+
+    /// Speak `policy` for every request, whatever its own `httpVersion` says; `None` lets each
+    /// request choose, falling back to [`ExecOptions::http_version`].
+    pub fn force_http_version(mut self, policy: Option<HttpVersionPolicy>) -> ExecOptions {
+        self.force_http_version = policy;
         self
     }
 
@@ -138,8 +157,8 @@ impl ExecOptions {
         self
     }
 
-    /// Which HTTP versions the clients may speak; HTTP/1.1 only by default.
-    /// A request in NTLM mode always speaks HTTP/1.1, whatever the policy says.
+    /// Which HTTP versions the clients may speak for a request without its own `httpVersion`;
+    /// HTTP/1.1 only by default. A request in NTLM mode always speaks HTTP/1.1.
     pub fn http_version(mut self, policy: HttpVersionPolicy) -> ExecOptions {
         self.http_version = policy;
         self
@@ -439,6 +458,18 @@ pub enum ExecError {
     /// The send was cancelled through its `CancelHandle` before it finished.
     #[error("cancelled")]
     Cancelled,
+    /// Under a host policy, a request's own `verifySsl: false` named a host that is not
+    /// loopback, so nothing was sent to it.
+    #[error(
+        "the request turns off certificate checks for `{host}` (hop {hop}), which is allowed only for local hosts here"
+    )]
+    #[non_exhaustive]
+    InsecureNotAllowed {
+        /// The redirects followed before the refused hop; 0 is the request itself.
+        hop: usize,
+        /// The refused host, normalised.
+        host: String,
+    },
     /// The host policy refused a hop's host, so nothing was sent to it.
     #[error("host `{host}` is not allowed (hop {hop})")]
     #[non_exhaustive]
@@ -612,6 +643,8 @@ pub struct Executor {
     network: NetworkSettings,
     system: Arc<SystemProxy>,
     insecure: bool,
+    force_insecure: bool,
+    force_http_version: Option<HttpVersionPolicy>,
     lookup: Arc<dyn Lookup>,
     jar: Arc<CookieJar>,
     max_body_bytes: Option<u64>,
@@ -633,6 +666,7 @@ impl fmt::Debug for Executor {
         f.debug_struct("Executor")
             .field("network", &self.network)
             .field("insecure", &self.insecure)
+            .field("force_insecure", &self.force_insecure)
             .finish_non_exhaustive()
     }
 }
@@ -747,6 +781,8 @@ impl Executor {
             network,
             system: Arc::new(system),
             insecure: opts.insecure,
+            force_insecure: opts.force_insecure,
+            force_http_version: opts.force_http_version,
             lookup,
             jar: opts.cookie_jar.unwrap_or_default(),
             max_body_bytes: opts.max_body_bytes,
@@ -771,6 +807,8 @@ impl Executor {
             network: self.network.clone(),
             system: Arc::clone(&self.system),
             insecure: self.insecure,
+            force_insecure: self.force_insecure,
+            force_http_version: self.force_http_version,
             lookup: Arc::clone(&self.lookup),
             jar,
             max_body_bytes: self.max_body_bytes,
@@ -794,7 +832,7 @@ impl Executor {
         builder = if key.http1_only {
             builder.http1_only()
         } else {
-            match self.http_version {
+            match key.http_version {
                 HttpVersionPolicy::Http1Only => builder.http1_only(),
                 HttpVersionPolicy::Auto => builder,
                 HttpVersionPolicy::Http2PriorKnowledge => builder.http2_prior_knowledge(),
@@ -814,7 +852,7 @@ impl Executor {
     fn base_builder(&self, key: &ClientKey) -> Result<reqwest::ClientBuilder, ExecError> {
         let mut builder = Client::builder()
             .redirect(Policy::none())
-            .tls_danger_accept_invalid_certs(self.insecure)
+            .tls_danger_accept_invalid_certs(key.insecure)
             // Each hop reports its TLS version and the peer's certificate.
             .tls_info(true)
             // Bodies are decoded in `wire_body`, since the stack's decoder drops the headers
@@ -939,7 +977,7 @@ impl Executor {
         // A refused target never reaches the script, its fetch or its DNS helpers.
         self.check_hop(url, hop, overrides)?;
         let fetch_opts = FetchOptions::new(
-            self.insecure,
+            self.default_insecure(),
             self.network.ca_file.clone(),
             self.network.keep_default_roots,
         );
@@ -964,8 +1002,36 @@ impl Executor {
     #[must_use]
     pub fn source_fetch(&self) -> SourceFetch {
         let mut fetch = SourceFetch::default().network(self.network.clone());
-        fetch.insecure = self.insecure;
+        fetch.insecure = self.default_insecure();
         fetch
+    }
+
+    /// Whether fetches that belong to no one request, such as a PAC script or an import
+    /// source, skip the certificate check.
+    fn default_insecure(&self) -> bool {
+        self.insecure || self.force_insecure
+    }
+
+    /// Whether `req` skips the certificate check: a forced flag, then the request's own
+    /// `verifySsl`, then the default.
+    fn skips_check(&self, req: &ResolvedRequest) -> bool {
+        self.force_insecure || req.verify_tls().map_or(self.insecure, |verify| !verify)
+    }
+
+    /// Under a host policy, refuses a hop to a host that is not local when only the request's
+    /// own file turned the certificate check off; the file may be written by an agent.
+    fn check_insecure_hop(
+        &self,
+        req: &ResolvedRequest,
+        url: &Url,
+        hop: usize,
+    ) -> Result<(), ExecError> {
+        if self.host_policy.is_none() || self.force_insecure || req.verify_tls() != Some(false) {
+            return Ok(());
+        }
+        let local_only: HostPolicy = Arc::new(|_: &str| false);
+        crate::host_guard::judge(url, &local_only)
+            .map_err(|host| ExecError::InsecureNotAllowed { hop, host })
     }
 
     /// The cookies every send has stored, for listing and deletion.
@@ -1222,6 +1288,7 @@ impl Executor {
         let run_wide = self.run_wide(req);
         let mut hop_deadline = Deadline::after(timeout);
         let overrides = sorted_overrides(req.network().host_overrides());
+        self.check_insecure_hop(req, &url, 0)?;
         let (hop_rule, mut pac_line) = self
             .hop_rule(&rule, &url, 0, pac, &hop_deadline, &overrides)
             .await?;
@@ -1329,6 +1396,10 @@ impl Executor {
             identity,
             overrides: Arc::clone(&overrides),
             http1_only: subscription.is_some(),
+            insecure: self.skips_check(req),
+            http_version: (self.force_http_version)
+                .or(req.http_version())
+                .unwrap_or(self.http_version),
             unix_socket: socket.as_ref().map(uds::SocketTarget::path),
         };
         let mut client = self.clients.get(&key, |key| self.build_client(key))?;
@@ -1654,7 +1725,7 @@ impl Executor {
             let version = HttpVersion::from_wire(res.version());
             let remote_addr = res.remote_addr();
             let local_addr = crate::connection::local_addr(&res);
-            let tls = crate::connection::tls_details(&res);
+            let tls = crate::connection::tls_details(&res, !key.insecure);
             let response_header_size =
                 crate::connection::response_header_size(status, res.headers());
             if version == Some(HttpVersion::Http2) {
@@ -1979,6 +2050,7 @@ impl Executor {
                 )
                 .await?;
             proxy = self.check_route(&next_rule, &next, followed as usize, &overrides)?;
+            self.check_insecure_hop(req, &next, followed as usize)?;
             let next_socket = uds::split(&next)
                 .map_err(invalid)?
                 .as_ref()
@@ -2937,6 +3009,8 @@ mod tests {
             identity: None,
             overrides: Arc::default(),
             http1_only,
+            insecure: false,
+            http_version: HttpVersionPolicy::Http2PriorKnowledge,
             unix_socket: None,
         };
         let uri = server.uri();

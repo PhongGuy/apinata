@@ -264,8 +264,8 @@ impl ApinataServer {
         let collection = Collection::open(options.root())?;
         let trust = HostTrust::new(options.root(), options.trust_path());
         let mut exec_options = ExecOptions::new()
-            .insecure(options.is_insecure())
-            .http_version(options.http_version_policy())
+            .force_insecure(options.is_insecure())
+            .force_http_version(options.http_version_policy())
             .max_body_bytes(Some(BODY_CAP))
             .host_policy(trust.policy())
             .confine_files(collection.root())

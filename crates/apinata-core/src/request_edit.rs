@@ -160,6 +160,11 @@ impl RequestFile {
             .map(|(key, _)| key)
             .collect();
         for (key, value) in settings.changes_from(&self.settings()) {
+            // An inherited value has no key at all.
+            let Some(value) = value else {
+                self.document_mut().remove(&["settings", key]);
+                continue;
+            };
             let saved_node = saved_block.as_ref().and_then(|block| block.get(key));
             let value = match saved_node {
                 _ if differs_from_saved.contains(&key) => value,

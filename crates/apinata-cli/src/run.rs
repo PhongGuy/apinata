@@ -322,11 +322,11 @@ pub async fn run(
     let example = crate::example_cmd::plan(args, &target, data.as_ref())?;
     let har = crate::har_cmd::plan(args, &target, data.as_ref());
     let mut exec = ExecOptions::new()
-        .insecure(args.insecure)
+        .force_insecure(args.insecure)
         .store_cookies(!args.disable_cookies)
         .send_cookies(!args.disable_cookies)
         .network(network::settings(&args.network))
-        .http_version(args.network.http_version)
+        .force_http_version(args.network.http_version)
         .timeout_cap(args.timeout.map(Duration::from_secs));
     // Zero lifts the cap; core treats a missing limit on a streamed body as its own default.
     let body_cap = if args.max_body_bytes == 0 {
@@ -610,6 +610,9 @@ fn connection_lines(entry: &NetworkEntry) -> Vec<String> {
         parts.extend(tls.subject.as_ref().map(|s| format!("subject {s}")));
         parts.extend(tls.issuer.as_ref().map(|s| format!("issuer {s}")));
         parts.extend(tls.expires_label().map(|at| format!("expires {at}")));
+        if !tls.verified {
+            parts.push("certificate not verified".to_owned());
+        }
         lines.push(format!("  tls: {}", parts.join(", ")));
     }
     lines

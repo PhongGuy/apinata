@@ -210,3 +210,163 @@ async fn a_plain_http_hop_has_no_tls_details_but_a_local_address() {
     assert!(hop.tls().is_none(), "{:?}", hop.tls());
     assert!(hop.local_addr().is_some());
 }
+
+const SKIP_CHECK: &str = "settings:\n  verifySsl: false\n";
+const CHECK: &str = "settings:\n  verifySsl: true\n";
+
+#[tokio::test]
+async fn a_request_can_skip_the_check_on_its_own() {
+    let url = https_server().await;
+    let strict = Executor::new(ExecOptions::new()).expect("client");
+    let res = strict
+        .send(&resolved_one("GET", &url, "", SKIP_CHECK))
+        .await
+        .expect("accepted for this request");
+    assert_eq!((res.status(), res.text()), (200, "ok"));
+    let tls = res.timeline()[0].tls().expect("tls hop");
+    assert!(!tls.verified, "{tls:?}");
+    // The next request inherits verification, and the pooled unverified connection is not reused.
+    let err = strict
+        .send(&resolved_one("GET", &url, "", ""))
+        .await
+        .expect_err("inherits verification");
+    assert!(matches!(err, ExecError::Connect { .. }), "{err:?}");
+}
+
+#[tokio::test]
+async fn a_request_can_insist_on_the_check_over_the_default() {
+    let url = https_server().await;
+    let lax = Executor::new(ExecOptions::new().insecure(true)).expect("client");
+    let err = lax
+        .send(&resolved_one("GET", &url, "", CHECK))
+        .await
+        .expect_err("this request verifies");
+    assert!(matches!(err, ExecError::Connect { .. }), "{err:?}");
+    let res = lax
+        .send(&resolved_one("GET", &url, "", ""))
+        .await
+        .expect("inherits the default");
+    assert!(!res.timeline()[0].tls().expect("tls").verified);
+}
+
+#[tokio::test]
+async fn a_forced_skip_beats_the_request() {
+    let url = https_server().await;
+    let forced = Executor::new(ExecOptions::new().force_insecure(true)).expect("client");
+    let res = forced
+        .send(&resolved_one("GET", &url, "", CHECK))
+        .await
+        .expect("the flag wins");
+    assert_eq!(res.status(), 200);
+}
+
+#[tokio::test]
+async fn under_a_host_policy_a_request_skips_the_check_only_for_loopback() {
+    let url = https_server().await;
+    let policy = |host: &str| host == "trusted.invalid";
+    let guarded = Executor::new(ExecOptions::new().host_policy(Arc::new(policy))).expect("client");
+    let res = guarded
+        .send(&resolved_one("GET", &url, "", SKIP_CHECK))
+        .await
+        .expect("loopback may skip");
+    assert_eq!(res.status(), 200);
+    let err = tokio::time::timeout(
+        Duration::from_secs(5),
+        guarded.send(&resolved_one(
+            "GET",
+            "https://trusted.invalid/",
+            "",
+            SKIP_CHECK,
+        )),
+    )
+    .await
+    .expect("refused before any I/O")
+    .expect_err("a trusted remote host may not skip");
+    assert!(
+        matches!(&err, ExecError::InsecureNotAllowed { hop: 0, host, .. } if host == "trusted.invalid"),
+        "{err:?}"
+    );
+    // An explicit flag is the user's own choice, so it still applies.
+    let forced = Executor::new(
+        ExecOptions::new()
+            .host_policy(Arc::new(policy))
+            .force_insecure(true),
+    )
+    .expect("client");
+    let err = tokio::time::timeout(
+        Duration::from_secs(5),
+        forced.send(&resolved_one(
+            "GET",
+            "https://trusted.invalid/",
+            "",
+            SKIP_CHECK,
+        )),
+    )
+    .await
+    .expect("ends")
+    .expect_err("no such host");
+    assert!(
+        !matches!(err, ExecError::InsecureNotAllowed { .. }),
+        "{err:?}"
+    );
+}
+
+#[tokio::test]
+async fn under_a_host_policy_every_redirect_hop_is_checked_again() {
+    use wiremock::matchers::any;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(any())
+        .respond_with(
+            ResponseTemplate::new(302).insert_header("location", "https://trusted.invalid/"),
+        )
+        .mount(&server)
+        .await;
+    let policy = |host: &str| host == "trusted.invalid";
+    let guarded = Executor::new(ExecOptions::new().host_policy(Arc::new(policy))).expect("client");
+    let err = tokio::time::timeout(
+        Duration::from_secs(5),
+        guarded.send(&resolved_one("GET", &server.uri(), "", SKIP_CHECK)),
+    )
+    .await
+    .expect("refused before any I/O")
+    .expect_err("the redirect target is remote");
+    assert!(
+        matches!(&err, ExecError::InsecureNotAllowed { hop: 1, .. }),
+        "{err:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_json_report_marks_a_response_whose_check_was_skipped() {
+    use crate::script_support::{ROOT, on, write_tree};
+    use apinata_core::{
+        CancelHandle, Collection, ContextOptions, ResultsReport, RunEvent, VarContext, run,
+    };
+    let url = https_server().await;
+    let file = format!(
+        "info:\n  name: r\n  type: http\n  seq: 1\nhttp:\n  method: GET\n  url: \"{url}\"\nsettings:\n  verifySsl: false\n"
+    );
+    let dir = write_tree(&[("opencollection.yml", ROOT), ("r.yml", &file)]);
+    let c = Collection::open(dir.path()).expect("opens");
+    let plan = c.plan(dir.path()).expect("plan");
+    let ctx = VarContext::new(&c, ContextOptions::new()).expect("context");
+    let exec = Arc::new(Executor::new(ExecOptions::new()).expect("client"));
+    let report = run(
+        plan,
+        ctx,
+        exec,
+        on(),
+        CancelHandle::new(),
+        Box::new(|_: RunEvent| {}),
+    )
+    .await;
+    let results: Vec<_> = report.results.iter().map(|r| (**r).clone()).collect();
+    let json = ResultsReport::new(vec![], &results)
+        .with_responses(&results, &apinata_core::ResponseDetail::default())
+        .to_json();
+    let value: serde_json::Value = serde_json::from_str(&json).expect("json");
+    let response = &value["results"][0]["response"];
+    assert_eq!(response["status"], 200, "{json}");
+    assert_eq!(response["tls_unverified"], true, "{json}");
+}

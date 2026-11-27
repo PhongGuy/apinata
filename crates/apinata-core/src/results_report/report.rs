@@ -214,6 +214,9 @@ pub(crate) struct ResponseRow {
     pub remote_addr: Option<String>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub via_proxy: bool,
+    /// Present, and true, when some hop skipped the TLS certificate check.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub tls_unverified: bool,
 }
 
 impl ResponseRow {
@@ -238,6 +241,8 @@ impl ResponseRow {
             truncated: r.truncated(),
             remote_addr: r.remote_addr().map(|a| a.to_string()),
             via_proxy: r.via_proxy(),
+            tls_unverified: (r.timeline().iter())
+                .any(|hop| hop.tls().is_some_and(|tls| !tls.verified)),
         })
     }
 }

@@ -1,5 +1,6 @@
 //! A request's `settings` block as the app edits it.
 
+use crate::HttpVersionPolicy;
 use crate::js::js_trim;
 use crate::order;
 use crate::resolve::{to_bool, to_max_redirects};
@@ -17,7 +18,47 @@ pub enum Timeout {
     Inherit,
 }
 
-/// The settings Bruno stores per request.
+/// Whether a request checks the server's TLS certificate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum TlsVerify {
+    /// Follow the app or command-line default; the file has no `verifySsl` key.
+    #[default]
+    Inherit,
+    /// Always verify; written as `verifySsl: true`.
+    On,
+    /// Accept any certificate; written as `verifySsl: false`.
+    Off,
+}
+
+/// How `settings.verifySsl` reads, and whether its value was not understood. Only `false`
+/// turns the check off; anything unknown keeps it on.
+pub(crate) fn read_verify(node: Option<&Value>) -> (TlsVerify, bool) {
+    match node {
+        None | Some(Value::Null) => (TlsVerify::Inherit, false),
+        Some(Value::String(s)) if s == "inherit" => (TlsVerify::Inherit, false),
+        Some(Value::Bool(false)) => (TlsVerify::Off, false),
+        Some(Value::String(s)) if s == "false" => (TlsVerify::Off, false),
+        Some(Value::Bool(true)) => (TlsVerify::On, false),
+        Some(Value::String(s)) if s == "true" => (TlsVerify::On, false),
+        Some(_) => (TlsVerify::On, true),
+    }
+}
+
+/// How `settings.httpVersion` reads, and whether its value was not understood, which inherits.
+pub(crate) fn read_http_version(node: Option<&Value>) -> (Option<HttpVersionPolicy>, bool) {
+    match node {
+        None | Some(Value::Null) => (None, false),
+        Some(Value::String(s)) if s == "inherit" => (None, false),
+        Some(Value::String(s)) => match s.parse() {
+            Ok(policy) => (Some(policy), false),
+            Err(_) => (None, true),
+        },
+        Some(_) => (None, true),
+    }
+}
+
+/// The settings Bruno stores per request, plus Apinata's own certificate and version keys.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct RequestSettings {
@@ -31,6 +72,10 @@ pub struct RequestSettings {
     pub max_redirects: u32,
     /// Whether `Authorization` is kept across a redirect.
     pub forward_authorization_header: bool,
+    /// Whether the server's certificate is checked (`verifySsl`).
+    pub verify_tls: TlsVerify,
+    /// The HTTP version (`httpVersion`); `None` follows the app or command-line default.
+    pub http_version: Option<HttpVersionPolicy>,
 }
 
 impl RequestSettings {
@@ -44,6 +89,8 @@ impl RequestSettings {
             follow_redirects: true,
             max_redirects: 5,
             forward_authorization_header: true,
+            verify_tls: TlsVerify::Inherit,
+            http_version: None,
         }
     }
 
@@ -80,14 +127,19 @@ impl RequestSettings {
             follow_redirects: to_bool(get("followRedirects")),
             max_redirects: to_max_redirects(get("maxRedirects")),
             forward_authorization_header: to_bool(get("forwardAuthorizationHeader")),
+            verify_tls: read_verify(get("verifySsl")).0,
+            http_version: read_http_version(get("httpVersion")).0,
         }
     }
 
-    /// The keys that differ from `before`, with the values Bruno writes.
-    pub(crate) fn changes_from(&self, before: &RequestSettings) -> Vec<(&'static str, Value)> {
+    /// The keys that differ from `before`, with the values written; `None` removes the key.
+    pub(crate) fn changes_from(
+        &self,
+        before: &RequestSettings,
+    ) -> Vec<(&'static str, Option<Value>)> {
         let mut changes = Vec::new();
         if self.encode_url != before.encode_url {
-            changes.push(("encodeUrl", Value::Bool(self.encode_url)));
+            changes.push(("encodeUrl", Some(Value::Bool(self.encode_url))));
         }
         if self.timeout != before.timeout {
             let timeout = match self.timeout {
@@ -95,19 +147,34 @@ impl RequestSettings {
                 Timeout::Millis(ms) => Value::from(ms),
                 Timeout::Inherit => Value::from("inherit"),
             };
-            changes.push(("timeout", timeout));
+            changes.push(("timeout", Some(timeout)));
         }
         if self.follow_redirects != before.follow_redirects {
-            changes.push(("followRedirects", Value::Bool(self.follow_redirects)));
+            changes.push(("followRedirects", Some(Value::Bool(self.follow_redirects))));
         }
         if self.max_redirects != before.max_redirects {
-            changes.push(("maxRedirects", Value::from(u64::from(self.max_redirects))));
+            changes.push((
+                "maxRedirects",
+                Some(Value::from(u64::from(self.max_redirects))),
+            ));
         }
         if self.forward_authorization_header != before.forward_authorization_header {
             changes.push((
                 "forwardAuthorizationHeader",
-                Value::Bool(self.forward_authorization_header),
+                Some(Value::Bool(self.forward_authorization_header)),
             ));
+        }
+        if self.verify_tls != before.verify_tls {
+            let verify = match self.verify_tls {
+                TlsVerify::Inherit => None,
+                TlsVerify::On => Some(Value::Bool(true)),
+                TlsVerify::Off => Some(Value::Bool(false)),
+            };
+            changes.push(("verifySsl", verify));
+        }
+        if self.http_version != before.http_version {
+            let version = self.http_version.map(|v| Value::from(v.to_string()));
+            changes.push(("httpVersion", version));
         }
         changes
     }
@@ -127,6 +194,10 @@ pub(crate) fn well_typed(key: &str, node: &Value) -> bool {
         }
         "encodeUrl" | "followRedirects" | "forwardAuthorizationHeader" => boolean(),
         "maxRedirects" => node.as_f64().is_some_and(|n| n >= 0.0),
+        "verifySsl" => boolean(),
+        "httpVersion" => node
+            .as_str()
+            .is_some_and(|s| s.parse::<HttpVersionPolicy>().is_ok()),
         _ => false,
     }
 }
