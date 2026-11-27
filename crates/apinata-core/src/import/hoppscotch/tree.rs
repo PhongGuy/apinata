@@ -381,6 +381,7 @@ fn request_members(
         omitted_headers: Vec::new(),
         vars: vars.into_iter().map(to_variable).collect(),
         tags: Vec::new(),
+        post_response_vars: Vec::new(),
         secrets: Vec::new(),
         examples: Vec::new(),
     })

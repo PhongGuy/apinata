@@ -152,16 +152,20 @@ fn only_a_leading_prefix_is_stripped() {
 fn filters_and_tags_are_noted() {
     let r = first_request(&parse(&v4(json!([
         wrk("w"),
-        req("r", "w", json!({"url": "{{ x | upper }}/{% uuid 'v4' %}"}))
+        req("r", "w", json!({"url": "{{ x | upper }}/{% prompt 'p' %}"}))
     ]))));
-    assert_eq!(r.request.url, "{{ x | upper }}/{{uuid}}");
+    assert_eq!(r.request.url, "{{ x | upper }}/{{prompt}}");
     let note = r
         .notes
         .iter()
         .find(|n| n.kind == NoteKind::NeedsInput && n.source == "r / url")
         .expect("a needs-input note");
-    assert!(note.detail.contains("`{% uuid 'v4' %}`"), "{}", note.detail);
-    assert!(note.detail.contains("`uuid`"), "{}", note.detail);
+    assert!(
+        note.detail.contains("`{% prompt 'p' %}`"),
+        "{}",
+        note.detail
+    );
+    assert!(note.detail.contains("`prompt`"), "{}", note.detail);
 }
 
 #[test]
