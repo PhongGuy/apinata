@@ -1027,3 +1027,23 @@ fn a_disabled_folder_header_does_not_warn() {
     ]);
     assert!(got.is_empty(), "{got:?}");
 }
+
+#[test]
+fn a_jwt_auth_names_every_variable_even_when_signing_would_fail() {
+    // The placeholder is no algorithm and no key, so signing fails; every name must already be in.
+    let auth = "  auth:\n    type: jwt\n    algorithm: \"{{alg}}\"\n    secret: \"{{sec}}\"\n    privateKey:\n      type: text\n      value: \"{{pem}}\"\n    headers: '{\"kid\":\"{{kid}}\"}'\n    payload: '{\"sub\":\"{{sub}}\"}'\n    expiresIn: \"{{ttl}}\"\n    placement: PLACE\n    headerPrefix: \"{{pre}}\"\n    queryParamKey: \"{{qk}}\"\n";
+    for placement in ["header", "query"] {
+        let auth = auth.replace("PLACE", placement);
+        let found = one(&[
+            ("opencollection.yml", ROOT),
+            ("a.yml", &req("a", "http://x/", &auth)),
+        ]);
+        for name in ["alg", "sec", "pem", "kid", "sub", "ttl", "pre", "qk"] {
+            assert!(
+                found.iter().any(|f| f.2 == FindingKind::UndefinedVariable
+                    && f.0.starts_with(&format!("variable `{name}` "))),
+                "{placement}: {name} missing from {found:?}"
+            );
+        }
+    }
+}

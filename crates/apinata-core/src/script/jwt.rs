@@ -16,7 +16,7 @@ use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, crypto};
 use rquickjs::Function;
 use serde_json::{Value, json};
 
-use super::crypto::{Curve, Public, public_key, rsa_public_parts};
+use super::crypto::{Curve, Private, Public, private_key, public_key, rsa_public_parts};
 use super::crypto_pss::Scheme;
 use super::engine::Installer;
 
@@ -193,6 +193,33 @@ fn check_signing_key(alg: &str, key: &KeyInput) -> Result<(), String> {
             }
         }
         _ => Ok(()),
+    }
+}
+
+/// Holds a JWT auth key to its algorithm's family, stricter than the script module: RS takes an
+/// RSA private key, PS an RSA or RSA-PSS one, ES an EC key on its own curve. HS takes any bytes.
+pub(crate) fn check_auth_key(alg: &str, key: &KeyInput) -> Result<(), String> {
+    if alg.starts_with("HS") {
+        return Ok(());
+    }
+    let unreadable = "the private key is not a PEM private key (PKCS#8, PKCS#1 or SEC1)";
+    let private = private_key(key).map_err(|_| unreadable.to_owned())?;
+    let fits = match (&alg[..2], private) {
+        ("RS", Private::Rsa { .. }) | ("PS", Private::Rsa { .. } | Private::RsaPss { .. }) => true,
+        ("ES", Private::Ec { curve, .. }) => {
+            curve
+                == match alg {
+                    "ES256" => Curve::P256,
+                    "ES384" => Curve::P384,
+                    _ => Curve::P521,
+                }
+        }
+        _ => false,
+    };
+    if fits {
+        Ok(())
+    } else {
+        Err(format!("the private key does not match {alg}"))
     }
 }
 

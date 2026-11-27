@@ -4,6 +4,7 @@ pub(crate) mod auth;
 pub(crate) mod auth_json;
 pub(crate) mod body;
 pub(crate) mod edgegrid;
+pub(crate) mod jwt;
 pub(crate) mod oauth1;
 pub(crate) mod oauth2;
 pub(crate) mod settings;
@@ -14,6 +15,7 @@ pub use auth_json::paths as auth_json_paths;
 pub use auth_json::{AuthJsonError, Position as AuthJsonPosition, parse_auth_json};
 pub use body::{BodySpec, FileEntry, MultipartField, MultipartValue, collection_relative};
 pub use edgegrid::EdgeGridSpec;
+pub use jwt::{JwtAlgorithm, JwtPlacement, JwtSpec};
 pub use oauth1::{
     OAuth1KeyKind, OAuth1Placement, OAuth1PrivateKey, OAuth1SignatureMethod, OAuth1Spec,
 };

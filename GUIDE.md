@@ -30,6 +30,7 @@ and a quick start, see the [README](README.md).
   - [GraphQL schema](#graphql-schema)
   - [GraphQL queries](#graphql-queries)
   - [OAuth 2.0 and scripts](#oauth-20-and-scripts)
+  - [JWT Bearer auth](#jwt-bearer-auth)
   - [Team servers](#team-servers)
   - [Timeouts, streams and body size](#timeouts-streams-and-body-size)
   - [Reading responses](#reading-responses)
@@ -898,6 +899,35 @@ apinata run ./my-api --no-scripts
 ```
 
 Scripts can `require("crypto")` for Node's hashes and HMACs, random bytes, `pbkdf2` and `scrypt`, AES-CBC, AES-CTR and AES-GCM ciphers, RSA (PKCS#1 v1.5 and PSS), ECDSA (P-256, P-384 and P-521) and Ed25519 signatures, and `KeyObject`s made from PEM, DER or JWK keys (RSA, P-256, P-384, P-521 and Ed25519; `export({ format: "jwk" })` too). RSA-PSS keys open from PEM or DER, encrypted or not, and report their hash, MGF1 hash and salt length in `asymmetricKeyDetails`; they sign and verify only within those parameters, as in Node, and have no JWK form. Encrypted PKCS#8 private keys open with `passphrase`, if they use PBES2 with PBKDF2 (SHA-1 or SHA-224 to SHA-512) or scrypt and AES or 3DES (DES-EDE3-CBC); other schemes, including Camellia and legacy `Proc-Type` PEM, are refused by name. `export({ format: "pem", type: "pkcs8", cipher, passphrase })` writes encrypted PKCS#8 with PBES2, PBKDF2-HMAC-SHA256 and AES-128, AES-192 or AES-256 in CBC mode, as Node does; other ciphers are refused by name. Key derivation cannot be stopped by the script timeout once it starts, so it is capped: PBKDF2 takes at most 10,000,000 iterations, and iterations x ceil(key length / digest length) must be at most 16,777,216; scrypt needs N x r x p at most 33,554,432 and `maxmem` at most 256 MiB; derived keys are at most 65,536 bytes. An encrypted key whose file asks for more is refused before any derivation. RSA-PSS signatures made with a plain RSA key and no `saltLength` use a salt as long as the digest; RSA-PSS keys salt as Node does. Other members throw an error that names them, and `require("crypto-js")` covers more algorithms.
+
+### JWT Bearer auth
+
+A request, folder or collection with `type: jwt` auth signs a fresh token on every send and
+sends it as a bearer token:
+
+```yaml
+auth:
+  type: jwt
+  algorithm: RS256            # HS, RS and PS 256 to 512, ES256, ES384 or ES512
+  secret: "{{jwt_secret}}"    # HS only; secretBase64: true decodes it first
+  privateKey: {type: text, value: "{{jwt_key}}"}   # RS, PS and ES; type: file reads a PEM file
+  headers: '{"kid":"k1"}'     # optional extra header keys
+  payload: '{"sub":"{{user}}"}'
+  expiresIn: 300              # optional; adds iat and exp when the payload has neither
+  placement: header           # header or query
+  headerPrefix: Bearer
+  queryParamKey: token
+```
+
+Variables are filled into every field before anything is signed, so `apinata check` names each
+one a request needs. The payload must be a JSON object once filled. The token's `alg` always
+comes from `algorithm`. Keys are PEM: PKCS#8, PKCS#1 or SEC1, and a `type: file` path is
+relative to the collection root. In the header the token replaces any `Authorization` header the
+request has; in the query it replaces a parameter with the same name. An empty secret or key, a
+key that does not match the algorithm, an unknown algorithm or a payload that is not a JSON
+object stops the request before it is sent, and the error never shows the payload, key, secret
+or the value an `algorithm` variable held. The token, the secret and the key are hidden in
+history, reports and the Timeline.
 
 ### Team servers
 

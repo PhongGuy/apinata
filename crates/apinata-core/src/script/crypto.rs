@@ -393,7 +393,7 @@ fn curve(name: &str) -> Curve {
     }
 }
 
-fn private_key(key: &KeyInput) -> Result<Private, String> {
+pub(super) fn private_key(key: &KeyInput) -> Result<Private, String> {
     decrypted(key, None)?;
     let pem = key.private_pem().ok_or(BAD_PRIVATE)?;
     private_from(pem.label, pem.der)

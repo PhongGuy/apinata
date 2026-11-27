@@ -124,6 +124,15 @@ fn literal_credentials_are_blanked_and_everything_else_is_kept() {
             ],
         ),
         (
+            "    type: jwt\n    algorithm: HS256\n    secret: lit\n    privateKey:\n      type: text\n      value: lit\n    payload: '{}'\n",
+            &[
+                ("/algorithm", "HS256"),
+                ("/secret", ""),
+                ("/privateKey/value", ""),
+                ("/payload", "{}"),
+            ],
+        ),
+        (
             "    type: akamai-edgegrid\n    accessToken: lit\n    clientToken: lit\n    clientSecret: lit\n    baseURL: http://x\n",
             &[
                 ("/accessToken", ""),
