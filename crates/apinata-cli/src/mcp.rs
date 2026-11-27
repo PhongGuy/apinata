@@ -65,11 +65,13 @@ fn options(args: &McpArgs) -> anyhow::Result<McpOptions> {
     )?;
     let mut options = McpOptions::new(root)
         .insecure(args.insecure)
-        .http_version(args.network.http_version)
         .network(network::settings(&args.network))
         .client_certificates(network::client_certificates(&args.network)?);
     if let Some(env) = &args.env {
         options = options.env(env);
+    }
+    if let Some(version) = args.network.http_version {
+        options = options.http_version(version);
     }
     if args.no_env {
         options = options.no_env();

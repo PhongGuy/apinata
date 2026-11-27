@@ -7,8 +7,9 @@ use crate::edit::{
     ApiKeyPlacement, AuthSpec, ClientAuth, EdgeGridSpec, JwtAlgorithm, JwtPlacement, JwtSpec,
     OAuth1KeyKind, OAuth1Placement, OAuth1PrivateKey, OAuth1SignatureMethod, OAuth1Spec,
     OAuth2Flow, OAuth2Param, OAuth2ParamPlacement, OAuth2Spec, OAuth2Stage, RequestSettings,
-    TokenPlacement, VarValue, Variable,
+    TlsVerify, TokenPlacement, VarValue, Variable,
 };
+use crate::http_version::HttpVersionPolicy;
 use crate::js;
 use serde_json::Value;
 
@@ -16,12 +17,14 @@ use serde_json::Value;
 const VARIABLE_KEYS: [&str; 4] = ["key", "value", "disabled", "type"];
 
 /// The `protocolProfileBehavior` keys that have a request setting.
-const SETTING_KEYS: [&str; 5] = [
+const SETTING_KEYS: [&str; 7] = [
     "disabledSystemHeaders",
     "disableUrlEncoding",
     "followAuthorizationHeader",
     "followRedirects",
     "maxRedirects",
+    "strictSSL",
+    "protocolVersion",
 ];
 
 /// An `auth` member: falsy gives `absent` (none on the collection, inherit below it). A type
@@ -569,6 +572,28 @@ pub(super) fn settings(
         None | Some(Value::Null) => {}
         Some(_) => drop("followRedirects", "the value is not true or false"),
     }
+    // Anything but a boolean leaves the check to the default, which verifies unless told not to.
+    match behavior.get("strictSSL") {
+        Some(Value::Bool(true)) => settings.verify_tls = TlsVerify::On,
+        Some(Value::Bool(false)) => settings.verify_tls = TlsVerify::Off,
+        None | Some(Value::Null) => {}
+        Some(_) => drop("strictSSL", "the value is not true or false"),
+    }
+    let mut version_note = None;
+    match behavior.get("protocolVersion").map(|v| (v, v.as_str())) {
+        Some((_, Some("http1"))) => settings.http_version = Some(HttpVersionPolicy::Http1Only),
+        Some((_, Some("auto"))) => settings.http_version = Some(HttpVersionPolicy::Auto),
+        Some((_, Some("http2"))) => {
+            settings.http_version = Some(HttpVersionPolicy::Auto);
+            version_note = Some(ImportNote::new(
+                format!("{crumb} / protocolProfileBehavior.protocolVersion"),
+                NoteKind::Converted,
+                "HTTP/2 becomes Auto, which uses HTTP/2 when an https server offers it",
+            ));
+        }
+        None | Some((Value::Null, _)) => {}
+        Some(_) => drop("protocolVersion", "the value is not http1, http2 or auto"),
+    }
     // Pushed once `drop`, which borrows `notes`, is done.
     let mut converted = None;
     match behavior.get("maxRedirects") {
@@ -609,6 +634,7 @@ pub(super) fn settings(
         }
     }
     notes.extend(converted);
+    notes.extend(version_note);
     settings
 }
 

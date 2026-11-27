@@ -87,6 +87,9 @@ pub(crate) struct ResultRow {
     /// Each cookie set for the request, in the order it was set; absent when none.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub cookies: Vec<CookieRow>,
+    /// Present, and true, when some hop of the response skipped the TLS certificate check.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub tls_unverified: bool,
     /// The response itself; present only when the caller asked for it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response: Option<ResponseRow>,
@@ -444,6 +447,9 @@ impl From<&crate::RequestResult> for ResultRow {
             cookies: (result.set_cookies())
                 .map(|(origin, c)| CookieRow::new(origin, c, result))
                 .collect(),
+            tls_unverified: response.is_some_and(|r| {
+                (r.timeline().iter()).any(|hop| hop.tls().is_some_and(|tls| !tls.verified))
+            }),
             response: None,
             unset_var_lines: result
                 .post_response_vars
@@ -742,6 +748,7 @@ pub(crate) fn sample() -> Report {
             tests: vec![],
             console: vec![],
             cookies: vec![],
+            tls_unverified: false,
             response: None,
             unset_var_lines: vec![],
             status_text: None,

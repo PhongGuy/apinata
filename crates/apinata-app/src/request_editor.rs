@@ -4108,6 +4108,8 @@ fn custom_settings(s: &RequestSettings) -> bool {
         || s.follow_redirects != d.follow_redirects
         || s.max_redirects != d.max_redirects
         || matches!(s.timeout, Timeout::Millis(_))
+        || s.verify_tls != d.verify_tls
+        || s.http_version != d.http_version
 }
 
 const SECTION_TAB_IDS: ui::SectionTabIds = ui::SectionTabIds {

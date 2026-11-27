@@ -26,7 +26,7 @@ pub struct McpOptions {
     script_trust_file: Option<PathBuf>,
     approval_dir: Option<PathBuf>,
     token_cache: Option<PathBuf>,
-    http_version: HttpVersionPolicy,
+    http_version: Option<HttpVersionPolicy>,
     git: GitOptions,
     trash: Arc<dyn Trash>,
     trash_log: Option<PathBuf>,
@@ -55,7 +55,7 @@ impl McpOptions {
                 ApprovalInbox::default_dir()
             },
             token_cache: None,
-            http_version: HttpVersionPolicy::default(),
+            http_version: None,
             git: GitOptions::new(),
             trash: Arc::new(SystemTrash::new()),
             // As with the inbox, unit tests never write the real record of deletes.
@@ -187,14 +187,15 @@ impl McpOptions {
         self
     }
 
-    /// The HTTP version policy every send uses (`--http-version`); HTTP/1.1 only by default.
+    /// The HTTP version every send uses over the request's own setting (`--http-version`).
+    /// Without it each request chooses, HTTP/1.1 only when it does not.
     pub fn http_version(mut self, policy: HttpVersionPolicy) -> McpOptions {
-        self.http_version = policy;
+        self.http_version = Some(policy);
         self
     }
 
-    /// The HTTP version policy every send uses.
-    pub fn http_version_policy(&self) -> HttpVersionPolicy {
+    /// The HTTP version forced on every send, if one was given.
+    pub fn http_version_policy(&self) -> Option<HttpVersionPolicy> {
         self.http_version
     }
 
