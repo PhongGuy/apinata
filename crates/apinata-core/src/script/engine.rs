@@ -298,11 +298,7 @@ async fn drive(
 }
 
 /// Globals an imported script may use that are missing here, with what to tell the user.
-const MISSING_GLOBAL_HINTS: [(&str, &str); 3] = [
-    ("CryptoJS", "use require('crypto-js')"),
-    ("cheerio", "cheerio is not available here"),
-    ("xml2Json", "xml2Json is not available here"),
-];
+const MISSING_GLOBAL_HINTS: [(&str, &str); 1] = [("CryptoJS", "use require('crypto-js')")];
 
 /// Rewrites "ReferenceError: pm is not defined" (or `postman`) to name the `pm.` call at the
 /// throw's position, else the first in the running segment; any other text passes through.

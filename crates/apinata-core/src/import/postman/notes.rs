@@ -4,9 +4,7 @@
 //! collection, folders and requests, with a `Converted` note per script carried.
 
 use super::model::{Body, Collection, Item, METADATA, Request, Url};
-use super::script::{
-    directive_prologue_end, needs_cryptojs_require, translate, unavailable_globals,
-};
+use super::script::{directive_prologue_end, needs_cryptojs_require, translate};
 use super::{ImportNote, ImportedScripts, NoteKind, js, js_string, truthy};
 use serde::Deserialize;
 use serde_json::{Map, Value};
@@ -365,13 +363,6 @@ fn events_to_scripts(events: &[Value], at: &str, notes: &mut Vec<ImportNote>) ->
                 source.clone(),
                 NoteKind::Converted,
                 "uses CryptoJS; added const CryptoJS = require('crypto-js') at the top",
-            ));
-        }
-        for name in unavailable_globals(&code) {
-            notes.push(ImportNote::new(
-                source.clone(),
-                NoteKind::Converted,
-                format!("uses {name}, which is not available here; the script was kept as written"),
             ));
         }
         match k {
