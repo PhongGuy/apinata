@@ -230,6 +230,10 @@ pub fn highlighter(target: Target) -> &'static str {
         Target::JavaHttpClient => "java",
         Target::CSharpHttpClient => "csharp",
         Target::PowerShellRestMethod => "powershell",
+        // Raw HTTP has no grammar, and the Ruby, Kotlin and Swift grammars are not built in.
+        Target::RawHttp | Target::RubyNetHttp | Target::KotlinOkHttp | Target::SwiftUrlSession => {
+            "text"
+        }
         _ => "text",
     }
 }

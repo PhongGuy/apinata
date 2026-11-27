@@ -294,6 +294,15 @@ fn every_new_target_generates_in_the_dialog(cx: &mut TestAppContext) {
     close(cx, &s);
 }
 
+/// Targets shown as plain text: raw HTTP has no grammar, and the kit features for Ruby,
+/// Kotlin and Swift are not built.
+const PLAIN_TEXT: [Target; 4] = [
+    Target::RawHttp,
+    Target::RubyNetHttp,
+    Target::KotlinOkHttp,
+    Target::SwiftUrlSession,
+];
+
 #[test]
 fn every_target_gets_a_known_grammar() {
     use apinata_app::generate_code::highlighter;
@@ -303,6 +312,8 @@ fn every_target_gets_a_known_grammar() {
         // The kit has no PowerShell grammar; the app registers its own under this name.
         if *target == Target::PowerShellRestMethod {
             assert_eq!(name, "powershell");
+        } else if PLAIN_TEXT.contains(target) {
+            assert_eq!(name, "text", "{}", target.id());
         } else {
             assert_ne!(
                 Language::from_str(name),
@@ -320,7 +331,7 @@ fn every_highlighted_target_has_a_highlights_query(cx: &mut TestAppContext) {
     use gpui_kit::component::highlighter::LanguageRegistry;
     let col = with_request(&request("a", "http://x.test/ok"), &[]);
     let _s = started(cx, &col);
-    for target in Target::ALL {
+    for target in Target::ALL.iter().filter(|t| !PLAIN_TEXT.contains(t)) {
         let name = highlighter(*target);
         let config = LanguageRegistry::singleton()
             .language(name)
