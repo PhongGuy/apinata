@@ -2,8 +2,9 @@
 //! errors, which never repeat a value from the input.
 
 use apinata_core::{
-    ApiKeyPlacement, AuthSpec, ClientAuth, EdgeGridSpec, OAuth2Flow, OAuth2Param,
-    OAuth2ParamPlacement, OAuth2Spec, OAuth2Stage, TokenPlacement, TokenSource, parse_auth_json,
+    ApiKeyPlacement, AuthSpec, ClientAuth, EdgeGridSpec, JwtAlgorithm, JwtPlacement, JwtSpec,
+    OAuth1KeyKind, OAuth1PrivateKey, OAuth2Flow, OAuth2Param, OAuth2ParamPlacement, OAuth2Spec,
+    OAuth2Stage, TokenPlacement, TokenSource, parse_auth_json,
 };
 
 #[test]
@@ -90,6 +91,75 @@ fn oauth2_parses_every_field_in_the_files_spellings() {
         parse_auth_json(json).expect("parses"),
         AuthSpec::OAuth2(want)
     );
+}
+
+/// A JWT document with every field given; RS256 signs with an inline key.
+const JWT: &str = r#"{"type":"jwt","algorithm":"RS256","secret":"","secret_base64":false,
+    "private_key":{"type":"text","value":"{{jwt_key}}"},"headers":"{\"kid\":\"k1\"}",
+    "payload":"{\"sub\":\"{{user}}\"}","expires_in":"300","placement":"query",
+    "header_prefix":null,"query_param_key":"jwt"}"#;
+
+#[test]
+fn jwt_parses_every_field_in_the_files_spellings() {
+    let AuthSpec::Jwt(got) = parse_auth_json(JWT).expect("parses") else {
+        panic!("jwt")
+    };
+    let mut want = JwtSpec::default();
+    want.algorithm = JwtAlgorithm::Rs256;
+    want.private_key = Some(OAuth1PrivateKey::new(OAuth1KeyKind::Text, "{{jwt_key}}"));
+    want.headers = r#"{"kid":"k1"}"#.into();
+    want.payload = r#"{"sub":"{{user}}"}"#.into();
+    want.expires_in = "300".into();
+    want.placement = JwtPlacement::Query;
+    want.header_prefix = None;
+    want.query_param_key = "jwt".into();
+    assert!(got == want, "{got:?}");
+    // An algorithm may be a variable, so any name is kept as written for the send to judge.
+    let named = JWT.replace("RS256", "{{alg}}");
+    let AuthSpec::Jwt(got) = parse_auth_json(&named).expect("parses") else {
+        panic!("jwt")
+    };
+    assert_eq!(got.algorithm, JwtAlgorithm::Other("{{alg}}".into()));
+}
+
+#[test]
+fn a_bad_jwt_document_names_its_field_and_never_its_values() {
+    let secret = "s3cr3t-Value-9";
+    let with_secret = JWT.replace(r#""secret":"""#, &format!(r#""secret":"{secret}""#));
+    let cases = [
+        (
+            with_secret.replace(r#""expires_in":"300""#, "\"expires_in\":300"),
+            "expires_in",
+        ),
+        (
+            with_secret.replace(r#""secret_base64":false"#, r#""secret_base64":"no""#),
+            "secret_base64",
+        ),
+        (
+            with_secret.replace(r#","query_param_key":"jwt""#, ""),
+            "query_param_key",
+        ),
+        (
+            with_secret.replace(r#""type":"text""#, r#""type":"jwk""#),
+            "private_key.type",
+        ),
+        (
+            with_secret.replace(
+                r#""placement":"query","#,
+                r#""placement":"query","prefix":"x","#,
+            ),
+            "`prefix`",
+        ),
+    ];
+    for (json, field) in &cases {
+        let err = parse_auth_json(json).expect_err(json);
+        let text = err.to_string();
+        assert!(text.contains(field), "{field}: {text}");
+        assert!(
+            !text.contains(secret) && !text.contains("jwt_key"),
+            "{text}"
+        );
+    }
 }
 
 #[test]
@@ -338,6 +408,10 @@ fn the_fast_and_slow_paths_agree_on_every_valid_document() {
             "signature_method":"RSA-SHA256","private_key":{"type":"file","value":"k.pem"},
             "timestamp":null,"nonce":null,"version":"1.0","realm":"r","placement":"header",
             "include_body_hash":true}"#,
+        JWT,
+        r#"{"type":"jwt","algorithm":"HS256","secret":"{{s}}","secret_base64":true,
+            "private_key":null,"headers":"","payload":"","expires_in":"","placement":"header",
+            "header_prefix":"Token","query_param_key":"token"}"#,
         r#"{"type":"edgegrid","access_token":"a","client_token":"c","client_secret":"s",
             "nonce":"","timestamp":"","base_url":"","headers_to_sign":"","max_body_size":"Infinity"}"#,
         r#"{"type":"edgegrid","access_token":"a","client_token":"c","client_secret":"s",

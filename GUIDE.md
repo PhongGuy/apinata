@@ -956,6 +956,21 @@ object stops the request before it is sent, and the error never shows the payloa
 or the value an `algorithm` variable held. The token, the secret and the key are hidden in
 history, reports and the Timeline.
 
+`apinata item request` and `item folder` set it with `--auth-json`, and MCP's `update_request`
+and `update_folder` take the same shape, which `read_request` and `read_folder` show. Keys are
+snake_case and every one is given, with `null` for no key and for the default prefix:
+
+```sh
+apinata item request users/get.yml --auth-json '{"type": "jwt", "algorithm": "HS256",
+  "secret": "{{jwt_secret}}", "secret_base64": false, "private_key": null, "headers": "",
+  "payload": "{\"sub\":\"me\"}", "expires_in": "300", "placement": "header",
+  "header_prefix": null, "query_param_key": "token"}'
+```
+
+`private_key` is `{"type": "text", "value": "{{jwt_key}}"}` or `{"type": "file", "value":
+"keys/k.pem"}`. Values are written into the file as given, so keep the secret and key in an
+environment (`apinata env set --secret`) and refer to them as `{{name}}`.
+
 ### Team servers
 
 `apinata team` signs in to a self-hosted team server the way the desktop app
