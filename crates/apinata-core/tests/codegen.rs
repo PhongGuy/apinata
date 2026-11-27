@@ -152,14 +152,30 @@ const REDIRECT_FLAGS: &[(Target, &str, bool)] = &[
         true,
     ),
     (Target::CSharpHttpClient, "AllowAutoRedirect = false", false),
+    (
+        Target::RubyNetHttp,
+        "Net::HTTP does not follow redirects",
+        true,
+    ),
+    (Target::KotlinOkHttp, ".followRedirects(false)", false),
+    (Target::SwiftUrlSession, "willPerformHTTPRedirection", false),
 ];
+
+/// Targets with no redirect setting at all: one message, written the same either way.
+const NO_REDIRECT_SETTING: &[Target] = &[Target::RawHttp];
 
 #[test]
 fn every_target_writes_its_redirect_flag_only_against_its_default() {
     let following = resolved_one("GET", "http://x.test/r", "", "");
     let not_following = resolved_one("GET", "http://x.test/r", "", NO_REDIRECTS);
     assert!(following.follow_redirects() && !not_following.follow_redirects());
-    for t in Target::ALL {
+    for t in NO_REDIRECT_SETTING {
+        assert_eq!(generate(&following, *t), generate(&not_following, *t));
+    }
+    for t in Target::ALL
+        .iter()
+        .filter(|t| !NO_REDIRECT_SETTING.contains(t))
+    {
         let (_, flag, when_following) = REDIRECT_FLAGS
             .iter()
             .find(|(target, _, _)| target == t)
@@ -284,15 +300,19 @@ fn every_target_is_in_the_picker_in_order() {
         [
             "curl",
             "httpie",
+            "raw-http",
             "python-requests",
             "js-fetch",
             "node-axios",
             "go",
             "powershell",
             "php-curl",
+            "ruby-net-http",
             "rust-reqwest",
             "java-httpclient",
-            "csharp-httpclient"
+            "kotlin-okhttp",
+            "csharp-httpclient",
+            "swift-urlsession"
         ]
     );
     let labels: Vec<&str> = Target::ALL.iter().map(|t| t.label()).collect();
@@ -301,15 +321,19 @@ fn every_target_is_in_the_picker_in_order() {
         [
             "curl",
             "HTTPie",
+            "Raw HTTP",
             "Python (requests)",
             "JavaScript (fetch)",
             "Node.js (axios)",
             "Go (net/http)",
             "PowerShell (Invoke-RestMethod)",
             "PHP (curl)",
+            "Ruby (Net::HTTP)",
             "Rust (reqwest)",
             "Java (HttpClient)",
-            "C# (HttpClient)"
+            "Kotlin (OkHttp)",
+            "C# (HttpClient)",
+            "Swift (URLSession)"
         ]
     );
 }
@@ -1076,4 +1100,229 @@ fn rust_imports_part_only_when_a_part_needs_it() {
         generate(multipart, Target::RustReqwest)
             .contains("use reqwest::blocking::multipart::{Form, Part};\n")
     );
+}
+
+/// The matrix plus `typed` and `mixed`, snapshotted for a target that hand-builds multipart.
+fn snapshots_with_parts(target: Target) {
+    snapshots(target);
+    let id = target.id();
+    insta::assert_snapshot!(format!("{id}-typed"), generate(&typed(), target));
+    insta::assert_snapshot!(format!("{id}-mixed"), generate(&mixed(), target));
+}
+
+fn case(name: &str) -> ResolvedRequest {
+    matrix().into_iter().find(|(c, _)| *c == name).unwrap().1
+}
+
+#[test]
+fn raw_http_snapshots() {
+    snapshots_with_parts(Target::RawHttp);
+}
+
+/// The message split into its head lines and its body, at the first blank line.
+fn raw_parts(text: &str) -> (Vec<&str>, &str) {
+    let mut text = text;
+    while let Some(rest) = text.strip_prefix('#') {
+        text = &rest[rest.find('\n').expect("a note ends its line") + 1..];
+    }
+    let (head, body) = text
+        .split_once("\r\n\r\n")
+        .expect("a blank line ends the head");
+    (head.split("\r\n").collect(), body)
+}
+
+#[test]
+fn raw_http_ends_every_head_line_in_crlf_and_counts_the_body_in_bytes() {
+    let mut cases = matrix();
+    cases.push(("typed", typed()));
+    for (name, req) in cases {
+        if name == "file" || name == "multipart" {
+            continue;
+        }
+        let out = generate(&req, Target::RawHttp);
+        let (head, body) = raw_parts(&out);
+        assert!(head.iter().all(|l| !l.contains('\n')), "{name}: {out:?}");
+        let length = head.iter().find_map(|l| l.strip_prefix("Content-Length: "));
+        if body.is_empty() {
+            assert_eq!(length, None, "{name}: {out:?}");
+        } else {
+            assert_eq!(
+                length,
+                Some(body.len().to_string().as_str()),
+                "{name}: {out:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn raw_http_writes_the_request_line_then_host_first() {
+    let out = generate(&case("get"), Target::RawHttp);
+    assert!(
+        out.starts_with("GET /a?q=1&r=two HTTP/1.1\r\nHost: x.test\r\n"),
+        "{out:?}"
+    );
+    let req = resolved_one("GET", "https://x.test:8443/p#frag", "", "");
+    let out = generate(&req, Target::RawHttp);
+    assert!(
+        out.starts_with("GET /p HTTP/1.1\r\nHost: x.test:8443\r\n"),
+        "{out:?}"
+    );
+    let req = resolved_one("GET", "http://x.test", "", "");
+    assert!(generate(&req, Target::RawHttp).starts_with("GET / HTTP/1.1\r\n"));
+}
+
+#[test]
+fn raw_http_sends_the_hostile_body_verbatim() {
+    let out = generate(&case("hostile"), Target::RawHttp);
+    let (_, body) = raw_parts(&out);
+    // YAML folds the space before the line separator, so the resolved body has none.
+    assert_eq!(body, "a'b\"c\\d $e {f}\tg\nü€\u{2028}end");
+}
+
+#[test]
+fn raw_http_leaves_out_a_header_that_would_forge_a_line() {
+    let req = resolved_one(
+        "GET",
+        "http://x.test/h",
+        "  headers:\n    - name: X-Bad\n      value: \"a\\r\\nInjected: 1\"\n    - name: X-Ok\n      value: fine\n",
+        "",
+    );
+    let out = generate(&req, Target::RawHttp);
+    assert!(!out.contains("Injected"), "{out:?}");
+    assert!(out.contains("\r\nX-Ok: fine\r\n"), "{out:?}");
+    assert!(
+        out.starts_with("# Left out, since a line break in a header would end it early: X-Bad.\n"),
+        "{out:?}"
+    );
+}
+
+#[test]
+fn raw_http_names_a_file_body_it_cannot_inline() {
+    let out = generate(&case("file"), Target::RawHttp);
+    let (head, body) = raw_parts(&out);
+    assert!(
+        !head.iter().any(|l| l.starts_with("Content-Length")),
+        "{out:?}"
+    );
+    assert_eq!(body, "< /data/body.json");
+    assert!(out.starts_with("# "), "{out:?}");
+}
+
+#[test]
+fn raw_http_turns_url_credentials_into_basic_auth() {
+    let req = resolved_one("GET", "http://u:p@x.test/c", "", "");
+    let out = generate(&req, Target::RawHttp);
+    assert!(out.contains("\r\nAuthorization: Basic dTpw\r\n"), "{out:?}");
+    assert!(!out.contains("u:p@"), "{out:?}");
+}
+
+#[test]
+fn ruby_snapshots() {
+    snapshots_with_parts(Target::RubyNetHttp);
+}
+
+#[test]
+fn ruby_escapes_only_the_hash_that_would_interpolate() {
+    let req = resolved_one(
+        "GET",
+        "http://x.test/r",
+        "  headers:\n    - name: X-R\n      value: \"#{x} #$y #@z # {w} \\\"q\\\" \\\\\"\n",
+        "",
+    );
+    let out = generate(&req, Target::RubyNetHttp);
+    assert!(out.contains(r#""\#{x} \#$y \#@z # {w} \"q\" \\""#), "{out}");
+}
+
+#[test]
+fn ruby_names_digest_instead_of_writing_it() {
+    assert!(
+        generate(&case("digest"), Target::RubyNetHttp)
+            .starts_with("# Digest auth is not included in this snippet.\n")
+    );
+}
+
+#[test]
+fn ruby_parses_with_ruby() {
+    if !toolchain("ruby") {
+        return;
+    }
+    toolchain_check(Target::RubyNetHttp, "snippet.rb", |file| {
+        std::process::Command::new("ruby")
+            .arg("-c")
+            .arg(file)
+            .output()
+            .unwrap()
+    });
+}
+
+#[test]
+fn kotlin_snapshots() {
+    snapshots_with_parts(Target::KotlinOkHttp);
+}
+
+#[test]
+fn kotlin_escapes_every_dollar_and_line_separator() {
+    let out = generate(&case("hostile"), Target::KotlinOkHttp);
+    assert!(out.contains("\\$HOME") && out.contains("\\$e"), "{out}");
+    assert!(
+        out.contains("\\u2028") && !out.contains('\u{2028}'),
+        "{out}"
+    );
+    assert!(out.contains("addUnsafeNonAscii"), "{out}");
+}
+
+#[test]
+fn kotlin_sends_an_empty_body_on_a_bare_post_and_names_a_get_body() {
+    let out = generate(
+        &resolved_one("POST", "http://x.test/p", "", ""),
+        Target::KotlinOkHttp,
+    );
+    assert!(out.contains("ByteArray(0).toRequestBody(null)"), "{out}");
+    let out = generate(
+        &resolved_one("GET", "http://x.test/g", JSON, ""),
+        Target::KotlinOkHttp,
+    );
+    assert!(!out.contains("toRequestBody"), "{out}");
+    assert!(
+        out.starts_with("// OkHttp sends no body with GET; the body is left out.\n"),
+        "{out}"
+    );
+}
+
+#[test]
+fn swift_snapshots() {
+    snapshots_with_parts(Target::SwiftUrlSession);
+}
+
+#[test]
+fn swift_escapes_backslashes_and_line_separators_and_writes_digest_natively() {
+    let out = generate(&case("hostile"), Target::SwiftUrlSession);
+    assert!(out.contains("c\\\\d") && !out.contains("\\("), "{out}");
+    assert!(
+        out.contains("\\u{2028}") && !out.contains('\u{2028}'),
+        "{out}"
+    );
+    let out = generate(&case("digest"), Target::SwiftUrlSession);
+    assert!(
+        out.contains("URLCredential(user: \"alice\", password: \"p'w\""),
+        "{out}"
+    );
+    assert!(!out.contains("not included"), "{out}");
+}
+
+#[test]
+fn swift_names_the_headers_urlsession_sets_itself() {
+    let req = resolved_one(
+        "GET",
+        "http://x.test/s",
+        "  headers:\n    - name: Host\n      value: y.test\n    - name: X-S\n      value: \"1\"\n",
+        "",
+    );
+    let out = generate(&req, Target::SwiftUrlSession);
+    assert!(
+        out.starts_with("// URLSession sets these headers itself: Host.\n"),
+        "{out}"
+    );
+    assert!(!out.contains("\"y.test\""), "{out}");
 }

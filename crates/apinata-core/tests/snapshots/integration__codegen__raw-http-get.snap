@@ -1,0 +1,9 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+assertion_line: 94
+expression: "generate(&req, target)"
+---
+GET /a?q=1&r=two HTTP/1.1
+Host: x.test
+X-A: 2
+Cookie: b=2

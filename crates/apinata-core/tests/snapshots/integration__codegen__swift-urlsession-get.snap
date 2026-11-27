@@ -1,0 +1,26 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+assertion_line: 94
+expression: "generate(&req, target)"
+---
+import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
+var request = URLRequest(url: URL(string: "http://x.test/a?q=1&r=two")!)
+request.httpMethod = "GET"
+request.setValue("2", forHTTPHeaderField: "X-A")
+request.setValue("b=2", forHTTPHeaderField: "Cookie")
+
+let done = DispatchSemaphore(value: 0)
+URLSession.shared.dataTask(with: request) { data, response, error in
+    if let response = response as? HTTPURLResponse {
+        print(response.statusCode)
+        print(String(decoding: data ?? Data(), as: UTF8.self))
+    } else if let error = error {
+        print(error)
+    }
+    done.signal()
+}.resume()
+done.wait()

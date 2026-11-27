@@ -2457,7 +2457,7 @@ fn unix_now() -> u64 {
 
 /// The decoded user and password reqwest turns `url`'s userinfo into a Basic header with, by
 /// its own rule: `None` when there is none, or when the username is not UTF-8 once decoded.
-fn url_credentials(url: &Url) -> Option<(String, Option<String>)> {
+pub(crate) fn url_credentials(url: &Url) -> Option<(String, Option<String>)> {
     use percent_encoding::percent_decode_str;
     let user = percent_decode_str(url.username()).decode_utf8().ok()?;
     let password = (url.password())

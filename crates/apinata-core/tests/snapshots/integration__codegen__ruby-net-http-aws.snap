@@ -1,0 +1,17 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+assertion_line: 94
+expression: "generate(&req, target)"
+---
+# AWS Signature auth is not included in this snippet.
+# Net::HTTP does not follow redirects; this prints the first response.
+require "net/http"
+
+uri = URI("http://x.test/aws")
+request = Net::HTTP::Get.new(uri)
+
+response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https") do |http|
+  http.request(request)
+end
+puts response.code
+puts response.body

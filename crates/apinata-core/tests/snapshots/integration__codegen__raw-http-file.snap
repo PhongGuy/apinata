@@ -1,0 +1,11 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+assertion_line: 94
+expression: "generate(&req, target)"
+---
+# Each `< path` line stands for that file's bytes, so Content-Length is left out.
+PUT /b HTTP/1.1
+Host: x.test
+content-type: application/json
+
+< /data/body.json

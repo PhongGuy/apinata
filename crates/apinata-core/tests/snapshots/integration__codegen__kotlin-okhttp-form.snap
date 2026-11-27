@@ -1,0 +1,25 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+assertion_line: 94
+expression: "generate(&req, target)"
+---
+import okhttp3.Headers
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+
+fun main() {
+    val client = OkHttpClient()
+    val headers = Headers.Builder()
+        .add("content-type", "application/x-www-form-urlencoded")
+        .build()
+    val request = Request.Builder()
+        .url("http://x.test/f")
+        .headers(headers)
+        .method("POST", "a=1&b=x+y%26z".toRequestBody(null))
+        .build()
+    client.newCall(request).execute().use { response ->
+        println(response.code)
+        println(response.body?.string())
+    }
+}
