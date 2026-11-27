@@ -4,8 +4,9 @@ use serde_json::{Value, json};
 
 use crate::edit::edgegrid::MAX_EXACT;
 use crate::edit::{
-    ApiKeyPlacement, AuthSpec, ClientAuth, EdgeGridSpec, OAuth1KeyKind, OAuth1Placement,
-    OAuth1Spec, OAuth2Flow, OAuth2ParamPlacement, OAuth2Spec, OAuth2Stage, TokenPlacement,
+    ApiKeyPlacement, AuthSpec, ClientAuth, EdgeGridSpec, JwtPlacement, JwtSpec, OAuth1KeyKind,
+    OAuth1Placement, OAuth1Spec, OAuth2Flow, OAuth2ParamPlacement, OAuth2Spec, OAuth2Stage,
+    TokenPlacement,
 };
 
 /// The Postman auth object for a mode it can carry; `None` for `None`, `Inherit` and
@@ -65,6 +66,7 @@ pub(super) fn auth(spec: &AuthSpec) -> Option<Value> {
         AuthSpec::OAuth1(o) => ("oauth1", oauth1(o)),
         AuthSpec::OAuth2(o) => ("oauth2", oauth2(o)),
         AuthSpec::EdgeGrid(e) => ("edgegrid", edgegrid(e)),
+        AuthSpec::Jwt(j) => ("jwt", jwt(j)),
         _ => return None,
     };
     Some(json!({"type": kind, kind: entries}))
@@ -102,6 +104,39 @@ fn edgegrid(e: &EdgeGridSpec) -> Vec<Value> {
         None => json!(""),
     };
     out.push(json!({"key": "maxBodySize", "value": max, "type": "string"}));
+    out
+}
+
+/// The runtime's jwt list. The headers go out as an object when they parse as one, an inline
+/// key as text (a file key is blank), and an absent prefix as `Bearer`.
+fn jwt(j: &JwtSpec) -> Vec<Value> {
+    let key = match &j.private_key {
+        Some(k) if k.kind != OAuth1KeyKind::File => k.value.as_str(),
+        _ => "",
+    };
+    let add_to = match j.placement {
+        JwtPlacement::Query => "queryParam",
+        _ => "header",
+    };
+    let mut out = strings(&[
+        ("algorithm", j.algorithm.as_str()),
+        ("secret", &j.secret),
+        ("privateKey", key),
+        ("payload", &j.payload),
+        ("addTokenTo", add_to),
+        (
+            "headerPrefix",
+            j.header_prefix.as_deref().unwrap_or("Bearer"),
+        ),
+        ("queryParamKey", &j.query_param_key),
+    ]);
+    out.extend(booleans(&[("isSecretBase64Encoded", j.secret_base64)]));
+    let header = match serde_json::from_str::<Value>(&j.headers) {
+        Ok(object @ Value::Object(_)) => object,
+        _ if j.headers.trim().is_empty() => json!({}),
+        _ => Value::from(j.headers.as_str()),
+    };
+    out.push(json!({"key": "header", "value": header, "type": "any"}));
     out
 }
 

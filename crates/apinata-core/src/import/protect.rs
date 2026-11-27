@@ -376,6 +376,14 @@ fn auth_secrets(auth: &mut AuthSpec) -> Vec<(&'static str, &mut String)> {
             ("client_secret", &mut spec.client_secret),
             ("password", &mut spec.password),
         ],
+        AuthSpec::Jwt(spec) => {
+            let key = (spec.private_key.as_mut())
+                .filter(|k| k.kind == OAuth1KeyKind::Text)
+                .map(|k| ("private_key", &mut k.value));
+            std::iter::once(("secret", &mut spec.secret))
+                .chain(key)
+                .collect()
+        }
         AuthSpec::EdgeGrid(spec) => vec![
             ("access_token", &mut spec.access_token),
             ("client_token", &mut spec.client_token),

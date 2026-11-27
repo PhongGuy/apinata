@@ -5,8 +5,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use apinata_core::{
-    ApiKeyPlacement, AuthSource, AuthSpec, Collection, EdgeGridSpec, InheritedAuth, OAuth1Spec,
-    OAuth2Flow, OAuth2Spec, VariableSet,
+    ApiKeyPlacement, AuthSource, AuthSpec, Collection, EdgeGridSpec, InheritedAuth, JwtSpec,
+    OAuth1Spec, OAuth2Flow, OAuth2Spec, VariableSet,
 };
 use gpui_kit::component::IndexPath;
 use gpui_kit::component::button::Button;
@@ -20,6 +20,7 @@ use gpui_kit::{
 };
 
 use crate::command::{Edit, MOVE_SLOT};
+use crate::jwt_editor::{JwtEdit, JwtEditor, JwtMoveSecret};
 use crate::kv_table::set_text;
 use crate::oauth1_editor::{OAuth1Edit, OAuth1Editor, OAuth1MoveSecret};
 use crate::oauth2_editor::{OAuth2Edit, OAuth2Editor, OAuth2MoveSecrets};
@@ -39,6 +40,7 @@ pub enum AuthMode {
     Inherit,
     Basic,
     Bearer,
+    Jwt,
     ApiKey,
     Digest,
     Ntlm,
@@ -51,11 +53,12 @@ pub enum AuthMode {
 
 impl AuthMode {
     /// Every mode, in picker order.
-    pub const ALL: [AuthMode; 12] = [
+    pub const ALL: [AuthMode; 13] = [
         AuthMode::None,
         AuthMode::Inherit,
         AuthMode::Basic,
         AuthMode::Bearer,
+        AuthMode::Jwt,
         AuthMode::ApiKey,
         AuthMode::Digest,
         AuthMode::Ntlm,
@@ -73,6 +76,7 @@ impl AuthMode {
             AuthMode::Inherit => "Inherit",
             AuthMode::Basic => "Basic Auth",
             AuthMode::Bearer => "Bearer Token",
+            AuthMode::Jwt => "JWT Bearer",
             AuthMode::ApiKey => "API Key",
             AuthMode::Digest => "Digest Auth",
             AuthMode::Ntlm => "NTLM",
@@ -91,6 +95,7 @@ impl AuthMode {
             AuthMode::Inherit => "inherit",
             AuthMode::Basic => "basic",
             AuthMode::Bearer => "bearer",
+            AuthMode::Jwt => "jwt",
             AuthMode::ApiKey => "apikey",
             AuthMode::Digest => "digest",
             AuthMode::Ntlm => "ntlm",
@@ -109,6 +114,7 @@ impl AuthMode {
             AuthSpec::Inherit => AuthMode::Inherit,
             AuthSpec::Basic { .. } => AuthMode::Basic,
             AuthSpec::Bearer { .. } => AuthMode::Bearer,
+            AuthSpec::Jwt(_) => AuthMode::Jwt,
             AuthSpec::ApiKey { .. } => AuthMode::ApiKey,
             AuthSpec::Digest { .. } => AuthMode::Digest,
             AuthSpec::Ntlm { .. } => AuthMode::Ntlm,
@@ -132,6 +138,7 @@ impl AuthMode {
             AuthMode::Bearer => AuthSpec::Bearer {
                 token: String::new(),
             },
+            AuthMode::Jwt => AuthSpec::Jwt(JwtSpec::default()),
             AuthMode::ApiKey => AuthSpec::ApiKey {
                 key: String::new(),
                 value: String::new(),
@@ -335,6 +342,7 @@ pub struct AuthSection {
     max_refused: bool,
     oauth1: Entity<OAuth1Editor>,
     oauth2: Entity<OAuth2Editor>,
+    jwt_auth: Entity<JwtEditor>,
     // The `.env` names stored or held for the target, for the secret fields' hints.
     dotenv: DotenvNames,
     // The API key placement last set or loaded; the base each API key edit builds on.
@@ -391,7 +399,22 @@ impl AuthSection {
         }
         let oauth1 = cx.new(|cx| OAuth1Editor::new(window, cx));
         let oauth2 = cx.new(|cx| OAuth2Editor::new(window, cx));
+        let jwt_auth = cx.new(|cx| JwtEditor::new(window, cx));
         let mut subs = vec![
+            cx.subscribe(&jwt_auth, |this, _, JwtEdit(spec, stamp), cx| {
+                if this.mode == Some(AuthMode::Jwt) {
+                    this.emit_stamped(AuthSpec::Jwt(spec.clone()), *stamp, cx);
+                }
+            }),
+            cx.subscribe(&jwt_auth, |this, _, JwtMoveSecret(spec), cx| {
+                if this.mode == Some(AuthMode::Jwt) {
+                    let edit = Edit::MoveToSecret {
+                        slotted: Box::new(AuthSpec::Jwt(spec.clone())),
+                        pinned: None,
+                    };
+                    cx.emit(SectionEdit::new(edit).after_loads(this.loads));
+                }
+            }),
             cx.subscribe(&oauth1, |this, _, OAuth1Edit(spec, stamp), cx| {
                 if this.mode == Some(AuthMode::OAuth1) {
                     this.emit_stamped(AuthSpec::OAuth1(spec.clone()), *stamp, cx);
@@ -504,6 +527,7 @@ impl AuthSection {
             max_refused: false,
             oauth1,
             oauth2,
+            jwt_auth,
             dotenv: DotenvNames::default(),
             placement: ApiKeyPlacement::Header,
             memory: HashMap::new(),
@@ -524,6 +548,7 @@ impl AuthSection {
         let loads = self.loads;
         self.oauth1.update(cx, |e, _| e.set_stamp(loads));
         self.oauth2.update(cx, |e, _| e.set_stamp(loads));
+        self.jwt_auth.update(cx, |e, _| e.set_stamp(loads));
         match AuthMode::of(auth) {
             Some(mode) if self.modes.contains(&mode) => {
                 self.show(mode, auth, window, cx);
@@ -568,6 +593,8 @@ impl AuthSection {
     fn share_place(&mut self, cx: &mut Context<Self>) {
         let place = self.place();
         self.oauth1
+            .update(cx, |e, cx| e.set_place(place.clone(), cx));
+        self.jwt_auth
             .update(cx, |e, cx| e.set_place(place.clone(), cx));
         self.oauth2.update(cx, |e, cx| e.set_place(place, cx));
     }
@@ -705,6 +732,8 @@ impl AuthSection {
             .update(cx, |e, cx| e.set_variables(vars.clone(), cx));
         self.oauth2
             .update(cx, |e, cx| e.set_variables(vars.clone(), cx));
+        self.jwt_auth
+            .update(cx, |e, cx| e.set_variables(vars.clone(), cx));
         self.vars = vars;
         self.refresh_jwt(cx);
         cx.notify();
@@ -745,6 +774,7 @@ impl AuthSection {
         }
         self.oauth1.update(cx, |o, cx| o.end_typing(window, cx));
         self.oauth2.update(cx, |o, cx| o.end_typing(window, cx));
+        self.jwt_auth.update(cx, |o, cx| o.end_typing(window, cx));
     }
 
     /// The input behind `field`.
@@ -806,6 +836,11 @@ impl AuthSection {
         &self.oauth1
     }
 
+    /// The JWT Bearer editor, shown under [`AuthMode::Jwt`].
+    pub fn jwt_editor(&self) -> &Entity<JwtEditor> {
+        &self.jwt_auth
+    }
+
     /// The OAuth 2.0 editor, shown under [`AuthMode::OAuth2`].
     pub fn oauth2(&self) -> &Entity<OAuth2Editor> {
         &self.oauth2
@@ -864,6 +899,7 @@ impl AuthSection {
             }
             AuthMode::OAuth1 => AuthSpec::OAuth1(self.oauth1.read(cx).spec(cx)),
             AuthMode::OAuth2 => AuthSpec::OAuth2(self.oauth2.read(cx).spec(cx)),
+            AuthMode::Jwt => AuthSpec::Jwt(self.jwt_auth.read(cx).spec(cx)),
         })
     }
 
@@ -955,6 +991,7 @@ impl AuthSection {
             }
             AuthSpec::OAuth1(o) => self.oauth1.update(cx, |e, cx| e.load(o, window, cx)),
             AuthSpec::OAuth2(o) => self.oauth2.update(cx, |e, cx| e.load(o, window, cx)),
+            AuthSpec::Jwt(j) => self.jwt_auth.update(cx, |e, cx| e.load(j, window, cx)),
             _ => {}
         }
         self.refresh_jwt(cx);
@@ -1488,6 +1525,7 @@ impl Render for AuthSection {
                 .into_any_element(),
             (Some(AuthMode::OAuth1), _) => self.oauth1.clone().into_any_element(),
             (Some(AuthMode::OAuth2), _) => self.oauth2.clone().into_any_element(),
+            (Some(AuthMode::Jwt), _) => self.jwt_auth.clone().into_any_element(),
         };
         v_flex()
             .size_full()

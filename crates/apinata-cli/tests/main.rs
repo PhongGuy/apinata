@@ -75,6 +75,7 @@ mod cli_item_pruned;
 mod cli_item_request;
 mod cli_item_restore;
 mod cli_iteration_reports;
+mod cli_jwt_auth;
 mod cli_ls;
 mod cli_mcp;
 mod cli_mock;

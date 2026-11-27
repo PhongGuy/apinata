@@ -1,8 +1,10 @@
 //! Auth objects and legacy auth strings to `AuthSpec`.
 
-use super::model::{Auth, Mapped};
+use super::model::{Auth, JwtMembers, Mapped};
 use super::tree::Scope;
-use crate::edit::{ApiKeyPlacement, AuthSpec};
+use crate::edit::{
+    ApiKeyPlacement, AuthSpec, JwtAlgorithm, JwtPlacement, JwtSpec, OAuth1KeyKind, OAuth1PrivateKey,
+};
 use crate::import::{DocumentError, NoteKind};
 
 /// A legacy request's credentials, read when its auth is a string.
@@ -58,6 +60,49 @@ pub(super) fn auth(
                 placement,
             }
         }
+        Mapped::Jwt(members) => AuthSpec::Jwt(jwt(*members, scope)?),
+    })
+}
+
+/// A JWT auth with its templates rewritten. The default prefix `"Bearer "` loses its space,
+/// which the sender adds; a blank algorithm is HS256 and a blank parameter name `token`.
+fn jwt(m: JwtMembers, scope: &mut Scope) -> Result<JwtSpec, DocumentError> {
+    let placement = match m.add_to.as_deref() {
+        None | Some("HEADERS") => JwtPlacement::Header,
+        Some("QUERY_PARAMS") => JwtPlacement::Query,
+        Some(other) => {
+            let detail = format!("unknown placement `{other}`; sent as a header");
+            scope.note("auth.addTo", NoteKind::Converted, detail)?;
+            JwtPlacement::Header
+        }
+    };
+    let algorithm = scope.value(m.algorithm, || "auth.algorithm".to_owned())?;
+    let private_key = scope.value(m.private_key, || "auth.privateKey".to_owned())?;
+    let prefix = match m.header_prefix {
+        Some(p) => scope.value(p, || "auth.headerPrefix".to_owned())?,
+        None => "Bearer".to_owned(),
+    };
+    let param = scope.value(m.param_name, || "auth.paramName".to_owned())?;
+    Ok(JwtSpec {
+        algorithm: if algorithm.is_empty() {
+            JwtAlgorithm::Hs256
+        } else {
+            JwtAlgorithm::parse(&algorithm)
+        },
+        secret: scope.value(m.secret, || "auth.secret".to_owned())?,
+        secret_base64: m.secret_base64,
+        private_key: (!private_key.is_empty())
+            .then(|| OAuth1PrivateKey::new(OAuth1KeyKind::Text, private_key)),
+        headers: scope.value(m.headers, || "auth.jwtHeaders".to_owned())?,
+        payload: scope.value(m.payload, || "auth.payload".to_owned())?,
+        expires_in: String::new(),
+        placement,
+        header_prefix: Some(prefix.trim().to_owned()),
+        query_param_key: if param.is_empty() {
+            "token".to_owned()
+        } else {
+            param
+        },
     })
 }
 

@@ -181,6 +181,12 @@ pub enum ResolveError {
         /// What is wrong: a missing credential or a baseURL that does not parse.
         reason: String,
     },
+    /// The JWT auth cannot sign; `reason` never quotes the payload, key or secret.
+    #[error("JWT: {reason}")]
+    Jwt {
+        /// What is wrong: the algorithm, the key, the payload, the expiry or the placement.
+        reason: String,
+    },
     /// The interpolated URL cannot be parsed as a WHATWG URL.
     #[error("`{url}` is not a valid URL")]
     InvalidUrl {

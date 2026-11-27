@@ -724,6 +724,10 @@ pub(crate) fn auth(a: AuthSpec) -> Result<AuthDoc, String> {
             domain,
         },
         AuthSpec::Unsupported { mode } => AuthDoc::Unsupported { mode },
+        // The MCP shape has no JWT form yet, so a JWT auth reads as a mode it only names.
+        AuthSpec::Jwt(_) => AuthDoc::Unsupported {
+            mode: "jwt".to_owned(),
+        },
         _ => return Err(unsupported("auth mode")),
     })
 }

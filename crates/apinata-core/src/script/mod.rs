@@ -13,7 +13,7 @@ mod engine;
 pub(crate) mod expr;
 pub(crate) mod host;
 mod host_libs;
-mod jwt;
+pub(crate) mod jwt;
 mod libs;
 mod modules;
 mod oauth2;

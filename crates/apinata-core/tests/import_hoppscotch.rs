@@ -653,7 +653,6 @@ fn unsupported_auth_is_none_with_one_note_for_the_whole_object() {
         "digest",
         "hawk",
         "akamai-eg",
-        "jwt",
         "something-new",
     ] {
         let (got, c) = auth(
@@ -667,6 +666,41 @@ fn unsupported_auth_is_none_with_one_note_for_the_whole_object() {
         );
         assert_eq!(notes(&c).len(), 1, "{kind}: {:?}", notes(&c));
     }
+}
+
+#[test]
+fn jwt_auth_maps_each_member() {
+    use apinata_core::{JwtAlgorithm, JwtPlacement, JwtSpec, OAuth1KeyKind, OAuth1PrivateKey};
+    let (got, c) = auth(
+        json!({"authType": "jwt", "authActive": true, "addTo": "HEADERS",
+        "algorithm": "RS256", "secret": "", "privateKey": "<<pem>>", "payload": "{\"sub\":\"<<u>>\"}",
+        "jwtHeaders": "{\"kid\":\"k\"}", "headerPrefix": "Bearer ", "paramName": "token",
+        "isSecretBase64Encoded": false}),
+    );
+    let mut want = JwtSpec::default();
+    want.algorithm = JwtAlgorithm::Rs256;
+    want.private_key = Some(OAuth1PrivateKey::new(OAuth1KeyKind::Text, "{{pem}}"));
+    want.payload = "{\"sub\":\"{{u}}\"}".into();
+    want.headers = "{\"kid\":\"k\"}".into();
+    assert_eq!(got, AuthSpec::Jwt(want));
+    assert!(notes(&c).is_empty(), "{:?}", notes(&c));
+
+    let (got, _) = auth(
+        json!({"authType": "jwt", "authActive": true, "addTo": "QUERY_PARAMS",
+        "algorithm": "HS512", "secret": "c2VjcmV0", "privateKey": "", "payload": "{}",
+        "jwtHeaders": "{}", "paramName": "jwt", "isSecretBase64Encoded": true}),
+    );
+    let AuthSpec::Jwt(spec) = got else {
+        panic!("jwt: {got:?}")
+    };
+    assert_eq!(spec.placement, JwtPlacement::Query);
+    assert_eq!(spec.query_param_key, "jwt");
+    assert_eq!(spec.secret, "c2VjcmV0");
+    assert!(spec.secret_base64);
+    assert_eq!(spec.algorithm, JwtAlgorithm::Hs512);
+
+    let (off, _) = auth(json!({"authType": "jwt", "authActive": false, "secret": "s"}));
+    assert_eq!(off, AuthSpec::None);
 }
 
 #[test]

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use base64::Engine;
-use base64::engine::general_purpose::STANDARD;
+use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use url::Url;
 use yaml_serde::{Mapping, Value};
 
@@ -21,8 +21,8 @@ use crate::edgegrid;
 use crate::edit::KeyValue;
 use crate::edit::omitted_names;
 use crate::edit::{
-    AuthSpec, EdgeGridSpec, OAuth1KeyKind, OAuth1Placement, OAuth1SignatureMethod, OAuth1Spec,
-    OAuth2Spec, TokenPlacement, TokenSource,
+    AuthSpec, EdgeGridSpec, JwtAlgorithm, JwtPlacement, JwtSpec, OAuth1KeyKind, OAuth1Placement,
+    OAuth1SignatureMethod, OAuth1Spec, OAuth2Spec, TokenPlacement, TokenSource,
 };
 use crate::edit::{Param, ParamKind};
 use crate::encode_url::{authority_span, encode_url};
@@ -31,6 +31,7 @@ use crate::header_check::header_problem;
 use crate::interpolate::{Tracker, Vars, interpolate, interpolate_tracked};
 use crate::item_path::ItemPath;
 use crate::js;
+use crate::jwt_auth;
 use crate::multipart::Part;
 use crate::network::{
     CertPath, CertificateFiles, CertificateKind, CollectionProxy, NetworkBasis, PacWarning,
@@ -73,7 +74,7 @@ pub struct ResolvedRequest {
     send_auth: Option<SendAuth>,
     /// The effective auth's credentials, kept out of logs; never printed by `Debug`.
     auth_secrets: Vec<String>,
-    /// Values computed for this send (the OAuth2 token); never printed by `Debug`.
+    /// Values computed for this send (the OAuth2 or JWT token); never printed by `Debug`.
     derived: Vec<String>,
     /// Whether the body was built from a GraphQL body spec.
     graphql: bool,
@@ -297,7 +298,8 @@ impl ResolvedRequest {
         &self.auth_secrets
     }
 
-    /// The values resolution derived rather than read: the OAuth2 token placed on the request.
+    /// The values resolution derived rather than read: the OAuth2 or JWT token placed on the
+    /// request.
     pub(crate) fn derived(&self) -> &[String] {
         &self.derived
     }
@@ -801,6 +803,10 @@ pub fn resolve_prepared(
             Some(auth) => place_oauth2_token(auth, &req, ctx, &mut headers, &mut url)?,
             None => None,
         };
+        let signed = match &auth {
+            Some(auth) => place_jwt_token(auth, &scope, ctx.root(), &mut headers, &mut url)?,
+            None => None,
+        };
         let mut files = Vec::new();
         let graphql = matches!(body, BodySpec::Graphql { .. } | BodySpec::GraphqlData(_));
         let (body, content_type) = render_body(body, &scope, ctx.root(), &mut files)?;
@@ -843,6 +849,14 @@ pub fn resolve_prepared(
             }
             for secret in secrets {
                 if !sensitive_values.contains(&secret) {
+                    sensitive_values.push(secret);
+                }
+            }
+        }
+        if let Some((secrets, token)) = signed {
+            derived.push(token);
+            for secret in secrets {
+                if !secret.is_empty() && !sensitive_values.contains(&secret) {
                     sensitive_values.push(secret);
                 }
             }
@@ -1311,7 +1325,7 @@ fn auth_mode(value: Option<&Value>) -> Result<AuthMode<'_>, ResolveError> {
             match kind.as_deref() {
                 Some(
                     "basic" | "bearer" | "apikey" | "digest" | "awsv4" | "oauth1" | "wsse" | "ntlm"
-                    | "akamai-edgegrid",
+                    | "akamai-edgegrid" | "jwt",
                 ) => Ok(AuthMode::Apply(map)),
                 // An oauth2 block without a known flow stays unsupported.
                 Some("oauth2") if OAuth2Spec::from_yaml(whole).is_some() => {
@@ -1670,6 +1684,89 @@ fn place_oauth2_token(
     let mut secrets = cfg.secrets;
     secrets.push(token.clone());
     Ok(Some((secrets, expired, token)))
+}
+
+/// Signs the token of a jwt `auth` and puts it in the header or query parameter its settings
+/// name. Returns the values to hide (the secret, inline key text and token) and the token, or
+/// `None` for any other auth. Every field is expanded before any check, so a variable error wins.
+fn place_jwt_token(
+    auth: &Mapping,
+    scope: &Scope,
+    root: &Path,
+    headers: &mut Vec<(String, String)>,
+    url: &mut Url,
+) -> Result<Option<(Vec<String>, String)>, ResolveError> {
+    if auth.get("type").and_then(js::yaml_to_string).as_deref() != Some("jwt") {
+        return Ok(None);
+    }
+    let fail = |reason: String| ResolveError::Jwt { reason };
+    let spec = JwtSpec::from_yaml(&Value::Mapping(auth.clone()));
+    let algorithm = scope.expand(spec.algorithm.as_str())?;
+    let header_text = scope.expand(&spec.headers)?;
+    let payload = scope.expand(&spec.payload)?;
+    let expires = scope.expand(&spec.expires_in)?;
+    let mut secrets = Vec::new();
+    // Only the key the algorithm uses is read, so a stale one is never expanded or opened.
+    let key = if JwtAlgorithm::parse(&algorithm).uses_secret() {
+        let secret = scope.expand(&spec.secret)?;
+        secrets.push(secret.clone());
+        let bytes = if spec.secret_base64 {
+            STANDARD
+                .decode(secret.trim())
+                .or_else(|_| URL_SAFE_NO_PAD.decode(secret.trim()))
+                .map_err(|_| fail("the secret is not valid base64".to_owned()))?
+        } else {
+            secret.into_bytes()
+        };
+        jwt_auth::Key::Secret(bytes)
+    } else {
+        let pem = match &spec.private_key {
+            Some(key) => match (key.kind, scope.expand(&key.value)?) {
+                (_, value) if value.is_empty() => String::new(),
+                // Inline text may carry its line breaks as literal `\n`, as a one-line field must.
+                (OAuth1KeyKind::Text, text) => {
+                    secrets.push(text.clone());
+                    text.replace("\\n", "\n")
+                }
+                (_, path) => read_regular_text(&root.join(&path))
+                    .map_err(|e| fail(format!("cannot read the private key file `{path}`: {e}")))?,
+            },
+            None => String::new(),
+        };
+        jwt_auth::Key::Pem(pem)
+    };
+    let expires_in = match expires.trim() {
+        "" => None,
+        n => Some(
+            n.parse::<u64>()
+                .map_err(|_| fail("expiresIn is not a whole number of seconds".to_owned()))?,
+        ),
+    };
+    let claims = jwt_auth::Claims {
+        algorithm: &algorithm,
+        headers: &header_text,
+        payload: &payload,
+        expires_in,
+    };
+    let now = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let token = jwt_auth::token(&claims, &key, now).map_err(fail)?;
+    match &spec.placement {
+        JwtPlacement::Header => {
+            let prefix = scope.expand(spec.header_prefix.as_deref().unwrap_or("Bearer"))?;
+            let value = format!("{prefix} {token}").trim().to_owned();
+            set_header(headers, "Authorization".to_owned(), value);
+        }
+        JwtPlacement::Query => {
+            let key = scope.expand(&spec.query_param_key)?;
+            let key = if key.is_empty() { "token" } else { &key };
+            set_query_param(url, key, &token);
+        }
+        other => return Err(fail(format!("unknown placement `{}`", other.as_str()))),
+    }
+    secrets.push(token.clone());
+    Ok(Some((secrets, token)))
 }
 
 /// Applies basic, bearer or apikey auth with its fields interpolated; bearer and header apikey
