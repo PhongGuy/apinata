@@ -71,9 +71,9 @@ source under MIT or Apache-2.0.
 
 - **Mock server and code generation.** `apinata mock` serves your saved
   examples, as does the app's Mock button in the status bar, and `apinata gen`
-  prints a request as code: curl, HTTPie, Python
-  requests, JavaScript fetch, Node axios, Go, PowerShell, PHP, Rust reqwest,
-  Java or C#.
+  prints a request as code: curl, HTTPie, raw HTTP, Python
+  requests, JavaScript fetch, Node axios, Go, PowerShell, PHP, Ruby, Rust
+  reqwest, Java, Kotlin, C# or Swift.
 
 ## Download and install
 

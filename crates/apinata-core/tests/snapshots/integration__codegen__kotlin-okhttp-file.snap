@@ -1,0 +1,26 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+assertion_line: 94
+expression: "generate(&req, target)"
+---
+import java.io.File
+import okhttp3.Headers
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.asRequestBody
+
+fun main() {
+    val client = OkHttpClient()
+    val headers = Headers.Builder()
+        .add("content-type", "application/json")
+        .build()
+    val request = Request.Builder()
+        .url("http://x.test/b")
+        .headers(headers)
+        .method("PUT", File("/data/body.json").asRequestBody(null))
+        .build()
+    client.newCall(request).execute().use { response ->
+        println(response.code)
+        println(response.body?.string())
+    }
+}

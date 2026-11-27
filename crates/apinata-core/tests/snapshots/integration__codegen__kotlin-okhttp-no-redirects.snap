@@ -1,0 +1,21 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+assertion_line: 94
+expression: "generate(&req, target)"
+---
+import okhttp3.OkHttpClient
+import okhttp3.Request
+
+fun main() {
+    val client = OkHttpClient.Builder()
+        .followRedirects(false)
+        .build()
+    val request = Request.Builder()
+        .url("http://x.test/n")
+        .method("GET", null)
+        .build()
+    client.newCall(request).execute().use { response ->
+        println(response.code)
+        println(response.body?.string())
+    }
+}

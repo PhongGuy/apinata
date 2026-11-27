@@ -1,0 +1,11 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+assertion_line: 94
+expression: "generate(&req, target)"
+---
+POST /f HTTP/1.1
+Host: x.test
+content-type: application/x-www-form-urlencoded
+Content-Length: 13
+
+a=1&b=x+y%26z

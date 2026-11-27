@@ -1128,8 +1128,9 @@ pub enum GitAction {
 pub struct GenArgs {
     /// The request file.
     pub path: PathBuf,
-    /// What to write: curl, httpie, python-requests, js-fetch, node-axios, go, powershell,
-    /// php-curl, rust-reqwest, java-httpclient or csharp-httpclient.
+    /// What to write: curl, httpie, raw-http, python-requests, js-fetch, node-axios, go,
+    /// powershell, php-curl, ruby-net-http, rust-reqwest, java-httpclient, kotlin-okhttp,
+    /// csharp-httpclient or swift-urlsession.
     #[arg(long)]
     pub target: apinata_core::Target,
     /// The environment to use, by file name without `.yml`; by default the collection's preset

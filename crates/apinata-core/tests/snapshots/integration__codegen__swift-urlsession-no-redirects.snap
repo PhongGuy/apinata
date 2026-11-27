@@ -1,0 +1,30 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+assertion_line: 94
+expression: "generate(&req, target)"
+---
+import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
+var request = URLRequest(url: URL(string: "http://x.test/n")!)
+request.httpMethod = "GET"
+
+final class Delegate: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(nil)
+    }
+}
+
+let done = DispatchSemaphore(value: 0)
+URLSession(configuration: .default, delegate: Delegate(), delegateQueue: nil).dataTask(with: request) { data, response, error in
+    if let response = response as? HTTPURLResponse {
+        print(response.statusCode)
+        print(String(decoding: data ?? Data(), as: UTF8.self))
+    } else if let error = error {
+        print(error)
+    }
+    done.signal()
+}.resume()
+done.wait()

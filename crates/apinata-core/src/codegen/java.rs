@@ -5,7 +5,7 @@
 use crate::execute::form_payload;
 use crate::resolve::{Body, ResolvedRequest};
 
-use super::{BOUNDARY, Segment, multipart_segments, omitted_auth, sent_headers};
+use super::{BOUNDARY, Segment, multipart_segments, omitted_auth, sent_headers, strict_url};
 
 /// Headers the client refuses to take from the caller, lower-cased.
 const RESTRICTED: [&str; 5] = ["host", "connection", "content-length", "expect", "upgrade"];
@@ -32,35 +32,6 @@ fn literal(text: &str) -> String {
         }
     }
     out.push('"');
-    out
-}
-
-/// `url` as `java.net.URI` accepts it. After the authority, the ASCII characters RFC 2396
-/// excludes (curl sends them raw, `URI.create` throws), a `%` starting no escape and a second
-/// `#` are percent-encoded; a server decodes them to the same request.
-fn uri_text(url: &str) -> String {
-    let rest_at = url
-        .find("://")
-        .map(|i| i + 3)
-        .map(|i| i + url[i..].find(['/', '?', '#']).unwrap_or(url.len() - i))
-        .unwrap_or(0);
-    let (head, rest) = url.split_at(rest_at);
-    let bytes = rest.as_bytes();
-    let mut out = String::from(head);
-    let mut in_fragment = false;
-    for (i, c) in rest.char_indices() {
-        let refused = match c {
-            ' ' | '"' | '<' | '>' | '\\' | '^' | '`' | '{' | '|' | '}' | '[' | ']' => true,
-            '%' => !(bytes.get(i + 1..i + 3)).is_some_and(|h| h.iter().all(u8::is_ascii_hexdigit)),
-            '#' => std::mem::replace(&mut in_fragment, true),
-            c => c.is_ascii_control(),
-        };
-        if refused {
-            out.push_str(&format!("%{:02X}", c as u32));
-        } else {
-            out.push(c);
-        }
-    }
     out
 }
 
@@ -134,7 +105,7 @@ pub(super) fn http_client(req: &ResolvedRequest) -> String {
     let (body, reads_file) = publisher(req);
     let mut build = format!(
         "        HttpRequest request = HttpRequest.newBuilder(URI.create({}))\n            .method({}, {body})\n",
-        literal(&uri_text(req.url())),
+        literal(&strict_url(req.url())),
         literal(req.method())
     );
     for (name, value) in sent {
