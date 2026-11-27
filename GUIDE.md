@@ -854,8 +854,10 @@ pbpaste | apinata send --curl - --save ./my-api/create-user.yml
 ### Code generation
 
 `apinata gen` prints one request as code for curl, HTTPie, Python requests,
-JavaScript fetch, Node axios, Go, PowerShell, PHP, Rust, Java or C#, without
-sending it:
+JavaScript fetch, Node axios, Go, PowerShell, PHP, Ruby, Rust, Java, Kotlin
+(OkHttp), C# or Swift, without sending it. The `raw-http` target prints the
+HTTP/1.1 message itself, as it goes on the wire, which is handy in a bug
+report:
 
 ```sh
 apinata gen ./my-api/users/get-user.yml --target python-requests --env local

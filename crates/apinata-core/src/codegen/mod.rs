@@ -7,11 +7,15 @@ mod csharp;
 mod go;
 mod java;
 mod javascript;
+mod kotlin;
 mod php;
 mod powershell;
 mod python;
+mod raw_http;
+mod ruby;
 mod rust;
 mod shell;
+mod swift;
 
 use std::fmt;
 use std::path::Path;
@@ -28,6 +32,8 @@ pub enum Target {
     Curl,
     /// A POSIX shell HTTPie (`http`) command.
     Httpie,
+    /// The HTTP/1.1 message as it goes on the wire.
+    RawHttp,
     /// A Python script using `requests`.
     PythonRequests,
     /// A Node 18+ ES module using the built-in `fetch`.
@@ -40,12 +46,18 @@ pub enum Target {
     PowerShellRestMethod,
     /// A PHP script using the curl extension.
     PhpCurl,
+    /// A Ruby script using the standard library's `Net::HTTP`.
+    RubyNetHttp,
     /// A Rust program using `reqwest::blocking`.
     RustReqwest,
     /// A Java 11+ `Main` class using `java.net.http.HttpClient`.
     JavaHttpClient,
+    /// A Kotlin `main` using OkHttp 4 or newer.
+    KotlinOkHttp,
     /// A C# top-level program using `System.Net.Http.HttpClient`.
     CSharpHttpClient,
+    /// A Swift script using Foundation's `URLSession`.
+    SwiftUrlSession,
 }
 
 impl Target {
@@ -53,15 +65,19 @@ impl Target {
     pub const ALL: &'static [Target] = &[
         Target::Curl,
         Target::Httpie,
+        Target::RawHttp,
         Target::PythonRequests,
         Target::JsFetch,
         Target::NodeAxios,
         Target::GoNative,
         Target::PowerShellRestMethod,
         Target::PhpCurl,
+        Target::RubyNetHttp,
         Target::RustReqwest,
         Target::JavaHttpClient,
+        Target::KotlinOkHttp,
         Target::CSharpHttpClient,
+        Target::SwiftUrlSession,
     ];
 
     /// The stable id the CLI accepts, such as `curl`.
@@ -69,6 +85,7 @@ impl Target {
         match self {
             Target::Curl => "curl",
             Target::Httpie => "httpie",
+            Target::RawHttp => "raw-http",
             Target::PythonRequests => "python-requests",
             Target::JsFetch => "js-fetch",
             Target::NodeAxios => "node-axios",
@@ -78,6 +95,9 @@ impl Target {
             Target::RustReqwest => "rust-reqwest",
             Target::JavaHttpClient => "java-httpclient",
             Target::CSharpHttpClient => "csharp-httpclient",
+            Target::RubyNetHttp => "ruby-net-http",
+            Target::KotlinOkHttp => "kotlin-okhttp",
+            Target::SwiftUrlSession => "swift-urlsession",
         }
     }
 
@@ -86,6 +106,7 @@ impl Target {
         match self {
             Target::Curl => "curl",
             Target::Httpie => "HTTPie",
+            Target::RawHttp => "Raw HTTP",
             Target::PythonRequests => "Python (requests)",
             Target::JsFetch => "JavaScript (fetch)",
             Target::NodeAxios => "Node.js (axios)",
@@ -95,6 +116,9 @@ impl Target {
             Target::RustReqwest => "Rust (reqwest)",
             Target::JavaHttpClient => "Java (HttpClient)",
             Target::CSharpHttpClient => "C# (HttpClient)",
+            Target::RubyNetHttp => "Ruby (Net::HTTP)",
+            Target::KotlinOkHttp => "Kotlin (OkHttp)",
+            Target::SwiftUrlSession => "Swift (URLSession)",
         }
     }
 }
@@ -143,6 +167,10 @@ pub fn generate(req: &ResolvedRequest, target: Target) -> String {
         Target::RustReqwest => rust::reqwest(req),
         Target::JavaHttpClient => java::http_client(req),
         Target::CSharpHttpClient => csharp::http_client(req),
+        Target::RawHttp => raw_http::message(req),
+        Target::RubyNetHttp => ruby::net_http(req),
+        Target::KotlinOkHttp => kotlin::ok_http(req),
+        Target::SwiftUrlSession => swift::url_session(req),
     }
 }
 
@@ -171,6 +199,35 @@ pub(crate) fn omitted_auth(req: &ResolvedRequest, natively_digest: bool) -> Opti
         }
         SendAuth::Digest { .. } => None,
     }
+}
+
+/// `url` as strict URL parsers accept it (`java.net.URI`, Ruby's `URI`, Swift's `URL`). After the authority, the ASCII characters RFC 2396
+/// excludes (curl sends them raw, strict parsers throw), a `%` starting no escape and a second
+/// `#` are percent-encoded; a server decodes them to the same request.
+pub(crate) fn strict_url(url: &str) -> String {
+    let rest_at = url
+        .find("://")
+        .map(|i| i + 3)
+        .map(|i| i + url[i..].find(['/', '?', '#']).unwrap_or(url.len() - i))
+        .unwrap_or(0);
+    let (head, rest) = url.split_at(rest_at);
+    let bytes = rest.as_bytes();
+    let mut out = String::from(head);
+    let mut in_fragment = false;
+    for (i, c) in rest.char_indices() {
+        let refused = match c {
+            ' ' | '"' | '<' | '>' | '\\' | '^' | '`' | '{' | '|' | '}' | '[' | ']' => true,
+            '%' => !(bytes.get(i + 1..i + 3)).is_some_and(|h| h.iter().all(u8::is_ascii_hexdigit)),
+            '#' => std::mem::replace(&mut in_fragment, true),
+            c => c.is_ascii_control(),
+        };
+        if refused {
+            out.push_str(&format!("%{:02X}", c as u32));
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 /// The digest credentials when the request answers a digest challenge.

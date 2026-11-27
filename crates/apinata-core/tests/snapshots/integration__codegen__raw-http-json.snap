@@ -1,0 +1,11 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+assertion_line: 94
+expression: "generate(&req, target)"
+---
+POST /j HTTP/1.1
+Host: x.test
+content-type: application/json
+Content-Length: 20
+
+{"a": 1, "s": "x y"}

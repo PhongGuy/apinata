@@ -1,0 +1,17 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+assertion_line: 94
+expression: "generate(&req, target)"
+---
+# Net::HTTP does not follow redirects; this prints the first response.
+require "net/http"
+
+uri = URI("http://x.test/basic")
+request = Net::HTTP::Get.new(uri)
+request["Authorization"] = "Basic dTpw"
+
+response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https") do |http|
+  http.request(request)
+end
+puts response.code
+puts response.body

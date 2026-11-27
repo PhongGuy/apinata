@@ -1,0 +1,22 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+assertion_line: 1110
+expression: "generate(&mixed(), target)"
+---
+# Net::HTTP does not follow redirects; this prints the first response.
+require "net/http"
+
+uri = URI("http://x.test/x")
+request = Net::HTTP::Post.new(uri)
+request["Content-Type"] = "multipart/form-data; boundary=apinata-boundary-5f0c2e9a7d4b"
+request.body = [
+  "--apinata-boundary-5f0c2e9a7d4b\r\nContent-Disposition: form-data; name=\"j\"\r\nContent-Type: application/json\r\n\r\n{\"a\": 1}\r\n--apinata-boundary-5f0c2e9a7d4b\r\nContent-Disposition: form-data; name=\"q%22x\"\r\n\r\nplain\r\n--apinata-boundary-5f0c2e9a7d4b\r\nContent-Disposition: form-data; name=\"up\"; filename=\"up.bin\"\r\nContent-Type: text/plain\r\n\r\n".b,
+  File.binread("/data/up.bin"),
+  "\r\n--apinata-boundary-5f0c2e9a7d4b--\r\n".b,
+].join
+
+response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https") do |http|
+  http.request(request)
+end
+puts response.code
+puts response.body

@@ -1,0 +1,13 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+assertion_line: 94
+expression: "generate(&req, target)"
+---
+POST /p?x=a%27b$c{d}&y=%C3%BC HTTP/1.1
+Host: x.test
+X-H: it's "q" \ $HOME {x} ü
+content-type: text/plain
+Content-Length: 28
+
+a'b"c\d $e {f}	g
+ü€ end

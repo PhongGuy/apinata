@@ -1,0 +1,7 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+assertion_line: 94
+expression: "generate(&req, target)"
+---
+GET /n HTTP/1.1
+Host: x.test
