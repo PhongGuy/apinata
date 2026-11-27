@@ -27,6 +27,7 @@ use crate::network::{
     CertificateKind, ClientCertificate, CollectionNetwork, CollectionProxy, read_network,
 };
 use crate::oauth2::TokenCache;
+use crate::outside_env::EnvironmentFile;
 use crate::post_response::{PostResponseVar, post_response_vars_in};
 use crate::request::RequestFile;
 use crate::runtime_vars::RuntimeVars;
@@ -38,7 +39,7 @@ use crate::variable_set::{VarScope, VariableSet};
 #[derive(Clone, Default)]
 #[non_exhaustive]
 pub struct ContextOptions {
-    env: Option<String>,
+    env: Option<EnvChoice>,
     /// Overrides in call order; the flag marks a sensitive one.
     env_vars: Vec<(String, String, bool)>,
     global_env: Option<(Arc<GlobalEnvironments>, String)>,
@@ -56,6 +57,22 @@ pub struct ContextOptions {
     aws_shared_files: Option<AwsSharedFiles>,
 }
 
+/// The environment a context uses: one of the collection's, or a file from outside it.
+#[derive(Clone, Debug)]
+enum EnvChoice {
+    Named(String),
+    File(EnvironmentFile),
+}
+
+impl EnvChoice {
+    fn name(&self) -> &str {
+        match self {
+            EnvChoice::Named(name) => name,
+            EnvChoice::File(file) => file.name(),
+        }
+    }
+}
+
 impl ContextOptions {
     /// No environment and no overrides.
     pub fn new() -> ContextOptions {
@@ -64,7 +81,15 @@ impl ContextOptions {
 
     /// Select the environment whose file stem is `name` (`--env`).
     pub fn env(mut self, name: impl Into<String>) -> ContextOptions {
-        self.env = Some(name.into());
+        self.env = Some(EnvChoice::Named(name.into()));
+        self
+    }
+
+    /// Use `file`, read from outside the collection, as the environment (`--env-file`) in place
+    /// of a named one. Its secrets are never read from the store, and OAuth 2.0 tokens are kept
+    /// in memory only, since both are keyed by an environment name the file could borrow.
+    pub fn env_file(mut self, file: EnvironmentFile) -> ContextOptions {
+        self.env = Some(EnvChoice::File(file));
         self
     }
 
@@ -295,16 +320,27 @@ impl VarContext {
 
         // Overrides sit at the environment level and beat the secret store.
         let mut env = ResolvedEnv::default();
-        if let Some(name) = &options.env {
-            env = resolve_environment(collection.environments(), name)
-                .ok_or_else(|| missing_environment(collection, name))?;
+        let mut file_sensitive = BTreeSet::new();
+        match &options.env {
+            Some(EnvChoice::Named(name)) => {
+                env = resolve_environment(collection.environments(), name)
+                    .ok_or_else(|| missing_environment(collection, name))?;
+            }
+            Some(EnvChoice::File(file)) => {
+                env = file.resolved();
+                file_sensitive.clone_from(file.sensitive());
+            }
+            None => {}
+        }
+        let env_name = options.env.as_ref().map(|c| c.name().to_owned());
+        if let Some(name) = &env_name {
             env.vars.insert(
                 "__name__".to_owned(),
                 EnvValue::Plain(Value::String(name.clone())),
             );
         }
         warnings.append(&mut env.warnings);
-        let env = fill_layer(
+        let mut env = fill_layer(
             env,
             options.env_vars,
             (store, strict),
@@ -319,6 +355,11 @@ impl VarContext {
                 message,
             },
         )?;
+        env.sensitive.extend(file_sensitive);
+        let tokens = match options.env {
+            Some(EnvChoice::File(_)) => TokenCache::in_memory(),
+            _ => options.oauth2_tokens.unwrap_or_else(TokenCache::in_memory),
+        };
 
         let root = collection.root().to_path_buf();
         let mut folders = HashMap::new();
@@ -340,7 +381,7 @@ impl VarContext {
                 Some((e.name().to_owned(), flat.vars.into_keys().collect()))
             })
             .collect();
-        let env_overlay = (options.env_overlay.unwrap_or_default()).pinned(options.env.as_deref());
+        let env_overlay = (options.env_overlay.unwrap_or_default()).pinned(env_name.as_deref());
         Ok(VarContext {
             network,
             sequential_flow: matches!(flow, Some(yaml_serde::Value::String(f)) if f == "sequential"),
@@ -348,7 +389,7 @@ impl VarContext {
             collection_request: collection.root_document().get(&["request"]).cloned(),
             canonical_root: fs::canonicalize(&root).ok(),
             root,
-            environment: options.env,
+            environment: env_name,
             global_layer: global.vars,
             global_sensitive: global.sensitive,
             env_layer: env.vars,
@@ -365,7 +406,7 @@ impl VarContext {
             runtime_vars: options.runtime_vars.unwrap_or_default(),
             env_overlay,
             collection_name: collection.name().to_owned(),
-            tokens: options.oauth2_tokens.unwrap_or_else(TokenCache::in_memory),
+            tokens,
             aws_shared_files: options.aws_shared_files,
             iteration_row: None,
             prompt_values: None,

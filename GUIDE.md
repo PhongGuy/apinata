@@ -535,6 +535,7 @@ Environments and variables (see [Variables and environments](#variables-and-envi
 | `--collection <DIR>` | The collection, the same as the PATH argument. |
 | `--env <NAME>` | The environment to use, by file name without `.yml`. Without it, the collection's default environment (set in its presets) is used when it exists. |
 | `--no-env` | Use no environment, even when the collection names a default one. |
+| `--env-file <PATH>` | Read the environment from a file anywhere on disk: an OpenCollection environment or a Postman environment export. Cannot be combined with `--env` or `--no-env`. |
 | `--env-var KEY[=VALUE]` | Set or override a variable; a bare `KEY` reads the process environment. Repeatable. |
 | `--no-keychain` | Never read secrets from the keychain; each one then needs `--env-var`. |
 | `--global-env <NAME>` | The global environment to use. |
@@ -651,6 +652,25 @@ is set but empty gives the empty string. A value read this way is treated as a
 secret, even when the environment does not declare the name secret: reports, the
 `--verbose` lines and shown responses replace it with a placeholder. `--global-env-var KEY`
 works the same way.
+
+`run --env-file PATH` takes the environment from a file outside the collection, such
+as one a CI job writes, without copying it in:
+
+```sh
+apinata run ./my-api --env-file ./ci.json --env-var TOKEN
+```
+
+The file is an OpenCollection environment (a `variables` list, named by its file
+name) or a Postman environment export (named by its `name`); the kind is told from
+the content, not the extension. It replaces the collection's environments, the preset
+default included, so it cannot be combined with `--env` or `--no-env`; `--env-var`
+still wins over its values. A file that uses `extends` is refused, since only a
+collection holds the environments it could inherit from. Secrets are never read
+from the keychain for such a file, even when it shares a name with one of the
+collection's environments: a `secret: true` variable needs `--env-var`, and a
+Postman `secret` value is used as given and hidden like any other secret. OAuth 2.0
+tokens fetched in such a run are kept in memory only. A file that is missing,
+unreadable or of another shape is a usage error (exit 3) that names the path.
 
 Global environments hold variables shared by every collection. They live in
 `global-environments/` of the profile directory (`APINATA_PROFILE_DIR`, else

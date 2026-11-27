@@ -89,6 +89,7 @@ mod oauth1;
 mod oauth2;
 mod opaque;
 mod order;
+mod outside_env;
 mod paging;
 mod percent_text;
 mod pkce;
@@ -283,6 +284,7 @@ pub use oauth2::{
     oauth2_status,
 };
 pub use opaque::OpaqueItem;
+pub use outside_env::{EnvFileError, EnvFileKind, EnvironmentFile};
 pub use paging::{MAX_PAGE_LIMIT, PageError};
 pub use percent_text::{NotUtf8, percent_decode, percent_encode, widen_to_placeholders};
 pub use post_response::{
