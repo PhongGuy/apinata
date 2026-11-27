@@ -690,14 +690,14 @@ fn an_explicit_authorization_header_wins_over_a_custom_bearer_prefix() {
 #[test]
 fn templates_are_rewritten_in_values_and_tags_are_noted() {
     let r = v4_request(
-        json!({"method": "POST", "url": "{{ _.base }}/u/{% uuid 'v4' %}",
+        json!({"method": "POST", "url": "{{ _.base }}/u/{% uuid 'v4' %}/{% now 'millis' %}",
         "parameters": [{"name": "n", "value": "{{ _.page }}"}],
         "headers": [{"name": "{{ _.h }}", "value": "{{ x | upper }}"}],
         "body": {"mimeType": "application/json", "text": "{\"a\": \"{{ _.a.b }}\"}"},
         "authentication": {"type": "basic", "username": "{{ _.user }}", "password": "{% prompt 'p' %}"}}),
     );
     let q = &r.request;
-    assert_eq!(q.url, "{{base}}/u/{{uuid}}?n={{page}}");
+    assert_eq!(q.url, "{{base}}/u/{{$randomUUID}}/{{now}}?n={{page}}");
     assert_eq!(q.params, [Param::new("n", "{{page}}", ParamKind::Query)]);
     assert_eq!(q.headers, [KeyValue::new("{{ _.h }}", "{{ x | upper }}")]);
     assert_eq!(q.body, BodySpec::Json("{\"a\": \"{{a.b}}\"}".into()));
@@ -723,9 +723,135 @@ fn templates_are_rewritten_in_values_and_tags_are_noted() {
         ]
     );
     assert!(
-        needs[0].detail.contains("`{% uuid 'v4' %}`"),
+        needs[0].detail.contains("`{% now 'millis' %}`") && !needs[0].detail.contains("uuid"),
         "{}",
         needs[0].detail
+    );
+}
+
+/// A v4 request named `name` whose bearer token is `token`.
+fn bearer(id: &str, parent: &str, name: &str, sort: f64, token: &str) -> Value {
+    let mut r = req(id, parent, name, sort);
+    r["authentication"] = json!({"type": "bearer", "token": token});
+    r
+}
+
+fn chained(r: &ImportedRequestItem) -> Vec<(String, String)> {
+    r.request
+        .post_response_vars
+        .iter()
+        .map(|v| (v.name().to_owned(), v.expression().to_owned()))
+        .collect()
+}
+
+#[test]
+fn a_response_tag_becomes_a_variable_its_source_sets() {
+    let tag =
+        "{% response 'body', 'req_login', 'b64::JC5kYXRhLnRva2Vu::46b', 'when-expired', 60 %}";
+    let c = one(&v4(json!([
+        wrk("wrk_1", "c"),
+        group("fld_1", "wrk_1", "Users", 1.0),
+        bearer("req_me", "fld_1", "Me", 0.0, tag),
+        req("req_login", "wrk_1", "Log in", 0.0),
+        env(
+            "env_base",
+            "wrk_1",
+            "Base",
+            0.0,
+            json!({"auth": tag, "res_log_in_data_token": 1})
+        ),
+    ])));
+    let me = request(&folder(&c.items, "Users").items, "Me");
+    assert_eq!(
+        me.request.auth,
+        AuthSpec::Bearer {
+            token: "{{res_log_in_data_token_2}}".into()
+        }
+    );
+    assert_eq!(
+        chained(request(&c.items, "Log in")),
+        [(
+            "res_log_in_data_token_2".to_owned(),
+            "res.body.data.token".to_owned()
+        )]
+    );
+    let note = me
+        .notes
+        .iter()
+        .find(|n| n.kind == NoteKind::Converted && n.source == "Users / Me / authentication.token")
+        .expect("a converted note");
+    assert!(note.detail.contains("`Log in`"), "{}", note.detail);
+    assert!(note.detail.contains("not sent again"), "{}", note.detail);
+    assert!(
+        !me.notes.iter().any(|n| n.kind == NoteKind::NeedsInput),
+        "{:#?}",
+        me.notes
+    );
+}
+
+#[test]
+fn a_response_tag_whose_source_is_elsewhere_needs_input() {
+    let all = bundles(&v4(json!([
+        wrk("wrk_1", "a"),
+        wrk("wrk_2", "b"),
+        req("req_src", "wrk_2", "Source", 0.0),
+        bearer(
+            "req_t",
+            "wrk_1",
+            "T",
+            0.0,
+            "{% response 'body', 'req_src', '$.t' %}"
+        ),
+        bearer(
+            "req_u",
+            "wrk_1",
+            "U",
+            1.0,
+            "{% response 'body', 'req_gone', '$.t' %}"
+        ),
+    ])));
+    let a = &all[0].collection;
+    for name in ["T", "U"] {
+        let r = request(&a.items, name);
+        assert_eq!(
+            r.request.auth,
+            AuthSpec::Bearer {
+                token: "{{response}}".into()
+            }
+        );
+        let note = r
+            .notes
+            .iter()
+            .find(|n| n.kind == NoteKind::NeedsInput)
+            .expect("a needs-input note");
+        assert!(
+            note.detail.contains("not in this collection"),
+            "{}",
+            note.detail
+        );
+    }
+    assert!(chained(request(&all[1].collection.items, "Source")).is_empty());
+}
+
+#[test]
+fn v5_response_tags_chain_by_meta_id() {
+    let c = one(&v5(concat!(
+        "collection:\n",
+        "  - name: Log in\n    meta:\n      id: req_a\n      sortKey: 1\n",
+        "    method: POST\n    url: https://x.test/login\n",
+        "  - name: Me\n    meta:\n      id: req_b\n      sortKey: 2\n    method: GET\n",
+        "    url: \"https://x.test/me/{% response 'header', 'req_a', 'Location' %}\"\n",
+    )));
+    assert_eq!(
+        request(&c.items, "Me").request.url,
+        "https://x.test/me/{{res_log_in_location}}"
+    );
+    assert_eq!(
+        chained(request(&c.items, "Log in")),
+        [(
+            "res_log_in_location".to_owned(),
+            "res.headers['location']".to_owned()
+        )]
     );
 }
 
@@ -769,7 +895,7 @@ fn each_sub_environment_is_the_base_deep_merged_under_it() {
             0.0,
             json!({"url": "{{ scheme }}://{{ _.host }}",
             "user": {"name": "admin", "roles": ["a", "u"]}, "n": 30000, "on": true, "none": null, "empty": {},
-            "t": "{% uuid 'v4' %}"})
+            "t": "{% prompt 'p' %}"})
         ),
         env(
             "env_dev",
@@ -791,7 +917,7 @@ fn each_sub_environment_is_the_base_deep_merged_under_it() {
         "n=30000",
         "on=true",
         "none=",
-        "t={{uuid}}",
+        "t={{prompt}}",
     ];
     assert_eq!(listed(&envs[0]), common);
     assert_eq!(
@@ -807,7 +933,7 @@ fn each_sub_environment_is_the_base_deep_merged_under_it() {
             "n=30000",
             "on=true",
             "none=",
-            "t={{uuid}}",
+            "t={{prompt}}",
             "extra=1.5"
         ]
     );

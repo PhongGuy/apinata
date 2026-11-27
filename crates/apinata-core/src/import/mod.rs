@@ -195,6 +195,8 @@ pub struct ImportedRequest {
     pub omitted_headers: Vec<String>,
     /// Request variables; empty leaves the file's own.
     pub vars: Vec<Variable>,
+    /// Variables set from the response after it arrives; empty leaves the file's own.
+    pub post_response_vars: Vec<crate::PostResponseVar>,
     /// Tags, in order; empty leaves the file's own.
     pub tags: Vec<String>,
     /// Scripts; blank ones leave the file's own.

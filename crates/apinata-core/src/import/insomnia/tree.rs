@@ -413,6 +413,24 @@ pub(super) fn v5(
     Ok(Vec::new())
 }
 
+/// Each request's id and name anywhere under `nodes`, for response tags to read from.
+pub(super) fn request_names(nodes: &[Node]) -> HashMap<String, String> {
+    let mut names = HashMap::new();
+    let mut stack: Vec<&[Node]> = vec![nodes];
+    while let Some(list) = stack.pop() {
+        for node in list {
+            match &node.kind {
+                Kind::Request(source) => {
+                    names.insert(node.id.clone(), source.name.clone());
+                }
+                Kind::Folder(_, children) => stack.push(children),
+                Kind::Unwritten { .. } => {}
+            }
+        }
+    }
+    names
+}
+
 /// A folder whose items are still being built: its remaining sorted children, the items
 /// built so far, and the folder's own parts (`None` for the collection root).
 struct Building {
@@ -465,6 +483,7 @@ pub(super) fn items(
                 let mut notes = Vec::new();
                 let request = request::request(*source, trail, &mut notes, budget)?;
                 let name = trail.pop().unwrap_or_default();
+                let index = top.out.len();
                 top.out.push(ImportedItem::Request(ImportedRequestItem {
                     name,
                     seq,
@@ -472,6 +491,13 @@ pub(super) fn items(
                     notes,
                     operation_id: None,
                 }));
+                // An open folder sits at its seq less one among its parent's items.
+                let mut path: Vec<usize> = stack
+                    .iter()
+                    .filter_map(|b| b.folder.as_ref().map(|f| f.seq as usize - 1))
+                    .collect();
+                path.push(index);
+                budget.chains.place(&node.id, path);
             }
             Kind::Folder(mut source, children) => {
                 budget.entry()?;

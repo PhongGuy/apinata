@@ -149,6 +149,7 @@ pub(super) fn map(
         omitted_headers: Vec::new(),
         vars: Vec::new(),
         tags: Vec::new(),
+        post_response_vars: Vec::new(),
         secrets: Vec::new(),
         examples: Vec::new(),
     };
