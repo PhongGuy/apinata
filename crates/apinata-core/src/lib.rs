@@ -300,7 +300,7 @@ pub use resolve::{
     ResolvedRequest, Warning, prepare, resolve, resolve_prepared,
 };
 pub use response::{CookieOrigin, HOP_BODY_LIMIT, Hop, Response, SentRequest};
-pub use results_report::ResultsReport;
+pub use results_report::{ResponseDetail, ResultsReport};
 pub use runner::{
     Outcome, RecheckRefused, RequestResult, RunError, RunEvent, RunOptions, RunPlan, RunReport,
     RunStop, SelectError, StatusRule, Summary, recheck_assertions, rerun_slots, run, send_one,

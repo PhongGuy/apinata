@@ -201,9 +201,12 @@ impl RequestResult {
 #[derive(Serialize)]
 pub(crate) struct ResponseRow {
     pub status: u16,
-    pub headers: Vec<[String; 2]>,
-    /// The body text, `null` when the bytes are not UTF-8.
-    pub body: Option<String>,
+    /// Absent when the report omits headers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub headers: Option<Vec<[String; 2]>>,
+    /// The body text, `null` when the bytes are not UTF-8, absent when the report omits it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body: Option<Option<String>>,
     pub body_size: u64,
     pub truncated: bool,
     /// The answering peer as `ip:port`; absent when unknown. Through a proxy it is the proxy's.
@@ -214,15 +217,23 @@ pub(crate) struct ResponseRow {
 }
 
 impl ResponseRow {
-    /// The row for `result`'s response, or `None` when no response arrived.
-    pub(crate) fn of(result: &crate::RequestResult) -> Option<ResponseRow> {
+    /// The row for `result`'s response, or `None` when no response arrived. What `detail`
+    /// omits is dropped before redaction, so it never enters the report at all.
+    pub(crate) fn of(
+        result: &crate::RequestResult,
+        detail: &super::ResponseDetail,
+    ) -> Option<ResponseRow> {
         let r = result.response.as_ref()?;
         Some(ResponseRow {
             status: r.status(),
-            headers: (r.headers().iter())
-                .map(|(n, v)| [n.clone(), result.redact(&crate::mask_response_header(n, v))])
-                .collect(),
-            body: std::str::from_utf8(r.body()).ok().map(|t| result.redact(t)),
+            headers: (!detail.omit_headers).then(|| {
+                (r.headers().iter())
+                    .filter(|(n, _)| detail.keeps_header(n))
+                    .map(|(n, v)| [n.clone(), result.redact(&crate::mask_response_header(n, v))])
+                    .collect()
+            }),
+            body: (!detail.omit_body)
+                .then(|| std::str::from_utf8(r.body()).ok().map(|t| result.redact(t))),
             body_size: r.size(),
             truncated: r.truncated(),
             remote_addr: r.remote_addr().map(|a| a.to_string()),

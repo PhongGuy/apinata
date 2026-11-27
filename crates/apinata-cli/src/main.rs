@@ -1492,6 +1492,18 @@ pub struct RunArgs {
     /// Also write a self-contained HTML report to this file. `-` writes it to stdout instead and moves the console report to stderr.
     #[arg(long, value_name = "PATH")]
     pub reporter_html: Option<PathBuf>,
+    /// Leave every header out of the JSON report's `response` objects (-i with --format json,
+    /// also in --reporter-json). The printed -i and --body output is unchanged.
+    #[arg(long)]
+    pub report_omit_headers: bool,
+    /// Leave the header NAME, in any case, out of the JSON report's `response` objects; repeat
+    /// for more. The printed -i and --body output is unchanged.
+    #[arg(long, value_name = "NAME")]
+    pub report_omit_header: Vec<String>,
+    /// Leave the body out of the JSON report's `response` objects; `body_size` stays. The printed
+    /// -i and --body output is unchanged, and assertion values or console lines can still quote it.
+    #[arg(long)]
+    pub report_omit_body: bool,
     /// Stop after the first failed or errored request.
     #[arg(long)]
     pub bail: bool,
@@ -1765,10 +1777,35 @@ impl RunArgs {
     pub fn target(&self) -> &std::path::Path {
         self.path.as_deref().expect("main resolves the run path")
     }
+
+    /// What the --report-omit-* flags leave out of the JSON report's responses.
+    pub fn response_detail(&self) -> apinata_core::ResponseDetail {
+        let mut detail = apinata_core::ResponseDetail::new();
+        if self.report_omit_headers {
+            detail = detail.omit_headers();
+        }
+        for name in &self.report_omit_header {
+            detail = detail.omit_header(name.as_str());
+        }
+        if self.report_omit_body {
+            detail = detail.omit_body();
+        }
+        detail
+    }
 }
 
 /// The usage errors that cost no request: the exit code to stop with, or None to go ahead.
 fn validate(args: &RunArgs) -> Option<u8> {
+    // A header name is an RFC 9110 token; anything else could never match, so it is a typo.
+    let token = |n: &str| {
+        !n.is_empty()
+            && n.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b))
+    };
+    if let Some(name) = args.report_omit_header.iter().find(|n| !token(n)) {
+        eprintln!("error: --report-omit-header {name:?} is not a header name");
+        return Some(EXIT_USAGE);
+    }
     // Check every report directory now so a typo costs no requests.
     for path in [
         &args.reporter_json,
