@@ -249,6 +249,8 @@ pub struct VarContext {
     dotenv_keys: Vec<String>,
     /// See [`ContextOptions::dynamic_values`].
     dynamic_values: Option<(u64, SystemTime)>,
+    /// Whether the environment was read from a file outside the collection.
+    env_from_file: bool,
     /// Shared with every clone, so values captured through one are seen by all.
     runtime_vars: RuntimeVars,
     /// Script edits over the collection and environment layers; clones share it.
@@ -356,9 +358,11 @@ impl VarContext {
             },
         )?;
         env.sensitive.extend(file_sensitive);
-        let tokens = match options.env {
-            Some(EnvChoice::File(_)) => TokenCache::in_memory(),
-            _ => options.oauth2_tokens.unwrap_or_else(TokenCache::in_memory),
+        let env_from_file = matches!(options.env, Some(EnvChoice::File(_)));
+        let tokens = if env_from_file {
+            TokenCache::in_memory()
+        } else {
+            options.oauth2_tokens.unwrap_or_else(TokenCache::in_memory)
         };
 
         let root = collection.root().to_path_buf();
@@ -403,6 +407,7 @@ impl VarContext {
             process,
             dotenv_keys,
             dynamic_values: options.dynamic_values,
+            env_from_file,
             runtime_vars: options.runtime_vars.unwrap_or_default(),
             env_overlay,
             collection_name: collection.name().to_owned(),
@@ -1033,6 +1038,10 @@ impl VarContext {
             Some(f) => UndefinedHint::SecretUnreadable {
                 environment: environment.to_owned(),
                 reason: f.error.to_string(),
+            },
+            // A file's secrets never come from the store, so the app's editor cannot help.
+            None if self.env_from_file => UndefinedHint::SecretWithoutValueInFile {
+                environment: environment.to_owned(),
             },
             None => UndefinedHint::SecretWithoutValue {
                 environment: environment.to_owned(),

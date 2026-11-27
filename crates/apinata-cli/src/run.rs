@@ -142,6 +142,9 @@ pub fn open_with(args: &RunArgs, keychain: Arc<dyn SecretStore>) -> anyhow::Resu
     let (env, no_env) = match &args.env_file {
         Some(path) => {
             let file = EnvironmentFile::load(path)?;
+            for note in file.notes() {
+                eprintln!("warning: {}: {note}", path.display());
+            }
             secrets.extend(file.secret_names());
             options = options.env_file(file);
             (None, true)

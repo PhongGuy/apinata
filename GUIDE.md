@@ -669,8 +669,12 @@ collection holds the environments it could inherit from. Secrets are never read
 from the keychain for such a file, even when it shares a name with one of the
 collection's environments: a `secret: true` variable needs `--env-var`, and a
 Postman `secret` value is used as given and hidden like any other secret. OAuth 2.0
-tokens fetched in such a run are kept in memory only. A file that is missing,
-unreadable or of another shape is a usage error (exit 3) that names the path.
+tokens fetched in such a run are kept in memory only. A key the Postman reader has to
+rename, such as one with a space, is printed as a warning. The path must be a regular
+file, so a pipe or `<(...)` is refused. With `--watch`, each rerun reads the file
+again, but editing it does not start a rerun, since only the collection is watched.
+A file that is missing, unreadable or of another shape, including a Hoppscotch
+export, is a usage error (exit 3) that names the path.
 
 Global environments hold variables shared by every collection. They live in
 `global-environments/` of the profile directory (`APINATA_PROFILE_DIR`, else

@@ -52,6 +52,14 @@ pub enum EnvFileError {
         /// The path as given.
         path: String,
     },
+    /// The file is an environment export of a kind that is not read here, such as Hoppscotch.
+    #[error(
+        "{path} is an environment export whose format is not supported (expected an OpenCollection environment or a Postman environment export)"
+    )]
+    Unsupported {
+        /// The path as given.
+        path: String,
+    },
     /// An OpenCollection environment names a parent, which only a collection can hold.
     #[error("{path} uses extends, which an environment file outside the collection cannot")]
     Extends {
@@ -79,6 +87,8 @@ pub struct EnvironmentFile {
     vars: BTreeMap<String, EnvValue>,
     /// Secrets the file carries a value for, which stay hidden in logs and messages.
     sensitive: BTreeSet<String>,
+    /// What the Postman reader changed or dropped in `values`, as `source: detail`.
+    notes: Vec<String>,
 }
 
 impl EnvironmentFile {
@@ -94,6 +104,13 @@ impl EnvironmentFile {
         // A Postman export is told apart by its `values` list; other importable shapes are not
         // tried, since they overlap an OpenCollection file's `name` and `variables`.
         if EnvironmentFormat::detect(&bytes) == Some(EnvironmentFormat::Postman) {
+            // The detector also reads YAML, but Postman only ever writes JSON.
+            if serde_json::from_slice::<serde::de::IgnoredAny>(&bytes).is_err() {
+                return Err(EnvFileError::Invalid {
+                    path: shown,
+                    message: "a Postman environment export must be JSON".to_owned(),
+                });
+            }
             let format = Some(EnvironmentFormat::Postman);
             let imported =
                 parse_environment(format, &bytes).map_err(|e| EnvFileError::Invalid {
@@ -113,6 +130,12 @@ impl EnvironmentFile {
     /// The kind of file it was read from.
     pub fn kind(&self) -> EnvFileKind {
         self.kind
+    }
+
+    /// What reading a Postman export renamed or dropped among its values, one `source: detail`
+    /// line each, naming variables but never their values.
+    pub fn notes(&self) -> &[String] {
+        &self.notes
     }
 
     /// The names the file marks secret, with or without a value, sorted.
@@ -158,11 +181,19 @@ impl EnvironmentFile {
             };
             vars.insert(var.name, value);
         }
+        // Notes on the export's other top-level keys, such as `id`, are noise for a run.
+        let notes = env
+            .notes
+            .iter()
+            .filter(|n| n.source.starts_with("values"))
+            .map(|n| format!("{}: {}", n.source, n.detail))
+            .collect();
         EnvironmentFile {
             name: env.name,
             kind: EnvFileKind::Postman,
             vars,
             sensitive,
+            notes,
         }
     }
 
@@ -181,11 +212,17 @@ impl EnvironmentFile {
                 message: e.to_string(),
             },
         })?;
-        if !matches!(root.get("variables"), Some(yaml_serde::Value::Sequence(_))) {
-            return Err(EnvFileError::Unrecognized { path: shown });
-        }
         if root.get("extends").is_some_and(|v| !v.is_null()) {
             return Err(EnvFileError::Extends { path: shown });
+        }
+        let Some(yaml_serde::Value::Sequence(variables)) = root.get("variables") else {
+            return Err(EnvFileError::Unrecognized { path: shown });
+        };
+        // A Hoppscotch export shares `name` and `variables`, but marks itself with `v` and
+        // names its variables by `key`.
+        let nameless = !variables.is_empty() && variables.iter().all(|v| v.get("name").is_none());
+        if root.get("v").is_some() || nameless {
+            return Err(EnvFileError::Unsupported { path: shown });
         }
         let name = path
             .file_stem()
@@ -199,6 +236,7 @@ impl EnvironmentFile {
             kind: EnvFileKind::OpenCollection,
             vars,
             sensitive: BTreeSet::new(),
+            notes: Vec::new(),
         })
     }
 }

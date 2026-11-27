@@ -230,6 +230,12 @@ pub enum UndefinedHint {
         /// The selected environment that declares it.
         environment: String,
     },
+    /// The variable is a secret of an environment file from outside the collection, with no
+    /// value in the file or from an override; the secret store is never asked for one.
+    SecretWithoutValueInFile {
+        /// The file's environment name.
+        environment: String,
+    },
     /// The variable is a secret of the selected environment whose stored value could not be read.
     SecretUnreadable {
         /// The selected environment that declares it.
@@ -282,6 +288,13 @@ impl UndefinedHint {
             ),
             (UndefinedHint::SecretWithoutValue { environment }, HintShell::Mcp) => format!(
                 "{name} is a secret in environment {environment} with no value; set it in the app's environment editor"
+            ),
+            (UndefinedHint::SecretWithoutValueInFile { environment }, HintShell::Cli) => format!(
+                "{name} is a secret in environment file {environment} with no value; pass --env-var {} or give it a value in the file",
+                shell_word(&format!("{name}=VALUE"))
+            ),
+            (UndefinedHint::SecretWithoutValueInFile { environment }, HintShell::Mcp) => format!(
+                "{name} is a secret in environment file {environment} with no value; give it a value in the file"
             ),
             (
                 UndefinedHint::SecretUnreadable {

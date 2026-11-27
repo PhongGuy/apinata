@@ -165,3 +165,127 @@ fn a_file_of_another_shape_is_a_usage_error() {
         text(&out)
     );
 }
+
+#[test]
+fn no_env_and_env_file_together_are_a_usage_error() {
+    let dir = collection();
+    let out = run(dir.path(), &["--no-env", "--env-file", "ci.json"]);
+    assert_eq!(out.status.code(), Some(3), "{}", text(&out));
+    assert!(text(&out).contains("cannot be used with"), "{}", text(&out));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_env_var_over_a_postman_secret_stays_redacted() {
+    let s = server("postman").await;
+    let dir = collection();
+    let outside = tempfile::TempDir::new().unwrap();
+    let file = outside.path().join("ci.json");
+    std::fs::write(&file, postman(&s.uri())).unwrap();
+    let out = run(
+        dir.path(),
+        &[
+            "--env-file",
+            file.to_str().unwrap(),
+            "--env-var",
+            "token=0verride-Zq81",
+            "--verbose",
+        ],
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    let all = text(&out);
+    assert!(!all.contains("0verride-Zq81"), "{all}");
+    assert!(all.contains("key=[redacted]"), "{all}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_json_report_leaves_out_a_postman_secret() {
+    let s = server("postman").await;
+    let dir = collection();
+    let outside = tempfile::TempDir::new().unwrap();
+    let file = outside.path().join("ci.json");
+    let report = outside.path().join("report.json");
+    std::fs::write(&file, postman(&s.uri())).unwrap();
+    // A failing assertion whose expected value is the secret puts it in the report's verdict.
+    std::fs::write(
+        dir.path().join("who.yml"),
+        WHO.replace("value: \"200\"", "value: \"{{token}}\""),
+    )
+    .unwrap();
+    let out = run(
+        dir.path(),
+        &[
+            "--env-file",
+            file.to_str().unwrap(),
+            "--reporter-json",
+            report.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    let json = std::fs::read_to_string(&report).unwrap();
+    assert!(json.contains("res.status"), "{json}");
+    assert!(!json.contains(PM_SECRET), "{json}");
+}
+
+#[test]
+fn a_postman_secret_without_a_value_points_at_env_var_not_the_app() {
+    let dir = collection();
+    let outside = tempfile::TempDir::new().unwrap();
+    let file = outside.path().join("ci.json");
+    std::fs::write(
+        &file,
+        r#"{"name": "CI", "values": [
+  {"key": "base", "value": "http://127.0.0.1:9"},
+  {"key": "who", "value": "x"},
+  {"key": "token", "value": "", "type": "secret"}
+]}"#,
+    )
+    .unwrap();
+    let out = run(dir.path(), &["--env-file", file.to_str().unwrap()]);
+    let all = text(&out);
+    assert_ne!(out.status.code(), Some(0), "{all}");
+    assert!(
+        all.contains("pass --env-var token=VALUE or give it a value in the file"),
+        "{all}"
+    );
+    assert!(!all.contains("editor"), "{all}");
+}
+
+#[test]
+fn a_hoppscotch_export_is_a_usage_error() {
+    let dir = collection();
+    let outside = tempfile::TempDir::new().unwrap();
+    let file = outside.path().join("hopp.json");
+    std::fs::write(
+        &file,
+        r#"{"v": 2, "name": "H", "variables": [{"key": "base", "initialValue": "x", "currentValue": "x", "secret": false}]}"#,
+    )
+    .unwrap();
+    let out = run(dir.path(), &["--env-file", file.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(3), "{}", text(&out));
+    assert!(
+        text(&out).contains("format is not supported"),
+        "{}",
+        text(&out)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_renamed_postman_key_is_a_warning() {
+    let s = server("postman").await;
+    let dir = collection();
+    let outside = tempfile::TempDir::new().unwrap();
+    let file = outside.path().join("ci.json");
+    let body = postman(&s.uri()).replace(
+        r#""values": ["#,
+        r#""values": [{"key": "my key", "value": "v"},"#,
+    );
+    std::fs::write(&file, body).unwrap();
+    let out = run(dir.path(), &["--env-file", file.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("warning: ")
+            && stderr.contains("the variable `my key` was renamed to `my_key`"),
+        "{stderr}"
+    );
+}

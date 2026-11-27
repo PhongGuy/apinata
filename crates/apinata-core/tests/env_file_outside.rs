@@ -138,11 +138,40 @@ fn a_file_named_like_a_collection_environment_never_reads_its_stored_secrets() {
         url(&c, &ctx, "token.yml"),
         Err(ResolveError::UndefinedVariable {
             name: "token".to_owned(),
-            hint: Some(UndefinedHint::SecretWithoutValue {
+            hint: Some(UndefinedHint::SecretWithoutValueInFile {
                 environment: "prod".to_owned(),
             }),
         })
     );
+}
+
+#[test]
+fn a_secret_without_a_value_in_a_file_hints_at_the_flag_or_the_file_only() {
+    let (_d, c) = collection();
+    let (_f, path) = outside(
+        "ci.json",
+        r#"{"name": "CI", "values": [{"key": "token", "value": "", "type": "secret", "enabled": true}]}"#,
+    );
+    let ctx = VarContext::new(&c, ContextOptions::new().env_file(load(&path))).expect("context");
+    let Err(ResolveError::UndefinedVariable {
+        hint: Some(hint), ..
+    }) = url(&c, &ctx, "token.yml")
+    else {
+        panic!("token is undefined with a hint");
+    };
+    assert_eq!(
+        hint,
+        UndefinedHint::SecretWithoutValueInFile {
+            environment: "CI".to_owned()
+        }
+    );
+    let cli = hint.cli_text("token");
+    assert!(
+        cli.contains("pass --env-var token=VALUE or give it a value in the file"),
+        "{cli}"
+    );
+    assert!(!cli.contains("editor"), "{cli}");
+    assert!(!hint.mcp_text("token").contains("editor"));
 }
 
 #[test]
@@ -203,6 +232,87 @@ fn a_document_of_another_shape_is_not_an_environment_file() {
         ),
         "{err}"
     );
+}
+
+/// The shapes a Hoppscotch environment export takes, with and without its version key.
+const HOPPSCOTCH: [&str; 2] = [
+    r#"{"v": 2, "id": "h1", "name": "H", "variables": [{"key": "base", "initialValue": "https://h.test", "currentValue": "https://h.test", "secret": false}]}"#,
+    r#"{"name": "H", "variables": [{"key": "base", "value": "https://h.test"}]}"#,
+];
+
+#[test]
+fn a_hoppscotch_export_is_refused_as_unsupported() {
+    for body in HOPPSCOTCH {
+        let (_f, path) = outside("hopp.json", body);
+        let err = EnvironmentFile::load(&path).expect_err("fails");
+        assert!(matches!(err, EnvFileError::Unsupported { .. }), "{err:?}");
+        let text = err.to_string();
+        assert!(text.contains("hopp.json"), "{text}");
+        assert!(text.contains("format is not supported"), "{text}");
+    }
+}
+
+#[test]
+fn postman_globals_are_not_an_environment_file() {
+    let (_f, path) = outside(
+        "globals.json",
+        r#"{"name": "G", "values": [{"key": "a", "value": "b"}], "_postman_variable_scope": "globals"}"#,
+    );
+    let err = EnvironmentFile::load(&path).expect_err("fails");
+    assert!(matches!(err, EnvFileError::Unrecognized { .. }), "{err:?}");
+}
+
+#[test]
+fn a_postman_shape_written_as_yaml_says_it_must_be_json() {
+    let (_f, path) = outside(
+        "pm.yml",
+        "name: CI
+values:
+  - key: a
+    value: b
+",
+    );
+    let err = EnvironmentFile::load(&path).expect_err("fails");
+    assert!(matches!(err, EnvFileError::Invalid { .. }), "{err:?}");
+    assert!(
+        err.to_string()
+            .contains("a Postman environment export must be JSON"),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_parse_error_never_echoes_a_value() {
+    let (_f, path) = outside(
+        "cut.json",
+        "{\"name\": \"CI\", \"values\": [{\"key\": \"t\", \"value\": \"V4LUE-Zq81\"",
+    );
+    let err = EnvironmentFile::load(&path).expect_err("fails");
+    assert!(!err.to_string().contains("V4LUE-Zq81"), "{err}");
+}
+
+#[test]
+fn postman_notes_about_the_values_are_kept() {
+    let (_f, path) = outside(
+        "ci.json",
+        r#"{"id": "x", "name": "CI", "values": [{"key": "my key", "value": "v"}], "_postman_exported_at": "2026"}"#,
+    );
+    let file = load(&path);
+    assert_eq!(
+        file.notes(),
+        ["values[0].key: the variable `my key` was renamed to `my_key`".to_owned()]
+    );
+}
+
+#[test]
+fn extends_is_refused_even_without_variables() {
+    let (_f, path) = outside(
+        "child.yml",
+        "extends: prod
+",
+    );
+    let err = EnvironmentFile::load(&path).expect_err("fails");
+    assert!(matches!(err, EnvFileError::Extends { .. }), "{err:?}");
 }
 
 #[test]
