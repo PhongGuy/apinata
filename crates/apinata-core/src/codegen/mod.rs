@@ -8,6 +8,7 @@ mod go;
 mod java;
 mod javascript;
 mod kotlin;
+mod mask;
 mod php;
 mod powershell;
 mod python;
@@ -23,6 +24,8 @@ use std::str::FromStr;
 
 use crate::multipart::{Part, PartValue, file_content_type};
 use crate::resolve::{Body, ResolvedRequest, SendAuth};
+
+pub use mask::generate_masked;
 
 /// A language or tool `generate` writes. `ALL` is the picker's order.
 #[non_exhaustive]
@@ -152,7 +155,7 @@ impl fmt::Display for UnknownTarget {
 impl std::error::Error for UnknownTarget {}
 
 /// The request as a `target` snippet. Secret values are included as resolved; check
-/// `ResolvedRequest::sensitive_values` before showing it. Auth the target cannot express is
+/// `ResolvedRequest::sensitive_values` before showing it, or use [`generate_masked`]. Auth the target cannot express is
 /// named in a leading comment, never dropped silently.
 pub fn generate(req: &ResolvedRequest, target: Target) -> String {
     match target {

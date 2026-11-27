@@ -309,3 +309,89 @@ async fn a_request_warning_is_returned_and_otherwise_the_list_is_empty() {
         .await;
     assert_eq!(result["warnings"], json!([]), "{result}");
 }
+
+// A secret built from characters string literals escape, between distinct alphanumeric runs:
+// any escaped or unescaped form of it keeps at least one run whole.
+const HOSTILE_SECRET: &str =
+    "Qx7Zr$Wv9Kp'Jm4Hs\"Bt2Ny\\Fd6Lc`Gu3Tk#{Ye8Pw}\nRo5Xa-\u{fc}\u{20ac}-Vi1Mq";
+const HOSTILE_RUNS: [&str; 9] = [
+    "Qx7Zr", "Wv9Kp", "Jm4Hs", "Bt2Ny", "Fd6Lc", "Gu3Tk", "Ye8Pw", "Ro5Xa", "Vi1Mq",
+];
+
+#[tokio::test]
+async fn a_secret_that_targets_escape_never_shows_in_any_target() {
+    let req = |rest: &str| {
+        format!(
+            "info:\n  name: r\n  type: http\nhttp:\n  method: POST\n  url: \"http://127.0.0.1:9/x\"\n{rest}"
+        )
+    };
+    let locations = [
+        (
+            "text body",
+            req("  body:\n    type: text\n    data: \"pw={{token}};\"\n"),
+        ),
+        (
+            "json body",
+            req("  body:\n    type: json\n    data: '{\"pw\": \"{{token}}\"}'\n"),
+        ),
+        (
+            "form body",
+            req(
+                "  body:\n    type: form-urlencoded\n    data:\n      - name: pw\n        value: \"{{token}}\"\n",
+            ),
+        ),
+        (
+            "multipart text",
+            req(
+                "  body:\n    type: multipart-form\n    data:\n      - name: pw\n        type: text\n        value: \"{{token}}\"\n",
+            ),
+        ),
+    ];
+    for (location, request) in locations {
+        let server = start(&request).await;
+        server.set_secret("dev", "token", HOSTILE_SECRET);
+        for target in Target::ALL {
+            let result = server
+                .ok(
+                    "generate_code",
+                    json!({"path": "r.yml", "target": target.id(), "environment": "dev"}),
+                )
+                .await;
+            let code = result["code"].as_str().expect("code");
+            for run in HOSTILE_RUNS {
+                assert!(
+                    !code.contains(run),
+                    "{} leaks {run} from the {location}: {code}",
+                    target.id()
+                );
+            }
+            assert!(
+                code.contains("<secret>"),
+                "{} {location}: {code}",
+                target.id()
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_header_secret_that_targets_escape_never_shows_in_any_target() {
+    let request = "info:\n  name: r\n  type: http\nhttp:\n  method: GET\n  url: \"http://127.0.0.1:9/x\"\n  headers:\n    - name: X-Key\n      value: \"k {{token}} k\"\n";
+    let server = start(request).await;
+    // A header value cannot hold a newline, so this one stops before it.
+    let secret = HOSTILE_SECRET.split('\n').next().expect("head");
+    server.set_secret("dev", "token", secret);
+    for target in Target::ALL {
+        let result = server
+            .ok(
+                "generate_code",
+                json!({"path": "r.yml", "target": target.id(), "environment": "dev"}),
+            )
+            .await;
+        let code = result["code"].as_str().expect("code");
+        for run in &HOSTILE_RUNS[..7] {
+            assert!(!code.contains(run), "{} leaks {run}: {code}", target.id());
+        }
+        assert!(code.contains("<secret>"), "{}: {code}", target.id());
+    }
+}

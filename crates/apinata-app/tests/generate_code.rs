@@ -237,6 +237,41 @@ fn no_secret_shows_masked_in_any_target(cx: &mut TestAppContext) {
     }
 }
 
+// A `.env` secret built from characters string literals escape, between distinct alphanumeric
+// runs: any escaped or unescaped form of it keeps at least one run whole.
+const HOSTILE_ENV: &str = "APINATA_GEN_ENV=\"Qx7Zr$Wv9Kp'Jm4Hs\\\"Bt2Ny\\Fd6Lc`Gu3Tk#{Ye8Pw}\\nRo5Xa-\u{fc}\u{20ac}-Vi1Mq\"\n";
+const HOSTILE_RUNS: [&str; 9] = [
+    "Qx7Zr", "Wv9Kp", "Jm4Hs", "Bt2Ny", "Fd6Lc", "Gu3Tk", "Ye8Pw", "Ro5Xa", "Vi1Mq",
+];
+
+#[gpui_kit::test]
+fn a_secret_that_targets_escape_shows_masked_in_every_target(cx: &mut TestAppContext) {
+    let file = format!(
+        "{}  body:\n    type: text\n    data: \"pw={{{{process.env.APINATA_GEN_ENV}}}};\"\n",
+        request("a", "http://x.test/s").replace("method: GET", "method: POST")
+    );
+    let col = with_request(&file, &[(".env", HOSTILE_ENV)]);
+    let s = started(cx, &col);
+    open_tab(cx, &s.ws, &s.root, "a.yml");
+    frame(cx, s.win);
+    palette(cx, &s, "generate code");
+    let view = cx.update(|cx| current(cx)).expect("the dialog is open");
+    for target in Target::ALL {
+        cx.update_window(s.win, |_, w, cx| {
+            view.update(cx, |v, cx| v.set_target(*target, w, cx))
+        })
+        .unwrap();
+        let (_, text) = shown(cx).unwrap();
+        for run in HOSTILE_RUNS {
+            assert!(!text.contains(run), "{target:?} leaks {run}: {text}");
+        }
+        assert!(
+            text.contains("{{process.env.APINATA_GEN_ENV}}"),
+            "{target:?}: {text}"
+        );
+    }
+}
+
 #[gpui_kit::test]
 fn an_undefined_variable_opens_nothing_and_says_why(cx: &mut TestAppContext) {
     let col = with_request(&request("a", "http://x.test/{{nope}}"), &[]);
