@@ -1,4 +1,4 @@
-// `moment`, `_` (lodash), `tv4`, `Buffer`, `Ajv` and `addFormats` are globals and their modules answer
+// `moment`, `_` (lodash), `tv4`, `Buffer`, `Ajv`, `addFormats`, `cheerio` and `xml2Json` are globals and their modules answer
 // `require`, all evaluated on first use so a phase that never uses them never pays. `CryptoJS` is not a
 // global (use `require('crypto-js')`); `Ajv` and `addFormats` come from one bundle, evaluated once for both.
 (() => {
@@ -11,9 +11,17 @@
   const modules = {
     moment: () => get("moment"), lodash: () => get("lodash"), "crypto-js": () => get("crypto-js"), tv4: () => get("tv4"),
     buffer: () => get("buffer"), ajv: () => get("ajv").Ajv, "ajv-formats": () => get("ajv").addFormats,
+    cheerio: () => get("cheerio"), xml2js: () => get("xml2js"),
+  };
+  // Postman's xml2Json: one synchronous parse with its options, and `{}` for text that is not XML.
+  const xml2Json = () => (text) => {
+    let out = {};
+    const options = { explicitArray: false, async: false, trim: true, mergeAttrs: false };
+    get("xml2js").parseString(text, options, (err, result) => { out = err || result == null ? {} : result; });
+    return out;
   };
   const globals = { moment: modules.moment, _: modules.lodash, tv4: modules.tv4, Buffer: () => get("buffer").Buffer,
-    Ajv: modules.ajv, addFormats: modules["ajv-formats"] };
+    Ajv: modules.ajv, addFormats: modules["ajv-formats"], cheerio: modules.cheerio, xml2Json };
 
   // Reflection and brand checks the inspect text uses, captured now so a script cannot swap one for a
   // function that receives a value the formatter unwrapped from a proxy.

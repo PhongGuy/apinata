@@ -190,33 +190,15 @@ fn a_require_in_a_comment_does_not_count() {
 }
 
 #[test]
-fn an_unavailable_global_gets_a_note() {
-    for name in ["cheerio", "xml2Json"] {
-        let (report, _, _p) = import(&format!("var d = {name}(x);"), "http://127.0.0.1:1/");
-        let notes: Vec<_> = report
-            .notes
-            .iter()
-            .filter(|n| n.detail.contains(name))
-            .collect();
-        assert_eq!(notes.len(), 1, "{:?}", report.notes);
-        assert_eq!(notes[0].kind, NoteKind::Converted);
-        assert!(
-            notes[0].detail.contains("not available"),
-            "{}",
-            notes[0].detail
-        );
-    }
-}
-
-#[test]
-fn a_declared_or_key_use_of_an_unavailable_global_gets_no_note() {
-    for code in ["var cheerio = 1; cheerio.x;", "var o = {xml2Json: 1};"] {
-        let (report, _, _p) = import(code, "http://127.0.0.1:1/");
+fn a_cheerio_or_xml2json_script_imports_without_a_note() {
+    for name in ["cheerio.load(x)", "xml2Json(x)"] {
+        let (report, text, _p) = import(&format!("var d = {name};"), "http://127.0.0.1:1/");
         let n = report
             .notes
             .iter()
             .filter(|n| n.detail.contains("not available"))
             .count();
         assert_eq!(n, 0, "{:?}", report.notes);
+        assert!(text.contains(name), "{text}");
     }
 }
