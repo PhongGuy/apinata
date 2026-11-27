@@ -12,7 +12,10 @@ use super::body::body;
 use super::extras::{collection_variables, events, responses};
 use super::{ExportNote, PostmanExport, PostmanOptions};
 use crate::collection::{Collection, Folder};
-use crate::edit::{AuthSpec, BodySpec, KeyValue, OAuth1KeyKind, Param, ParamKind, Timeout};
+use crate::edit::{
+    AuthSpec, BodySpec, KeyValue, OAuth1KeyKind, Param, ParamKind, Timeout, TlsVerify,
+};
+use crate::http_version::HttpVersionPolicy;
 use crate::js::js_trim;
 use crate::request::RequestFile;
 use crate::resolve::HeaderSource;
@@ -254,6 +257,25 @@ fn settings_behavior(
     }
     if s.forward_authorization_header {
         behavior.insert("followAuthorizationHeader".into(), true.into());
+    }
+    if s.verify_tls != TlsVerify::Inherit {
+        behavior.insert("strictSSL".into(), (s.verify_tls == TlsVerify::On).into());
+    }
+    match s.http_version {
+        Some(HttpVersionPolicy::Http1Only) => {
+            behavior.insert("protocolVersion".into(), "http1".into());
+        }
+        Some(HttpVersionPolicy::Auto) => {
+            behavior.insert("protocolVersion".into(), "auto".into());
+        }
+        Some(_) => note_if(
+            notes,
+            path,
+            "httpVersion",
+            true,
+            "HTTP/2 without negotiation has no Postman setting; the request will use the default version",
+        ),
+        None => {}
     }
     // Postman's own default is no timeout, so only a set limit is lost.
     if let Timeout::Millis(ms) = s.timeout {

@@ -1,6 +1,6 @@
 //! The Settings and Docs sections: Bruno's per-request settings pane and the markdown docs.
 
-use apinata_core::{RequestSettings, Timeout};
+use apinata_core::{HttpVersionPolicy, RequestSettings, Timeout, TlsVerify};
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::IndexPath;
 use gpui_kit::component::input::{Editor, EditorState, Input, InputEvent, InputState};
@@ -19,6 +19,7 @@ use crate::command::Edit;
 use crate::kv_table::set_text;
 use crate::scroll_follow::{FocusFollow, Followed};
 use crate::section::SectionEdit;
+use crate::settings::HttpVersionPref;
 use crate::style::{self, FORM_INPUT_WIDTH, SPACE_1, SPACE_2};
 use crate::tag_input::{TagField, TagsChanged};
 use crate::ui;
@@ -111,7 +112,148 @@ impl TimeoutMode {
     }
 }
 
-/// Bruno's settings pane: three toggles, max redirects and the timeout.
+/// Whether a request checks certificates as Preferences says, always, or never.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TlsMode {
+    /// Follow Preferences.
+    Inherit,
+    /// Always verify.
+    On,
+    /// Accept any certificate.
+    Off,
+}
+
+impl TlsMode {
+    const ALL: [TlsMode; 3] = [TlsMode::Inherit, TlsMode::On, TlsMode::Off];
+
+    /// The text the select shows; Inherit names what Preferences does, `insecure` meaning
+    /// certificates go unchecked there.
+    pub fn label(self, insecure: bool) -> SharedString {
+        match (self, insecure) {
+            (TlsMode::Inherit, false) => "Default (Verify)".into(),
+            (TlsMode::Inherit, true) => "Default (Don't verify)".into(),
+            (TlsMode::On, _) => "Verify".into(),
+            (TlsMode::Off, _) => "Don't verify".into(),
+        }
+    }
+
+    fn key(self) -> &'static str {
+        match self {
+            TlsMode::Inherit => "inherit",
+            TlsMode::On => "on",
+            TlsMode::Off => "off",
+        }
+    }
+
+    fn of(verify: TlsVerify) -> TlsMode {
+        match verify {
+            TlsVerify::On => TlsMode::On,
+            TlsVerify::Off => TlsMode::Off,
+            _ => TlsMode::Inherit,
+        }
+    }
+
+    fn verify(self) -> TlsVerify {
+        match self {
+            TlsMode::Inherit => TlsVerify::Inherit,
+            TlsMode::On => TlsVerify::On,
+            TlsMode::Off => TlsVerify::Off,
+        }
+    }
+}
+
+/// Whether a request speaks the Preferences HTTP version or one of its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VersionMode {
+    /// Follow Preferences.
+    Inherit,
+    /// HTTP/1.1 only.
+    Http1Only,
+    /// HTTP/2 over https when the server offers it.
+    Auto,
+    /// HTTP/2 from the first byte.
+    Http2PriorKnowledge,
+}
+
+impl VersionMode {
+    const ALL: [VersionMode; 4] = [
+        VersionMode::Inherit,
+        VersionMode::Http1Only,
+        VersionMode::Auto,
+        VersionMode::Http2PriorKnowledge,
+    ];
+
+    /// The text the select shows; Inherit names the Preferences choice `pref`.
+    pub fn label(self, pref: HttpVersionPref) -> SharedString {
+        match self {
+            VersionMode::Inherit => {
+                let own = match pref {
+                    HttpVersionPref::Http1Only => VersionMode::Http1Only,
+                    HttpVersionPref::Auto => VersionMode::Auto,
+                    HttpVersionPref::Http2PriorKnowledge => VersionMode::Http2PriorKnowledge,
+                };
+                format!("Default ({})", own.label(pref)).into()
+            }
+            VersionMode::Http1Only => "HTTP/1.1".into(),
+            VersionMode::Auto => "Auto".into(),
+            VersionMode::Http2PriorKnowledge => "HTTP/2 prior knowledge".into(),
+        }
+    }
+
+    fn key(self) -> &'static str {
+        match self {
+            VersionMode::Inherit => "inherit",
+            VersionMode::Http1Only => "1.1",
+            VersionMode::Auto => "auto",
+            VersionMode::Http2PriorKnowledge => "2-prior-knowledge",
+        }
+    }
+
+    fn of(version: Option<HttpVersionPolicy>) -> VersionMode {
+        match version {
+            None => VersionMode::Inherit,
+            Some(HttpVersionPolicy::Auto) => VersionMode::Auto,
+            Some(HttpVersionPolicy::Http2PriorKnowledge) => VersionMode::Http2PriorKnowledge,
+            Some(_) => VersionMode::Http1Only,
+        }
+    }
+
+    fn policy(self) -> Option<HttpVersionPolicy> {
+        match self {
+            VersionMode::Inherit => None,
+            VersionMode::Http1Only => Some(HttpVersionPolicy::Http1Only),
+            VersionMode::Auto => Some(HttpVersionPolicy::Auto),
+            VersionMode::Http2PriorKnowledge => Some(HttpVersionPolicy::Http2PriorKnowledge),
+        }
+    }
+}
+
+/// The Preferences certificate and version choices a request inherits; the app defaults
+/// when the app state is absent (tests).
+fn transport_defaults(cx: &App) -> (bool, HttpVersionPref) {
+    cx.try_global::<AppState>().map_or_else(
+        || (false, HttpVersionPref::default()),
+        |state| {
+            let settings = state.settings.read(cx).get();
+            (settings.insecure, settings.http_version)
+        },
+    )
+}
+
+fn tls_rows(insecure: bool) -> Vec<ui::IdItem> {
+    (TlsMode::ALL.iter())
+        .map(|m| ui::IdItem::new("set-verify-tls", m.key(), m.label(insecure)))
+        .collect()
+}
+
+fn version_rows(pref: HttpVersionPref) -> Vec<ui::IdItem> {
+    (VersionMode::ALL.iter())
+        .map(|m| ui::IdItem::new("set-http-version", m.key(), m.label(pref)))
+        .collect()
+}
+
+/// Bruno's settings pane: three toggles, max redirects and the timeout, plus the request's
+/// own certificate check and HTTP version.
 ///
 /// Each change sends the last sent or loaded settings with one field changed, so changes
 /// compose before their echo arrives. Max redirects takes digits, empty meaning 0; a custom
@@ -128,6 +270,10 @@ pub struct SettingsSection {
     // The Preferences timeout the Inherit label names.
     default_timeout: Option<Duration>,
     timeout: Entity<InputState>,
+    tls_select: Entity<ui::IdSelect>,
+    version_select: Entity<ui::IdSelect>,
+    // The Preferences choices the Default entries name.
+    transport_defaults: (bool, HttpVersionPref),
     tags: Entity<TagField>,
     // The field whose last typed number was refused, and why; shown under that field.
     invalid: Option<(NumberField, &'static str)>,
@@ -196,8 +342,43 @@ impl SettingsSection {
         let labels = TimeoutMode::rows(default_timeout);
         let timeout_select =
             cx.new(|cx| SelectState::new(labels, Some(IndexPath::new(1)), window, cx));
+        let transport = transport_defaults(cx);
+        let tls_select = cx
+            .new(|cx| SelectState::new(tls_rows(transport.0), Some(IndexPath::new(0)), window, cx));
+        let version_select = cx.new(|cx| {
+            SelectState::new(
+                version_rows(transport.1),
+                Some(IndexPath::new(0)),
+                window,
+                cx,
+            )
+        });
         let tags = cx.new(|cx| TagField::new(window, cx));
         let mut subs = vec![
+            cx.subscribe_in(
+                &tls_select,
+                window,
+                |this, _, event: &SelectEvent<Vec<ui::IdItem>>, window, cx| {
+                    if let SelectEvent::Confirm(Some(label)) = event
+                        && let Some(mode) = (TlsMode::ALL.into_iter())
+                            .find(|m| m.label(this.transport_defaults.0) == *label)
+                    {
+                        this.set_tls_mode(mode, window, cx);
+                    }
+                },
+            ),
+            cx.subscribe_in(
+                &version_select,
+                window,
+                |this, _, event: &SelectEvent<Vec<ui::IdItem>>, window, cx| {
+                    if let SelectEvent::Confirm(Some(label)) = event
+                        && let Some(mode) = (VersionMode::ALL.into_iter())
+                            .find(|m| m.label(this.transport_defaults.1) == *label)
+                    {
+                        this.set_version_mode(mode, window, cx);
+                    }
+                },
+            ),
             cx.subscribe(&tags, |_, _, e: &TagsChanged, cx| {
                 cx.emit(SectionEdit::new(Edit::Tags(e.0.clone())))
             }),
@@ -254,6 +435,15 @@ impl SettingsSection {
                     (this.timeout_select).update(cx, |s, cx| s.set_items(labels, window, cx));
                     this.show_timeout(window, cx);
                 }
+                let transport = transport_defaults(cx);
+                if transport != this.transport_defaults {
+                    this.transport_defaults = transport;
+                    let rows = tls_rows(transport.0);
+                    (this.tls_select).update(cx, |s, cx| s.set_items(rows, window, cx));
+                    let rows = version_rows(transport.1);
+                    (this.version_select).update(cx, |s, cx| s.set_items(rows, window, cx));
+                    this.show_transport(window, cx);
+                }
             }));
         }
         SettingsSection {
@@ -265,6 +455,9 @@ impl SettingsSection {
             custom_pending: false,
             default_timeout,
             timeout,
+            tls_select,
+            version_select,
+            transport_defaults: transport,
             tags,
             invalid: None,
             _subs: subs,
@@ -292,6 +485,49 @@ impl SettingsSection {
             cx,
         );
         self.show_timeout(window, cx);
+        self.show_transport(window, cx);
+        cx.notify();
+    }
+
+    /// The text the certificate check select shows.
+    pub fn tls_shown(&self, cx: &App) -> Option<SharedString> {
+        self.tls_select.read(cx).selected_value().cloned()
+    }
+
+    /// The text the HTTP version select shows.
+    pub fn version_shown(&self, cx: &App) -> Option<SharedString> {
+        self.version_select.read(cx).selected_value().cloned()
+    }
+
+    /// Picks the request's certificate check and sends it when it changed.
+    pub fn set_tls_mode(&mut self, mode: TlsMode, window: &mut Window, cx: &mut Context<Self>) {
+        if self.base.verify_tls != mode.verify() {
+            self.base.verify_tls = mode.verify();
+            self.emit(cx);
+        }
+        self.show_transport(window, cx);
+    }
+
+    /// Picks the request's HTTP version and sends it when it changed.
+    pub fn set_version_mode(
+        &mut self,
+        mode: VersionMode,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.base.http_version != mode.policy() {
+            self.base.http_version = mode.policy();
+            self.emit(cx);
+        }
+        self.show_transport(window, cx);
+    }
+
+    fn show_transport(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let (insecure, pref) = self.transport_defaults;
+        let tls = TlsMode::of(self.base.verify_tls).label(insecure);
+        let version = VersionMode::of(self.base.http_version).label(pref);
+        (self.tls_select).update(cx, |s, cx| s.set_selected_value(&tls, window, cx));
+        (self.version_select).update(cx, |s, cx| s.set_selected_value(&version, window, cx));
         cx.notify();
     }
 
@@ -557,6 +793,20 @@ impl Render for SettingsSection {
                 )
                 .hint("set-timeout-hint", mode.hint()),
             ))
+            .child(followed(ui::form_row(
+                "set-row-verify-tls",
+                "Certificate check",
+                div()
+                    .w(FORM_INPUT_WIDTH)
+                    .child(Select::new(&self.tls_select).id("set-verify-tls")),
+            )))
+            .child(followed(ui::form_row(
+                "set-row-http-version",
+                "HTTP version",
+                div()
+                    .w(FORM_INPUT_WIDTH)
+                    .child(Select::new(&self.version_select).id("set-http-version")),
+            )))
             .child(followed(ui::form_row(
                 "set-row-tags",
                 "Tags",

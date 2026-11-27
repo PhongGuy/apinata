@@ -20,6 +20,7 @@ use crate::dynamic::{Generator, mock};
 use crate::edgegrid;
 use crate::edit::KeyValue;
 use crate::edit::omitted_names;
+use crate::edit::settings::{read_http_version, read_verify};
 use crate::edit::{
     AuthSpec, EdgeGridSpec, JwtAlgorithm, JwtPlacement, JwtSpec, OAuth1KeyKind, OAuth1Placement,
     OAuth1SignatureMethod, OAuth1Spec, OAuth2Spec, TokenPlacement, TokenSource,
@@ -46,6 +47,7 @@ use crate::prompt::missing_labels;
 use crate::request::{RequestFile, RequestKind};
 use crate::sigv4::{SigV4, infer_scope};
 use crate::url_params::table_escape_spots;
+use crate::{HttpVersionPolicy, TlsVerify};
 
 /// A request with its variables resolved, ready to send.
 #[derive(Clone, PartialEq)]
@@ -135,6 +137,10 @@ struct Settings {
     forward_authorization_header: bool,
     encode_url: bool,
     omit_headers: Vec<String>,
+    /// `Some(false)` skips the certificate check; `None` follows the executor's default.
+    verify_tls: Option<bool>,
+    /// The request's own HTTP version; `None` follows the executor's default.
+    http_version: Option<HttpVersionPolicy>,
 }
 
 /// Something in the request that Apinata does not honour.
@@ -165,6 +171,8 @@ pub enum Warning {
     /// NTLM to an http target through an http(s) proxy ended in 401, which a proxy that
     /// switches upstream connections mid-handshake causes as well as wrong credentials.
     NtlmProxyUnauthorized,
+    /// The named `settings` key has a value that is not understood, so its safe default applies.
+    SettingIgnored(&'static str),
 }
 
 impl fmt::Display for Warning {
@@ -172,6 +180,16 @@ impl fmt::Display for Warning {
         f.write_str(match self {
             Warning::ProxyAutoConfig(w) => {
                 return write!(f, "proxy auto-config {w}; connected directly");
+            }
+            Warning::SettingIgnored(key) => {
+                let fallback = match *key {
+                    "verifySsl" => "certificates are verified",
+                    _ => "the default is used",
+                };
+                return write!(
+                    f,
+                    "settings.{key} has a value that is not understood; {fallback}"
+                );
             }
             Warning::ScriptsNotRun => "scripts not executed",
             Warning::ActionsNotRun => "actions other than post-response variables are not executed",
@@ -276,6 +294,17 @@ impl ResolvedRequest {
     /// Whether `Authorization` is kept on a redirect to another origin.
     pub fn forward_authorization_header(&self) -> bool {
         self.settings.forward_authorization_header
+    }
+
+    /// The request's own certificate check: `Some(false)` skips it, `Some(true)` insists on it,
+    /// `None` follows the executor's default.
+    pub fn verify_tls(&self) -> Option<bool> {
+        self.settings.verify_tls
+    }
+
+    /// The request's own HTTP version; `None` follows the executor's default.
+    pub fn http_version(&self) -> Option<HttpVersionPolicy> {
+        self.settings.http_version
     }
 
     /// The default headers this request switches off, from `settings.omitHeaders`, trimmed.
@@ -977,6 +1006,8 @@ pub(crate) fn token_request(
             forward_authorization_header: false,
             encode_url: false,
             omit_headers: Vec::new(),
+            verify_tls: None,
+            http_version: None,
         },
         warnings: Vec::new(),
         sensitive_values,
@@ -1062,6 +1093,8 @@ pub(crate) fn script_request(
             forward_authorization_header: false,
             encode_url: false,
             omit_headers: Vec::new(),
+            verify_tls: None,
+            http_version: None,
         },
         warnings: Vec::new(),
         sensitive_values,
@@ -2354,6 +2387,12 @@ fn settings(block: Option<&Value>, default: Option<Duration>) -> Settings {
         forward_authorization_header: to_bool(get("forwardAuthorizationHeader")),
         encode_url: to_bool(get("encodeUrl")),
         omit_headers: omitted_names(block),
+        verify_tls: match read_verify(get("verifySsl")).0 {
+            TlsVerify::Inherit => None,
+            TlsVerify::On => Some(true),
+            TlsVerify::Off => Some(false),
+        },
+        http_version: read_http_version(get("httpVersion")).0,
     }
 }
 
@@ -2401,6 +2440,14 @@ fn warnings(req: &RequestFile, defaults: &Defaults<'_>, settings: &Settings) -> 
     }
     if !settings.encode_url {
         warnings.push(Warning::EncodeUrlIgnored);
+    }
+    let own = req.document().get(&["settings"]);
+    let key = |name: &str| own.and_then(|block| block.get(name));
+    if read_verify(key("verifySsl")).1 {
+        warnings.push(Warning::SettingIgnored("verifySsl"));
+    }
+    if read_http_version(key("httpVersion")).1 {
+        warnings.push(Warning::SettingIgnored("httpVersion"));
     }
     warnings
 }

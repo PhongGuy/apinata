@@ -429,6 +429,48 @@ network move-secrets` does the same for literal secrets already in the file. `sh
 `list` print references as written and never a literal value. These settings are CLI
 and app only: the MCP server cannot change them.
 
+### Certificate checks and HTTP version
+
+A request can set its own certificate check and HTTP version under `settings`, so one
+self-signed dev server does not need the check turned off everywhere:
+
+```yaml
+settings:
+  verifySsl: false
+  httpVersion: auto
+```
+
+`verifySsl` is `true` (always check) or `false` (accept any certificate).
+`httpVersion` takes the same values as `--http-version`: `1.1`, `auto` or
+`2-prior-knowledge`. Without a key the request follows the default, which is the
+Preferences choice in the app and HTTP/1.1 with checks on in the CLI. Only the YAML
+boolean `false` turns the check off: any other value, the string `"false"` too, keeps
+it on, and the send warns about it. An
+unknown `httpVersion` falls back to the default with a warning too. An explicit
+`--insecure` or `--http-version` on the command line overrides every request's own
+setting.
+
+In the app, the request's Settings tab has a Certificate check select (Default,
+Verify, Don't verify) and an HTTP version select (Default, HTTP/1.1, Auto, HTTP/2
+prior knowledge). The Default entry names the Preferences value it follows, and
+choosing it removes the key from the file. A hop made without a certificate check
+says so in the address card, on the `--verbose` `tls:` line and as
+`"tls_unverified": true` on the request's row in the JSON report. The cookie jar is
+shared, so cookies flow between checked and unchecked sends as they do with
+`--insecure`. A token request for OAuth 2.0 follows the default, not the request's own
+setting.
+
+Under the MCP server, a request's own `verifySsl: false` is honoured only for a
+loopback or `localhost` host reached directly, since an agent can edit the file. A
+host override that maps the name anywhere but loopback, or a proxy on the route, is
+refused too. The send fails before it connects, and every redirect is checked again. Starting the server with
+`--insecure` still turns the check off everywhere.
+
+Postman's `protocolProfileBehavior.strictSSL` and `protocolVersion` import into these
+keys and export back: `http1` is HTTP/1.1, `auto` is Auto, and `http2` imports as Auto
+with a note, since Postman negotiates it. HTTP/2 prior knowledge has no Postman
+setting and exports with a note.
+
 ### Replace
 
 `apinata replace [collection] <pattern> <replacement>` rewrites the matches in the same
@@ -580,13 +622,13 @@ Network:
 
 | Flag | Meaning |
 | --- | --- |
-| `--insecure` | Accept TLS certificates that fail verification. |
+| `--insecure` | Accept TLS certificates that fail verification, for every request, over its own `verifySsl`. |
 | `--cacert <FILE>` | Also trust the CA certificates in this PEM file. |
 | `--ignore-truststore` | With `--cacert`, trust only that file and not the system's certificates. |
 | `--client-cert-config <FILE>` | Add client certificates from a JSON file (`{"enabled": true, "certs": [...]}`). |
 | `--noproxy` | Connect directly, ignoring the collection's proxy and the system's. |
 | `--proxy-pac <URL\|PATH>` | Pick the proxy for requests that use the global proxy setting from this proxy auto-config (PAC) file. Not with `--noproxy`. |
-| `--http-version <VERSION>` | `1.1` (the default) sends HTTP/1.1 only, `auto` uses HTTP/2 over HTTPS when the server offers it, and `2-prior-knowledge` uses HTTP/2 without asking, plain `http` too. |
+| `--http-version <VERSION>` | `1.1` sends HTTP/1.1 only, `auto` uses HTTP/2 over HTTPS when the server offers it, and `2-prior-knowledge` uses HTTP/2 without asking, plain `http` too. Given, it overrides every request's own `httpVersion`; left out, each request chooses and HTTP/1.1 is the default. |
 
 Scripts, tokens and limits (see [OAuth 2.0 and scripts](#oauth-20-and-scripts) and
 [Timeouts, streams and body size](#timeouts-streams-and-body-size)):
@@ -1222,7 +1264,8 @@ reached, each with a hover card. The status card says what the code means, the
 time card breaks the time down, and the size card splits headers from body. The
 address card shows the connection: the remote address (or the proxy's), the
 local address and the HTTP version, and over TLS the TLS version and the
-server certificate's subject, issuer and expiry date. A response with no
+server certificate's subject, issuer and expiry date, with a "not verified" line
+when the request skipped the certificate check. A response with no
 recorded connection, such as one restored from history, shows only the address.
 
 ### Team workspaces

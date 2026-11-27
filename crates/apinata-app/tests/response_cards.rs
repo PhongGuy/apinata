@@ -207,7 +207,8 @@ fn the_connection_card_over_https_adds_the_tls_block(cx: &mut TestAppContext) {
     let (win, _view) = pane(cx, &s);
     let text = card(cx, win, "response-address", "response-address-tooltip").expect("a card");
     let expected = format!(
-        "Remote  {}\nLocal  {}\nVersion  HTTP/1.1\nTLS  TLS 1.3\nSubject  CN=apinata-test\n\
+        "Remote  {}\nLocal  {}\nVersion  HTTP/1.1\nTLS  TLS 1.3\nCertificate  not verified\n\
+         Subject  CN=apinata-test\n\
          Issuer  CN=apinata-test\nExpires  2126-09-15 05:03:13 UTC",
         base.trim_start_matches("https://"),
         hop.local_addr().expect("local address"),

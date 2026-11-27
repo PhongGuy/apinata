@@ -214,3 +214,35 @@ fn only_true_disabled_system_headers_are_imported() {
         r.notes
     );
 }
+
+#[test]
+fn the_certificate_check_and_version_survive_a_round_trip() {
+    use apinata_core::{HttpVersionPolicy, TlsVerify};
+    let (_d, c) = with(
+        "settings:\n  forwardAuthorizationHeader: false\n  verifySsl: false\n  httpVersion: \"1.1\"\n",
+    );
+    assert_eq!(
+        exported(&c)["item"][0]["protocolProfileBehavior"],
+        json!({"strictSSL": false, "protocolVersion": "http1"})
+    );
+    let s = reimported(&c);
+    assert_eq!(
+        (s.verify_tls, s.http_version),
+        (TlsVerify::Off, Some(HttpVersionPolicy::Http1Only))
+    );
+    // HTTP/2 without negotiation has no Postman value, so it is noted and left out.
+    let (_d, c) = with(
+        "settings:\n  forwardAuthorizationHeader: false\n  verifySsl: true\n  httpVersion: 2-prior-knowledge\n",
+    );
+    let out = apinata_core::export::postman(&c);
+    let json: serde_json::Value = serde_json::from_str(&out.json).expect("json");
+    assert_eq!(
+        json["item"][0]["protocolProfileBehavior"],
+        json!({"strictSSL": true})
+    );
+    assert!(
+        out.notes.iter().any(|n| n.source.ends_with("httpVersion")),
+        "{:?}",
+        out.notes
+    );
+}

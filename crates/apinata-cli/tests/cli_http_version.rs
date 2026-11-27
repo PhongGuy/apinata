@@ -13,7 +13,12 @@ fn request(url: &str) -> String {
 
 /// The `--verbose` lines of one `run` of a collection whose one request GETs `url`.
 fn verbose_lines(url: &str, extra: &[&str]) -> Vec<String> {
-    let dir = write_tree(&[("opencollection.yml", ROOT), ("a.yml", &request(url))]);
+    verbose_lines_of(&request(url), extra)
+}
+
+/// The `--verbose` lines of one `run` of a collection whose one request file is `file`.
+fn verbose_lines_of(file: &str, extra: &[&str]) -> Vec<String> {
+    let dir = write_tree(&[("opencollection.yml", ROOT), ("a.yml", file)]);
     let profile = tempfile::TempDir::new().expect("tempdir");
     let out = apinata()
         .env("APINATA_PROFILE_DIR", profile.path())
@@ -87,4 +92,17 @@ fn run_and_mcp_both_take_the_flag() {
             .code(0)
             .stdout(contains("--http-version"));
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_request_picks_its_own_version_unless_the_flag_is_given() {
+    let s = ok_server().await;
+    let file = format!(
+        "{}settings:\n  httpVersion: 2-prior-knowledge\n",
+        request(&format!("{}/ok", s.uri()))
+    );
+    let lines = verbose_lines_of(&file, &[]);
+    assert!(lines[0].ends_with("ms HTTP/2"), "{}", lines[0]);
+    let lines = verbose_lines_of(&file, &["--http-version", "1.1"]);
+    assert!(lines[0].ends_with("ms"), "{}", lines[0]);
 }

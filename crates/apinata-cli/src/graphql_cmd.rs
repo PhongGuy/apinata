@@ -67,7 +67,7 @@ pub struct SchemaArgs {
     /// Write the schema to this file instead of stdout, unredacted.
     #[arg(short = 'o', long, value_name = "FILE")]
     pub output: Option<PathBuf>,
-    /// Accept invalid TLS certificates.
+    /// Accept invalid TLS certificates for every request, over its own certificate setting.
     #[arg(long)]
     pub insecure: bool,
     /// Cap the request's timeout at this many whole seconds.
@@ -143,9 +143,9 @@ fn fetch(args: &SchemaArgs, secrets: &mut Vec<NamedSecret>) -> Result<(), Failur
     // Unresolvable requests report their own error below; hiding nothing is then correct.
     *secrets = known_secrets(file, &target.ctx).unwrap_or_default();
     let mut exec = ExecOptions::new()
-        .insecure(args.insecure)
+        .force_insecure(args.insecure)
         .network(network::settings(&args.network))
-        .http_version(args.network.http_version)
+        .force_http_version(args.network.http_version)
         .timeout_cap(args.timeout.map(Duration::from_secs))
         .max_body_bytes(Some(SCHEMA_BODY_LIMIT));
     if let Some(check) = crate::network_notice::check() {
