@@ -3,9 +3,9 @@
 
 use apinata_core::{
     ApiKeyPlacement, Assertion, AuthSpec, BodySpec, ClientAuth, EnvVariable, KeyValue,
-    MultipartValue, OAuth1KeyKind, OAuth2Flow, OAuth2ParamPlacement, OAuth2Spec, OAuth2Stage,
-    Param, ParamKind, RequestFile, RequestSettings, Timeout, TokenPlacement, TokenSource, VarValue,
-    Variable,
+    MultipartValue, OAuth1KeyKind, OAuth1PrivateKey, OAuth2Flow, OAuth2ParamPlacement, OAuth2Spec,
+    OAuth2Stage, Param, ParamKind, RequestFile, RequestSettings, Timeout, TokenPlacement,
+    TokenSource, VarValue, Variable,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -242,10 +242,31 @@ pub(crate) enum AuthDoc {
         headers_to_sign: String,
         max_body_size: Option<MaxBodySize>,
     },
+    /// JWT Bearer, signed fresh on every send.
+    Jwt(JwtDoc),
     /// An auth mode Apinata does not model; shown, never written.
     Unsupported {
         mode: String,
     },
+}
+
+/// JWT Bearer settings. `algorithm` (HS, RS or PS 256 to 512, ES256, ES384 or ES512) and
+/// `placement` (`header` or `query`) are the file's spellings; `secret` is for HS and
+/// `private_key` (PEM text or a file path) for the others. `headers` and `payload` are JSON
+/// object text, a blank `expires_in` adds no expiry, and a `null` `header_prefix` sends `Bearer`.
+#[derive(Serialize, Deserialize, JsonSchema, Clone, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct JwtDoc {
+    pub algorithm: String,
+    pub secret: String,
+    pub secret_base64: bool,
+    pub private_key: Option<Oauth1KeyDoc>,
+    pub headers: String,
+    pub payload: String,
+    pub expires_in: String,
+    pub placement: String,
+    pub header_prefix: Option<String>,
+    pub query_param_key: String,
 }
 
 /// OAuth 2.0 settings. `flow`, `client_auth` (`null` when unset), `token_source` and the
@@ -679,14 +700,7 @@ pub(crate) fn auth(a: AuthSpec) -> Result<AuthDoc, String> {
         AuthSpec::OAuth1(o) => AuthDoc::Oauth1 {
             private_key: match o.private_key {
                 None => None,
-                Some(k) => Some(Oauth1KeyDoc {
-                    kind: match k.kind {
-                        OAuth1KeyKind::Text => KeyKindDoc::Text,
-                        OAuth1KeyKind::File => KeyKindDoc::File,
-                        _ => return Err(unsupported("OAuth 1.0 key kind")),
-                    },
-                    value: k.value,
-                }),
+                Some(k) => Some(key_doc(k)?),
             },
             signature_method: o.signature_method.as_str().to_owned(),
             placement: o.placement.as_str().to_owned(),
@@ -724,11 +738,34 @@ pub(crate) fn auth(a: AuthSpec) -> Result<AuthDoc, String> {
             domain,
         },
         AuthSpec::Unsupported { mode } => AuthDoc::Unsupported { mode },
-        // The MCP shape has no JWT form yet, so a JWT auth reads as a mode it only names.
-        AuthSpec::Jwt(_) => AuthDoc::Unsupported {
-            mode: "jwt".to_owned(),
-        },
+        AuthSpec::Jwt(j) => AuthDoc::Jwt(JwtDoc {
+            private_key: match j.private_key {
+                None => None,
+                Some(k) => Some(key_doc(k)?),
+            },
+            algorithm: j.algorithm.as_str().to_owned(),
+            placement: j.placement.as_str().to_owned(),
+            secret: j.secret,
+            secret_base64: j.secret_base64,
+            headers: j.headers,
+            payload: j.payload,
+            expires_in: j.expires_in,
+            header_prefix: j.header_prefix,
+            query_param_key: j.query_param_key,
+        }),
         _ => return Err(unsupported("auth mode")),
+    })
+}
+
+/// A private key as OAuth 1.0 and JWT both show it.
+fn key_doc(k: OAuth1PrivateKey) -> Result<Oauth1KeyDoc, String> {
+    Ok(Oauth1KeyDoc {
+        kind: match k.kind {
+            OAuth1KeyKind::Text => KeyKindDoc::Text,
+            OAuth1KeyKind::File => KeyKindDoc::File,
+            _ => return Err(unsupported("private key kind")),
+        },
+        value: k.value,
     })
 }
 

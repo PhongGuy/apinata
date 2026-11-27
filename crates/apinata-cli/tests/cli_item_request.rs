@@ -501,3 +501,40 @@ fn help_names_the_request_action_and_where_secrets_go() {
         .stdout(contains("--body-file"))
         .stdout(contains("apinata env set --secret"));
 }
+
+#[tokio::test]
+async fn auth_json_jwt_writes_the_jwt_yaml_as_update_request_does() {
+    let auth = json!({"type": "jwt", "algorithm": "RS256", "secret": "",
+        "secret_base64": false, "private_key": {"type": "file", "value": "keys/k.pem"},
+        "headers": "{\"kid\":\"k1\"}", "payload": "{\"sub\":\"{{user}}\"}", "expires_in": "300",
+        "placement": "header", "header_prefix": "Bearer", "query_param_key": "token"});
+    let text = auth.to_string();
+    let (out, tree) = parity(
+        "users/get.yml",
+        &["--auth-json", &text],
+        json!({"auth": auth}),
+    )
+    .await;
+    assert_eq!(out, "updated users/get.yml\n");
+    let file = &tree["users/get.yml"];
+    assert!(
+        file.contains("  auth:\n    type: jwt\n    algorithm: RS256\n    secret: \"\"\n    secretBase64: false\n    privateKey:\n      type: file\n      value: keys/k.pem\n    headers: '{\"kid\":\"k1\"}'\n    payload: '{\"sub\":\"{{user}}\"}'\n    expiresIn: 300\n    placement: header\n    headerPrefix: Bearer\n    queryParamKey: token\n"),
+        "{file}"
+    );
+}
+
+#[test]
+fn a_bad_jwt_auth_json_exits_3_naming_the_field_and_no_value() {
+    let a = copy();
+    let bad = r#"{"type":"jwt","algorithm":"HS256","secret":"s3cr3t-Value-9","secret_base64":false,
+        "private_key":null,"headers":"","payload":"","expires_in":"","placement":"header",
+        "header_prefix":null}"#;
+    let out = a
+        .item(&["request", "users/get.yml", "--auth-json", bad])
+        .code(3)
+        .stdout("");
+    let stderr = String::from_utf8(out.get_output().stderr.clone()).expect("utf-8");
+    assert!(stderr.contains("query_param_key"), "{stderr}");
+    assert!(!stderr.contains("s3cr3t"), "{stderr}");
+    assert_eq!(a.tree(), copy().tree());
+}
