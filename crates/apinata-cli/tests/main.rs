@@ -29,6 +29,7 @@ mod cli_cookies;
 mod cli_default_env;
 mod cli_env;
 mod cli_env_extends;
+mod cli_env_file;
 mod cli_env_global;
 mod cli_env_manage;
 mod cli_env_not_found;

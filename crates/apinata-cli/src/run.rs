@@ -9,10 +9,10 @@ use std::time::Duration;
 use anyhow::{Context, anyhow, bail};
 use apinata_core::{
     AuthorizeOptions, CancelHandle, Collection, ContextOptions, CookieJar, Environment,
-    EnvironmentChoice, ExecOptions, ExecutionMode, Executor, GlobalEnvironments, HttpVersion,
-    ItemPath, IterationData, NetworkEntry, RequestResult, RunEvent, RunOptions, RunPlan,
-    ScriptOptions, SecretStore, SelectError, SessionLog, StreamBound, StreamEnd, StreamLimits,
-    TagFilter, TokenCache, VarContext,
+    EnvironmentChoice, EnvironmentFile, ExecOptions, ExecutionMode, Executor, GlobalEnvironments,
+    HttpVersion, ItemPath, IterationData, NetworkEntry, RequestResult, RunEvent, RunOptions,
+    RunPlan, ScriptOptions, SecretStore, SelectError, SessionLog, StreamBound, StreamEnd,
+    StreamLimits, TagFilter, TokenCache, VarContext,
 };
 
 use crate::import::{default_keychain, platform_store, secret_store};
@@ -129,23 +129,30 @@ pub fn open_with(args: &RunArgs, keychain: Arc<dyn SecretStore>) -> anyhow::Resu
     } else {
         keychain
     };
-    let (options, global_secrets) = global_options(
+    let (options, mut secrets) = global_options(
         args.global_env.as_deref(),
         args.workspace.as_deref(),
         &args.global_env_var,
     )?;
-    let options = options
+    let mut options = options
         .client_certificates(network::client_certificates(&args.network)?)
         .secrets(store);
+    // An environment file stands in for the collection's environments, the preset default
+    // included; an --env-var of a name it marks secret stays hidden.
+    let (env, no_env) = match &args.env_file {
+        Some(path) => {
+            let file = EnvironmentFile::load(path)?;
+            for note in file.notes() {
+                eprintln!("warning: {}: {note}", path.display());
+            }
+            secrets.extend(file.secret_names());
+            options = options.env_file(file);
+            (None, true)
+        }
+        None => (args.env.as_deref(), args.no_env),
+    };
     let mut target = collection_arg::with_hint(
-        open_at(
-            args.target(),
-            args.env.as_deref(),
-            args.no_env,
-            &args.env_var,
-            &global_secrets,
-            options,
-        ),
+        open_at(args.target(), env, no_env, &args.env_var, &secrets, options),
         "pass the collection as `apinata run <PATH>` or `apinata run --collection <DIR>`",
     )?;
     target.plan = target.plan.filter_tags(&tag_filter(args));
