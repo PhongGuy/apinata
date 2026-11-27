@@ -9,6 +9,45 @@ use report::{LoadErrorRow, Report, ResponseRow, ResultRow};
 
 use crate::RequestResult;
 
+/// What [`ResultsReport::with_responses`] leaves out of each response, so a report kept as a
+/// build artifact need not carry what the server sent. The default keeps everything.
+#[non_exhaustive]
+#[derive(Debug, Clone, Default)]
+pub struct ResponseDetail {
+    omit_headers: bool,
+    omit_header_names: Vec<String>,
+    omit_body: bool,
+}
+
+impl ResponseDetail {
+    /// Keep the headers and the body.
+    pub fn new() -> ResponseDetail {
+        ResponseDetail::default()
+    }
+
+    /// Leave out every header: the response has no `headers` key.
+    pub fn omit_headers(mut self) -> ResponseDetail {
+        self.omit_headers = true;
+        self
+    }
+
+    /// Leave out each header called `name`, compared without regard to ASCII case.
+    pub fn omit_header(mut self, name: impl Into<String>) -> ResponseDetail {
+        self.omit_header_names.push(name.into());
+        self
+    }
+
+    /// Leave out the body: the response has no `body` key, but keeps its size.
+    pub fn omit_body(mut self) -> ResponseDetail {
+        self.omit_body = true;
+        self
+    }
+
+    fn keeps_header(&self, name: &str) -> bool {
+        !(self.omit_header_names.iter()).any(|n| n.eq_ignore_ascii_case(name))
+    }
+}
+
 /// What a finished run did, ready to render. The timestamp, host name and generation time that
 /// the XML and HTML carry are passed in by the caller, so the output is reproducible.
 #[non_exhaustive]
@@ -44,15 +83,16 @@ impl ResultsReport {
         self
     }
 
-    /// Add each result's response to its row in the JSON report. `results` must be the ones
-    /// given to [`ResultsReport::new`], in the same order; without this call the report has
-    /// no `response` key.
+    /// Add each result's response to its row in the JSON report, leaving out what `detail`
+    /// omits. `results` must be the ones given to [`ResultsReport::new`], in the same order;
+    /// without this call the report has no `response` key.
     pub fn with_responses<'a>(
         mut self,
         results: impl IntoIterator<Item = &'a RequestResult>,
+        detail: &ResponseDetail,
     ) -> ResultsReport {
         for (row, result) in self.inner.results.iter_mut().zip(results) {
-            row.response = ResponseRow::of(result);
+            row.response = ResponseRow::of(result, detail);
         }
         self
     }

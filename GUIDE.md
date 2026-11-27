@@ -607,6 +607,9 @@ Output (see [Reports](#reports) and [Reading responses](#reading-responses)):
 | `--reporter-json <PATH>` | Also write the JSON report to a file, or `-` for stdout. |
 | `--reporter-junit <PATH>` | Also write a JUnit XML report. |
 | `--reporter-html <PATH>` | Also write a self-contained HTML report. |
+| `--report-omit-headers` | Leave every header out of the JSON report's `response` objects. |
+| `--report-omit-header <NAME>` | Leave the header `NAME` out of them; repeatable, any case. |
+| `--report-omit-body` | Leave the body out of them; `body_size` stays. |
 | `--verbose` | Print one line per network exchange to stderr: method, URL, status or error, the address reached and the time, plus each cookie set. Never a body or a header. |
 | `-i`, `--show-response` | Print each response's status line, headers and body. |
 | `--body` | Print only each response body. |
@@ -1024,6 +1027,18 @@ binary body never reaches a terminal; a size line stands in for it. Secret value
 from what prints, but not from `-o` files. With `--format json`, `-i` adds a `response` object
 (`status`, `headers`, `body`, `body_size`, `truncated`) to each result instead. Exit codes do not
 change (see [exit codes](#exit-codes)).
+
+That JSON also goes to a `--reporter-json` file, so a CI artifact can carry what the server
+sent. `--report-omit-headers` removes the `headers` key, `--report-omit-header <NAME>` (repeatable,
+matched in any case) removes one header, and `--report-omit-body` removes the `body` key while
+`body_size` and `truncated` stay. Secrets are still scrubbed from what is left. The JUnit and HTML
+reports never hold headers or bodies, and the plain `-i` and `--body` output is unchanged. An empty
+or malformed header name exits 3. Assertion values, console lines and error messages can still
+quote parts of a body:
+
+```sh
+apinata run ./my-api -i --format json --reporter-json report.json --report-omit-body --report-omit-header x-request-id
+```
 
 `--filter <EXPR>` narrows what `--body` or `-i` prints (also on `apinata send`): a JSONPath
 (RFC 9535) for a JSON response, an XPath 1.0 for an XML one, chosen by the content type. A path
