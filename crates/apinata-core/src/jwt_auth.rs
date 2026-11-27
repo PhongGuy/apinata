@@ -37,7 +37,8 @@ fn object(text: &str, what: &str) -> Result<Map<String, Value>, String> {
 pub(crate) fn token(claims: &Claims<'_>, key: &Key, now: u64) -> Result<String, String> {
     let alg = claims.algorithm;
     if matches!(JwtAlgorithm::parse(alg), JwtAlgorithm::Other(_)) {
-        return Err(format!("unknown algorithm `{alg}`"));
+        // The name may come from a variable, so the error names the field, never its value.
+        return Err("the algorithm is not one of HS, RS, PS or ES with 256, 384 or 512".to_owned());
     }
     let mut header = Map::new();
     header.insert("alg".to_owned(), Value::from(alg));
@@ -183,7 +184,7 @@ mod tests {
                 "payload",
             ),
             (claims("HS256", "\"leak-head\"", "{}"), &secret, "headers"),
-            (claims("XS1", "", "{}"), &secret, "unknown algorithm"),
+            (claims("XS1", "", "{}"), &secret, "algorithm is not one of"),
             (
                 claims("HS256", "", "{}"),
                 &Key::Secret(Vec::new()),
@@ -215,7 +216,7 @@ mod tests {
         for (c, key, want) in cases {
             let err = token(&c, key, 0).expect_err(want);
             assert!(err.contains(want), "{want}: {err}");
-            for leak in ["leak", "topsecret", "BEGIN"] {
+            for leak in ["leak", "topsecret", "BEGIN", "XS1"] {
                 assert!(!err.contains(leak), "{err}");
             }
         }

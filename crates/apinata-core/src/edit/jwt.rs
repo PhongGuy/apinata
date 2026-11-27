@@ -8,6 +8,7 @@ use yaml_serde::{Mapping, Value};
 /// How a JWT auth token is signed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
+// Each variant is the algorithm's own registered name; a doc line apiece would only repeat it.
 #[allow(missing_docs)]
 pub enum JwtAlgorithm {
     Hs256,
@@ -171,10 +172,12 @@ impl JwtSpec {
                 .filter(|s| !s.is_empty())
                 .map_or(JwtAlgorithm::Hs256, |name| JwtAlgorithm::parse(&name)),
             secret: text(map, "secret"),
-            secret_base64: map
-                .get("secretBase64")
-                .and_then(Value::as_bool)
-                .unwrap_or(false),
+            // A hand-quoted flag reads as the word it spells, as request settings do.
+            secret_base64: match map.get("secretBase64") {
+                Some(Value::Bool(on)) => *on,
+                Some(Value::String(word)) => word == "true",
+                _ => false,
+            },
             private_key,
             headers: text(map, "headers"),
             payload: text(map, "payload"),

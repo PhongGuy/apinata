@@ -1,6 +1,6 @@
 //! JWT auth through Postman import and export, and its secrets through the keychain.
 
-use crate::export_support::{exported, http, open};
+use crate::export_support::{exported, http, notes, open};
 
 use apinata_core::import::{ImportedCollection, ImportedItem, parse_postman, write_collection};
 use apinata_core::{
@@ -139,4 +139,67 @@ fn imported_literals_go_to_the_store_and_still_sign() {
             .iter()
             .any(|v| v == "literal-jwt-secret")
     );
+}
+
+#[test]
+fn postman_prefix_is_trimmed_so_one_space_parts_it_from_the_token() {
+    let spec = jwt_of(&postman(json!([kv("headerPrefix", json!(" JWT "))])));
+    assert_eq!(spec.header_prefix.as_deref(), Some("JWT"));
+}
+
+#[test]
+fn export_notes_the_expiry_and_a_file_key_it_drops() {
+    let auth = "  auth:\n    type: jwt\n    algorithm: RS256\n    privateKey:\n      type: file\n      value: keys/k.pem\n    expiresIn: 300\n";
+    let r = http("r", "GET", "http://x.test", auth);
+    let (_d, c) = open(&[("opencollection.yml", ROOT), ("r.yml", &r)]);
+    let got = notes(&c);
+    let on_auth: Vec<&String> = got
+        .iter()
+        .filter(|(source, _)| source == "r / auth")
+        .map(|(_, detail)| detail)
+        .collect();
+    assert!(on_auth.iter().any(|d| d.contains("expiresIn")), "{got:?}");
+    assert!(on_auth.iter().any(|d| d.contains("key file")), "{got:?}");
+    let plain = http(
+        "r",
+        "GET",
+        "http://x.test",
+        "  auth:\n    type: jwt\n    secret: s\n",
+    );
+    let (_d, c) = open(&[("opencollection.yml", ROOT), ("r.yml", &plain)]);
+    assert!(
+        notes(&c).iter().all(|(s, _)| s != "r / auth"),
+        "{:?}",
+        notes(&c)
+    );
+}
+
+#[test]
+fn an_imported_inline_key_goes_to_the_store_and_still_signs() {
+    let pem = include_str!("fixtures/jwt/ec256-sec1.pem");
+    let c = postman(json!([
+        kv("algorithm", json!("ES256")),
+        kv("privateKey", json!(pem)),
+        kv("payload", json!("{\"sub\":\"1\"}")),
+    ]));
+    let parent = TempDir::new().unwrap();
+    let store = Arc::new(MemoryStore::new());
+    let (written, _report) = write_collection(parent.path(), &c, &[], store.as_ref()).unwrap();
+    let file = fs::read_to_string(written.root().join("r.yml")).unwrap();
+    assert!(!file.contains("BEGIN"), "{file}");
+    let collection = Collection::open(written.root()).unwrap();
+    let ctx = VarContext::new(
+        &collection,
+        ContextOptions::new()
+            .env("Environment")
+            .secrets(Arc::clone(&store) as Arc<dyn SecretStore>),
+    )
+    .unwrap();
+    let r = resolve(&collection.tree().requests()[0], &ctx).unwrap();
+    let auth = r
+        .headers()
+        .iter()
+        .find(|(n, _)| n.eq_ignore_ascii_case("authorization"))
+        .map(|(_, v)| v.clone());
+    assert!(auth.is_some_and(|a| a.starts_with("Bearer ey")));
 }

@@ -814,11 +814,15 @@ auth:
   queryParamKey: token
 ```
 
-Variables are filled into the payload before it is read, and it must be a JSON object. The
-token's `alg` always comes from `algorithm`. Keys are PEM: PKCS#8, PKCS#1 or SEC1. An empty
-secret or key, a key that does not match the algorithm, an unknown algorithm or a payload that
-is not a JSON object stops the request before it is sent, and the error never shows the payload,
-key or secret. The token, the secret and the key are hidden in history, reports and the Timeline.
+Variables are filled into every field before anything is signed, so `apinata check` names each
+one a request needs. The payload must be a JSON object once filled. The token's `alg` always
+comes from `algorithm`. Keys are PEM: PKCS#8, PKCS#1 or SEC1, and a `type: file` path is
+relative to the collection root. In the header the token replaces any `Authorization` header the
+request has; in the query it replaces a parameter with the same name. An empty secret or key, a
+key that does not match the algorithm, an unknown algorithm or a payload that is not a JSON
+object stops the request before it is sent, and the error never shows the payload, key, secret
+or the value an `algorithm` variable held. The token, the secret and the key are hidden in
+history, reports and the Timeline.
 
 ### Team servers
 

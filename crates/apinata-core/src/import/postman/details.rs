@@ -400,7 +400,8 @@ fn jwt(values: Option<&Value>) -> JwtSpec {
     let filled = |key: &str| Some(get(key)).filter(|v| !v.is_empty());
     let header_prefix = match auth_value(values, "headerPrefix") {
         None | Some(Value::Null) => "Bearer".to_owned(),
-        prefix => ensure_string(prefix),
+        // The token is joined with one space, so padding here would double it.
+        prefix => ensure_string(prefix).trim().to_owned(),
     };
     JwtSpec {
         algorithm: filled("algorithm").map_or(JwtAlgorithm::Hs256, |a| JwtAlgorithm::parse(&a)),

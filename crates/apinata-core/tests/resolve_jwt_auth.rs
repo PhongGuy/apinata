@@ -176,7 +176,11 @@ fn bad_keys_payloads_and_names_are_errors_that_echo_nothing() {
         ),
         (
             "    type: jwt\n    algorithm: none\n    secret: s\n".to_owned(),
-            "unknown algorithm",
+            "algorithm is not one of",
+        ),
+        (
+            "    type: jwt\n    algorithm: \"{{user}}\"\n    secret: s\n".to_owned(),
+            "algorithm is not one of",
         ),
         (
             format!("    type: jwt\n    secret: {SECRET}\n    payload: '[\"leak-claim\"]'\n"),
@@ -200,7 +204,7 @@ fn bad_keys_payloads_and_names_are_errors_that_echo_nothing() {
         assert!(got.contains(want), "{want}: {got}");
         let shown = ResolveError::Jwt { reason: got }.to_string();
         assert!(shown.starts_with("JWT: "), "{shown}");
-        for leak in [SECRET, "leak-claim", "BEGIN", "%%%"] {
+        for leak in [SECRET, "leak-claim", "BEGIN", "%%%", "alice", "none"] {
             assert!(!shown.contains(leak), "{shown}");
         }
     }
@@ -258,4 +262,20 @@ async fn sends_hide_the_token_and_secret_from_the_result() {
             );
         }
     }
+}
+
+#[test]
+fn each_send_signs_a_fresh_token_with_its_own_iat() {
+    let auth = hs("    expiresIn: 60\n");
+    let first = authorization(&one(&auth).unwrap()).unwrap();
+    // The issue time has whole-second precision, so the second send waits past one tick.
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    let second = authorization(&one(&auth).unwrap()).unwrap();
+    assert_ne!(first, second);
+    let iat = |v: &str| {
+        parts(v.strip_prefix("Bearer ").unwrap()).1["iat"]
+            .as_u64()
+            .unwrap()
+    };
+    assert!(iat(&second) > iat(&first), "{first} {second}");
 }

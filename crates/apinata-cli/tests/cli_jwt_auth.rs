@@ -63,6 +63,17 @@ async fn run_sends_a_signed_token_in_the_header_and_the_query() {
         .collect();
     assert_eq!(jwt.len(), 1, "{jwt:?}");
     assert!(regex_like(&jwt[0]), "{}", jwt[0]);
+    // Neither token, the header one nor the one in the query, reaches the report.
+    let h = sent
+        .iter()
+        .find(|r| r.url.path() == "/h")
+        .expect("header send");
+    let bearer = h.headers.get("authorization").unwrap().to_str().unwrap();
+    let header_token = bearer.strip_prefix("Bearer ").unwrap();
+    let text = report.to_string();
+    for token in [header_token, jwt[0].as_str()] {
+        assert!(!text.contains(token), "{text}");
+    }
 }
 
 /// Whether `token` has three base64url parts, the first two non-empty.

@@ -141,3 +141,12 @@ fn debug_hides_the_secret_and_inline_key() {
     assert!(!shown.contains("hunter2-secret"), "{shown}");
     assert!(!shown.contains("PEM-TEXT"), "{shown}");
 }
+
+#[test]
+fn a_quoted_secret_base64_reads_as_the_flag_it_spells() {
+    for (written, want) in [("\"true\"", true), ("'false'", false), ("true", true)] {
+        let auth = format!("  auth:\n    type: jwt\n    secretBase64: {written}\n");
+        let spec = jwt(RequestFile::load(&file(&auth).1).unwrap().auth());
+        assert_eq!(spec.secret_base64, want, "{written}");
+    }
+}

@@ -1701,15 +1701,29 @@ fn place_jwt_token(
     }
     let fail = |reason: String| ResolveError::Jwt { reason };
     let spec = JwtSpec::from_yaml(&Value::Mapping(auth.clone()));
+    // Both families' keys are expanded even though one is used, so a check names every variable.
     let algorithm = scope.expand(spec.algorithm.as_str())?;
     let header_text = scope.expand(&spec.headers)?;
     let payload = scope.expand(&spec.payload)?;
     let expires = scope.expand(&spec.expires_in)?;
+    let secret = scope.expand(&spec.secret)?;
+    let private_key = match &spec.private_key {
+        Some(key) => Some((key.kind, scope.expand(&key.value)?)),
+        None => None,
+    };
+    let prefix = scope.expand(spec.header_prefix.as_deref().unwrap_or("Bearer"))?;
+    let query_key = scope.expand(&spec.query_param_key)?;
     let mut secrets = Vec::new();
-    // Only the key the algorithm uses is read, so a stale one is never expanded or opened.
-    let key = if JwtAlgorithm::parse(&algorithm).uses_secret() {
-        let secret = scope.expand(&spec.secret)?;
+    if !secret.is_empty() {
         secrets.push(secret.clone());
+    }
+    if let Some((OAuth1KeyKind::Text, text)) = &private_key
+        && !text.is_empty()
+    {
+        secrets.push(text.clone());
+    }
+    // Only the key the algorithm uses is decoded or opened, so a stale file is never read.
+    let key = if JwtAlgorithm::parse(&algorithm).uses_secret() {
         let bytes = if spec.secret_base64 {
             STANDARD
                 .decode(secret.trim())
@@ -1720,17 +1734,12 @@ fn place_jwt_token(
         };
         jwt_auth::Key::Secret(bytes)
     } else {
-        let pem = match &spec.private_key {
-            Some(key) => match (key.kind, scope.expand(&key.value)?) {
-                (_, value) if value.is_empty() => String::new(),
-                // Inline text may carry its line breaks as literal `\n`, as a one-line field must.
-                (OAuth1KeyKind::Text, text) => {
-                    secrets.push(text.clone());
-                    text.replace("\\n", "\n")
-                }
-                (_, path) => read_regular_text(&root.join(&path))
-                    .map_err(|e| fail(format!("cannot read the private key file `{path}`: {e}")))?,
-            },
+        let pem = match private_key {
+            Some((_, value)) if value.is_empty() => String::new(),
+            // Inline text may carry its line breaks as literal `\n`, as a one-line field must.
+            Some((OAuth1KeyKind::Text, text)) => text.replace("\\n", "\n"),
+            Some((_, path)) => read_regular_text(&root.join(&path))
+                .map_err(|e| fail(format!("cannot read the private key file `{path}`: {e}")))?,
             None => String::new(),
         };
         jwt_auth::Key::Pem(pem)
@@ -1754,13 +1763,15 @@ fn place_jwt_token(
     let token = jwt_auth::token(&claims, &key, now).map_err(fail)?;
     match &spec.placement {
         JwtPlacement::Header => {
-            let prefix = scope.expand(spec.header_prefix.as_deref().unwrap_or("Bearer"))?;
             let value = format!("{prefix} {token}").trim().to_owned();
             set_header(headers, "Authorization".to_owned(), value);
         }
         JwtPlacement::Query => {
-            let key = scope.expand(&spec.query_param_key)?;
-            let key = if key.is_empty() { "token" } else { &key };
+            let key = if query_key.is_empty() {
+                "token"
+            } else {
+                &query_key
+            };
             set_query_param(url, key, &token);
         }
         other => return Err(fail(format!("unknown placement `{}`", other.as_str()))),

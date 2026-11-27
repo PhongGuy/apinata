@@ -45,4 +45,4 @@ extensions:
       - .git
 == report
 Dropped jwt-auth-headers / testScript: scripts are not imported (jwt-auth-headers.yml)
-NeedsInput collection: needs a value: `algorithm`, `jwtHeaders`, `payload`, `privateKey`, `url`; nothing imported defines them, so add them to the collection's variables or an environment before sending (-)
+NeedsInput collection: needs a value: `algorithm`, `headerPrefix`, `jwtHeaders`, `payload`, `privateKey`, `secret`, `url`; nothing imported defines them, so add them to the collection's variables or an environment before sending (-)
