@@ -27,7 +27,7 @@ use crate::network::{
     CertificateKind, ClientCertificate, CollectionNetwork, CollectionProxy, read_network,
 };
 use crate::oauth2::TokenCache;
-use crate::outside_env::EnvironmentFile;
+use crate::outside_env::{EnvFileKind, EnvironmentFile};
 use crate::post_response::{PostResponseVar, post_response_vars_in};
 use crate::request::RequestFile;
 use crate::runtime_vars::RuntimeVars;
@@ -249,8 +249,8 @@ pub struct VarContext {
     dotenv_keys: Vec<String>,
     /// See [`ContextOptions::dynamic_values`].
     dynamic_values: Option<(u64, SystemTime)>,
-    /// Whether the environment was read from a file outside the collection.
-    env_from_file: bool,
+    /// The kind of file the environment was read from, when it came from outside the collection.
+    env_file_kind: Option<EnvFileKind>,
     /// Shared with every clone, so values captured through one are seen by all.
     runtime_vars: RuntimeVars,
     /// Script edits over the collection and environment layers; clones share it.
@@ -358,8 +358,11 @@ impl VarContext {
             },
         )?;
         env.sensitive.extend(file_sensitive);
-        let env_from_file = matches!(options.env, Some(EnvChoice::File(_)));
-        let tokens = if env_from_file {
+        let env_file_kind = match &options.env {
+            Some(EnvChoice::File(file)) => Some(file.kind()),
+            _ => None,
+        };
+        let tokens = if env_file_kind.is_some() {
             TokenCache::in_memory()
         } else {
             options.oauth2_tokens.unwrap_or_else(TokenCache::in_memory)
@@ -407,7 +410,7 @@ impl VarContext {
             process,
             dotenv_keys,
             dynamic_values: options.dynamic_values,
-            env_from_file,
+            env_file_kind,
             runtime_vars: options.runtime_vars.unwrap_or_default(),
             env_overlay,
             collection_name: collection.name().to_owned(),
@@ -1040,11 +1043,14 @@ impl VarContext {
                 reason: f.error.to_string(),
             },
             // A file's secrets never come from the store, so the app's editor cannot help.
-            None if self.env_from_file => UndefinedHint::SecretWithoutValueInFile {
-                environment: environment.to_owned(),
-            },
-            None => UndefinedHint::SecretWithoutValue {
-                environment: environment.to_owned(),
+            None => match self.env_file_kind {
+                Some(kind) => UndefinedHint::SecretWithoutValueInFile {
+                    environment: environment.to_owned(),
+                    kind,
+                },
+                None => UndefinedHint::SecretWithoutValue {
+                    environment: environment.to_owned(),
+                },
             },
         }
     }

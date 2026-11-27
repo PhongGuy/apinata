@@ -140,6 +140,7 @@ fn a_file_named_like_a_collection_environment_never_reads_its_stored_secrets() {
             name: "token".to_owned(),
             hint: Some(UndefinedHint::SecretWithoutValueInFile {
                 environment: "prod".to_owned(),
+                kind: EnvFileKind::OpenCollection,
             }),
         })
     );
@@ -162,7 +163,8 @@ fn a_secret_without_a_value_in_a_file_hints_at_the_flag_or_the_file_only() {
     assert_eq!(
         hint,
         UndefinedHint::SecretWithoutValueInFile {
-            environment: "CI".to_owned()
+            environment: "CI".to_owned(),
+            kind: EnvFileKind::Postman,
         }
     );
     let cli = hint.cli_text("token");
@@ -172,6 +174,39 @@ fn a_secret_without_a_value_in_a_file_hints_at_the_flag_or_the_file_only() {
     );
     assert!(!cli.contains("editor"), "{cli}");
     assert!(!hint.mcp_text("token").contains("editor"));
+}
+
+#[test]
+fn an_open_collection_file_secret_hints_at_the_flag_alone() {
+    let (_d, c) = collection();
+    let (_f, path) = outside("ci.yml", "variables:\n  - secret: true\n    name: token\n");
+    let ctx = VarContext::new(&c, ContextOptions::new().env_file(load(&path))).expect("context");
+    let Err(ResolveError::UndefinedVariable {
+        hint: Some(hint), ..
+    }) = url(&c, &ctx, "token.yml")
+    else {
+        panic!("token is undefined with a hint");
+    };
+    let cli = hint.cli_text("token");
+    assert_eq!(
+        cli,
+        "token is a secret in environment file ci with no value; pass --env-var token=VALUE"
+    );
+    assert!(!hint.mcp_text("token").contains("in the file"));
+}
+
+#[test]
+fn a_byte_order_mark_is_read_past_in_either_kind() {
+    let (_d, c) = collection();
+    let (_p, pm) = outside("ci.json", &format!("\u{feff}{POSTMAN}"));
+    let (_y, oc) = outside("ci.yml", &format!("\u{feff}{OPEN_COLLECTION}"));
+    assert_eq!(load(&pm).kind(), EnvFileKind::Postman);
+    assert_eq!(load(&oc).kind(), EnvFileKind::OpenCollection);
+    let ctx = VarContext::new(&c, ContextOptions::new().env_file(load(&pm))).expect("context");
+    assert_eq!(
+        url(&c, &ctx, "path.yml"),
+        Ok("https://ci.test/from-file".into())
+    );
 }
 
 #[test]

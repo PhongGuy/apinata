@@ -3,6 +3,7 @@
 use crate::document::rebase;
 use crate::item_path::ItemPath;
 use crate::not_found::{env_text, not_found_text};
+use crate::outside_env::EnvFileKind;
 use crate::secret_renames::SecretName;
 use crate::secrets::SecretError;
 use crate::shell_word::shell_word;
@@ -235,6 +236,8 @@ pub enum UndefinedHint {
     SecretWithoutValueInFile {
         /// The file's environment name.
         environment: String,
+        /// The file's kind, which decides whether the file itself can hold the value.
+        kind: EnvFileKind,
     },
     /// The variable is a secret of the selected environment whose stored value could not be read.
     SecretUnreadable {
@@ -289,13 +292,21 @@ impl UndefinedHint {
             (UndefinedHint::SecretWithoutValue { environment }, HintShell::Mcp) => format!(
                 "{name} is a secret in environment {environment} with no value; set it in the app's environment editor"
             ),
-            (UndefinedHint::SecretWithoutValueInFile { environment }, HintShell::Cli) => format!(
-                "{name} is a secret in environment file {environment} with no value; pass --env-var {} or give it a value in the file",
-                shell_word(&format!("{name}=VALUE"))
-            ),
-            (UndefinedHint::SecretWithoutValueInFile { environment }, HintShell::Mcp) => format!(
-                "{name} is a secret in environment file {environment} with no value; give it a value in the file"
-            ),
+            // A Postman secret may carry its value; an OpenCollection secret's value is never read.
+            (UndefinedHint::SecretWithoutValueInFile { environment, kind }, shell) => {
+                let flag = format!("pass --env-var {}", shell_word(&format!("{name}=VALUE")));
+                let remedy = match (kind, shell) {
+                    (EnvFileKind::Postman, HintShell::Cli) => {
+                        format!("; {flag} or give it a value in the file")
+                    }
+                    (EnvFileKind::Postman, _) => "; give it a value in the file".to_owned(),
+                    (_, HintShell::Cli) => format!("; {flag}"),
+                    _ => String::new(),
+                };
+                format!(
+                    "{name} is a secret in environment file {environment} with no value{remedy}"
+                )
+            }
             (
                 UndefinedHint::SecretUnreadable {
                     environment,

@@ -289,3 +289,35 @@ async fn a_renamed_postman_key_is_a_warning() {
         "{stderr}"
     );
 }
+
+#[test]
+fn an_open_collection_secret_without_a_value_points_at_env_var_alone() {
+    let dir = collection();
+    let outside = tempfile::TempDir::new().unwrap();
+    let file = outside.path().join("ci.yml");
+    std::fs::write(
+        &file,
+        "variables:\n  - name: base\n    value: http://127.0.0.1:9\n  - name: who\n    value: x\n  - secret: true\n    name: token\n",
+    )
+    .unwrap();
+    let out = run(dir.path(), &["--env-file", file.to_str().unwrap()]);
+    let all = text(&out);
+    assert_ne!(out.status.code(), Some(0), "{all}");
+    assert!(
+        all.contains(
+            "token is a secret in environment file ci with no value; pass --env-var token=VALUE\n"
+        ),
+        "{all}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_postman_export_with_a_byte_order_mark_runs() {
+    let s = server("postman").await;
+    let dir = collection();
+    let outside = tempfile::TempDir::new().unwrap();
+    let file = outside.path().join("ci.json");
+    std::fs::write(&file, format!("\u{feff}{}", postman(&s.uri()))).unwrap();
+    let out = run(dir.path(), &["--env-file", file.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+}

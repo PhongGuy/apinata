@@ -97,10 +97,14 @@ impl EnvironmentFile {
     /// and may not use `extends`.
     pub fn load(path: &Path) -> Result<EnvironmentFile, EnvFileError> {
         let shown = path.display().to_string();
-        let bytes = read_regular(path).map_err(|e| EnvFileError::Read {
+        let mut bytes = read_regular(path).map_err(|e| EnvFileError::Read {
             path: shown.clone(),
             reason: e.to_string(),
         })?;
+        // Editors on Windows often write a byte order mark, which JSON parsers refuse.
+        if bytes.starts_with(b"\xEF\xBB\xBF") {
+            bytes.drain(..3);
+        }
         // A Postman export is told apart by its `values` list; other importable shapes are not
         // tried, since they overlap an OpenCollection file's `name` and `variables`.
         if EnvironmentFormat::detect(&bytes) == Some(EnvironmentFormat::Postman) {
