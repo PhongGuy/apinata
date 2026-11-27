@@ -186,6 +186,10 @@ The exit code is `0` on success, `1` when an assertion or check failed, `2`
 when a request errored and `3` for a usage or setup error. Every
 command, flag and code is in the [guide](GUIDE.md#command-line).
 
+To run a collection in GitHub Actions or GitLab CI, with a checked download,
+secrets from the CI and a JUnit report, see
+[Running in CI](GUIDE.md#running-in-ci).
+
 ## How it works
 
 ### Collections are files
@@ -256,7 +260,7 @@ The tools, resources and prompts the server offers are in
   collection, git, search, check, list, environments, items and folders, host
   overrides, replace;
 - [Command line](GUIDE.md#command-line): exit codes, completions, running,
-  variables, reports, sending, code generation, scripts, limits and reading
+  variables, reports, CI, sending, code generation, scripts, limits and reading
   responses;
 - [Mock server](GUIDE.md#mock-server), [Desktop app](GUIDE.md#desktop-app),
   [Importing and exporting](GUIDE.md#importing-and-exporting),

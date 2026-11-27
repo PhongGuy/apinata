@@ -435,6 +435,7 @@ mod script_expressions;
 mod script_jwt;
 mod script_jwt_keys;
 mod script_libraries;
+mod script_markup;
 mod script_modules;
 mod script_oauth2_reset;
 mod script_oauth2_vars;

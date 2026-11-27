@@ -1089,17 +1089,6 @@ pub(crate) fn needs_cryptojs_require(code: &str) -> bool {
         && !requires_module(code, "crypto-js")
 }
 
-/// Globals Postman scripts use that the app's scripts do not serve.
-pub(crate) const UNAVAILABLE_GLOBALS: [&str; 2] = ["cheerio", "xml2Json"];
-
-/// The unavailable globals the script uses as free identifiers without declaring them.
-pub(crate) fn unavailable_globals(code: &str) -> Vec<&'static str> {
-    UNAVAILABLE_GLOBALS
-        .into_iter()
-        .filter(|n| uses_global(code, n) && !declares(&blank_opaque(code), n))
-        .collect()
-}
-
 /// The code with strings, comments and regexes blanked, so a text search sees only code.
 fn blank_opaque(code: &str) -> String {
     let (b, mut out, mut i) = (code.as_bytes(), String::new(), 0);

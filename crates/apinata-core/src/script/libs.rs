@@ -1,4 +1,4 @@
-//! The vendored moment, lodash, crypto-js, tv4, buffer and ajv behind lazy globals and `require`, evaluated on first use.
+//! The vendored moment, lodash, crypto-js, tv4, buffer, ajv, cheerio and xml2js behind lazy globals and `require`, evaluated on first use.
 
 use rquickjs::{Ctx, Function, Value};
 
@@ -65,6 +65,14 @@ fn load<'js>(ctx: Ctx<'js>, name: String) -> rquickjs::Result<Value<'js>> {
         "ajv" => (
             include_str!("vendor/ajv-8.20.0.min.js"),
             "ajv-8.20.0.min.js",
+        ),
+        "cheerio" => (
+            include_str!("vendor/cheerio-1.0.0.min.js"),
+            "cheerio-1.0.0.min.js",
+        ),
+        "xml2js" => (
+            include_str!("vendor/xml2js-0.6.2.min.js"),
+            "xml2js-0.6.2.min.js",
         ),
         _ => return Err(rquickjs::Error::new_from_js("string", "library")),
     };

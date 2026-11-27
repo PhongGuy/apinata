@@ -24,6 +24,7 @@ and a quick start, see the [README](README.md).
   - [Running requests](#running-requests)
   - [Variables and environments](#variables-and-environments)
   - [Reports](#reports)
+  - [Running in CI](#running-in-ci)
   - [Sending one request](#sending-one-request)
   - [Code generation](#code-generation)
   - [GraphQL schema](#graphql-schema)
@@ -693,6 +694,110 @@ apinata run probe.yml --fail-on-status --body | jq .
 apinata run ./my-api --reporter-junit results.xml --reporter-html results.html
 apinata run ./my-api --reporter-junit - > results.xml
 ```
+
+### Running in CI
+
+A CI job installs the command-line runner from a release, checks it against
+the release's `SHA256SUMS` and runs the collection from the repository. Pin
+the version: the runner has no version-free download name, and a pinned
+version keeps the job repeatable. The Linux runners are built on Ubuntu 24.04
+and need a system at least that new. The commands below install Linux x86_64;
+the other targets are in [Release files](#release-files).
+
+```sh
+v=0.2.0 t=x86_64-unknown-linux-gnu
+base=https://github.com/PhongGuy/apinata/releases/download/v$v
+curl -fsSL -O "$base/apinata-$v-$t.tar.gz" -O "$base/SHA256SUMS"
+sha256sum -c --ignore-missing SHA256SUMS
+tar -xzf "apinata-$v-$t.tar.gz"
+install -D -m 0755 "apinata-$v-$t/apinata" "$HOME/.local/bin/apinata"
+```
+
+`sha256sum` fails, and so stops the job, when the download does not match.
+Store each secret in the CI's secret store and pass it by name with a bare
+`--env-var KEY`, so its value never appears in the job's command line or log
+(see [Variables and environments](#variables-and-environments)); an unset
+`KEY` fails the run with exit code 3. `--no-keychain` skips the keychain, which
+a CI machine does not have. The run's exit code fails the job (see
+[Exit codes](#exit-codes)): `1` for a failed assertion or test, `2` for a
+request that errored, `3` for a setup error such as a missing environment.
+When a job fails, read the failing request in the log or the JUnit report, and
+rerun it locally with `apinata run <request file> --env <name> --verbose`.
+
+In GitHub Actions, the collection in `api/` with a `staging` environment and
+an `API_TOKEN` repository secret:
+
+```yaml
+name: API tests
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  api:
+    runs-on: ubuntu-24.04
+    env:
+      APINATA_VERSION: 0.2.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install apinata
+        run: |
+          t=x86_64-unknown-linux-gnu
+          base=https://github.com/PhongGuy/apinata/releases/download/v$APINATA_VERSION
+          curl -fsSL -O "$base/apinata-$APINATA_VERSION-$t.tar.gz" -O "$base/SHA256SUMS"
+          sha256sum -c --ignore-missing SHA256SUMS
+          tar -xzf "apinata-$APINATA_VERSION-$t.tar.gz"
+          install -D -m 0755 "apinata-$APINATA_VERSION-$t/apinata" "$HOME/.local/bin/apinata"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Run the collection
+        env:
+          API_TOKEN: ${{ secrets.API_TOKEN }}
+        run: |
+          mkdir -p reports
+          apinata run api --env staging --env-var API_TOKEN --no-keychain --reporter-junit reports/junit.xml --reporter-html reports/report.html
+      - name: Upload the reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: api-reports
+          path: reports/
+```
+
+The upload runs after a failed run too, so the reports of a red job are kept.
+GitHub Actions has no built-in JUnit view: the job log shows the text report,
+and the uploaded `report.html` is the readable one. A JUnit reporting action can
+turn `junit.xml` into a check, but it needs the `checks: write` permission.
+
+In GitLab CI, with `API_TOKEN` as a masked CI/CD variable:
+
+```yaml
+api-tests:
+  image: ubuntu:24.04
+  variables:
+    APINATA_VERSION: "0.2.0"
+  before_script:
+    - apt-get update -qq
+    - apt-get install -y -qq --no-install-recommends ca-certificates curl
+    - t=x86_64-unknown-linux-gnu
+    - base=https://github.com/PhongGuy/apinata/releases/download/v$APINATA_VERSION
+    - curl -fsSL -O "$base/apinata-$APINATA_VERSION-$t.tar.gz" -O "$base/SHA256SUMS"
+    - sha256sum -c --ignore-missing SHA256SUMS
+    - tar -xzf "apinata-$APINATA_VERSION-$t.tar.gz"
+    - install -m 0755 "apinata-$APINATA_VERSION-$t/apinata" /usr/local/bin/apinata
+  script:
+    - mkdir -p reports
+    - apinata run api --env staging --env-var API_TOKEN --no-keychain --reporter-junit reports/junit.xml
+  artifacts:
+    when: always
+    reports:
+      junit: reports/junit.xml
+```
+
+GitLab reads `artifacts:reports:junit` into the pipeline's Tests tab and the
+merge request's test summary, failed runs included.
 
 ### Sending one request
 

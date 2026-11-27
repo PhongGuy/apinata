@@ -512,14 +512,3 @@ async fn an_undefined_cryptojs_reports_the_require_hint() {
         "{text}"
     );
 }
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn an_undefined_cheerio_or_xml2json_reports_a_hint() {
-    for name in ["cheerio", "xml2Json"] {
-        let text = pre_request_error(&format!("var d = {name}('x');")).await;
-        assert!(
-            text.contains(&format!("{name} is not available here")),
-            "{text}"
-        );
-    }
-}
