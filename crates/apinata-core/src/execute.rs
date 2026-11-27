@@ -458,10 +458,10 @@ pub enum ExecError {
     /// The send was cancelled through its `CancelHandle` before it finished.
     #[error("cancelled")]
     Cancelled,
-    /// Under a host policy, a request's own `verifySsl: false` named a host that is not
-    /// loopback, so nothing was sent to it.
+    /// Under a host policy, a request's own `verifySsl: false` named a hop that is not loopback
+    /// reached directly (an overridden address elsewhere or a proxy), so nothing was sent to it.
     #[error(
-        "the request turns off certificate checks for `{host}` (hop {hop}), which is allowed only for local hosts here"
+        "the request turns off certificate checks for `{host}` (hop {hop}), which is allowed here only for local hosts reached directly"
     )]
     #[non_exhaustive]
     InsecureNotAllowed {
@@ -1018,20 +1018,29 @@ impl Executor {
         self.force_insecure || req.verify_tls().map_or(self.insecure, |verify| !verify)
     }
 
-    /// Under a host policy, refuses a hop to a host that is not local when only the request's
-    /// own file turned the certificate check off; the file may be written by an agent.
+    /// Under a host policy, refuses a hop when only the request's own file turned the
+    /// certificate check off, which an agent may have written, unless the hop connects straight
+    /// to loopback: every overridden address must be loopback and no proxy may carry it.
     fn check_insecure_hop(
         &self,
         req: &ResolvedRequest,
         url: &Url,
         hop: usize,
+        overrides: &[ResolvedHostOverride],
+        proxied: bool,
     ) -> Result<(), ExecError> {
         if self.host_policy.is_none() || self.force_insecure || req.verify_tls() != Some(false) {
             return Ok(());
         }
         let local_only: HostPolicy = Arc::new(|_: &str| false);
-        crate::host_guard::judge(url, &local_only)
-            .map_err(|host| ExecError::InsecureNotAllowed { hop, host })
+        let refused = |host: String| ExecError::InsecureNotAllowed { hop, host };
+        judge_with_overrides(url, &local_only, overrides).map_err(|r| refused(r.host))?;
+        if proxied {
+            return Err(refused(
+                url.host_str().and_then(normalize_host).unwrap_or_default(),
+            ));
+        }
+        Ok(())
     }
 
     /// The cookies every send has stored, for listing and deletion.
@@ -1288,11 +1297,12 @@ impl Executor {
         let run_wide = self.run_wide(req);
         let mut hop_deadline = Deadline::after(timeout);
         let overrides = sorted_overrides(req.network().host_overrides());
-        self.check_insecure_hop(req, &url, 0)?;
+        self.check_insecure_hop(req, &url, 0, &overrides, false)?;
         let (hop_rule, mut pac_line) = self
             .hop_rule(&rule, &url, 0, pac, &hop_deadline, &overrides)
             .await?;
         let mut proxy = self.check_route(&hop_rule, &url, 0, &overrides)?;
+        self.check_insecure_hop(req, &url, 0, &overrides, proxy.is_some())?;
         // A forwarding HTTP proxy drops the upgrade, so plain ws must tunnel or go direct.
         if subscription.is_some()
             && url.scheme() == "http"
@@ -2039,6 +2049,7 @@ impl Executor {
 
             followed += 1;
             hop_deadline = Deadline::after(timeout);
+            self.check_insecure_hop(req, &next, followed as usize, &overrides, false)?;
             let (next_rule, next_line) = self
                 .hop_rule(
                     &rule,
@@ -2050,7 +2061,8 @@ impl Executor {
                 )
                 .await?;
             proxy = self.check_route(&next_rule, &next, followed as usize, &overrides)?;
-            self.check_insecure_hop(req, &next, followed as usize)?;
+            let proxied = proxy.is_some();
+            self.check_insecure_hop(req, &next, followed as usize, &overrides, proxied)?;
             let next_socket = uds::split(&next)
                 .map_err(invalid)?
                 .as_ref()

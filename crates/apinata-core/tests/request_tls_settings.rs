@@ -92,6 +92,8 @@ fn resolution_reads_the_keys_and_fails_closed_on_anything_else() {
             http("settings:\n  verifySsl: \"false\"\n  httpVersion: \"1.1\"\n"),
         ),
         ("on.yml", http("settings:\n  verifySsl: true\n")),
+        ("var.yml", http("settings:\n  verifySsl: \"{{skip}}\"\n")),
+        ("null.yml", http("settings:\n  verifySsl: null\n")),
         (
             "junk.yml",
             http("settings:\n  verifySsl: 0\n  httpVersion: h2\n"),
@@ -108,9 +110,14 @@ fn resolution_reads_the_keys_and_fails_closed_on_anything_else() {
     let off = r("off.yml");
     assert_eq!(off.verify_tls(), Some(false));
     assert_eq!(off.http_version(), Some(HttpVersionPolicy::Auto));
+    // Only the YAML boolean turns the check off; the string keeps it on and says so.
     let text = r("text.yml");
-    assert_eq!(text.verify_tls(), Some(false));
+    assert_eq!(text.verify_tls(), Some(true));
     assert_eq!(text.http_version(), Some(HttpVersionPolicy::Http1Only));
+    assert_eq!(text.warnings(), [Warning::SettingIgnored("verifySsl")]);
+    for (name, verify) in [("var.yml", Some(true)), ("null.yml", None)] {
+        assert_eq!(r(name).verify_tls(), verify, "{name}");
+    }
     assert_eq!(r("on.yml").verify_tls(), Some(true));
 
     // A value that is not understood keeps the check on and the default version, and says so.
@@ -127,4 +134,15 @@ fn resolution_reads_the_keys_and_fails_closed_on_anything_else() {
         Warning::SettingIgnored("verifySsl").to_string(),
         "settings.verifySsl has a value that is not understood; certificates are verified"
     );
+}
+
+#[test]
+fn default_on_a_block_holding_only_the_key_drops_the_block() {
+    let (_dir, path) = file_with(&http("settings:\n  verifySsl: false\n"));
+    let mut r = RequestFile::load(&path).expect("loads");
+    let mut s = r.settings();
+    s.verify_tls = TlsVerify::Inherit;
+    r.set_settings(s);
+    r.save().expect("saves");
+    assert!(saved(&path).get("settings").is_none(), "{:?}", saved(&path));
 }

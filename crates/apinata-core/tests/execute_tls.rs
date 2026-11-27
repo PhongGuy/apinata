@@ -366,7 +366,124 @@ async fn the_json_report_marks_a_response_whose_check_was_skipped() {
         .with_responses(&results, &apinata_core::ResponseDetail::default())
         .to_json();
     let value: serde_json::Value = serde_json::from_str(&json).expect("json");
-    let response = &value["results"][0]["response"];
-    assert_eq!(response["status"], 200, "{json}");
-    assert_eq!(response["tls_unverified"], true, "{json}");
+    assert_eq!(value["results"][0]["response"]["status"], 200, "{json}");
+    assert_eq!(value["results"][0]["tls_unverified"], true, "{json}");
+}
+
+/// A request under a collection root of `root_extra`, its own `top` after the `http` block.
+fn resolved_under(root_extra: &str, url: &str, top: &str) -> apinata_core::ResolvedRequest {
+    let root = format!("opencollection: \"1.0.0\"\ninfo:\n  name: t\n{root_extra}");
+    let text =
+        format!("info:\n  name: r\n  type: http\nhttp:\n  method: GET\n  url: \"{url}\"\n{top}");
+    let (_dir, c, ctx) = common::setup(&[("opencollection.yml", &root), ("r.yml", &text)]);
+    common::at(&c, &ctx, "r.yml").expect("resolves")
+}
+
+/// An executor whose host policy trusts exactly `trusted`.
+fn trusting(trusted: &'static [&'static str]) -> Executor {
+    let policy = move |host: &str| trusted.contains(&host);
+    Executor::new(ExecOptions::new().host_policy(Arc::new(policy))).expect("client")
+}
+
+async fn refused_fast(exec: &Executor, req: &apinata_core::ResolvedRequest) -> ExecError {
+    tokio::time::timeout(Duration::from_secs(5), exec.send(req))
+        .await
+        .expect("refused before any I/O")
+        .expect_err("refused")
+}
+
+#[tokio::test]
+async fn under_a_host_policy_localhost_mapped_elsewhere_may_not_skip_the_check() {
+    let overrides = "extensions:\n  apinata:\n    hostOverrides:\n      - host: localhost\n        address: 192.0.2.1\n";
+    let req = resolved_under(overrides, "https://localhost/", SKIP_CHECK);
+    let err = refused_fast(&trusting(&["192.0.2.1"]), &req).await;
+    assert!(
+        matches!(&err, ExecError::InsecureNotAllowed { hop: 0, .. }),
+        "{err:?}"
+    );
+}
+
+#[tokio::test]
+async fn under_a_host_policy_a_proxied_hop_may_not_skip_the_check() {
+    let proxy = "config:\n  proxy:\n    inherit: false\n    config:\n      protocol: http\n      hostname: 192.0.2.1\n      port: \"9\"\n      auth:\n        username: \"\"\n        password: \"\"\n      bypassProxy: \"\"\n";
+    let req = resolved_under(proxy, "https://localhost/", SKIP_CHECK);
+    let err = refused_fast(&trusting(&["192.0.2.1"]), &req).await;
+    assert!(
+        matches!(&err, ExecError::InsecureNotAllowed { hop: 0, .. }),
+        "{err:?}"
+    );
+}
+
+#[tokio::test]
+async fn under_a_host_policy_localhost_and_ipv6_loopback_may_skip_the_check() {
+    let url = https_server().await;
+    let port = url.trim_end_matches('/').rsplit(':').next().expect("port");
+    let exec = trusting(&[]);
+    // The server listens on 127.0.0.1, so localhost may reach it or fail to connect.
+    for url in [
+        format!("https://localhost:{port}/"),
+        format!("https://[::1]:{port}/"),
+    ] {
+        let sent = tokio::time::timeout(
+            Duration::from_secs(5),
+            exec.send(&resolved_one("GET", &url, "", SKIP_CHECK)),
+        )
+        .await
+        .expect("ends");
+        if let Err(err) = sent {
+            assert!(
+                !matches!(err, ExecError::InsecureNotAllowed { .. }),
+                "{url}: {err:?}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn under_a_host_policy_a_redirect_to_a_mapped_localhost_is_checked_again() {
+    use wiremock::matchers::any;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(any())
+        .respond_with(ResponseTemplate::new(302).insert_header("location", "https://localhost/"))
+        .mount(&server)
+        .await;
+    let overrides = "extensions:\n  apinata:\n    hostOverrides:\n      - host: localhost\n        address: 192.0.2.1\n";
+    let req = resolved_under(overrides, &server.uri(), SKIP_CHECK);
+    let err = refused_fast(&trusting(&["192.0.2.1"]), &req).await;
+    assert!(
+        matches!(&err, ExecError::InsecureNotAllowed { hop: 1, .. }),
+        "{err:?}"
+    );
+}
+
+#[tokio::test]
+async fn the_default_json_report_marks_a_skipped_check() {
+    use crate::script_support::{ROOT, on, write_tree};
+    use apinata_core::{
+        CancelHandle, Collection, ContextOptions, ResultsReport, RunEvent, VarContext, run,
+    };
+    let url = https_server().await;
+    let file = format!(
+        "info:\n  name: r\n  type: http\n  seq: 1\nhttp:\n  method: GET\n  url: \"{url}\"\nsettings:\n  verifySsl: false\n"
+    );
+    let dir = write_tree(&[("opencollection.yml", ROOT), ("r.yml", &file)]);
+    let c = Collection::open(dir.path()).expect("opens");
+    let plan = c.plan(dir.path()).expect("plan");
+    let ctx = VarContext::new(&c, ContextOptions::new()).expect("context");
+    let exec = Arc::new(Executor::new(ExecOptions::new()).expect("client"));
+    let report = run(
+        plan,
+        ctx,
+        exec,
+        on(),
+        CancelHandle::new(),
+        Box::new(|_: RunEvent| {}),
+    )
+    .await;
+    let results: Vec<_> = report.results.iter().map(|r| (**r).clone()).collect();
+    let json = ResultsReport::new(vec![], &results).to_json();
+    let value: serde_json::Value = serde_json::from_str(&json).expect("json");
+    assert_eq!(value["results"][0]["tls_unverified"], true, "{json}");
+    assert!(value["results"][0].get("response").is_none(), "{json}");
 }

@@ -443,8 +443,9 @@ settings:
 `verifySsl` is `true` (always check) or `false` (accept any certificate).
 `httpVersion` takes the same values as `--http-version`: `1.1`, `auto` or
 `2-prior-knowledge`. Without a key the request follows the default, which is the
-Preferences choice in the app and HTTP/1.1 with checks on in the CLI. Only `false`
-turns the check off: any other value keeps it on, and the send warns about it. An
+Preferences choice in the app and HTTP/1.1 with checks on in the CLI. Only the YAML
+boolean `false` turns the check off: any other value, the string `"false"` too, keeps
+it on, and the send warns about it. An
 unknown `httpVersion` falls back to the default with a warning too. An explicit
 `--insecure` or `--http-version` on the command line overrides every request's own
 setting.
@@ -454,11 +455,15 @@ Verify, Don't verify) and an HTTP version select (Default, HTTP/1.1, Auto, HTTP/
 prior knowledge). The Default entry names the Preferences value it follows, and
 choosing it removes the key from the file. A hop made without a certificate check
 says so in the address card, on the `--verbose` `tls:` line and as
-`"tls_unverified": true` in the JSON report.
+`"tls_unverified": true` on the request's row in the JSON report. The cookie jar is
+shared, so cookies flow between checked and unchecked sends as they do with
+`--insecure`. A token request for OAuth 2.0 follows the default, not the request's own
+setting.
 
-Under the MCP server, a request's own `verifySsl: false` is honoured only for
-loopback and `localhost` hosts, since an agent can edit the file. A send to any other
-host fails before it connects, and so does a redirect to one. Starting the server with
+Under the MCP server, a request's own `verifySsl: false` is honoured only for a
+loopback or `localhost` host reached directly, since an agent can edit the file. A
+host override that maps the name anywhere but loopback, or a proxy on the route, is
+refused too. The send fails before it connects, and every redirect is checked again. Starting the server with
 `--insecure` still turns the check off everywhere.
 
 Postman's `protocolProfileBehavior.strictSSL` and `protocolVersion` import into these

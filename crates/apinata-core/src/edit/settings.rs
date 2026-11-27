@@ -31,16 +31,14 @@ pub enum TlsVerify {
     Off,
 }
 
-/// How `settings.verifySsl` reads, and whether its value was not understood. Only `false`
-/// turns the check off; anything unknown keeps it on.
+/// How `settings.verifySsl` reads, and whether its value was not understood. Only the YAML
+/// boolean `false` turns the check off; anything else, the string `"false"` too, keeps it on.
 pub(crate) fn read_verify(node: Option<&Value>) -> (TlsVerify, bool) {
     match node {
         None | Some(Value::Null) => (TlsVerify::Inherit, false),
         Some(Value::String(s)) if s == "inherit" => (TlsVerify::Inherit, false),
         Some(Value::Bool(false)) => (TlsVerify::Off, false),
-        Some(Value::String(s)) if s == "false" => (TlsVerify::Off, false),
         Some(Value::Bool(true)) => (TlsVerify::On, false),
-        Some(Value::String(s)) if s == "true" => (TlsVerify::On, false),
         Some(_) => (TlsVerify::On, true),
     }
 }
@@ -194,7 +192,7 @@ pub(crate) fn well_typed(key: &str, node: &Value) -> bool {
         }
         "encodeUrl" | "followRedirects" | "forwardAuthorizationHeader" => boolean(),
         "maxRedirects" => node.as_f64().is_some_and(|n| n >= 0.0),
-        "verifySsl" => boolean(),
+        "verifySsl" => matches!(node, Value::Bool(_)),
         "httpVersion" => node
             .as_str()
             .is_some_and(|s| s.parse::<HttpVersionPolicy>().is_ok()),

@@ -114,10 +114,12 @@ impl TimeoutMode {
 
 /// Whether a request checks certificates as Preferences says, always, or never.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(missing_docs)]
 pub enum TlsMode {
+    /// Follow Preferences.
     Inherit,
+    /// Always verify.
     On,
+    /// Accept any certificate.
     Off,
 }
 
@@ -162,11 +164,14 @@ impl TlsMode {
 
 /// Whether a request speaks the Preferences HTTP version or one of its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(missing_docs)]
 pub enum VersionMode {
+    /// Follow Preferences.
     Inherit,
+    /// HTTP/1.1 only.
     Http1Only,
+    /// HTTP/2 over https when the server offers it.
     Auto,
+    /// HTTP/2 from the first byte.
     Http2PriorKnowledge,
 }
 
