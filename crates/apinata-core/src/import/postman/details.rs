@@ -4,10 +4,10 @@
 use super::notes::members;
 use super::{ImportNote, NoteKind, ensure_string, js_string, truthy};
 use crate::edit::{
-    ApiKeyPlacement, AuthSpec, ClientAuth, EdgeGridSpec, OAuth1KeyKind, OAuth1Placement,
-    OAuth1PrivateKey, OAuth1SignatureMethod, OAuth1Spec, OAuth2Flow, OAuth2Param,
-    OAuth2ParamPlacement, OAuth2Spec, OAuth2Stage, RequestSettings, TokenPlacement, VarValue,
-    Variable,
+    ApiKeyPlacement, AuthSpec, ClientAuth, EdgeGridSpec, JwtAlgorithm, JwtPlacement, JwtSpec,
+    OAuth1KeyKind, OAuth1Placement, OAuth1PrivateKey, OAuth1SignatureMethod, OAuth1Spec,
+    OAuth2Flow, OAuth2Param, OAuth2ParamPlacement, OAuth2Spec, OAuth2Stage, RequestSettings,
+    TokenPlacement, VarValue, Variable,
 };
 use crate::js;
 use serde_json::Value;
@@ -57,6 +57,7 @@ pub(super) fn auth(
         },
         Some("oauth1") => AuthSpec::OAuth1(oauth1(values)),
         Some("edgegrid") => AuthSpec::EdgeGrid(edgegrid(values)),
+        Some("jwt") => AuthSpec::Jwt(jwt(values)),
         Some("ntlm") => {
             // Apinata derives the workstation itself, so a stated one is noted and dropped.
             if !get("workstation").is_empty() {
@@ -389,6 +390,33 @@ fn edgegrid(values: Option<&Value>) -> EdgeGridSpec {
         base_url: get("baseURL"),
         headers_to_sign: get("headersToSign"),
         max_body_size,
+    }
+}
+
+/// The runtime's jwt keys. An object header is written as its JSON text; a missing prefix is
+/// `Bearer` and a missing query key `token`, while an empty prefix stays empty.
+fn jwt(values: Option<&Value>) -> JwtSpec {
+    let get = |key: &str| ensure_string(auth_value(values, key));
+    let filled = |key: &str| Some(get(key)).filter(|v| !v.is_empty());
+    let header_prefix = match auth_value(values, "headerPrefix") {
+        None | Some(Value::Null) => "Bearer".to_owned(),
+        // The token is joined with one space, so padding here would double it.
+        prefix => ensure_string(prefix).trim().to_owned(),
+    };
+    JwtSpec {
+        algorithm: filled("algorithm").map_or(JwtAlgorithm::Hs256, |a| JwtAlgorithm::parse(&a)),
+        secret: get("secret"),
+        secret_base64: truthy(auth_value(values, "isSecretBase64Encoded")),
+        private_key: filled("privateKey").map(|k| OAuth1PrivateKey::new(OAuth1KeyKind::Text, k)),
+        headers: get("header"),
+        payload: get("payload"),
+        expires_in: String::new(),
+        placement: match auth_value(values, "addTokenTo").and_then(Value::as_str) {
+            Some("queryParam") => JwtPlacement::Query,
+            _ => JwtPlacement::Header,
+        },
+        header_prefix: Some(header_prefix),
+        query_param_key: filled("queryParamKey").unwrap_or_else(|| "token".to_owned()),
     }
 }
 

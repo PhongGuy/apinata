@@ -188,6 +188,20 @@ pub(super) enum Mapped {
         value: String,
         add_to: Option<String>,
     },
+    Jwt(Box<JwtMembers>),
+}
+
+/// A JWT auth's members as text; an absent prefix or placement is `None`.
+pub(super) struct JwtMembers {
+    pub(super) algorithm: String,
+    pub(super) secret: String,
+    pub(super) private_key: String,
+    pub(super) payload: String,
+    pub(super) headers: String,
+    pub(super) add_to: Option<String>,
+    pub(super) secret_base64: bool,
+    pub(super) header_prefix: Option<String>,
+    pub(super) param_name: String,
 }
 
 impl<'de> Deserialize<'de> for Auth {
@@ -219,6 +233,21 @@ impl<'de> Deserialize<'de> for Auth {
             key: Option<Text>,
             value: Option<Text>,
             add_to: Option<Text>,
+            #[serde(flatten)]
+            rest: Map<String, Value>,
+        }
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Jwt {
+            algorithm: Option<Text>,
+            secret: Option<Text>,
+            private_key: Option<Text>,
+            payload: Option<Text>,
+            jwt_headers: Option<Text>,
+            add_to: Option<Text>,
+            is_secret_base64_encoded: Option<bool>,
+            header_prefix: Option<Text>,
+            param_name: Option<Text>,
             #[serde(flatten)]
             rest: Map<String, Value>,
         }
@@ -255,6 +284,21 @@ impl<'de> Deserialize<'de> for Auth {
                 let (key, value) = (text(k.key), text(k.value));
                 let add_to = k.add_to.map(|t| t.0);
                 (Mapped::ApiKey { key, value, add_to }, k.rest)
+            }
+            "jwt" => {
+                let j: Jwt = read(head.rest)?;
+                let members = JwtMembers {
+                    algorithm: text(j.algorithm),
+                    secret: text(j.secret),
+                    private_key: text(j.private_key),
+                    payload: text(j.payload),
+                    headers: text(j.jwt_headers),
+                    add_to: j.add_to.map(|t| t.0),
+                    secret_base64: j.is_secret_base64_encoded.unwrap_or(false),
+                    header_prefix: j.header_prefix.map(|t| t.0),
+                    param_name: text(j.param_name),
+                };
+                (Mapped::Jwt(Box::new(members)), j.rest)
             }
             other => return Ok(Auth::Unsupported(other.to_owned())),
         };

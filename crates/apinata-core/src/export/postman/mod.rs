@@ -12,7 +12,7 @@ use super::body::body;
 use super::extras::{collection_variables, events, responses};
 use super::{ExportNote, PostmanExport, PostmanOptions};
 use crate::collection::{Collection, Folder};
-use crate::edit::{AuthSpec, BodySpec, KeyValue, Param, ParamKind, Timeout};
+use crate::edit::{AuthSpec, BodySpec, KeyValue, OAuth1KeyKind, Param, ParamKind, Timeout};
 use crate::js::js_trim;
 use crate::request::RequestFile;
 use crate::resolve::HeaderSource;
@@ -433,9 +433,21 @@ fn note_if(notes: &mut Vec<ExportNote>, path: &[&str], member: &str, lost: bool,
     }
 }
 
-/// Note an auth mode the export could not carry, at `<path> / auth`.
+/// Note an auth mode the export could not carry, or the JWT fields Postman has no place for,
+/// at `<path> / auth`.
 fn note_unsupported_auth(notes: &mut Vec<ExportNote>, path: &[&str], spec: &AuthSpec) {
     let mode = match spec {
+        AuthSpec::Jwt(j) => {
+            let expiry = !j.expires_in.trim().is_empty();
+            note_if(notes, path, "auth", expiry, "the JWT expiresIn was dropped");
+            let file = j
+                .private_key
+                .as_ref()
+                .is_some_and(|k| k.kind == OAuth1KeyKind::File);
+            let detail = "the JWT key file was dropped; paste the key in Postman";
+            note_if(notes, path, "auth", file, detail);
+            return;
+        }
         AuthSpec::Unsupported { mode } => mode.as_str(),
         AuthSpec::Wsse { .. } => "WSSE",
         _ => return,

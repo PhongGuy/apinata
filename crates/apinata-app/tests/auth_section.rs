@@ -279,6 +279,7 @@ fn switching_to_the_new_modes_sends_empty_specs_and_back_restores(cx: &mut TestA
             "Inherit",
             "Basic Auth",
             "Bearer Token",
+            "JWT Bearer",
             "API Key",
             "Digest Auth",
             "NTLM",

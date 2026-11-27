@@ -12,6 +12,19 @@ info:
 http:
   method: GET
   url: "{{url}}"
+  auth:
+    type: jwt
+    algorithm: "{{algorithm}}"
+    secret: "{{secret}}"
+    secretBase64: false
+    privateKey:
+      type: text
+      value: "{{privateKey}}"
+    headers: "{{jwtHeaders}}"
+    payload: "{{payload}}"
+    placement: header
+    headerPrefix: "{{headerPrefix}}"
+    queryParamKey: token
 
 settings:
   encodeUrl: true
@@ -31,6 +44,5 @@ extensions:
       - node_modules
       - .git
 == report
-Converted jwt-auth-headers / auth: `jwt` auth is not supported; imported as no auth (jwt-auth-headers.yml)
 Dropped jwt-auth-headers / testScript: scripts are not imported (jwt-auth-headers.yml)
-NeedsInput collection: needs a value: `url`; nothing imported defines it, so add it to the collection's variables or an environment before sending (-)
+NeedsInput collection: needs a value: `algorithm`, `headerPrefix`, `jwtHeaders`, `payload`, `privateKey`, `secret`, `url`; nothing imported defines them, so add them to the collection's variables or an environment before sending (-)

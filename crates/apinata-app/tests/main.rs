@@ -365,6 +365,7 @@ mod input_padding;
 mod input_rest;
 mod invalid_cue;
 mod item_chords_scope;
+mod jwt_editor;
 mod kept_digests;
 mod kept_digests_store;
 mod keyboard_cancel;
