@@ -36,7 +36,7 @@ $("h2").addClass("welcome");
 console.log($.html());
 console.log($("p").length, $("p").last().text(), $("h2").hasClass("welcome"));
 console.log(c === cheerio, typeof c.load, typeof c.contains, typeof c.merge);
-for (const name of ["fromURL", "loadBuffer", "stringStream"]) {
+for (const name of ["fromURL", "loadBuffer", "stringStream", "decodeStream"]) {
   try { c[name]("http://127.0.0.1:1/"); } catch (e) { console.log(e.message); }
 }"#;
     let result = run_code(code).await;
@@ -50,6 +50,7 @@ for (const name of ["fromURL", "loadBuffer", "stringStream"]) {
             "log:cheerio.fromURL is not available here",
             "log:cheerio.loadBuffer is not available here",
             "log:cheerio.stringStream is not available here",
+            "log:cheerio.decodeStream is not available here",
         ]
     );
 }
@@ -77,37 +78,67 @@ console.log(typeof xml2js.Parser, require("xml2js") === xml2js);"#;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn xml2json_uses_postman_options_and_answers_an_empty_object_on_bad_xml() {
+async fn xml2js_async_mode_parses_in_chunks_over_the_engine_timer() {
+    let code = r#"const xml2js = require("xml2js");
+const xml = "<r>" + "<i>x</i>".repeat(5000) + "</r>";
+const opts = { async: true, chunkSize: 1000, explicitArray: false };
+let sync = "unset";
+const done = new Promise((resolve, reject) => {
+  new xml2js.Parser(opts).parseString(xml, (err, res) => (err ? reject(err) : resolve(res)));
+});
+sync = "returned first";
+const res = await done;
+console.log(sync, res.r.i.length);
+const viaPromise = await xml2js.parseStringPromise("<a>1</a>", { async: true });
+console.log(JSON.stringify(viaPromise));"#;
+    let result = run_code(code).await;
+    assert_eq!(
+        console(&result),
+        ["log:returned first 5000", r#"log:{"a":"1"}"#]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn xml2json_answers_as_postman_does_for_good_bad_and_empty_xml() {
     let code = r#"console.log(typeof Object.getOwnPropertyDescriptor(globalThis, "xml2Json").get);
 console.log(JSON.stringify(xml2Json('<root id="7"><name> Ann </name><tag>a</tag><tag>b</tag></root>')));
-console.log(JSON.stringify(xml2Json("<a><b></a>")));"#;
+console.log(String(xml2Json("<a><b></a>")), String(xml2Json("")));"#;
     let result = run_code(code).await;
     assert_eq!(
         console(&result),
         [
             "log:function",
             r#"log:{"root":{"$":{"id":"7"},"name":"Ann","tag":["a","b"]}}"#,
-            "log:{}",
+            "log:undefined null",
         ]
     );
+}
+
+/// Scripts on with a 16 MiB memory limit, loose enough in time that only memory can stop them.
+fn small_heap() -> RunOptions {
+    RunOptions::new().scripts(
+        ScriptOptions::new()
+            .enabled(true)
+            .memory_limit(16 << 20)
+            .timeout(Duration::from_secs(20)),
+    )
+}
+
+const LOAD_LIST: &str = "const $ = cheerio.load(res.getBody()); console.log($('li').length);";
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_small_body_parses_under_the_16_mib_limit() {
+    let body = format!("<ul>{}</ul>", "<li class=\"x\">item</li>".repeat(100));
+    let result = run_with(LOAD_LIST, &body, small_heap()).await;
+    assert_eq!(result.outcome, Outcome::Passed, "{:?}", tests(&result));
+    assert_eq!(console(&result), ["log:100"]);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_large_body_ends_at_the_memory_limit_not_in_a_hang() {
     let body = format!("<ul>{}</ul>", "<li class=\"x\">item</li>".repeat(100_000));
-    let opts = RunOptions::new().scripts(
-        ScriptOptions::new()
-            .enabled(true)
-            .memory_limit(16 << 20)
-            .timeout(Duration::from_secs(20)),
-    );
     let start = Instant::now();
-    let result = run_with(
-        "const $ = cheerio.load(res.getBody()); console.log($('li').length);",
-        &body,
-        opts,
-    )
-    .await;
+    let result = run_with(LOAD_LIST, &body, small_heap()).await;
     assert!(
         start.elapsed() < Duration::from_secs(10),
         "{:?}",
@@ -149,4 +180,17 @@ fn third_party_lists_the_cheerio_bundle_with_its_hash() {
 #[test]
 fn third_party_lists_the_xml2js_bundle_with_its_hash() {
     listed_with_hash("xml2js-0.6.2.min.js", "xml2js", "0.6.2");
+}
+
+#[test]
+fn third_party_names_both_licences_in_the_sax_file() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let listing = std::fs::read_to_string(root.join("THIRD-PARTY.md")).expect("THIRD-PARTY.md");
+    let notice = std::fs::read_to_string(root.join("licenses/sax-ISC.txt")).expect("sax");
+    assert!(notice.contains("ISC License") && notice.contains("MIT"));
+    assert!(
+        listing
+            .contains("ISC and MIT (its `String.fromCodePoint` polyfill), `licenses/sax-ISC.txt`"),
+        "the xml2js row must name sax's MIT part"
+    );
 }

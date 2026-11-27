@@ -13,11 +13,12 @@
     buffer: () => get("buffer"), ajv: () => get("ajv").Ajv, "ajv-formats": () => get("ajv").addFormats,
     cheerio: () => get("cheerio"), xml2js: () => get("xml2js"),
   };
-  // Postman's xml2Json: one synchronous parse with its options, and `{}` for text that is not XML.
+  // Postman's xml2Json: one synchronous parse with its options, answering xml2js's result as is,
+  // so text that is not XML gives `undefined` and empty text `null`.
   const xml2Json = () => (text) => {
     let out = {};
     const options = { explicitArray: false, async: false, trim: true, mergeAttrs: false };
-    get("xml2js").parseString(text, options, (err, result) => { out = err || result == null ? {} : result; });
+    get("xml2js").parseString(text, options, (_, result) => { out = result; });
     return out;
   };
   const globals = { moment: modules.moment, _: modules.lodash, tv4: modules.tv4, Buffer: () => get("buffer").Buffer,
