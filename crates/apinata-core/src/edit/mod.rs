@@ -24,7 +24,7 @@ pub use oauth2::{
     TokenPlacement, TokenSource,
 };
 pub(crate) use settings::omitted_names;
-pub use settings::{RequestSettings, Timeout};
+pub use settings::{RequestSettings, Timeout, TlsVerify};
 
 use crate::document::{Fields, Origin, write_entry};
 use crate::error::EditError;

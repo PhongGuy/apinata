@@ -1365,7 +1365,7 @@ pub struct McpArgs {
     /// Ignored without `--global-env`.
     #[arg(long, value_name = "DIR")]
     pub workspace: Option<PathBuf>,
-    /// Accept invalid TLS certificates.
+    /// Accept invalid TLS certificates for every request, over its own certificate setting.
     #[arg(long)]
     pub insecure: bool,
     #[command(flatten)]
@@ -1434,15 +1434,14 @@ pub struct NetworkArgs {
     /// Route requests that inherit the global proxy through this proxy auto-config file (URL or path).
     #[arg(long, value_name = "URL|PATH", value_parser = network::parse_pac_source, conflicts_with = "noproxy")]
     pub proxy_pac: Option<PacSource>,
-    /// The HTTP version: 1.1 (HTTP/1.1 only, the default), auto (HTTP/2 over HTTPS when the server offers it) or 2-prior-knowledge (HTTP/2 without negotiation, also over plain http).
+    /// The HTTP version for every request, over each request's own setting: 1.1 (HTTP/1.1 only, the default for a request without one), auto (HTTP/2 over HTTPS when the server offers it) or 2-prior-knowledge (HTTP/2 without negotiation, also over plain http).
     #[arg(
         long,
         value_name = "VERSION",
-        default_value = "1.1",
         value_parser = PossibleValuesParser::new(["1.1", "auto", "2-prior-knowledge"])
             .try_map(|s| s.parse::<HttpVersionPolicy>())
     )]
-    pub http_version: HttpVersionPolicy,
+    pub http_version: Option<HttpVersionPolicy>,
 }
 
 #[derive(clap::Args)]
@@ -1512,7 +1511,7 @@ pub struct RunArgs {
     /// Stop after the first failed or errored request.
     #[arg(long)]
     pub bail: bool,
-    /// Accept invalid TLS certificates.
+    /// Accept invalid TLS certificates for every request, over its own certificate setting.
     #[arg(long)]
     pub insecure: bool,
     /// Do not store or send cookies between requests in this run.

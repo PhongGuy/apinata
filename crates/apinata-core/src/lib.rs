@@ -190,8 +190,8 @@ pub use edit::{
     FileEntry, JwtAlgorithm, JwtPlacement, JwtSpec, KeyValue, MultipartField, MultipartValue,
     OAuth1KeyKind, OAuth1Placement, OAuth1PrivateKey, OAuth1SignatureMethod, OAuth1Spec,
     OAuth2Flow, OAuth2Param, OAuth2ParamPlacement, OAuth2Spec, OAuth2Stage, Param, ParamKind,
-    RequestSettings, Timeout, TokenPlacement, TokenSource, VarValue, Variable, collection_relative,
-    parse_auth_json,
+    RequestSettings, Timeout, TlsVerify, TokenPlacement, TokenSource, VarValue, Variable,
+    collection_relative, parse_auth_json,
 };
 // The auth JSON parser's two paths, for the test that holds them equal.
 pub use connection::{TlsDetails, TlsVersion, status_description};

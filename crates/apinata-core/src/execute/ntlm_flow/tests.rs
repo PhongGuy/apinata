@@ -45,6 +45,8 @@ fn key() -> ClientKey {
         identity: None,
         overrides: Default::default(),
         http1_only: false,
+        insecure: false,
+        http_version: crate::HttpVersionPolicy::default(),
         unix_socket: None,
     }
 }

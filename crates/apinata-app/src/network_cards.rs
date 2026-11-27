@@ -44,6 +44,9 @@ pub fn connection_lines(r: &Response) -> Vec<String> {
             .version
             .map_or_else(|| "unknown".to_owned(), |v| v.to_string());
         lines.push(format!("TLS  {version}"));
+        if !tls.verified {
+            lines.push("Certificate  not verified".to_owned());
+        }
         lines.extend(tls.subject.as_ref().map(|s| format!("Subject  {s}")));
         lines.extend(tls.issuer.as_ref().map(|s| format!("Issuer  {s}")));
         lines.extend(tls.expires_label().map(|at| format!("Expires  {at}")));

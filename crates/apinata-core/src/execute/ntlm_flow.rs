@@ -167,6 +167,7 @@ impl Sent {
         started: Instant,
         pac: Option<&str>,
         via_proxy: bool,
+        verified: bool,
     ) -> Hop {
         Hop {
             method: self.method,
@@ -183,7 +184,7 @@ impl Sent {
             version: HttpVersion::from_wire(res.version()),
             remote_addr: res.remote_addr(),
             local_addr: local_addr(res),
-            tls: crate::connection::tls_details(res),
+            tls: crate::connection::tls_details(res, verified),
             response_header_size: crate::connection::response_header_size(
                 res.status(),
                 res.headers(),
@@ -311,7 +312,7 @@ impl Executor {
             ));
         }
         let pinned = local_addr(&first);
-        let hop = probe_sent.hop(&first, started, pac, proxy.is_some());
+        let hop = probe_sent.hop(&first, started, pac, proxy.is_some(), !key.insecure);
         let cookies = leg
             .run(self.drain(first, url, store_cookies))
             .await
@@ -358,7 +359,7 @@ impl Executor {
         let (client_challenge, filetime) = ntlm::fresh()
             .ok_or_else(|| ntlm_err(url, NtlmCause::Random, "no random bytes were available"))?;
         let message = ntlm::type3(&parsed, creds, client_challenge, filetime).map_err(unusable)?;
-        let hop = type1_sent.hop(&second, started, pac, proxy.is_some());
+        let hop = type1_sent.hop(&second, started, pac, proxy.is_some(), !key.insecure);
         let cookies = leg
             .run(self.drain(second, url, store_cookies))
             .await

@@ -49,7 +49,7 @@ fn an_https_exchange_lists_status_local_address_header_size_and_tls() {
     assert_eq!(
         lines[3],
         "tls: TLS 1.3, subject CN=localhost, issuer CN=apinata-test-ca, \
-         expires 2126-09-17 07:15:32 UTC",
+         expires 2126-09-17 07:15:32 UTC, certificate not verified",
         "{stderr}"
     );
 }

@@ -54,7 +54,7 @@ pub struct SendArgs {
     /// The report format written to stdout; text prints only the response body.
     #[arg(long, value_enum, default_value_t = Format::Text)]
     pub format: Format,
-    /// Accept invalid TLS certificates.
+    /// Accept invalid TLS certificates for every request, over its own certificate setting.
     #[arg(long)]
     pub insecure: bool,
     /// Do not store or send cookies.

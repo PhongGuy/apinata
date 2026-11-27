@@ -870,3 +870,48 @@ fn a_zero_or_blank_expires_in_is_not_noted() {
     let (_, notes) = oauth2_of(&[("expires_in", r#""3600""#)]);
     assert!(noted(&notes, NoteKind::Dropped, "expires_in"), "{notes:?}");
 }
+
+#[test]
+fn strict_ssl_and_protocol_version_become_the_request_transport() {
+    use apinata_core::{HttpVersionPolicy, TlsVerify};
+    let transport = |behavior: &str| {
+        let c = request("", &format!(r#", "protocolProfileBehavior": {behavior}"#));
+        let r = only_request(&c).clone();
+        let s = r.request.settings.expect("set");
+        (s.verify_tls, s.http_version, r.notes)
+    };
+    let (verify, version, notes) = transport(r#"{"strictSSL": false, "protocolVersion": "http1"}"#);
+    assert_eq!(
+        (verify, version),
+        (TlsVerify::Off, Some(HttpVersionPolicy::Http1Only))
+    );
+    assert!(notes.is_empty(), "{notes:?}");
+    let (verify, version, notes) = transport(r#"{"strictSSL": true, "protocolVersion": "auto"}"#);
+    assert_eq!(
+        (verify, version),
+        (TlsVerify::On, Some(HttpVersionPolicy::Auto))
+    );
+    assert!(notes.is_empty(), "{notes:?}");
+    // Postman negotiates its HTTP/2, so it becomes Auto, and the change is reported.
+    let (_, version, notes) = transport(r#"{"protocolVersion": "http2"}"#);
+    assert_eq!(version, Some(HttpVersionPolicy::Auto));
+    assert!(
+        notes.iter().any(|n| n.kind == NoteKind::Converted
+            && n.source == "r / protocolProfileBehavior.protocolVersion"),
+        "{notes:?}"
+    );
+    // Anything else keeps verification on its default and is reported as dropped.
+    let (verify, version, notes) = transport(r#"{"strictSSL": "no", "protocolVersion": "h3"}"#);
+    assert_eq!((verify, version), (TlsVerify::Inherit, None));
+    let dropped: Vec<_> = (notes.iter())
+        .filter(|n| n.kind == NoteKind::Dropped)
+        .map(|n| n.source.as_str())
+        .collect();
+    assert_eq!(
+        dropped,
+        [
+            "r / protocolProfileBehavior.strictSSL",
+            "r / protocolProfileBehavior.protocolVersion"
+        ]
+    );
+}

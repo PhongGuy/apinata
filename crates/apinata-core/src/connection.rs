@@ -46,6 +46,8 @@ pub struct TlsDetails {
     pub issuer: Option<String>,
     /// When the leaf certificate stops being valid (its notAfter).
     pub expires: Option<SystemTime>,
+    /// Whether the certificate was checked; false when the check was turned off.
+    pub verified: bool,
 }
 
 impl TlsDetails {
@@ -68,8 +70,9 @@ pub(crate) fn local_addr(res: &reqwest::Response) -> Option<std::net::SocketAddr
     res.extensions().get::<HttpInfo>().map(HttpInfo::local_addr)
 }
 
-/// The TLS details reqwest attached to `res`; `None` for a hop that was not over TLS.
-pub(crate) fn tls_details(res: &reqwest::Response) -> Option<TlsDetails> {
+/// The TLS details reqwest attached to `res`, `verified` saying whether the check ran; `None`
+/// for a hop that was not over TLS.
+pub(crate) fn tls_details(res: &reqwest::Response, verified: bool) -> Option<TlsDetails> {
     let info = res.extensions().get::<reqwest::tls::TlsInfo>()?;
     let version = info.version().and_then(|v| {
         use reqwest::tls::Version;
@@ -92,6 +95,7 @@ pub(crate) fn tls_details(res: &reqwest::Response) -> Option<TlsDetails> {
         subject: tbs.map(|t| t.subject().to_string()),
         issuer: tbs.map(|t| t.issuer().to_string()),
         expires: tbs.map(|t| std::time::UNIX_EPOCH + t.validity().not_after.to_unix_duration()),
+        verified,
     })
 }
 

@@ -23,6 +23,8 @@ pub(crate) const SETTINGS: &[&str] = &[
     "maxRedirects",
     "forwardAuthorizationHeader",
     "omitHeaders",
+    "verifySsl",
+    "httpVersion",
 ];
 
 /// Keys of one entry of `examples`.
