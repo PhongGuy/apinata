@@ -9,7 +9,7 @@ mod retained;
 #[cfg(test)]
 mod test_support;
 
-pub(crate) use hold::SendHold;
+pub(crate) use hold::{HoldGuard, SendHold};
 pub(crate) use retained::Logged;
 pub(crate) use {capture::Exchange, redact::Redactor};
 

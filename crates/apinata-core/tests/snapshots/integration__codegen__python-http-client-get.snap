@@ -1,0 +1,17 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+# http.client does not follow redirects; this prints the first response.
+import http.client
+
+conn = http.client.HTTPConnection('x.test')
+headers = {
+    'X-A': '2',
+    'Cookie': 'b=2',
+}
+
+conn.request('GET', '/a?q=1&r=two', headers=headers)
+response = conn.getresponse()
+print(response.status)
+print(response.read().decode('utf-8', 'replace'))

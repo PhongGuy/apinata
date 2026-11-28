@@ -25,6 +25,7 @@ use crate::cookies::CookieJar;
 use crate::default_headers::{defaults_without, omits};
 use crate::digest;
 use crate::edgegrid;
+use crate::hawk;
 use crate::host_guard::{
     Guard, HostPolicy, Lookup, SystemLookup, judge_with_overrides, refusal_in,
 };
@@ -639,7 +640,7 @@ impl ExecError {
 /// Sends resolved requests, sharing one cookie jar and one connection pool per proxy rule.
 #[non_exhaustive]
 pub struct Executor {
-    clients: Clients,
+    clients: Arc<Clients>,
     network: NetworkSettings,
     system: Arc<SystemProxy>,
     insecure: bool,
@@ -777,7 +778,7 @@ impl Executor {
             _ => SystemProxy::new(Matcher::builder().build()),
         };
         Ok(Executor {
-            clients: Clients::default(),
+            clients: Arc::default(),
             network,
             system: Arc::new(system),
             insecure: opts.insecure,
@@ -803,7 +804,7 @@ impl Executor {
     #[must_use]
     pub fn with_cookie_jar(&self, jar: Arc<CookieJar>) -> Executor {
         Executor {
-            clients: Clients::default(),
+            clients: Arc::default(),
             network: self.network.clone(),
             system: Arc::clone(&self.system),
             insecure: self.insecure,
@@ -821,6 +822,15 @@ impl Executor {
             http_version: self.http_version,
             timeout_cap: self.timeout_cap,
             network_check: self.network_check.clone(),
+        }
+    }
+
+    /// An executor like [`Executor::with_cookie_jar`] that shares this one's connections, for a
+    /// send of a parallel run reading and writing its own overlay of the jar.
+    pub(crate) fn with_overlay_jar(&self, jar: Arc<CookieJar>) -> Executor {
+        Executor {
+            clients: Arc::clone(&self.clients),
+            ..self.with_cookie_jar(jar)
         }
     }
 
@@ -1586,6 +1596,28 @@ impl Executor {
                 buf.place(&value);
                 sending.retain(|(n, _)| !n.eq_ignore_ascii_case("authorization"));
                 sending.push(("authorization".to_owned(), value));
+            }
+            // Hawk binds this hop's method, target, host and port (and body hash when asked)
+            // under a fresh nonce; like EdgeGrid, an off-origin hop is signed only when forwarding.
+            if let Some(SendAuth::Hawk(signer)) = req.send_auth()
+                && (!left_origin || req.forward_authorization_header())
+            {
+                let content_type = sending
+                    .iter()
+                    .find(|(n, _)| n.eq_ignore_ascii_case("content-type"))
+                    .map(|(_, v)| v.as_str());
+                let signed = signer
+                    .sign(&hawk::Outgoing {
+                        method: method.as_str(),
+                        url: &url,
+                        content_type,
+                        body: &body,
+                    })
+                    .map_err(|e| invalid(format!("could not sign the request: {e}")))?;
+                buf.place(&signed.header);
+                buf.place(&signed.mac);
+                sending.retain(|(n, _)| !n.eq_ignore_ascii_case("authorization"));
+                sending.push(("authorization".to_owned(), signed.header));
             }
             if let Some(value) = digest_header.take() {
                 buf.place(&value);

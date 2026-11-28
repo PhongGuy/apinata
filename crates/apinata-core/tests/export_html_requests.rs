@@ -104,7 +104,15 @@ fn auth_shows_the_mode_label_and_never_a_value() {
             "  auth:\n    type: ntlm\n    username: u-secret\n    password: p-secret\n    domain: d-secret\n",
             "NTLM",
         ),
-        ("  auth:\n    type: hawk\n", "hawk"),
+        (
+            "  auth:\n    type: hawk\n    authId: id-secret\n    authKey: k-secret\n",
+            "Hawk",
+        ),
+        (
+            "  auth:\n    type: asap\n    issuer: i-secret\n    privateKey: k-secret\n",
+            "ASAP",
+        ),
+        ("  auth:\n    type: kerberos\n", "kerberos"),
     ];
     for (auth, label) in cases {
         let (_d, c) = open(&[

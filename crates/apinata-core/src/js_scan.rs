@@ -208,6 +208,49 @@ pub(crate) fn skip_trivia(src: &str, mut i: usize, end: usize) -> usize {
     }
 }
 
+/// The first of `names` that `src` holds as a whole identifier outside comments. Strings,
+/// templates and regexes are searched too, so a name built into a lookup or hidden in a
+/// `${...}` hole still counts: a false match only refuses, a miss would let a call through.
+pub(crate) fn first_name<'n>(src: &str, names: &[&'n str]) -> Option<&'n str> {
+    let b = src.as_bytes();
+    let named = |from: usize, to: usize| -> Option<&'n str> {
+        let mut i = from;
+        while i < to {
+            if is_ident_byte(b[i]) {
+                let end = ident_end(&b[..to], i);
+                if let Some(n) = names.iter().find(|n| n.as_bytes() == &b[i..end]) {
+                    return Some(n);
+                }
+                i = end;
+            } else {
+                i += 1;
+            }
+        }
+        None
+    };
+    let mut i = 0;
+    while i < b.len() {
+        match skip_opaque(src, i) {
+            Some(end) if b[i] == b'/' && matches!(b.get(i + 1), Some(b'/' | b'*')) => i = end,
+            Some(end) => {
+                if let Some(n) = named(i, end) {
+                    return Some(n);
+                }
+                i = end.max(i + 1);
+            }
+            None if is_ident_byte(b[i]) => {
+                let end = ident_end(b, i);
+                if let Some(n) = named(i, end) {
+                    return Some(n);
+                }
+                i = end;
+            }
+            None => i += 1,
+        }
+    }
+    None
+}
+
 /// Whether `src` calls `test(...)` as a plain function: the call has to sit outside strings,
 /// comments, templates and regexes, and `obj.test(` or `mytest(` do not count.
 pub(crate) fn calls_test(src: &str) -> bool {

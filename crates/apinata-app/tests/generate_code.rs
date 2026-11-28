@@ -310,12 +310,21 @@ fn every_new_target_generates_in_the_dialog(cx: &mut TestAppContext) {
     frame(cx, s.win);
     palette(cx, &s, "generate code");
     let view = cx.update(|cx| current(cx)).unwrap();
-    for (target, start) in [
-        (Target::PowerShellRestMethod, "#Requires -Version 7"),
-        (Target::PhpCurl, "<?php"),
-        (Target::RustReqwest, "// Cargo.toml: reqwest"),
-        (Target::JavaHttpClient, "import "),
-        (Target::CSharpHttpClient, "using "),
+    // http.client takes the URL apart, so its snippet holds the request target, not the URL.
+    let url = "http://x.test/ok";
+    for (target, start, holds) in [
+        (Target::PowerShellRestMethod, "#Requires -Version 7", url),
+        (Target::PhpCurl, "<?php", url),
+        (Target::RustReqwest, "// Cargo.toml: reqwest", url),
+        (Target::JavaHttpClient, "import ", url),
+        (Target::CSharpHttpClient, "using ", url),
+        (Target::Wget, "wget ", url),
+        (
+            Target::PythonHttpClient,
+            "# http.client does not follow",
+            "conn.request('GET', '/ok'",
+        ),
+        (Target::NodeHttp, "// Node's http module", url),
     ] {
         cx.update_window(s.win, |_, w, cx| {
             view.update(cx, |v, cx| v.set_target(target, w, cx))
@@ -324,19 +333,13 @@ fn every_new_target_generates_in_the_dialog(cx: &mut TestAppContext) {
         let (shown_target, text) = shown(cx).expect("dialog open");
         assert_eq!(shown_target, target);
         assert!(text.starts_with(start), "{}: {text}", target.id());
-        assert!(text.contains("http://x.test/ok"), "{}: {text}", target.id());
+        assert!(text.contains(holds), "{}: {text}", target.id());
     }
     close(cx, &s);
 }
 
-/// Targets shown as plain text: raw HTTP has no grammar, and the kit features for Ruby,
-/// Kotlin and Swift are not built.
-const PLAIN_TEXT: [Target; 4] = [
-    Target::RawHttp,
-    Target::RubyNetHttp,
-    Target::KotlinOkHttp,
-    Target::SwiftUrlSession,
-];
+/// Targets shown as plain text: raw HTTP has no grammar.
+const PLAIN_TEXT: [Target; 1] = [Target::RawHttp];
 
 #[test]
 fn every_target_gets_a_known_grammar() {
@@ -415,6 +418,37 @@ fn the_powershell_query_compiles_and_paints_a_snippet(cx: &mut TestAppContext) {
         styles.iter().any(|(_, style)| style.color.is_some()),
         "powershell paints nothing: {styles:?}"
     );
+}
+
+#[gpui_kit::test]
+fn the_ruby_kotlin_and_swift_queries_compile_and_paint_a_snippet(cx: &mut TestAppContext) {
+    use gpui_kit::component::Rope;
+    use gpui_kit::component::highlighter::{HighlightTheme, SyntaxHighlighter};
+    let col = with_request(&request("a", "http://x.test/ok"), &[]);
+    let _s = started(cx, &col);
+    let snippets = [
+        (
+            "ruby",
+            "require \"net/http\"\nuri = URI(\"http://x.test\")\nputs uri\n",
+        ),
+        (
+            "kotlin",
+            "import okhttp3.OkHttpClient\nfun main() {\n    val s = \"hi\"\n}\n",
+        ),
+        ("swift", "import Foundation\nlet s = \"hi\"\nprint(s)\n"),
+    ];
+    for (language, code) in snippets {
+        // A query that fails to compile makes the kit fall back to plain "text".
+        let mut h = SyntaxHighlighter::new(language);
+        assert_eq!(h.language().as_ref(), language);
+        h.update(None, &Rope::from(code), None);
+        let theme = HighlightTheme::default_dark();
+        let styles = h.styles(&(0..code.len()), &*theme);
+        assert!(
+            styles.iter().any(|(_, style)| style.color.is_some()),
+            "{language} paints nothing: {styles:?}"
+        );
+    }
 }
 
 #[gpui_kit::test]

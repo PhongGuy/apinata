@@ -22,12 +22,13 @@ use crate::edit::KeyValue;
 use crate::edit::omitted_names;
 use crate::edit::settings::{read_http_version, read_verify};
 use crate::edit::{
-    AuthSpec, EdgeGridSpec, JwtAlgorithm, JwtPlacement, JwtSpec, OAuth1KeyKind, OAuth1Placement,
-    OAuth1SignatureMethod, OAuth1Spec, OAuth2Spec, TokenPlacement, TokenSource,
+    AsapSpec, AuthSpec, EdgeGridSpec, HawkSpec, JwtAlgorithm, JwtPlacement, JwtSpec, OAuth1KeyKind,
+    OAuth1Placement, OAuth1SignatureMethod, OAuth1Spec, OAuth2Spec, TokenPlacement, TokenSource,
 };
 use crate::edit::{Param, ParamKind};
 use crate::encode_url::{authority_span, encode_url};
 use crate::error::ResolveError;
+use crate::hawk;
 use crate::header_check::header_problem;
 use crate::interpolate::{Tracker, Vars, interpolate, interpolate_tracked};
 use crate::item_path::ItemPath;
@@ -83,7 +84,7 @@ pub struct ResolvedRequest {
 }
 
 /// Auth that cannot be a header at resolve: digest answers a challenge, WSSE needs a fresh nonce
-/// per send, NTLM answers a challenge, and SigV4, OAuth 1.0 and EdgeGrid sign each hop.
+/// per send, NTLM answers a challenge, and SigV4, OAuth 1.0, EdgeGrid and Hawk sign each hop.
 #[derive(Clone, PartialEq)]
 pub(crate) enum SendAuth {
     Digest {
@@ -102,6 +103,7 @@ pub(crate) enum SendAuth {
         domain: String,
     },
     EdgeGrid(Box<edgegrid::Signer>),
+    Hawk(Box<hawk::Signer>),
 }
 
 /// A file the body reads: the path read, the path before joining to the root, and the text as
@@ -162,6 +164,9 @@ pub enum Warning {
     NextRequestNotFound,
     /// Scripts jumped between requests more than 10,000 times, so the run ended.
     NextRequestLoop,
+    /// A parallel run: the request changed cookies, and the later requests of its iteration
+    /// read the jar as the iteration began, so they did not see the change.
+    ParallelCookiesUnseen,
     /// AWS SigV4 auth lacks an access key, a secret key or a service, so the request is unsigned.
     AwsV4Unsigned,
     /// The AWS profile could not be read, so the auth fields were used.
@@ -203,6 +208,9 @@ impl fmt::Display for Warning {
             }
             Warning::NextRequestLoop => {
                 "scripts jumped between requests more than 10,000 times, so the run ended"
+            }
+            Warning::ParallelCookiesUnseen => {
+                "its cookie changes reach the next iteration, not the requests running alongside it"
             }
             Warning::AwsV4Unsigned => {
                 "AWS SigV4 needs an access key, a secret key and a service; the request is sent unsigned"
@@ -870,7 +878,12 @@ pub fn resolve_prepared(
             None => None,
         };
         let signed = match &auth {
-            Some(auth) => place_jwt_token(auth, &scope, ctx.root(), &mut headers, &mut url)?,
+            Some(auth) => {
+                match place_jwt_token(auth, &scope, ctx.root(), &mut headers, &mut url)? {
+                    Some(signed) => Some(signed),
+                    None => place_asap_token(auth, &scope, &mut headers)?,
+                }
+            }
             None => None,
         };
         let mut files = Vec::new();
@@ -1029,6 +1042,9 @@ pub(crate) fn token_request(
         &url,
         &mut sensitive_values,
     )?;
+    // The token fetch is part of the request's own send, so it keeps the request's timeout and
+    // certificate check; the host policy still limits a skipped check to loopback.
+    let own = settings(req.document().get(&["settings"]), ctx.default_timeout());
     Ok(ResolvedRequest {
         method: "POST".to_owned(),
         url_text: url.clone(),
@@ -1037,13 +1053,13 @@ pub(crate) fn token_request(
         header_problem: None,
         body: Body::FormUrlEncoded(form),
         settings: Settings {
-            timeout: settings(req.document().get(&["settings"]), ctx.default_timeout()).timeout,
+            timeout: own.timeout,
             follow_redirects: false,
             max_redirects: 0,
             forward_authorization_header: false,
             encode_url: false,
             omit_headers: Vec::new(),
-            verify_tls: None,
+            verify_tls: own.verify_tls,
             http_version: None,
         },
         warnings: Vec::new(),
@@ -1395,7 +1411,7 @@ fn auth_mode(value: Option<&Value>) -> Result<AuthMode<'_>, ResolveError> {
             match kind.as_deref() {
                 Some(
                     "basic" | "bearer" | "apikey" | "digest" | "awsv4" | "oauth1" | "wsse" | "ntlm"
-                    | "akamai-edgegrid" | "jwt",
+                    | "akamai-edgegrid" | "jwt" | "hawk" | "asap",
                 ) => Ok(AuthMode::Apply(map)),
                 // An oauth2 block without a known flow stays unsupported.
                 Some("oauth2") if OAuth2Spec::from_yaml(whole).is_some() => {
@@ -1850,6 +1866,55 @@ fn place_jwt_token(
     Ok(Some((secrets, token)))
 }
 
+/// Signs the token of an asap `auth` and sends it as `Authorization: Bearer`. Returns the
+/// values to hide (the key as written and as PEM, and the token) and the token, or `None` for
+/// any other auth. Every field is expanded before any check, so a variable error wins.
+fn place_asap_token(
+    auth: &Mapping,
+    scope: &Scope,
+    headers: &mut Vec<(String, String)>,
+) -> Result<Option<(Vec<String>, String)>, ResolveError> {
+    if auth.get("type").and_then(js::yaml_to_string).as_deref() != Some("asap") {
+        return Ok(None);
+    }
+    let mut spec = AsapSpec::from_yaml(&Value::Mapping(auth.clone()));
+    for value in [
+        &mut spec.algorithm,
+        &mut spec.issuer,
+        &mut spec.audience,
+        &mut spec.key_id,
+        &mut spec.subject,
+        &mut spec.expires_in,
+        &mut spec.additional_claims,
+        &mut spec.private_key,
+    ] {
+        *value = scope.expand(value)?;
+    }
+    let now = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let fields = jwt_auth::Asap {
+        algorithm: &spec.algorithm,
+        issuer: &spec.issuer,
+        audience: &spec.audience,
+        key_id: &spec.key_id,
+        subject: &spec.subject,
+        expires_in: &spec.expires_in,
+        additional_claims: &spec.additional_claims,
+        private_key: &spec.private_key,
+    };
+    let jti = uuid::Uuid::new_v4().to_string();
+    let signed =
+        jwt_auth::asap_token(&fields, now, &jti).map_err(|reason| ResolveError::Asap { reason })?;
+    set_header(
+        headers,
+        "Authorization".to_owned(),
+        format!("Bearer {}", signed.token),
+    );
+    let secrets = vec![spec.private_key, signed.pem, signed.token.clone()];
+    Ok(Some((secrets, signed.token)))
+}
+
 /// Applies basic, bearer or apikey auth with its fields interpolated; bearer and header apikey
 /// only when `with_headers`, since otherwise the headers already carry them.
 fn apply_auth(
@@ -1898,12 +1963,13 @@ fn apply_auth(
     Ok(())
 }
 
-/// The per-hop auth of a digest, awsv4, oauth1, wsse, ntlm or akamai-edgegrid `auth`, its fields
+/// The per-hop auth of a digest, awsv4, oauth1, wsse, ntlm, akamai-edgegrid or hawk `auth`, its fields
 /// interpolated. Digest needs a non-blank username and password. SigV4 takes its keys from a
 /// named profile when it can be read (pushing them to `secrets`), infers its scope from `url`'s
 /// host, and is `None` with [`Warning::AwsV4Unsigned`] when a key or the service stays blank.
 /// OAuth 1.0 and WSSE always sign, and NTLM carries its three fields as they are (blanks
-/// included); EdgeGrid fails with [`ResolveError::EdgeGrid`] when it cannot.
+/// included); EdgeGrid and Hawk fail with [`ResolveError::EdgeGrid`] and [`ResolveError::Hawk`]
+/// when they cannot.
 fn per_hop_auth(
     auth: &Mapping,
     scope: &Scope,
@@ -2003,6 +2069,26 @@ fn per_hop_auth(
                 .map_err(|reason| ResolveError::EdgeGrid { reason })?;
             secrets.extend([spec.access_token, spec.client_token, spec.client_secret]);
             Ok(Some(SendAuth::EdgeGrid(Box::new(signer))))
+        }
+        Some("hawk") => {
+            // Every string is expanded before the signer's checks, so a variable error wins.
+            let mut spec = HawkSpec::from_yaml(&Value::Mapping(auth.clone()));
+            for value in [
+                &mut spec.auth_id,
+                &mut spec.auth_key,
+                &mut spec.algorithm,
+                &mut spec.ext,
+                &mut spec.app,
+                &mut spec.dlg,
+                &mut spec.nonce,
+                &mut spec.timestamp,
+            ] {
+                *value = scope.expand(value)?;
+            }
+            let signer =
+                hawk::Signer::new(&spec).map_err(|reason| ResolveError::Hawk { reason })?;
+            secrets.push(spec.auth_key);
+            Ok(Some(SendAuth::Hawk(Box::new(signer))))
         }
         _ => Ok(None),
     }

@@ -384,6 +384,8 @@ fn auth_secrets(auth: &mut AuthSpec) -> Vec<(&'static str, &mut String)> {
                 .chain(key)
                 .collect()
         }
+        AuthSpec::Hawk(spec) => vec![("auth_key", &mut spec.auth_key)],
+        AuthSpec::Asap(spec) => vec![("private_key", &mut spec.private_key)],
         AuthSpec::EdgeGrid(spec) => vec![
             ("access_token", &mut spec.access_token),
             ("client_token", &mut spec.client_token),

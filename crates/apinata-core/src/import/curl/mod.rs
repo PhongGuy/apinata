@@ -6,7 +6,7 @@ mod shell;
 
 use super::protect::{SecretNames, protect_request};
 use super::{ImportNote, ImportedRequest, ImportedSecret, NoteKind};
-use crate::edit::{AuthSpec, KeyValue, Param, ParamKind, RequestSettings, Timeout};
+use crate::edit::{AuthSpec, KeyValue, Param, ParamKind, RequestSettings, Timeout, TlsVerify};
 use crate::url_params::{parse_path_params, parse_query_params, split_on_first};
 use flags::{Arg, Flag, Known};
 use shell::Word;
@@ -142,6 +142,8 @@ struct Mapper {
     timeout: Option<Timeout>,
     max_redirects: Option<u32>,
     follow_redirects: bool,
+    // Where the last `-k` stands and how it was written, unless a later `--no-insecure` undid it.
+    insecure: Option<(usize, String)>,
     referer: Option<Valued>,
     secrets: Vec<ImportedSecret>,
     collected: Collected,
@@ -191,6 +193,10 @@ impl Mapper {
         // The last of `-L` and `--no-location` decides, as in curl.
         if flag.negated && flag.option.is_some_and(|o| o.long == "location") {
             self.follow_redirects = false;
+            return;
+        }
+        if flag.negated && flag.option.is_some_and(|o| o.long == "insecure") {
+            self.insecure = None;
             return;
         }
         let Some(known) = flag.known else {
@@ -246,11 +252,7 @@ impl Mapper {
             Known::MaxRedirs => self.max_redirs(&flag, &text),
             Known::Location => self.follow_redirects = true,
             Known::Referer => self.referer = Some(Valued::new(&flag, text)),
-            Known::Insecure => self.flag_note(
-                &flag,
-                NoteKind::Dropped,
-                "certificate checks cannot be turned off for one request",
-            ),
+            Known::Insecure => self.insecure = Some((flag.offset, flag.written.clone())),
             Known::Form => {
                 if let Some(word) = value {
                     self.collected.form.push((flag.written.clone(), word));
@@ -579,6 +581,16 @@ impl Mapper {
         }
         if let Some(max) = self.max_redirects {
             settings.max_redirects = max;
+        }
+        if let Some((offset, written)) = self.insecure.take() {
+            settings.verify_tls = TlsVerify::Off;
+            let detail = "certificate checks are off for this request";
+            self.note(
+                offset,
+                format!("curl flag {written}"),
+                NoteKind::Converted,
+                detail,
+            );
         }
         request.settings = Some(settings);
         request.params = params_of(&request.url);

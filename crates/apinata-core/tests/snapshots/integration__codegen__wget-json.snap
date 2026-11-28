@@ -1,0 +1,8 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+wget --quiet --output-document=- --content-on-error --method='POST' \
+  --header='content-type: application/json' \
+  --body-data='{"a": 1, "s": "x y"}' \
+  'http://x.test/j'

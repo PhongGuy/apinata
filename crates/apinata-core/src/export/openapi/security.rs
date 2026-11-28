@@ -52,6 +52,8 @@ pub(super) fn map_auth(spec: &AuthSpec) -> Mapped {
         AuthSpec::Ntlm { .. } => unmappable("NTLM"),
         AuthSpec::EdgeGrid(_) => unmappable("Akamai EdgeGrid"),
         AuthSpec::Jwt(_) => unmappable("JWT Bearer"),
+        AuthSpec::Hawk(_) => unmappable("Hawk"),
+        AuthSpec::Asap(_) => unmappable("ASAP"),
         AuthSpec::Unsupported { mode } => unmappable(mode),
     }
 }

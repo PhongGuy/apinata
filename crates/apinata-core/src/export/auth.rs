@@ -4,9 +4,9 @@ use serde_json::{Value, json};
 
 use crate::edit::edgegrid::MAX_EXACT;
 use crate::edit::{
-    ApiKeyPlacement, AuthSpec, ClientAuth, EdgeGridSpec, JwtPlacement, JwtSpec, OAuth1KeyKind,
-    OAuth1Placement, OAuth1Spec, OAuth2Flow, OAuth2ParamPlacement, OAuth2Spec, OAuth2Stage,
-    TokenPlacement,
+    ApiKeyPlacement, AsapSpec, AuthSpec, ClientAuth, EdgeGridSpec, HawkSpec, JwtPlacement, JwtSpec,
+    OAuth1KeyKind, OAuth1Placement, OAuth1Spec, OAuth2Flow, OAuth2ParamPlacement, OAuth2Spec,
+    OAuth2Stage, TokenPlacement,
 };
 
 /// The Postman auth object for a mode it can carry; `None` for `None`, `Inherit` and
@@ -67,6 +67,8 @@ pub(super) fn auth(spec: &AuthSpec) -> Option<Value> {
         AuthSpec::OAuth2(o) => ("oauth2", oauth2(o)),
         AuthSpec::EdgeGrid(e) => ("edgegrid", edgegrid(e)),
         AuthSpec::Jwt(j) => ("jwt", jwt(j)),
+        AuthSpec::Hawk(h) => ("hawk", hawk(h)),
+        AuthSpec::Asap(a) => ("asap", asap(a)),
         _ => return None,
     };
     Some(json!({"type": kind, kind: entries}))
@@ -104,6 +106,37 @@ fn edgegrid(e: &EdgeGridSpec) -> Vec<Value> {
         None => json!(""),
     };
     out.push(json!({"key": "maxBodySize", "value": max, "type": "string"}));
+    out
+}
+
+/// Postman's asap keys; the claims go out as the text written.
+fn asap(a: &AsapSpec) -> Vec<Value> {
+    strings(&[
+        ("alg", &a.algorithm),
+        ("kid", &a.key_id),
+        ("iss", &a.issuer),
+        ("aud", &a.audience),
+        ("sub", &a.subject),
+        ("exp", &a.expires_in),
+        ("privateKey", &a.private_key),
+        ("claims", &a.additional_claims),
+    ])
+}
+
+/// Postman's hawk keys, with an empty `user` since Hawk never sends one.
+fn hawk(h: &HawkSpec) -> Vec<Value> {
+    let mut out = strings(&[
+        ("authId", &h.auth_id),
+        ("authKey", &h.auth_key),
+        ("algorithm", &h.algorithm),
+        ("user", ""),
+        ("nonce", &h.nonce),
+        ("extraData", &h.ext),
+        ("app", &h.app),
+        ("delegation", &h.dlg),
+        ("timestamp", &h.timestamp),
+    ]);
+    out.extend(booleans(&[("includePayloadHash", h.include_payload_hash)]));
     out
 }
 

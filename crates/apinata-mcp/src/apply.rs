@@ -457,8 +457,9 @@ mod tests {
     /// One spec of every mode core's JSON parser takes, each with non-default values.
     fn every_mode() -> Vec<AuthSpec> {
         use apinata_core::{
-            ClientAuth, EdgeGridSpec, JwtAlgorithm, JwtPlacement, JwtSpec, OAuth2Flow, OAuth2Param,
-            OAuth2ParamPlacement, OAuth2Spec, OAuth2Stage, TokenPlacement, TokenSource,
+            AsapSpec, ClientAuth, EdgeGridSpec, HawkSpec, JwtAlgorithm, JwtPlacement, JwtSpec,
+            OAuth2Flow, OAuth2Param, OAuth2ParamPlacement, OAuth2Spec, OAuth2Stage, TokenPlacement,
+            TokenSource,
         };
         let mut eg = EdgeGridSpec::default();
         eg.access_token = "at".into();
@@ -486,6 +487,15 @@ mod tests {
         jwt.placement = JwtPlacement::Other("cookie".into());
         jwt.header_prefix = None;
         jwt.expires_in = "60".into();
+        let mut hawk = HawkSpec::default();
+        hawk.auth_id = "id".into();
+        hawk.algorithm = "{{alg}}".into();
+        hawk.dlg = "d".into();
+        hawk.include_payload_hash = true;
+        let mut asap = AsapSpec::default();
+        asap.issuer = "i".into();
+        asap.algorithm = "{{alg}}".into();
+        asap.private_key = "{{asap_key}}".into();
         let mut code = OAuth2Spec::new(OAuth2Flow::AuthorizationCode);
         code.client_auth = None;
         code.pkce = true;
@@ -531,6 +541,8 @@ mod tests {
             AuthSpec::EdgeGrid(eg),
             AuthSpec::Jwt(JwtSpec::default()),
             AuthSpec::Jwt(jwt),
+            AuthSpec::Hawk(hawk),
+            AuthSpec::Asap(asap),
         ]
     }
 

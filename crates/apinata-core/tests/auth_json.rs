@@ -2,9 +2,9 @@
 //! errors, which never repeat a value from the input.
 
 use apinata_core::{
-    ApiKeyPlacement, AuthSpec, ClientAuth, EdgeGridSpec, JwtAlgorithm, JwtPlacement, JwtSpec,
-    OAuth1KeyKind, OAuth1PrivateKey, OAuth2Flow, OAuth2Param, OAuth2ParamPlacement, OAuth2Spec,
-    OAuth2Stage, TokenPlacement, TokenSource, parse_auth_json,
+    ApiKeyPlacement, AuthSpec, ClientAuth, EdgeGridSpec, HawkSpec, JwtAlgorithm, JwtPlacement,
+    JwtSpec, OAuth1KeyKind, OAuth1PrivateKey, OAuth2Flow, OAuth2Param, OAuth2ParamPlacement,
+    OAuth2Spec, OAuth2Stage, TokenPlacement, TokenSource, parse_auth_json,
 };
 
 #[test]
@@ -164,8 +164,47 @@ fn a_bad_jwt_document_names_its_field_and_never_its_values() {
 
 #[test]
 fn an_unknown_mode_is_named() {
-    let err = parse_auth_json(r#"{"type":"hawk","id":"x"}"#).expect_err("refused");
-    assert!(err.to_string().contains("hawk"), "{err}");
+    let err = parse_auth_json(r#"{"type":"kerberos","realm":"x"}"#).expect_err("refused");
+    assert!(err.to_string().contains("kerberos"), "{err}");
+}
+
+/// A Hawk document with every field given.
+const HAWK: &str = r#"{"type":"hawk","auth_id":"id-1","auth_key":"{{hawk_key}}",
+    "algorithm":"sha1","ext":"e","app":"a","dlg":"d","nonce":"n","timestamp":"1353832234",
+    "include_payload_hash":true}"#;
+
+#[test]
+fn hawk_parses_every_field_in_snake_case() {
+    let AuthSpec::Hawk(got) = parse_auth_json(HAWK).expect("parses") else {
+        panic!("hawk")
+    };
+    let mut want = HawkSpec::default();
+    want.auth_id = "id-1".into();
+    want.auth_key = "{{hawk_key}}".into();
+    want.algorithm = "sha1".into();
+    want.ext = "e".into();
+    want.app = "a".into();
+    want.dlg = "d".into();
+    want.nonce = "n".into();
+    want.timestamp = "1353832234".into();
+    want.include_payload_hash = true;
+    assert!(got == want, "{got:?}");
+}
+
+#[test]
+fn a_bad_hawk_document_names_its_field_and_never_the_key() {
+    for (json, field) in [
+        (HAWK.replace(r#""dlg":"d","#, ""), "`dlg`"),
+        (
+            HAWK.replace(r#""app":"a""#, r#""app":"a","user":"u""#),
+            "`user`",
+        ),
+    ] {
+        let err = parse_auth_json(&json).expect_err(&json);
+        let text = err.to_string();
+        assert!(text.contains(field), "{field}: {text}");
+        assert!(!text.contains("hawk_key"), "{text}");
+    }
 }
 
 #[test]

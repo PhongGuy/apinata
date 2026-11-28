@@ -31,6 +31,8 @@ and a quick start, see the [README](README.md).
   - [GraphQL queries](#graphql-queries)
   - [OAuth 2.0 and scripts](#oauth-20-and-scripts)
   - [JWT Bearer auth](#jwt-bearer-auth)
+  - [Hawk auth](#hawk-auth)
+  - [Atlassian ASAP auth](#atlassian-asap-auth)
   - [Team servers](#team-servers)
   - [Timeouts, streams and body size](#timeouts-streams-and-body-size)
   - [Reading responses](#reading-responses)
@@ -453,12 +455,14 @@ setting.
 In the app, the request's Settings tab has a Certificate check select (Default,
 Verify, Don't verify) and an HTTP version select (Default, HTTP/1.1, Auto, HTTP/2
 prior knowledge). The Default entry names the Preferences value it follows, and
-choosing it removes the key from the file. A hop made without a certificate check
-says so in the address card, on the `--verbose` `tls:` line and as
+choosing it removes the key from the file. While the request's own setting is Don't
+verify, an unlocked mark before Send says so, and clicking it opens the Settings tab.
+A hop made without a certificate check says so in the address card, on the `--verbose` `tls:` line and as
 `"tls_unverified": true` on the request's row in the JSON report. The cookie jar is
 shared, so cookies flow between checked and unchecked sends as they do with
-`--insecure`. A token request for OAuth 2.0 follows the default, not the request's own
-setting.
+`--insecure`. The OAuth 2.0 token request a request makes follows that request's own
+setting; a folder's or the collection's Get token follows the default. A cached token
+is shared by every request with the same OAuth 2.0 settings, whichever check fetched it.
 
 Under the MCP server, a request's own `verifySsl: false` is honoured only for a
 loopback or `localhost` host reached directly, since an agent can edit the file. A
@@ -466,7 +470,8 @@ host override that maps the name anywhere but loopback, or a proxy on the route,
 refused too. The send fails before it connects, and every redirect is checked again. Starting the server with
 `--insecure` still turns the check off everywhere.
 
-Postman's `protocolProfileBehavior.strictSSL` and `protocolVersion` import into these
+A pasted curl command's `-k` or `--insecure` imports as `verifySsl: false`, with a
+note. Postman's `protocolProfileBehavior.strictSSL` and `protocolVersion` import into these
 keys and export back: `http1` is HTTP/1.1, `auto` is Auto, and `http2` imports as Auto
 with a note, since Postman negotiates it. HTTP/2 prior knowledge has no Postman
 setting and exports with a note.
@@ -602,6 +607,7 @@ Data-driven runs:
 | `--json-file-path <PATH>` | Run once per object of a JSON array file; each key is a `{{variable}}`. Not with `--csv-file-path`. |
 | `--iterations <N>` | Run the collection N times; with a data file, use at most its first N rows. |
 | `--delay <MS>` | Wait this many milliseconds between requests (default 0). |
+| `--parallel <N>` | Send up to N requests of each iteration at once (1 to 64, default 1); iterations still run one after another. Each request sees the cookies as they were when its iteration began, and their cookie changes apply afterwards in run order, so the jar ends as a one-at-a-time run would leave it. Reports keep run order. The run refuses to start when a request sets post-response variables, or a script calls a variable setter or deleter, `setNextRequest`, `stopExecution`, `runRequest` or `resetOauth2Credential`; a call that slips past that check errors its request. That check reads the scripts' own text, so a call made from an assertion expression or a `require`d module is caught only when it runs, after the run has started. Scripts share one thread, so a CPU-heavy script holds up the other requests in flight and counts toward their times and timeouts. A request's reported Set-Cookie rows show what its own view of the jar did with them; the jar itself takes each change again in run order, so a later request's removal of a cookie an earlier one set still applies. With `--bail`, requests already in flight finish, so which ones are skipped can depend on timing. Not with `--delay`. |
 
 Retries and status:
 
@@ -1016,6 +1022,80 @@ apinata item request users/get.yml --auth-json '{"type": "jwt", "algorithm": "HS
 "keys/k.pem"}`. Values are written into the file as given, so keep the secret and key in an
 environment (`apinata env set --secret`) and refer to them as `{{name}}`.
 
+### Hawk auth
+
+A request, folder or collection with `type: hawk` auth signs every hop with a Hawk
+`Authorization` header:
+
+```yaml
+auth:
+  type: hawk
+  authId: dh37fgj492je
+  authKey: "{{hawk_key}}"
+  algorithm: sha256           # sha256 or sha1
+  ext: ""                     # optional application data
+  app: ""                     # optional; dlg is sent only with app
+  dlg: ""
+  nonce: ""                   # blank makes a fresh one per hop
+  timestamp: ""               # blank uses the current time
+  includePayloadHash: false   # true also signs the body and its Content-Type
+```
+
+The MAC covers the method, path and query, host and port, so a redirect is signed again; a hop
+to another origin is signed only when `forwardAuthorizationHeader` is on. A blank id or key, an
+unknown algorithm, a timestamp that is not a whole number or an attribute outside printable
+ASCII stops the request before it is sent, and the error never shows the key. The key, the
+header and its MAC are hidden in history, reports and the Timeline. Postman, Insomnia and
+Hoppscotch Hawk auth import as this kind, and Postman export maps it back.
+
+`--auth-json` and MCP take every field in snake_case:
+
+```sh
+apinata item request users/get.yml --auth-json '{"type": "hawk", "auth_id": "dh37fgj492je",
+  "auth_key": "{{hawk_key}}", "algorithm": "sha256", "ext": "", "app": "", "dlg": "",
+  "nonce": "", "timestamp": "", "include_payload_hash": false}'
+```
+
+### Atlassian ASAP auth
+
+A request, folder or collection with `type: asap` auth signs a short-lived token on every send
+and sends it as `Authorization: Bearer <token>`:
+
+```yaml
+auth:
+  type: asap
+  algorithm: RS256            # RS, PS or ES with 256, 384 or 512
+  issuer: svc/client
+  audience: svc/server
+  keyId: svc/client/key1      # blank takes the kid of a data URI key
+  subject: ""                 # blank sends the issuer
+  expiresIn: ""               # seconds; blank is 3600
+  additionalClaims: ""        # JSON object text; its claims win over the standard ones
+  privateKey: "{{asap_key}}"
+```
+
+The token's header carries `alg` and `kid`, and its claims are `iss`, `sub`, `aud`, `iat`,
+`exp` and a fresh `jti`. The private key is PEM text (PKCS#8, PKCS#1 or SEC1, with line breaks
+or literal `\n`), a `data:application/pkcs8;kid=...;base64,...` URI or bare base64 DER. It is
+always inline, never a file path, so keep it in an environment secret and refer to it as
+`{{name}}`. One hour is the longest lifetime most ASAP servers accept, so a server with a
+skewed clock may want a shorter `expiresIn`.
+
+A blank issuer, audience, key id or key, an unknown algorithm, an expiry that is not a whole
+number or claims that are not a JSON object stop the request before it is sent, and the error
+never shows the key. The key and the token are hidden in history, reports and the Timeline, and
+a redirect to another origin drops the header unless `forwardAuthorizationHeader` is on.
+Postman and Insomnia ASAP auth import as this kind (Insomnia's as RS256 with a ten-minute
+expiry), an imported key goes to the keychain, and Postman export maps it back.
+
+`--auth-json` and MCP take every field in snake_case:
+
+```sh
+apinata item request users/get.yml --auth-json '{"type": "asap", "algorithm": "RS256",
+  "issuer": "svc/client", "audience": "svc/server", "key_id": "svc/client/key1",
+  "subject": "", "expires_in": "", "additional_claims": "", "private_key": "{{asap_key}}"}'
+```
+
 ### Team servers
 
 `apinata team` signs in to a self-hosted team server the way the desktop app
@@ -1251,6 +1331,11 @@ set when it ends. A collection or folder runner remembers these choices.
 Only requests with tests leaves out the requests `--tests-only` would, for
 that tab only; the list shows what will run, and a finished run notes how many
 it left out.
+Parallel sends up to that many requests of each iteration at once, with the
+same rules and limits as `--parallel`. A run that cannot go in parallel stops
+before anything is sent and names the request; Delay is locked while Parallel
+is above 1, and a row whose cookie changes the requests sent alongside it could
+not see says so.
 
 The bottom dock has Console, Network and Variables tabs. Variables lists the
 variables the active request sees, grouped by the scope that defines them, after
@@ -1549,7 +1634,7 @@ Changing requests and folders:
 Sending, examples and exports:
 
 - `send_request`: send one request and return its response.
-- `run_folder`: run every request under a folder.
+- `run_folder`: run every request under a folder; `parallel` sends up to that many of each iteration at once, as `--parallel` does, and every send still needs a trusted host.
 - `generate_code`: write a request as code, sending nothing.
 - `oauth2_token`: show, fetch, refresh or clear a request's or folder's OAuth 2.0 token, never returning the token.
 - `save_example`, `rename_example` and `delete_example`: keep the last response as a saved example, or rename or remove one.

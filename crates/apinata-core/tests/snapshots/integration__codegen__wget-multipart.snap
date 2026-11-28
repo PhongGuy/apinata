@@ -1,0 +1,15 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+body=$(mktemp)
+{
+  printf '%b' '--apinata-boundary-5f0c2e9a7d4b\r\nContent-Disposition: form-data; name="a"\r\n\r\n1\r\n--apinata-boundary-5f0c2e9a7d4b\r\nContent-Disposition: form-data; name="up"; filename="up.bin"\r\nContent-Type: text/plain\r\n\r\n'
+  cat '/data/up.bin'
+  printf '%b' '\r\n--apinata-boundary-5f0c2e9a7d4b--\r\n'
+} > "$body"
+wget --quiet --output-document=- --content-on-error --method='POST' \
+  --header='Content-Type: multipart/form-data; boundary=apinata-boundary-5f0c2e9a7d4b' \
+  --body-file="$body" \
+  'http://x.test/m'
+rm -f "$body"

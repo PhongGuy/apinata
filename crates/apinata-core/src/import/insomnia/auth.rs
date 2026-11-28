@@ -3,7 +3,7 @@
 use super::model::{Member, text};
 use super::template::apply;
 use super::{Budget, Crumbs};
-use crate::edit::{ApiKeyPlacement, AuthSpec, KeyValue};
+use crate::edit::{ApiKeyPlacement, AsapSpec, AuthSpec, HawkSpec, KeyValue};
 use crate::import::{DocumentError, ImportNote, NoteKind};
 use serde_json::{Map, Value};
 
@@ -105,6 +105,40 @@ pub(super) fn auth(
                 }
             }
         }
+        "hawk" => {
+            let algorithm = take(&mut auth, "algorithm");
+            AuthSpec::Hawk(HawkSpec {
+                auth_id: templated(&mut auth, "id", notes, budget)?,
+                auth_key: templated(&mut auth, "key", notes, budget)?,
+                algorithm: if algorithm.trim().is_empty() {
+                    "sha256".to_owned()
+                } else {
+                    algorithm
+                },
+                ext: templated(&mut auth, "ext", notes, budget)?,
+                include_payload_hash: auth.remove("validatePayload") == Some(Value::Bool(true)),
+                ..HawkSpec::default()
+            })
+        }
+        // Insomnia always signs with RS256 and a ten-minute lifetime, so both are written out.
+        "asap" => AuthSpec::Asap(AsapSpec {
+            algorithm: "RS256".to_owned(),
+            issuer: templated(&mut auth, "issuer", notes, budget)?,
+            audience: templated(&mut auth, "audience", notes, budget)?,
+            key_id: templated(&mut auth, "keyId", notes, budget)?,
+            subject: templated(&mut auth, "subject", notes, budget)?,
+            expires_in: "600".to_owned(),
+            additional_claims: {
+                let claims = templated(&mut auth, "additionalClaims", notes, budget)?;
+                // Insomnia's v5 schema once spelled the key `addintionalClaims`.
+                if claims.is_empty() && auth.contains_key("addintionalClaims") {
+                    templated(&mut auth, "addintionalClaims", notes, budget)?
+                } else {
+                    claims
+                }
+            },
+            private_key: templated(&mut auth, "privateKey", notes, budget)?,
+        }),
         other => {
             let detail = format!("`{other}` authentication is not supported; set to none");
             return set_none(&path, trail, notes, budget, detail);

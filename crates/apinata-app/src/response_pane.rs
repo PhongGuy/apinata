@@ -6262,7 +6262,7 @@ pub fn test_summary(tests: &[TestOutcome]) -> Option<String> {
 
 // `text` with its first letter upper-cased, unless it starts with a camelCase file key such
 // as `encodeUrl`, whose case is part of its name.
-fn sentence_case(text: &str) -> String {
+pub(crate) fn sentence_case(text: &str) -> String {
     let first = text.split([' ', ':']).next().unwrap_or_default();
     if first.chars().skip(1).any(|c| c.is_ascii_uppercase()) {
         return text.to_owned();

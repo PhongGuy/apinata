@@ -244,6 +244,10 @@ pub(crate) enum AuthDoc {
     },
     /// JWT Bearer, signed fresh on every send.
     Jwt(JwtDoc),
+    /// Hawk, signed per hop.
+    Hawk(HawkDoc),
+    /// Atlassian ASAP, a token signed with a private key on every send.
+    Asap(AsapDoc),
     /// An auth mode Apinata does not model; shown, never written.
     Unsupported {
         mode: String,
@@ -267,6 +271,38 @@ pub(crate) struct JwtDoc {
     pub placement: String,
     pub header_prefix: Option<String>,
     pub query_param_key: String,
+}
+
+/// Hawk settings. `algorithm` is `sha256` or `sha1`; a blank `nonce` or `timestamp` is
+/// generated per hop, and `dlg` is sent only with `app`.
+#[derive(Serialize, Deserialize, JsonSchema, Clone, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct HawkDoc {
+    pub auth_id: String,
+    pub auth_key: String,
+    pub algorithm: String,
+    pub ext: String,
+    pub app: String,
+    pub dlg: String,
+    pub nonce: String,
+    pub timestamp: String,
+    pub include_payload_hash: bool,
+}
+
+/// ASAP settings. `algorithm` is RS, PS or ES with 256, 384 or 512; a blank `subject` sends
+/// the issuer, a blank `expires_in` is 3600 seconds, `additional_claims` is JSON object text,
+/// and `private_key` is PEM text, a `data:application/pkcs8` URI or base64 DER.
+#[derive(Serialize, Deserialize, JsonSchema, Clone, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct AsapDoc {
+    pub algorithm: String,
+    pub issuer: String,
+    pub audience: String,
+    pub key_id: String,
+    pub subject: String,
+    pub expires_in: String,
+    pub additional_claims: String,
+    pub private_key: String,
 }
 
 /// OAuth 2.0 settings. `flow`, `client_auth` (`null` when unset), `token_source` and the
@@ -752,6 +788,27 @@ pub(crate) fn auth(a: AuthSpec) -> Result<AuthDoc, String> {
             expires_in: j.expires_in,
             header_prefix: j.header_prefix,
             query_param_key: j.query_param_key,
+        }),
+        AuthSpec::Hawk(h) => AuthDoc::Hawk(HawkDoc {
+            auth_id: h.auth_id,
+            auth_key: h.auth_key,
+            algorithm: h.algorithm,
+            ext: h.ext,
+            app: h.app,
+            dlg: h.dlg,
+            nonce: h.nonce,
+            timestamp: h.timestamp,
+            include_payload_hash: h.include_payload_hash,
+        }),
+        AuthSpec::Asap(a) => AuthDoc::Asap(AsapDoc {
+            algorithm: a.algorithm,
+            issuer: a.issuer,
+            audience: a.audience,
+            key_id: a.key_id,
+            subject: a.subject,
+            expires_in: a.expires_in,
+            additional_claims: a.additional_claims,
+            private_key: a.private_key,
         }),
         _ => return Err(unsupported("auth mode")),
     })

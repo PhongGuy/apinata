@@ -90,11 +90,12 @@ struct OptionInputs {
     exclude_tags: Entity<InputState>,
     retries: Entity<InputState>,
     retry_delay: Entity<InputState>,
+    parallel: Entity<InputState>,
     fail_select: Entity<ui::IdSelect>,
     _select_sub: Subscription,
     cookie_select: Entity<ui::IdSelect>,
     _cookie_sub: Subscription,
-    _subs: [Subscription; 6],
+    _subs: [Subscription; 7],
 }
 
 impl RunnerView {
@@ -225,15 +226,23 @@ impl RunnerView {
                 (model.exclude_tags().to_owned(), "e.g. slow"),
                 (model.retries().to_string(), "2"),
                 (model.retry_delay_ms().to_string(), "500"),
+                (model.parallel().to_string(), "1"),
             ];
-            let [delay, iterations, tags, exclude_tags, retries, retry_delay] =
-                texts.map(|(text, hint)| {
-                    cx.new(|cx| {
-                        InputState::new(window, cx)
-                            .placeholder(hint)
-                            .default_value(text)
-                    })
-                });
+            let [
+                delay,
+                iterations,
+                tags,
+                exclude_tags,
+                retries,
+                retry_delay,
+                parallel,
+            ] = texts.map(|(text, hint)| {
+                cx.new(|cx| {
+                    InputState::new(window, cx)
+                        .placeholder(hint)
+                        .default_value(text)
+                })
+            });
             let watch = |input: &Entity<InputState>,
                          push: fn(&mut RunnerModel, String, &mut Context<RunnerModel>),
                          digits_only: bool,
@@ -322,6 +331,22 @@ impl RunnerView {
                     window,
                     cx,
                 ),
+                watch(
+                    &parallel,
+                    |m, text, cx| {
+                        // A cleared field sends in turn; the model holds the value to 1 to 64.
+                        if text.is_empty() {
+                            m.set_parallel(1, cx);
+                        } else if let Ok(n) = text.parse() {
+                            m.set_parallel(n, cx);
+                        } else if text.bytes().all(|b| b.is_ascii_digit()) {
+                            m.set_parallel(usize::MAX, cx);
+                        }
+                    },
+                    true,
+                    window,
+                    cx,
+                ),
                 watch(&tags, RunnerModel::set_tags, false, window, cx),
                 watch(
                     &exclude_tags,
@@ -389,6 +414,7 @@ impl RunnerView {
                 exclude_tags,
                 retries,
                 retry_delay,
+                parallel,
                 _subs: subs,
             });
         }
@@ -479,6 +505,15 @@ pub fn row_checks(r: &RequestResult) -> Option<String> {
     (check_counts(r).skipped > 0)
         .then(|| tests_total(r))
         .flatten()
+}
+
+/// A row's warning line when a parallel run's cookie change went unseen by the requests sent
+/// alongside it; the opened result lists every warning.
+pub fn row_warning(r: &RequestResult) -> Option<String> {
+    let unseen = apinata_core::Warning::ParallelCookiesUnseen;
+    r.warnings
+        .contains(&unseen)
+        .then(|| crate::response_pane::sentence_case(&unseen.to_string()))
 }
 
 /// Finished rows counted by their Result cell.
@@ -866,6 +901,9 @@ fn option_label(id: &'static str, text: &'static str, cx: &App) -> impl IntoElem
 const RETRIES_HINT: &str =
     "Extra attempts after a transport error, a timeout, or a 502, 503 or 504. 0 turns retries off.";
 const RETRY_DELAY_HINT: &str = "Wait this long between attempts.";
+const PARALLEL_HINT: &str = "How many requests of each iteration are sent at once, 1 to 64. \
+    Results stay in run order. A run whose requests set variables or steer the run is refused.";
+const PARALLEL_DELAY_NOTE: &str = "Not used while Parallel is above 1";
 const RETRY_UNSAFE_NOTE: &str =
     "A retried POST or PATCH may repeat a side effect on the server. Off by default.";
 const RETRY_UNSAFE_TOOLTIP: &str = "By default only idempotent methods are retried. Turn this on only if the server tolerates duplicates.";
@@ -1009,6 +1047,7 @@ impl Render for RunnerView {
             inputs.retries.clone(),
             inputs.retry_delay.clone(),
         );
+        let parallel = inputs.parallel.clone();
         let fail_select = inputs.fail_select.clone();
         let cookie_select = inputs.cookie_select.clone();
         // While a data file decides the count, the empty Iterations field says how many rows.
@@ -1173,7 +1212,11 @@ impl Render for RunnerView {
                     muted,
                 )
             });
-        let noted = data_note.is_some() || iterations_note.is_some();
+        // A parallel run sends without pauses, so the delay is locked and says why.
+        let parallel_run = model.parallel() > 1;
+        let delay_note =
+            parallel_run.then(|| note("run-delay-note", PARALLEL_DELAY_NOTE.to_owned(), muted));
+        let noted = data_note.is_some() || iterations_note.is_some() || delay_note.is_some();
         let options = v_flex()
             .id("run-options")
             .test_support()
@@ -1210,9 +1253,17 @@ impl Render for RunnerView {
                         field(&iterations, "run-iterations"),
                         iterations_note,
                     ))
-                    .child(option_slot(
-                        Some(option_label("run-delay-label", "Delay (ms)", cx)),
-                        field(&delay, "run-delay"),
+                    .child(noted_slot(
+                        option_label("run-delay-label", "Delay (ms)", cx),
+                        ui::padded_input(
+                            Input::new(&delay)
+                                .id("run-delay")
+                                .w(style::FORM_INPUT_WIDTH)
+                                .disabled(parallel_run)
+                                .bg(ui::field_fill(parallel_run, cx)),
+                            &delay,
+                        ),
+                        delay_note,
                     ))
                     // Last in its row: a chosen file's name widens it.
                     .child(noted_slot(
@@ -1221,6 +1272,15 @@ impl Render for RunnerView {
                         data_note,
                     )),
             )
+            .child(option_row().child(option_slot(
+                Some(hinted_label(
+                    "run-parallel-label",
+                    "Parallel",
+                    PARALLEL_HINT,
+                    cx,
+                )),
+                field(&parallel, "run-parallel"),
+            )))
             .child(
                 option_row().child(option_slot(
                     Some(option_label(
@@ -1610,13 +1670,14 @@ impl Render for RunnerView {
             let view = view.clone();
             let name = format!("{} {}", row.method.to_ascii_uppercase(), row.name);
             // The reason sits on its own line so a long one wraps instead of widening the row.
-            let (reason, checks, response) = match &row.state {
+            let (reason, checks, warning, response) = match &row.state {
                 RowState::Done(r) => (
                     failure_reason(r, env.as_deref()),
                     row_checks(r),
+                    row_warning(r),
                     r.response.as_ref(),
                 ),
-                _ => (None, None, None),
+                _ => (None, None, None, None),
             };
             let status = response.map(|resp| {
                 let code = resp.status();
@@ -1687,22 +1748,26 @@ impl Render for RunnerView {
                         )
                         // An empty Method cell indents each detail line under the Name.
                         .children(
-                            [("run-reason", reason), ("run-checks", checks)]
-                                .into_iter()
-                                .filter_map(|(id, text)| Some((id, text?)))
-                                .map(|(id, text)| {
-                                    h_flex().gap_2().child(cell(col)).child(
-                                        div()
-                                            .id((id, ix))
-                                            .test_support()
-                                            .aria_label(text.clone())
-                                            .flex_1()
-                                            .min_w_0()
-                                            .text_size(style::TEXT_SMALL)
-                                            .text_color(muted)
-                                            .child(text),
-                                    )
-                                }),
+                            [
+                                ("run-reason", reason),
+                                ("run-checks", checks),
+                                ("run-warning", warning),
+                            ]
+                            .into_iter()
+                            .filter_map(|(id, text)| Some((id, text?)))
+                            .map(|(id, text)| {
+                                h_flex().gap_2().child(cell(col)).child(
+                                    div()
+                                        .id((id, ix))
+                                        .test_support()
+                                        .aria_label(text.clone())
+                                        .flex_1()
+                                        .min_w_0()
+                                        .text_size(style::TEXT_SMALL)
+                                        .text_color(muted)
+                                        .child(text),
+                                )
+                            }),
                         ),
                 );
             rows.push(item.into_any_element());

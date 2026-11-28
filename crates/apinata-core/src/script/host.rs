@@ -46,6 +46,8 @@ pub(crate) struct HostState {
     /// Each cookie the scripts wrote or removed, with the phase whose script did it, in
     /// write order.
     pub(crate) cookies: Mutex<Vec<(ScriptPhase, SetCookie)>>,
+    /// The first shared-state call a script of a parallel run made, which errors the send.
+    parallel_refused: Mutex<Option<String>>,
 }
 
 impl HostState {
@@ -76,7 +78,33 @@ impl HostState {
             assertions: OnceLock::new(),
             nesting,
             cookies: Mutex::new(Vec::new()),
+            parallel_refused: Mutex::new(None),
         }
+    }
+
+    /// Whether this send belongs to a parallel run, where shared state is off limits.
+    pub(crate) fn parallel(&self) -> bool {
+        self.nesting.parallel()
+    }
+
+    /// Refuses `what` because the run is parallel: the refusal is kept so the send errors even
+    /// when the script catches it, and the message is returned for the script to throw.
+    pub(crate) fn refuse_parallel(&self, what: &str) -> String {
+        let message = format!("{what} is not allowed in a parallel run");
+        let mut first = self
+            .parallel_refused
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        first.get_or_insert_with(|| message.clone());
+        message
+    }
+
+    /// The refusal made since the last take, if any.
+    pub(crate) fn take_parallel_refusal(&self) -> Option<String> {
+        self.parallel_refused
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
     }
 
     /// Records a cookie row a script of `phase` made.
