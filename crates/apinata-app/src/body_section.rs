@@ -1,6 +1,7 @@
 //! The Body section: a mode picker over a code editor or a key-value table.
 
 use crate::ui::SolidRing as _;
+use crate::vim::Vim;
 use std::collections::HashMap;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
@@ -235,6 +236,7 @@ pub struct BodySection {
     // Whether the code editor wraps long lines, and the Preferences default last applied.
     wrap: bool,
     default_wrap: bool,
+    vim: Entity<Vim>,
     _subs: Vec<Subscription>,
 }
 
@@ -318,6 +320,8 @@ impl BodySection {
                 this.pick(*ix, window, cx);
             }),
         ]);
+        let vim = cx.new(|cx| Vim::new(&code, cx));
+        subs.push(cx.observe(&vim, |_, _, cx| cx.notify()));
         BodySection {
             root,
             mode: Some(BodyMode::None),
@@ -336,6 +340,7 @@ impl BodySection {
             decorated: None,
             wrap: default_wrap,
             default_wrap,
+            vim,
             _subs: subs,
         }
     }
@@ -463,6 +468,11 @@ impl BodySection {
     /// The message of the last refused Beautify, while it still applies.
     pub fn beautify_error(&self) -> Option<&str> {
         self.beautify_error.as_deref()
+    }
+
+    /// The Vim key map of the code editor.
+    pub fn vim(&self) -> &Entity<Vim> {
+        &self.vim
     }
 
     /// The code editor of the JSON, XML and Text modes.
@@ -832,8 +842,7 @@ impl Render for BodySection {
                 .min_h(style::EDITOR_MIN_HEIGHT)
                 .gap_2()
                 .child(
-                    div()
-                        .id("body-code")
+                    crate::vim::scope(div().id("body-code"), &self.vim, cx)
                         .test_support()
                         .w_full()
                         .flex_1()
@@ -915,7 +924,8 @@ impl Render for BodySection {
                     )
                     .children(beautify)
                     .children(minify)
-                    .children(wrap),
+                    .children(wrap)
+                    .children(crate::vim::mode_label("body-vim-mode", &self.vim, cx)),
             )
             .child(content)
     }
