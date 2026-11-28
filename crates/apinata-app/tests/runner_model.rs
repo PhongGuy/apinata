@@ -390,6 +390,44 @@ fn tags_filter_the_rows(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn tests_only_runs_the_checked_rows_and_notes_the_rest(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let server = mock_server(cx, ResponseTemplate::new(200));
+    let u = server.uri();
+    let request = |name: &str, extra: &str| {
+        format!(
+            "info:\n  name: {name}\n  type: http\n  seq: 1\nhttp:\n  method: GET\n  url: \"{u}/{name}\"\n{extra}"
+        )
+    };
+    let checked = "runtime:\n  assertions:\n    - expression: res.status\n      operator: eq\n      value: \"200\"\n";
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("one.yml", &request("one", checked)),
+        ("two.yml", &request("two", "")),
+    ]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let m = runner(cx, &ws, &root, "");
+    m.update(cx, |m, cx| m.refresh_preview(cx));
+    wait_real(cx, |cx| preview_paths(cx, &m).len() == 2);
+    m.update(cx, |m, cx| m.set_tests_only(true, cx));
+    assert!(m.read_with(cx, |m, _| m.tests_only()));
+    assert_eq!(preview_paths(cx, &m), ["one.yml"]);
+    run_to_end(cx, &m);
+    let paths: Vec<String> = m.read_with(cx, |m, _| {
+        m.rows()
+            .iter()
+            .map(|r| r.path.as_str().to_owned())
+            .collect()
+    });
+    assert_eq!(paths, ["one.yml"]);
+    assert_eq!(served(cx, &server), ["/one"]);
+    assert_eq!(
+        m.read_with(cx, |m, _| m.skipped().to_vec()),
+        ["Skipped 1 request without tests"]
+    );
+}
+
+#[gpui_kit::test]
 fn a_data_file_repeats_the_rows_per_iteration(cx: &mut TestAppContext) {
     http_ready(cx);
     let server = mock_server(cx, ResponseTemplate::new(200));

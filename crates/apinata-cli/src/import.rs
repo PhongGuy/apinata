@@ -14,8 +14,8 @@ use apinata_core::import::{
     ImportError, ImportNote, ImportReport, ImportSource, RequestFormat, SourceError, SourceFetch,
     SpecLocation, TakeSpec, UpdateOptions, UpdateSummary, add_environment, add_request,
     apply_update, claim_secret_names, classify_source, default_import_name, ensure_folder,
-    fetch_source, parse_collections, parse_environments, parse_request, place_items, plan_update,
-    read_reason, recorded_spec, store_request_secrets, write_collection,
+    fetch_source, parse_collections, parse_environments, parse_postman_export, parse_request,
+    place_items, plan_update, read_reason, recorded_spec, store_request_secrets, write_collection,
 };
 use apinata_core::{
     Collection, Folder, ItemPath, PacSource, SecretError, SecretKey, SecretStore, SystemTrash,
@@ -45,6 +45,26 @@ pub enum ImportKind {
     Collection(CollectionArgs),
     /// Import environment files into an existing collection.
     Environment(EnvironmentArgs),
+    /// Import a Postman data export (the zip, its unzipped folder or its archive.json): one new
+    /// collection per Postman collection, each with every exported environment.
+    PostmanExport(PostmanExportArgs),
+}
+
+#[derive(clap::Args)]
+pub struct PostmanExportArgs {
+    /// The export zip, the folder it unzips to, or that folder's archive.json.
+    #[arg(value_name = "PATH")]
+    pub path: PathBuf,
+    /// The directory to create the collections in; defaults to the working directory. Each
+    /// collection gets a new folder named after it (a number is added if the name is taken).
+    #[arg(long, value_name = "DIR")]
+    pub into: Option<PathBuf>,
+    /// The report format written to stdout.
+    #[arg(long, value_enum, default_value_t = Format::Text)]
+    pub format: Format,
+    // Test seam: keep no secret values, so each one becomes a needs-input note.
+    #[arg(long, hide = true)]
+    pub no_keychain: bool,
 }
 
 #[derive(clap::Args)]
@@ -257,6 +277,7 @@ pub(crate) fn run(args: &ImportArgs) -> ExitCode {
         ImportKind::Environment(args) => {
             (args.format, import_environments(args).map(|one| vec![one]))
         }
+        ImportKind::PostmanExport(args) => return finish(import_postman_export(args)),
     };
     let printed = outcome.and_then(|all| all.iter().try_for_each(|one| print(format, one)));
     finish(printed)
@@ -359,6 +380,17 @@ fn import_collection(args: &CollectionArgs) -> anyhow::Result<Vec<Imported>> {
         ));
     }
     let dir = args.into.as_deref().unwrap_or(Path::new("."));
+    write_bundles(&bundles, &extra, dir, args.no_keychain)
+}
+
+// Write every bundle as a new collection in `dir`, with `extra` environments added to each. A
+// failure keeps the collections already written and reports them as a partial import.
+fn write_bundles(
+    bundles: &[ImportBundle],
+    extra: &[apinata_core::import::ImportedEnvironment],
+    dir: &Path,
+    no_keychain: bool,
+) -> anyhow::Result<Vec<Imported>> {
     // Everything is parsed by now, so creating the target cannot leave debris after a bad input.
     let created = create_missing_dirs(dir)?;
     let into = match std::fs::canonicalize(dir) {
@@ -369,10 +401,10 @@ fn import_collection(args: &CollectionArgs) -> anyhow::Result<Vec<Imported>> {
             return Err(anyhow!("cannot open {}: {e}", dir.display()));
         }
     };
-    let secrets = secret_store(args.no_keychain);
+    let secrets = secret_store(no_keychain);
     let mut done: Vec<Imported> = Vec::new();
     for (i, bundle) in bundles.iter().enumerate() {
-        let envs: Vec<_> = bundle.environments.iter().chain(&extra).cloned().collect();
+        let envs: Vec<_> = bundle.environments.iter().chain(extra).cloned().collect();
         match write_collection(&into, &bundle.collection, &envs, secrets.as_ref()) {
             Ok((collection, report)) => {
                 let root = collection.root().to_path_buf();
@@ -400,6 +432,53 @@ fn import_collection(args: &CollectionArgs) -> anyhow::Result<Vec<Imported>> {
         }
     }
     Ok(done)
+}
+
+// Read the whole export before anything is written, then print every collection written. Entries
+// that were not imported are listed after the report and fail the run, so a script can tell a
+// complete import from a partial one.
+fn import_postman_export(args: &PostmanExportArgs) -> anyhow::Result<()> {
+    let export = parse_postman_export(&args.path)
+        .with_context(|| format!("cannot import {}", args.path.display()))?;
+    let not_imported = |notes: &[ImportNote]| {
+        for note in notes {
+            eprintln!(
+                "not imported: {}: {}",
+                printable(&note.source),
+                printable(&note.detail)
+            );
+        }
+    };
+    if export.bundles.is_empty() {
+        not_imported(&export.skipped);
+        return Err(anyhow!(
+            "{} holds no collection that could be imported",
+            args.path.display()
+        ));
+    }
+    let dir = args.into.as_deref().unwrap_or(Path::new("."));
+    let written = write_bundles(&export.bundles, &[], dir, args.no_keychain);
+    let printed = written.and_then(|all| all.iter().try_for_each(|one| print(args.format, one)));
+    not_imported(&export.skipped);
+    printed?;
+    match export.skipped.len() {
+        0 => Ok(()),
+        n => Err(anyhow!("{n} entries of the export were not imported")),
+    }
+}
+
+// Entry names come from the archive, so control characters are shown escaped rather than
+// reaching the terminal.
+fn printable(text: &str) -> String {
+    text.chars()
+        .map(|c| {
+            if c.is_control() {
+                c.escape_default().to_string()
+            } else {
+                c.to_string()
+            }
+        })
+        .collect()
 }
 
 // Place the one collection of the input directly in `--folder` of the existing collection at

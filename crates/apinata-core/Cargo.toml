@@ -71,6 +71,7 @@ sha1.workspace = true
 rsa.workspace = true
 aws-sigv4.workspace = true
 aws-credential-types.workspace = true
+zip.workspace = true
 keyring-core = { workspace = true, optional = true }
 minisign-verify = { workspace = true, optional = true }
 semver = { workspace = true, optional = true }
@@ -133,6 +134,7 @@ hyper-util = { workspace = true, features = ["server-auto", "tokio"] }
 insta.workspace = true
 oas3.workspace = true
 minisign.workspace = true
+zip.workspace = true
 
 # A single test executable keeps the link count (and the target dir) small.
 [[test]]

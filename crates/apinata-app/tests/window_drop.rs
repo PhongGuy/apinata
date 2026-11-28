@@ -129,6 +129,58 @@ fn a_dropped_postman_file_is_imported_where_the_user_says(cx: &mut TestAppContex
     assert_eq!(opened(cx, &view), vec![into.path().join("Shop")]);
 }
 
+/// A Postman data export under `dir`: the archive marker, two collections and an environment.
+fn export_entries() -> Vec<(&'static str, String)> {
+    let env = r#"{"name":"dev","values":[{"key":"host","value":"x.test"}],"_postman_variable_scope":"environment"}"#;
+    vec![
+        ("export/archive.json", r#"{"collection":{}}"#.to_owned()),
+        ("export/collection/a.json", postman()),
+        (
+            "export/collection/b.json",
+            postman().replace("Shop", "Admin"),
+        ),
+        ("export/environment/e.json", env.to_owned()),
+    ]
+}
+
+#[gpui_kit::test]
+fn a_dropped_postman_export_folder_imports_each_collection(cx: &mut TestAppContext) {
+    let (files, win, view) = shell(cx);
+    let into = tempfile::tempdir().unwrap();
+    for (name, text) in export_entries() {
+        let path = files.path().join(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, text).unwrap();
+    }
+    drop_on(cx, win, &[files.path().join("export")]);
+    answer_into(cx, into.path());
+    let mut got = opened(cx, &view);
+    got.sort();
+    assert_eq!(
+        got,
+        vec![into.path().join("Admin"), into.path().join("Shop")]
+    );
+    assert!(into.path().join("Shop/environments/dev.yml").is_file());
+}
+
+#[gpui_kit::test]
+fn a_dropped_postman_export_zip_imports_each_collection(cx: &mut TestAppContext) {
+    use std::io::Write as _;
+    let (files, win, view) = shell(cx);
+    let into = tempfile::tempdir().unwrap();
+    let path = files.path().join("export.zip");
+    let mut zip = zip::ZipWriter::new(fs::File::create(&path).unwrap());
+    for (name, text) in export_entries() {
+        zip.start_file(name, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        zip.write_all(text.as_bytes()).unwrap();
+    }
+    zip.finish().unwrap();
+    drop_on(cx, win, &[path]);
+    answer_into(cx, into.path());
+    assert_eq!(opened(cx, &view).len(), 2);
+}
+
 #[gpui_kit::test]
 fn a_dropped_openapi_file_is_imported(cx: &mut TestAppContext) {
     let (files, win, view) = shell(cx);

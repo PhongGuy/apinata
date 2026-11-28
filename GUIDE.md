@@ -592,6 +592,7 @@ Filtering:
 | --- | --- |
 | `--tags <TAGS>` | Run only the requests that have at least one of these comma-separated tags. |
 | `--exclude-tags <TAGS>` | Skip the requests that have any of these tags, even when `--tags` picks them. |
+| `--tests-only` | Run only the requests that check something: an enabled assertion of their own, or a `test(...)` call in one of their own scripts. Folder and collection tests do not count. The run prints how many it left out on stderr, and a path where no request has tests is an error. |
 | `--bail` | Stop after the first failed or errored request. |
 
 Data-driven runs:
@@ -1282,6 +1283,9 @@ after the run puts the cookies the run set or changed into the shared jar;
 cookies it deleted stay there. Keep variable values set by the run is on by
 default; off, the run works on a copy of the variables and drops the values it
 set when it ends. A collection or folder runner remembers these choices.
+Only requests with tests leaves out the requests `--tests-only` would, for
+that tab only; the list shows what will run, and a finished run notes how many
+it left out.
 
 The bottom dock has Console, Network and Variables tabs. Variables lists the
 variables the active request sees, grouped by the scope that defines them, after
@@ -1418,6 +1422,21 @@ Environments from Postman and Hoppscotch go into an existing collection:
 
 ```sh
 apinata import environment staging.json --collection ./my-api
+```
+
+A Postman data export (Settings, Export data) comes in whole. Give the zip, the
+folder it unzips to, or that folder's `archive.json`; in the app, choose it in
+Import collection or drop it on the window. Each Postman collection becomes its
+own collection, and each gets a copy of every exported environment, with secret
+values kept in the keychain. Postman exports globals separately, and a globals
+file found in the export is listed as not imported. The zip is read in memory
+and never unpacked; one over 256 MiB, with more than 10,000 files or 512 MiB of
+content, is refused. An entry that cannot be read is skipped, the rest is still
+written, and each skipped entry is listed on stderr as `not imported:` with its
+reason; the command then exits 3:
+
+```sh
+apinata import postman-export ~/Downloads/postman-export.zip --into ./collections
 ```
 
 One curl command becomes a request. Give it a file, or leave the file out to
