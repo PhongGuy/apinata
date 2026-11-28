@@ -113,7 +113,7 @@ pub struct CookieJar {
     journal: Option<Mutex<Vec<JarOp>>>,
 }
 
-/// One change made to an overlay, kept with its inputs so it can be judged again on replay.
+/// One attempt to change an overlay, kept with its inputs so it can be judged again on replay.
 enum JarOp {
     Store { values: Vec<Vec<u8>>, url: Url },
     StoreFor { url: Url, cookie: ScriptCookie },
@@ -127,7 +127,7 @@ enum JarOp {
 pub(crate) struct JarJournal(Vec<JarOp>);
 
 impl JarJournal {
-    /// Whether the overlay changed nothing.
+    /// Whether nothing tried to change the overlay.
     pub(crate) fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -978,7 +978,7 @@ impl CookieJar {
         }
     }
 
-    /// The changes recorded since the last take; always empty for a jar that is no overlay.
+    /// The attempts recorded since the last take; always empty for a jar that is no overlay.
     pub(crate) fn take_journal(&self) -> JarJournal {
         JarJournal(
             self.journal
@@ -1011,7 +1011,8 @@ impl CookieJar {
         }
     }
 
-    // Only an overlay keeps a journal, and only changes are worth replaying.
+    // Only an overlay keeps a journal. It keeps every attempt, not only changes: a removal
+    // that finds nothing in the overlay can still find a cookie an earlier request set.
     fn note(&self, op: impl FnOnce() -> JarOp) {
         if let Some(journal) = &self.journal {
             journal
@@ -1057,6 +1058,8 @@ impl CookieJar {
             .any(|c| matches!(c.outcome, CookieOutcome::Stored | CookieOutcome::Removed));
         if changed {
             self.bump();
+        }
+        if !values.is_empty() {
             self.note(|| JarOp::Store {
                 values,
                 url: url.clone(),
@@ -1087,14 +1090,15 @@ impl CookieJar {
             DomainRule::HostOnly => raw.unset_domain(),
             DomainRule::Keep => {}
         }
+        // Every attempt is kept, as an expiry finding nothing here may remove a cookie on replay.
+        self.note(|| JarOp::StoreFor {
+            url: url.clone(),
+            cookie: cookie.clone(),
+        });
         let mut store = self.write();
         match store.insert_raw(&raw, url) {
             Ok(action) => {
                 self.bump();
-                self.note(|| JarOp::StoreFor {
-                    url: url.clone(),
-                    cookie: cookie.clone(),
-                });
                 match action {
                     StoreAction::ExpiredExisting => (CookieOutcome::Removed, None),
                     _ => (CookieOutcome::Stored, None),
@@ -1135,11 +1139,11 @@ impl CookieJar {
         let gone = doomed.filter(|c| store.remove(&c.domain, &c.path, name).is_some());
         if gone.is_some() {
             self.bump();
-            self.note(|| JarOp::DeleteFor {
-                url: url.clone(),
-                name: name.to_owned(),
-            });
         }
+        self.note(|| JarOp::DeleteFor {
+            url: url.clone(),
+            name: name.to_owned(),
+        });
         gone.cloned()
     }
 
@@ -1152,8 +1156,8 @@ impl CookieJar {
             .collect();
         if !removed.is_empty() {
             self.bump();
-            self.note(|| JarOp::DeleteAllFor { url: url.clone() });
         }
+        self.note(|| JarOp::DeleteAllFor { url: url.clone() });
         removed
     }
 
@@ -1935,19 +1939,38 @@ mod tests {
     }
 
     #[test]
-    fn only_changes_are_journaled_and_a_replay_bumps_the_revision() {
+    fn every_attempt_is_journaled_but_a_hop_without_cookies_is_not() {
         use std::sync::atomic::Ordering;
         let real = jar();
         let url = Url::parse("http://www.example.com/").unwrap();
         let overlay = real.overlay();
         overlay.store(std::iter::empty::<&str>(), &url);
-        assert!(overlay.delete_for(&url, "missing").is_none());
         assert!(overlay.take_journal().is_empty());
+        // Removals that find nothing in the overlay may still find a cookie on replay.
+        assert!(overlay.delete_for(&url, "missing").is_none());
+        overlay.store(["gone=; Max-Age=0"], &url);
+        assert!(!overlay.take_journal().is_empty());
         overlay.store(["z=1"], &url);
         let journal = overlay.take_journal();
-        assert!(!journal.is_empty());
         let before = real.revision.load(Ordering::SeqCst);
         real.replay(journal);
         assert!(real.revision.load(Ordering::SeqCst) > before);
+    }
+
+    #[test]
+    fn a_replayed_removal_takes_a_cookie_the_overlay_never_saw() {
+        let real = CookieJar::default();
+        let url = Url::parse("http://www.example.com/").unwrap();
+        let (a, b, c) = (real.overlay(), real.overlay(), real.overlay());
+        a.store(["sid=1; Path=/"], &url);
+        b.store(["sid=; Max-Age=0; Path=/"], &url);
+        real.replay(a.take_journal());
+        real.replay(b.take_journal());
+        assert!(real.list().is_empty());
+        a.store(["sid=1; Path=/"], &url);
+        assert!(c.delete_for(&url, "sid").is_none());
+        real.replay(a.take_journal());
+        real.replay(c.take_journal());
+        assert!(real.list().is_empty());
     }
 }

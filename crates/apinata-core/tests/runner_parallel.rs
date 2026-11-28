@@ -80,6 +80,10 @@ async fn counting_server() -> (String, Arc<AtomicUsize>) {
                         extra = format!("set-cookie: {query}; Path=/\r\n");
                         ("200 OK", "ok".to_owned())
                     }
+                    "/expire" => {
+                        extra = format!("set-cookie: {query}=; Max-Age=0; Path=/\r\n");
+                        ("200 OK", "ok".to_owned())
+                    }
                     "/echo" => ("200 OK", cookie),
                     "/count" => {
                         let now = open.fetch_add(1, Ordering::SeqCst) + 1;
@@ -388,4 +392,60 @@ async fn a_sequential_run_still_allows_shared_writes() {
     let (report, _, ctx) = run_parallel(dir.path(), 1, executor(), on()).await;
     assert_eq!(report.results[0].outcome, Outcome::Passed);
     assert_eq!(ctx.runtime_vars().len(), 1);
+}
+
+/// The jar's cookies as `name=value`, sorted.
+fn jar_of(exec: &Executor) -> Vec<String> {
+    let mut all: Vec<String> = exec
+        .cookies()
+        .list()
+        .into_iter()
+        .map(|c| format!("{}={}", c.name, c.value))
+        .collect();
+    all.sort();
+    all
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_later_expiry_removes_a_cookie_an_earlier_request_set() {
+    let base = server().await;
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("a.yml", &req("a", 1, &format!("{base}/set?sid=1"), "")),
+        ("b.yml", &req("b", 2, &format!("{base}/expire?sid"), "")),
+        ("c.yml", &req("c", 3, &format!("{base}/set?keep=1"), "")),
+    ]);
+    let exec = executor();
+    let (report, _, _) = run_parallel(dir.path(), 3, Arc::clone(&exec), on()).await;
+    // A serial run would end with only `keep`: b's expiry comes after a's login.
+    assert_eq!(jar_of(&exec), ["keep=1"]);
+    assert!(
+        report.results[1]
+            .warnings
+            .contains(&Warning::ParallelCookiesUnseen)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_later_script_unset_removes_a_cookie_an_earlier_request_set() {
+    let base = server().await;
+    let unset = script(
+        "tests",
+        &format!("await bru.cookies.jar().deleteCookie(\"{base}/\", \"sid\");"),
+    );
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("a.yml", &req("a", 1, &format!("{base}/set?sid=1"), "")),
+        ("b.yml", &req("b", 2, &format!("{base}/ok"), &unset)),
+        ("c.yml", &req("c", 3, &format!("{base}/set?keep=1"), "")),
+    ]);
+    let exec = executor();
+    let (report, _, _) = run_parallel(dir.path(), 3, Arc::clone(&exec), on()).await;
+    assert_eq!(report.summary.errored, 0, "{:?}", report.results);
+    assert_eq!(jar_of(&exec), ["keep=1"]);
+    assert!(
+        report.results[1]
+            .warnings
+            .contains(&Warning::ParallelCookiesUnseen)
+    );
 }
