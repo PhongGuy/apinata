@@ -55,6 +55,7 @@ mod auth_json;
 mod auth_modes_edit;
 mod body_filter;
 mod codegen;
+mod codegen_masked;
 mod collection_create;
 #[cfg(unix)]
 mod collection_fifo;

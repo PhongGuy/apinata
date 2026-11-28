@@ -773,6 +773,32 @@ pub fn encoded_forms(value: &str) -> Vec<String> {
     forms
 }
 
+/// Every text `value` stands as in a resolved request, matched exactly: its raw, JSON-escaped
+/// and twice-escaped forms and its percent and whole base64 encodings, longest first.
+pub(crate) fn exact_forms(value: &str) -> Vec<String> {
+    let escaped = json_escaped(value);
+    let twice = json_escaped(&escaped);
+    let mut forms = vec![value.to_owned(), escaped, twice];
+    for form in wire_forms(value, FormPolicy::new(MIN_CHARS, MIN_FORM_CHARS)) {
+        if matches!(form.kind, FormKind::Text | FormKind::Base64) {
+            forms.push(form.text);
+        }
+    }
+    forms.retain(|f| !f.is_empty());
+    forms.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
+    forms.dedup();
+    forms
+}
+
+/// A secret `value` that `placeholder` stands for, as a code generator masks it.
+pub(crate) fn masking(value: &str, placeholder: &str) -> NamedSecret {
+    NamedSecret {
+        label: PLAIN_LABEL.to_owned(),
+        placeholder: placeholder.to_owned(),
+        value: value.to_owned(),
+    }
+}
+
 fn unnamed(label: &str, value: &str) -> NamedSecret {
     NamedSecret {
         label: label.to_owned(),
