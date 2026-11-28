@@ -28,7 +28,7 @@ source under MIT or Apache-2.0.
 
 - **Many kinds of auth.** Basic, Bearer, JWT Bearer, API key, Digest, AWS
   SigV4, NTLM, OAuth 1.0, OAuth 2.0 (client credentials, password,
-  authorization code with PKCE, and implicit), WSSE, Akamai EdgeGrid and Hawk. A cookie jar keeps
+  authorization code with PKCE, and implicit), WSSE, Akamai EdgeGrid, Hawk and Atlassian ASAP. A cookie jar keeps
   cookies between requests.
 
 - **AI through MCP.** An AI assistant can read and edit your collections and

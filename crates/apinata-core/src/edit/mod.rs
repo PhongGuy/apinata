@@ -1,5 +1,6 @@
 //! Typed values for editing request files.
 
+pub(crate) mod asap;
 pub(crate) mod auth;
 pub(crate) mod auth_json;
 pub(crate) mod body;
@@ -10,6 +11,7 @@ pub(crate) mod oauth1;
 pub(crate) mod oauth2;
 pub(crate) mod settings;
 
+pub use asap::AsapSpec;
 pub use auth::{ApiKeyPlacement, AuthSpec};
 #[doc(hidden)]
 pub use auth_json::paths as auth_json_paths;

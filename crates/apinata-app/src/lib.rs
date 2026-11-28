@@ -86,6 +86,7 @@ pub mod har_export;
 pub mod header_complete;
 pub mod history_key;
 pub mod history_palette;
+pub mod html_preview;
 pub mod icons;
 pub mod identity;
 pub mod image_guard;

@@ -5,10 +5,10 @@
 //! repeat an input value, since auth JSON is full of credentials.
 
 use super::{
-    ApiKeyPlacement, AuthSpec, ClientAuth, EdgeGridSpec, HawkSpec, JwtAlgorithm, JwtPlacement,
-    JwtSpec, OAuth1KeyKind, OAuth1Placement, OAuth1PrivateKey, OAuth1SignatureMethod, OAuth1Spec,
-    OAuth2Flow, OAuth2Param, OAuth2ParamPlacement, OAuth2Spec, OAuth2Stage, TokenPlacement,
-    TokenSource,
+    ApiKeyPlacement, AsapSpec, AuthSpec, ClientAuth, EdgeGridSpec, HawkSpec, JwtAlgorithm,
+    JwtPlacement, JwtSpec, OAuth1KeyKind, OAuth1Placement, OAuth1PrivateKey, OAuth1SignatureMethod,
+    OAuth1Spec, OAuth2Flow, OAuth2Param, OAuth2ParamPlacement, OAuth2Spec, OAuth2Stage,
+    TokenPlacement, TokenSource,
 };
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
@@ -190,6 +190,7 @@ fn spec(mode: String, rest: impl Fields) -> Result<AuthSpec, AuthJsonError> {
         "edgegrid" => rest.read::<EdgeGridJson>()?.into_spec(),
         "jwt" => rest.read::<JwtJson>()?.into_spec(),
         "hawk" => rest.read::<HawkJson>()?.into_spec(),
+        "asap" => rest.read::<AsapJson>()?.into_spec(),
         _ => {
             return Err(AuthJsonError::UnknownType {
                 mode,
@@ -415,6 +416,20 @@ struct HawkJson {
     include_payload_hash: bool,
 }
 
+/// Every ASAP field; `algorithm` keeps any spelling, since a variable may supply it.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AsapJson {
+    algorithm: String,
+    issuer: String,
+    audience: String,
+    key_id: String,
+    subject: String,
+    expires_in: String,
+    additional_claims: String,
+    private_key: String,
+}
+
 /// `algorithm` and `placement` keep any spelling, since a variable may supply them; the send
 /// refuses one it does not know.
 #[derive(Deserialize)]
@@ -637,6 +652,21 @@ impl OAuth1KeyJson {
             OAuth1KeyKindJson::File => OAuth1KeyKind::File,
         };
         OAuth1PrivateKey::new(kind, self.value)
+    }
+}
+
+impl AsapJson {
+    fn into_spec(self) -> AuthSpec {
+        AuthSpec::Asap(AsapSpec {
+            algorithm: self.algorithm,
+            issuer: self.issuer,
+            audience: self.audience,
+            key_id: self.key_id,
+            subject: self.subject,
+            expires_in: self.expires_in,
+            additional_claims: self.additional_claims,
+            private_key: self.private_key,
+        })
     }
 }
 

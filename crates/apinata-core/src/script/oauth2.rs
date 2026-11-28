@@ -16,13 +16,22 @@ pub(crate) fn installer(state: Arc<HostState>) -> Installer {
     Box::new(move |ctx| {
         // Forget in memory before the future is built, so the script's next line already sees
         // the id gone; the future persists the clear and the phase waits for it.
+        // A parallel run shares the token cache between requests in flight, so the reset is
+        // refused there and the id is left alone.
         let host = move |id: String| {
             let ctx = &state.ctx;
             let (root, env) = (ctx.key_root(), ctx.environment().map(str::to_owned));
             let tokens = ctx.oauth2_tokens().clone();
-            tokens.forget(&root, env.as_deref(), &id);
+            let refused = state.parallel();
+            if refused {
+                state.refuse_parallel("bru.resetOauth2Credential");
+            } else {
+                tokens.forget(&root, env.as_deref(), &id);
+            }
             async move {
-                tokens.clear(&root, env.as_deref(), &id).await;
+                if !refused {
+                    tokens.clear(&root, env.as_deref(), &id).await;
+                }
                 Ok::<_, rquickjs::Error>(())
             }
         };

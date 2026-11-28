@@ -673,3 +673,24 @@ fn the_page_tooltip_names_what_is_blocked_and_redacted() {
         assert!(OPEN_PAGE_TIP.contains(word), "{word}");
     }
 }
+
+#[gpui_kit::test]
+fn a_previewed_html_page_holds_no_secret(cx: &mut TestAppContext) {
+    let page = format!("<html><body><p>token {SECRET}</p></body></html>");
+    let (result, _keep) = secret_send(cx, "text/html", page);
+    let (win, view) = host(cx, result);
+    // Revealing the text does not reveal the laid-out page, which has no eye of its own.
+    cx.update_window(win, |_, w, cx| {
+        view.update(cx, |v, cx| {
+            v.set_reveal(true, w, cx);
+            v.set_preview(true, w, cx);
+        })
+    })
+    .unwrap();
+    cx.run_until_parked();
+    let html = cx.update(|cx| view.read(cx).preview_markdown()).unwrap();
+    assert!(!html.contains(SECRET), "{html}");
+    // The page text is escaped for its Markdown layout, brackets included.
+    assert_eq!(MASKED, "[redacted]");
+    assert!(html.contains("token \\[redacted\\]"), "{html}");
+}

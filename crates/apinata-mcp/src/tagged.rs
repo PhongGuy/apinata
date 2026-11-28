@@ -2,7 +2,7 @@
 //! such a document through a buffer that loses the path, so an error inside one is re-found
 //! here by reading the document, without its `type`, as the tagged variant's own struct.
 
-use crate::dto::{HawkDoc, JwtDoc, MaxBodySize, Oauth1KeyDoc, Oauth2Doc, PlacementDoc};
+use crate::dto::{AsapDoc, HawkDoc, JwtDoc, MaxBodySize, Oauth1KeyDoc, Oauth2Doc, PlacementDoc};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
@@ -30,6 +30,7 @@ pub(crate) fn variant_error(key: &str, doc: &Map<String, Value>) -> Option<Error
         ("auth", "edgegrid") => read::<EdgeGrid>(rest),
         ("auth", "jwt") => read::<JwtDoc>(rest),
         ("auth", "hawk") => read::<HawkDoc>(rest),
+        ("auth", "asap") => read::<AsapDoc>(rest),
         ("auth", "unsupported") => read::<Unsupported>(rest),
         ("token_placement", "header") => read::<Prefix>(rest),
         ("token_placement", "query") => read::<Key>(rest),

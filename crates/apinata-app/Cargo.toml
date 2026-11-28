@@ -36,6 +36,8 @@ http.workspace = true
 percent-encoding.workspace = true
 # Already in the lock through gpui; pinned to that version so only one copy builds.
 quick-xml = "=0.41.0"
+# The kit's own HTML parser, at its version: the preview parses a page into a flat arena.
+html5ever = "=0.27.0"
 # The editor's text type, at the kit's version; `ropes_are_instances` compares two in O(1).
 ropey = { version = "=2.0.0-beta.1", default-features = false }
 # Same version gpui links, so `RgbaImage` is the type `WindowOptions.icon` takes.
@@ -49,6 +51,8 @@ rust-embed = { version = "=8.13.0", features = ["debug-embed"] }
 winresource = "=0.1.34"
 
 [dev-dependencies]
+# The kit's Markdown parser, at its version: tests measure the tree the preview feeds it.
+markdown = "=1.0.0"
 aes-gcm.workspace = true
 socket2 = { workspace = true }
 gpui-kit = { workspace = true, features = ["test-support"] }
