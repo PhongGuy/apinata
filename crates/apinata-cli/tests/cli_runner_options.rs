@@ -297,3 +297,38 @@ fn parallel_takes_one_to_sixty_four_and_conflicts_with_delay() {
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(err.contains("cannot be used with"), "{err}");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn parallel_verbose_lines_follow_run_order() {
+    use wiremock::matchers::path;
+    let s = MockServer::start().await;
+    // The first request answers last, so completion order is the reverse of run order.
+    Mock::given(path("/slow"))
+        .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_millis(300)))
+        .mount(&s)
+        .await;
+    Mock::given(path("/fast"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&s)
+        .await;
+    let u = s.uri();
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("a.yml", &tagged("A", 1, &format!("{u}/slow"), "")),
+        ("b.yml", &tagged("B", 2, &format!("{u}/fast"), "")),
+    ]);
+    let out = apinata()
+        .arg("run")
+        .arg(dir.path())
+        .args(["--parallel", "2", "--verbose"])
+        .output()
+        .expect("runs");
+    assert_eq!(out.status.code(), Some(0));
+    let err = String::from_utf8_lossy(&out.stderr);
+    let at = |needle: &str| {
+        err.lines()
+            .position(|l| l.contains(needle))
+            .unwrap_or_else(|| panic!("no {needle} line: {err}"))
+    };
+    assert!(at("/slow 200") < at("/fast 200"), "{err}");
+}

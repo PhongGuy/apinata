@@ -24,7 +24,7 @@ use crate::script::{
     TestOutcome,
 };
 use crate::secret_names::log_values;
-use crate::session_log::{ConsoleLine, Logged, Redactor, SendHold, SendSource};
+use crate::session_log::{ConsoleLine, HoldGuard, Logged, Redactor, SendHold, SendSource};
 use crate::stream::{HiddenValues, StreamEnd, StreamEvent, StreamLimits, StreamOptions};
 use crate::subscription::is_subscription;
 use crate::tags::{TagFilter, normalize};
@@ -469,6 +469,8 @@ pub struct RunOptions {
     fail_on_status: Option<StatusRule>,
     /// Set by a parallel run on its sends, so their scripts refuse shared-state calls.
     parallel: bool,
+    /// The log hold a parallel run opened for one send, published when its result is released.
+    hold: Option<SendHold>,
 }
 
 /// Which reply statuses fail a request that otherwise passed.
@@ -553,6 +555,7 @@ impl fmt::Debug for RunOptions {
             .field("on_retry", &self.on_retry.is_some())
             .field("fail_on_status", &self.fail_on_status)
             .field("parallel", &self.parallel)
+            .field("hold", &self.hold.is_some())
             .finish()
     }
 }
@@ -1361,7 +1364,7 @@ impl Walk {
         let start = exec.cookies().overlay();
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let mut flying = FuturesUnordered::new();
-        let mut parked: BTreeMap<usize, (RequestResult, JarJournal)> = BTreeMap::new();
+        let mut parked: BTreeMap<usize, Finished> = BTreeMap::new();
         let (mut launched, mut released) = (0, 0);
         loop {
             if self.stop.is_none() && cancel.is_cancelled() {
@@ -1376,20 +1379,34 @@ impl Walk {
                 self.sent_any = true;
                 let jar = Arc::new(start.overlay());
                 let sender = Arc::new(exec.with_overlay_jar(Arc::clone(&jar)));
+                // Each send's log entries wait in its own hold until its result is released,
+                // so a log reader sees them in run order too.
+                let (hold, guard) = match exec.session_log() {
+                    Some(log) => {
+                        let (hold, guard) = SendHold::open(log.clone());
+                        (Some(hold), Some(guard))
+                    }
+                    None => (None, None),
+                };
+                let own = RunOptions {
+                    hold,
+                    ..opts.clone()
+                };
                 flying.push(send_parallel_one(
                     launched,
                     path.clone(),
                     request,
                     ctx,
                     (sender, jar),
-                    &opts,
+                    own,
                     cancel,
                     tx.clone(),
+                    guard,
                 ));
                 launched += 1;
             }
-            while let Some((result, journal)) = parked.remove(&released) {
-                self.release(released, result, journal, total, iteration, exec, on_event);
+            while let Some(finished) = parked.remove(&released) {
+                self.release(released, finished, total, iteration, exec, on_event);
                 released += 1;
             }
             // Nothing in flight means every launched send is released and no more will launch.
@@ -1399,47 +1416,48 @@ impl Walk {
             tokio::select! {
                 biased;
                 Some(event) = rx.recv() => on_event(event),
-                Some((index, result, journal)) = flying.next() => {
+                Some((index, finished)) = flying.next() => {
                     while let Ok(event) = rx.try_recv() {
                         on_event(event);
                     }
                     if self.stop.is_none() {
-                        self.stop = stop_after(&result, &opts);
+                        self.stop = stop_after(&finished.result, &opts);
                     }
-                    parked.insert(index, (result, journal));
+                    parked.insert(index, finished);
                 }
             }
         }
         for (index, (path, request, _)) in plan.requests.iter().enumerate().skip(released) {
-            let result = RequestResult::new(path.clone(), request, Outcome::Skipped);
-            self.release(
-                index,
-                result,
-                JarJournal::default(),
-                total,
-                iteration,
-                exec,
-                on_event,
-            );
+            let finished = Finished {
+                result: RequestResult::new(path.clone(), request, Outcome::Skipped),
+                journal: JarJournal::default(),
+                guard: None,
+            };
+            self.release(index, finished, total, iteration, exec, on_event);
         }
     }
 
-    /// Replays a finished send's cookie changes on the run's jar and reports its result.
-    #[allow(clippy::too_many_arguments)]
+    /// Replays a finished send's cookie changes on the run's jar, publishes its log entries
+    /// and reports its result.
     fn release(
         &mut self,
         index: usize,
-        mut result: RequestResult,
-        journal: JarJournal,
+        finished: Finished,
         total: usize,
         iteration: Option<usize>,
         exec: &Executor,
         on_event: &mut (dyn FnMut(RunEvent) + Send),
     ) {
+        let Finished {
+            mut result,
+            journal,
+            guard,
+        } = finished;
         if !journal.is_empty() && index + 1 < total {
             result.warnings.push(Warning::ParallelCookiesUnseen);
         }
         exec.cookies().replay(journal);
+        drop(guard);
         result.iteration = iteration;
         let result = Arc::new(result);
         on_event(RunEvent::RequestFinished {
@@ -1461,8 +1479,17 @@ fn stop_after(result: &RequestResult, opts: &RunOptions) -> Option<RunStop> {
     }
 }
 
+/// A send of a parallel run that has ended, waiting for its turn to be reported.
+struct Finished {
+    result: RequestResult,
+    /// The changes it tried to make to the jar.
+    journal: JarJournal,
+    /// Publishes its log entries when dropped.
+    guard: Option<HoldGuard>,
+}
+
 /// One send of a parallel run on its own executor and jar overlay, forwarding its progress
-/// events to `tx`; returns its index, its result and the changes it made to the jar.
+/// events to `tx`; returns its index and what it left to report.
 #[allow(clippy::too_many_arguments)]
 async fn send_parallel_one(
     index: usize,
@@ -1470,10 +1497,12 @@ async fn send_parallel_one(
     request: &RequestFile,
     ctx: &VarContext,
     (exec, jar): (Arc<Executor>, Arc<CookieJar>),
-    opts: &RunOptions,
+    opts: RunOptions,
     cancel: &CancelHandle,
     tx: tokio::sync::mpsc::UnboundedSender<RunEvent>,
-) -> (usize, RequestResult, JarJournal) {
+    guard: Option<HoldGuard>,
+) -> (usize, Finished) {
+    let opts = &opts;
     let mut emit = move |event: RunEvent| {
         let _ = tx.send(event);
     };
@@ -1482,7 +1511,15 @@ async fn send_parallel_one(
     } else {
         send_retrying_one(index, path, request, ctx, &exec, opts, cancel, &mut emit).await
     };
-    (index, result, jar.take_journal())
+    let journal = jar.take_journal();
+    (
+        index,
+        Finished {
+            result,
+            journal,
+            guard,
+        },
+    )
 }
 
 /// What the body-read sink and the end hook push to the walk.
@@ -1664,6 +1701,7 @@ pub(crate) struct Nesting {
 impl Nesting {
     /// The handle of a top-level send: depth 0, the send's options minus the run-only fields.
     fn top(opts: &RunOptions) -> Nesting {
+        let hold = opts.hold.clone();
         let opts = RunOptions {
             bail: false,
             guard: opts.guard.clone(),
@@ -1680,6 +1718,7 @@ impl Nesting {
             on_retry: None,
             fail_on_status: None,
             parallel: opts.parallel,
+            hold: None,
         };
         Nesting {
             depth: 0,
@@ -1688,7 +1727,7 @@ impl Nesting {
                 .map(|_| tokio::sync::Mutex::new(()))
                 .collect(),
             deadline: None,
-            hold: None,
+            hold,
         }
     }
 
