@@ -3,7 +3,7 @@
 
 use std::error::Error as _;
 use std::fmt;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -25,6 +25,7 @@ use crate::cookies::CookieJar;
 use crate::default_headers::{defaults_without, omits};
 use crate::digest;
 use crate::edgegrid;
+use crate::file_access::ReadFailure;
 use crate::hawk;
 use crate::host_guard::{
     Guard, HostPolicy, Lookup, SystemLookup, judge_with_overrides, refusal_in,
@@ -40,7 +41,7 @@ use crate::network::{
 };
 use crate::ntlm;
 use crate::oauth1;
-use crate::resolve::{Body, FileRef, ResolvedRequest, SendAuth, redact_url};
+use crate::resolve::{Body, ResolvedRequest, SendAuth, redact_url};
 use crate::response::{HOP_BODY_LIMIT, Hop, Response, SentRequest};
 use crate::session_log::{
     Exchange, Logged, NetworkEntry, Redactor, SendHold, SendSource, SessionLog,
@@ -67,7 +68,6 @@ pub struct ExecOptions {
     force_http_version: Option<HttpVersionPolicy>,
     max_body_bytes: Option<u64>,
     host_policy: Option<HostPolicy>,
-    confine_files: Option<PathBuf>,
     network: Option<NetworkSettings>,
     cookie_jar: Option<Arc<CookieJar>>,
     // Stored inverted so the derived `Default` leaves both switches on.
@@ -89,7 +89,6 @@ impl fmt::Debug for ExecOptions {
             .field("force_http_version", &self.force_http_version)
             .field("max_body_bytes", &self.max_body_bytes)
             .field("host_policy", &self.host_policy.is_some())
-            .field("confine_files", &self.confine_files)
             .field("network", &self.network)
             .field("cookie_jar", &self.cookie_jar.is_some())
             .field("store_cookies", &!self.no_store_cookies)
@@ -142,13 +141,6 @@ impl ExecOptions {
     /// normalised as [`crate::normalize_host`] does. Without this, any host is sent to.
     pub fn host_policy(mut self, trusted: Arc<dyn Fn(&str) -> bool + Send + Sync>) -> ExecOptions {
         self.host_policy = Some(trusted);
-        self
-    }
-
-    /// Refuse, before reading any, a body file that is absolute or resolves outside `root`
-    /// through `..` or symlinks. Without this, any path is read.
-    pub fn confine_files(mut self, root: impl Into<PathBuf>) -> ExecOptions {
-        self.confine_files = Some(root.into());
         self
     }
 
@@ -650,7 +642,6 @@ pub struct Executor {
     jar: Arc<CookieJar>,
     max_body_bytes: Option<u64>,
     host_policy: Option<HostPolicy>,
-    confine_files: Option<PathBuf>,
     pac_cache: &'static PacCache,
     // The flags guard no other memory, so `Relaxed` loads and stores suffice.
     store_cookies: AtomicBool,
@@ -672,45 +663,35 @@ impl fmt::Debug for Executor {
     }
 }
 
-/// Whether `given` is absolute or has a `..` that climbs above the root it is joined to.
-/// Purely lexical: it never touches the disk.
-pub(crate) fn escapes_root(given: &Path) -> bool {
-    let mut depth = 0usize;
-    for part in given.components() {
-        match part {
-            Component::Normal(_) => depth += 1,
-            Component::CurDir => {}
-            Component::ParentDir if depth > 0 => depth -= 1,
-            _ => return true,
-        }
+/// Refuses the first body file whose written path leaves the request's file scope, before any
+/// file is opened; links are judged when each file is opened beneath the root.
+fn confine(req: &ResolvedRequest) -> Result<(), ExecError> {
+    match req
+        .files()
+        .iter()
+        .find(|f| !req.file_scope().admits(&f.given))
+    {
+        Some(file) => Err(ExecError::FileOutsideCollection {
+            path: file.written.clone(),
+        }),
+        None => Ok(()),
     }
-    false
 }
 
-/// Refuses the first of `files` outside `root`. The lexical check runs before any I/O; only
-/// paths that pass it are canonicalised, which reads metadata, never contents.
-fn confine(files: &[FileRef], root: &Path) -> Result<(), ExecError> {
-    let outside = |file: &FileRef| ExecError::FileOutsideCollection {
-        path: file.written.clone(),
-    };
-    let canonical_root = std::fs::canonicalize(root).ok();
-    for file in files {
-        if escapes_root(&file.given) {
-            return Err(outside(file));
-        }
-        // Symlinks need the filesystem: compare canonical paths, reading metadata only.
-        let canonical = std::fs::canonicalize(&file.path).map_err(|e| ExecError::File {
-            path: file.written.clone(),
+/// The error for a body file that could not be read, naming it as the request file wrote it.
+fn file_error(req: &ResolvedRequest, joined: &Path, failure: ReadFailure) -> ExecError {
+    let path = req
+        .files()
+        .iter()
+        .find(|f| f.path == joined)
+        .map_or_else(|| joined.to_path_buf(), |f| f.written.clone());
+    match failure {
+        ReadFailure::Outside => ExecError::FileOutsideCollection { path },
+        ReadFailure::Io(e) => ExecError::File {
+            path,
             message: e.to_string(),
-        })?;
-        if !canonical_root
-            .as_ref()
-            .is_some_and(|root| canonical.starts_with(root))
-        {
-            return Err(outside(file));
-        }
+        },
     }
-    Ok(())
 }
 
 /// The status codes bruno-cli's redirect loop follows.
@@ -788,7 +769,6 @@ impl Executor {
             jar: opts.cookie_jar.unwrap_or_default(),
             max_body_bytes: opts.max_body_bytes,
             host_policy: opts.host_policy,
-            confine_files: opts.confine_files,
             pac_cache: &PAC_CACHE,
             store_cookies: AtomicBool::new(!opts.no_store_cookies),
             send_cookies: AtomicBool::new(!opts.no_send_cookies),
@@ -814,7 +794,6 @@ impl Executor {
             jar,
             max_body_bytes: self.max_body_bytes,
             host_policy: self.host_policy.clone(),
-            confine_files: self.confine_files.clone(),
             pac_cache: self.pac_cache,
             store_cookies: AtomicBool::new(self.store_cookies_enabled()),
             send_cookies: AtomicBool::new(self.send_cookies_enabled()),
@@ -1317,9 +1296,7 @@ impl Executor {
                     .to_owned(),
             ));
         }
-        if let Some(root) = &self.confine_files {
-            confine(req.files(), root)?;
-        }
+        confine(req)?;
         // Read on every send, so an edited certificate or key takes effect on the next one;
         // under a network check, from the bytes the check hashed.
         let identity = match req.network().certificate() {
@@ -1335,19 +1312,15 @@ impl Executor {
             // resends the same bytes. The reads yield, so a cancel does not wait for them.
             Body::Multipart(parts) => {
                 let boundary = multipart_boundary(&mut headers);
-                multipart::encode(parts, &boundary)
+                multipart::encode(parts, &boundary, req.file_scope())
                     .await
-                    .map_err(|(path, err)| ExecError::File {
-                        path,
-                        message: err.to_string(),
-                    })?
+                    .map_err(|(path, err)| file_error(req, &path, err))?
             }
-            Body::File { path, .. } => {
-                tokio::fs::read(path).await.map_err(|err| ExecError::File {
-                    path: path.clone(),
-                    message: err.to_string(),
-                })?
-            }
+            Body::File { path, .. } => req
+                .file_scope()
+                .read_body_async(path)
+                .await
+                .map_err(|err| file_error(req, path, err))?,
         };
         // One WSSE value per send, so every hop carries the same nonce; it replaces a user X-WSSE.
         if let Some(SendAuth::Wsse { username, password }) = req.send_auth() {

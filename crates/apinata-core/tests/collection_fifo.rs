@@ -350,8 +350,8 @@ fn send_failure_on(root: &Path, pipe: &Path, options: ExecOptions) -> String {
 fn certificate_over_a_pipe() -> (TempDir, PathBuf) {
     let dir = TempDir::new().expect("tempdir");
     let pipe = dir.path().join("client.pem");
-    let key = pki("client.key").display().to_string();
-    let entry = [("127.0.0.1", pipe.to_str().expect("utf-8"), key.as_str(), "")];
+    fs::copy(pki("client.key"), dir.path().join("client.key")).expect("copy the key");
+    let entry = [("127.0.0.1", "client.pem", "client.key", "")];
     let root = root_with(&pem_certificates(&entry));
     let request = ITEM.replace("https://x.test/", "https://127.0.0.1:9/");
     for (rel, text) in [("opencollection.yml", &root), ("r.yml", &request)] {

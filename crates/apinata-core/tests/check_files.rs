@@ -1,5 +1,5 @@
 use crate::common;
-use apinata_core::{CheckOptions, FindingKind, Severity};
+use apinata_core::{CheckOptions, FileAccess, FindingKind, Severity};
 use common::{ROOT, check_tree};
 
 fn req(body: &str) -> String {
@@ -125,15 +125,25 @@ fn a_client_certificate_path_is_checked_for_existence_only() {
         ])
         .is_empty()
     );
+    let outside = [
+        (
+            "opencollection.yml",
+            root_with_cert(&pem.display().to_string()),
+        ),
+        ("a.yml", req("")),
+    ];
+    let outside: Vec<(&str, &str)> = outside.iter().map(|(p, t)| (*p, t.as_str())).collect();
+    let anywhere = CheckOptions::default().file_access(FileAccess::Anywhere);
+    let (_d, r) = check_tree(&outside, &anywhere);
+    assert!(r.findings().is_empty(), "{:?}", r.findings());
+    // Inside-only access names an absolute certificate as outside, without opening it.
+    let found = kinds(&outside);
+    assert!(!found.is_empty(), "{found:?}");
     assert!(
-        kinds(&[
-            (
-                "opencollection.yml",
-                &root_with_cert(&pem.display().to_string())
-            ),
-            ("a.yml", &req(""))
-        ])
-        .is_empty()
+        found
+            .iter()
+            .all(|f| f.2.contains("is outside the collection")),
+        "{found:?}"
     );
     let found = kinds(&[
         ("opencollection.yml", &root_with_cert("gone.pem")),

@@ -268,7 +268,6 @@ impl ApinataServer {
             .force_http_version(options.http_version_policy())
             .max_body_bytes(Some(BODY_CAP))
             .host_policy(trust.policy())
-            .confine_files(collection.root())
             .cookie_jar(Arc::new(CookieJar::default()));
         if let Some(settings) = options.network_settings() {
             exec_options = exec_options.network(settings.clone());

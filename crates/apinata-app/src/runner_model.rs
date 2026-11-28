@@ -963,7 +963,7 @@ impl RunnerModel {
             }
             // Requests that inherit their timeout take the Preferences default.
             if let Ok(context) = this.update(cx, |_, cx| {
-                settings::with_request_timeout(&planned.context, cx)
+                settings::with_send_settings(&planned.context, cx)
             }) {
                 planned.context = context;
             }

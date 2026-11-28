@@ -60,6 +60,7 @@ pub struct CheckOptions {
     secrets: Option<Arc<dyn SecretStore>>,
     keychain_not_used: bool,
     hint_shell: HintShell,
+    file_access: crate::FileAccess,
 }
 
 // Variable values may be secrets, so Debug shows names only.
@@ -74,6 +75,7 @@ impl std::fmt::Debug for CheckOptions {
             .field("global_env_vars", &names(&self.global_env_vars))
             .field("secrets", &self.secrets.is_some())
             .field("keychain_not_used", &self.keychain_not_used)
+            .field("file_access", &self.file_access)
             .finish()
     }
 }
@@ -111,6 +113,14 @@ impl CheckOptions {
     #[must_use]
     pub fn hint_shell(mut self, shell: HintShell) -> Self {
         self.hint_shell = shell;
+        self
+    }
+
+    /// Check files the collection names as a send under `access` reads them; inside the
+    /// collection only when unset.
+    #[must_use]
+    pub fn file_access(mut self, access: crate::FileAccess) -> Self {
+        self.file_access = access;
         self
     }
 

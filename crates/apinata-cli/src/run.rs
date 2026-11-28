@@ -9,10 +9,10 @@ use std::time::Duration;
 use anyhow::{Context, anyhow, bail};
 use apinata_core::{
     AuthorizeOptions, CancelHandle, Collection, ContextOptions, CookieJar, Environment,
-    EnvironmentChoice, EnvironmentFile, ExecOptions, ExecutionMode, Executor, GlobalEnvironments,
-    HttpVersion, ItemPath, IterationData, NetworkEntry, RequestResult, RunEvent, RunOptions,
-    RunPlan, ScriptOptions, SecretStore, SelectError, SessionLog, StreamBound, StreamEnd,
-    StreamLimits, TagFilter, TokenCache, VarContext,
+    EnvironmentChoice, EnvironmentFile, ExecOptions, ExecutionMode, Executor, FileAccess,
+    GlobalEnvironments, HttpVersion, ItemPath, IterationData, NetworkEntry, RequestResult,
+    RunEvent, RunOptions, RunPlan, ScriptOptions, SecretStore, SelectError, SessionLog,
+    StreamBound, StreamEnd, StreamLimits, TagFilter, TokenCache, VarContext,
 };
 
 use crate::import::{default_keychain, platform_store, secret_store};
@@ -134,8 +134,14 @@ pub fn open_with(args: &RunArgs, keychain: Arc<dyn SecretStore>) -> anyhow::Resu
         args.workspace.as_deref(),
         &args.global_env_var,
     )?;
+    let access = if args.allow_outside_files {
+        FileAccess::Anywhere
+    } else {
+        FileAccess::Collection
+    };
     let mut options = options
         .client_certificates(network::client_certificates(&args.network)?)
+        .file_access(access)
         .secrets(store);
     // An environment file stands in for the collection's environments, the preset default
     // included; an --env-var of a name it marks secret stays hidden.

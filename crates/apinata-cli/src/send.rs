@@ -370,6 +370,9 @@ fn run_args(args: SendArgs, file: &Path) -> anyhow::Result<RunArgs> {
     run.no_keychain = args.no_keychain;
     run.format = args.format;
     run.insecure = args.insecure;
+    // Every file this request names came from the user's own command line, made absolute into
+    // a scratch collection, so none of them is confined to it.
+    run.allow_outside_files = true;
     run.disable_cookies = args.disable_cookies;
     run.timeout = args.timeout;
     run.retries = args.retries;

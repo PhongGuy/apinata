@@ -213,7 +213,7 @@ async fn file_mode_sends_the_file_with_the_entrys_type_even_when_empty() {
 async fn a_missing_body_file_fails_before_any_byte_is_sent() {
     expect_unreadable_file(
         "  body:\n    type: file\n    data:\n      - filePath: nope.bin\n        contentType: x/y\n        selected: true\n",
-        |root| root.join("nope.bin"),
+        |_| "nope.bin".into(),
     )
     .await;
 }

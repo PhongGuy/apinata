@@ -4,7 +4,7 @@ use std::ops::RangeInclusive;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use apinata_core::VarContext;
+use apinata_core::{FileAccess, ScriptTrust, VarContext};
 use gpui_kit::App;
 use serde::{Deserialize, Serialize};
 
@@ -117,10 +117,22 @@ pub fn preview_tabs(cx: &App) -> bool {
         .is_none_or(|state| state.settings.read(cx).get().preview_tabs)
 }
 
-/// `context` with the Preferences timeout as the default for requests that inherit theirs.
-/// Send, the runner and Get token each call this after planning, so all read the same value.
-pub fn with_request_timeout(context: &VarContext, cx: &App) -> VarContext {
-    context.with_default_timeout(request_timeout(cx))
+/// `context` with the Preferences timeout as the default for requests that inherit theirs, and
+/// the collection's choice of reading files outside it. Send, the runner and Get token each call
+/// this after planning, so all read the same values.
+pub fn with_send_settings(context: &VarContext, cx: &App) -> VarContext {
+    context
+        .with_default_timeout(request_timeout(cx))
+        .with_file_access(file_access(context.root(), cx))
+}
+
+/// Whether the collection at `root` may read files outside it, from the script trust file read
+/// fresh; inside only when there is no app state or the file cannot be read.
+pub fn file_access(root: &std::path::Path, cx: &App) -> FileAccess {
+    cx.try_global::<AppState>()
+        .and_then(|state| state.approvals.read(cx).script_trust().map(PathBuf::from))
+        .and_then(|file| ScriptTrust::load(file).ok())
+        .map_or(FileAccess::Collection, |trust| trust.file_access(root))
 }
 
 impl Default for Settings {

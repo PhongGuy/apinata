@@ -247,6 +247,13 @@ pub fn describe_error(error: &RunError, details: &str, env: Option<&str>) -> Err
             "A body file could not be read.".into(),
             false,
         ),
+        RunError::Exec(ExecError::FileOutsideCollection { .. })
+        | RunError::Resolve(ResolveError::FileOutsideCollection { .. }) => view(
+            ErrorKind::NotSent,
+            "File outside the collection",
+            OUTSIDE_FILE_SENTENCE.into(),
+            false,
+        ),
         RunError::Exec(ExecError::BodyCut { cut, .. }) => view(
             ErrorKind::BodyCut,
             "Body cut short",
@@ -547,6 +554,9 @@ pub struct Summary {
 
 /// Where the pane's request lives, read at call time so renames follow.
 pub type HistoryTarget = Rc<dyn Fn(&App) -> Option<(PathBuf, ItemPath)>>;
+
+/// Why a send that names a file outside its collection stopped, and where to allow it.
+pub const OUTSIDE_FILE_SENTENCE: &str = "This request names a file outside its collection, so nothing was sent. To allow it, turn on Read files outside this collection in the collection's Script trust settings.";
 
 /// The Tests tab's Re-check button.
 pub const RECHECK_LABEL: &str = "Re-check";

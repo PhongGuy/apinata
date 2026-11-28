@@ -1,10 +1,10 @@
-//! The file pass: body files and client certificate files must exist, inside the root.
+//! The file pass: body files and client certificate files must exist, inside the root unless
+//! the context reads files anywhere.
 
 use std::path::Path;
 
 use super::report::{Finding, FindingKind, Severity};
 use crate::CertificateFiles;
-use crate::execute::escapes_root;
 use crate::resolve::ResolvedRequest;
 
 /// Check every file one resolved request names. Only metadata is read, never contents.
@@ -23,9 +23,10 @@ pub(super) fn check_files(
             message,
         ));
     };
+    let scope = resolved.file_scope();
     for file in resolved.files() {
         let written = file.written.display();
-        if escapes_root(&file.given) {
+        if !scope.admits(&file.given) {
             missing(format!("file `{written}` is outside the collection"));
         } else if !exists(&file.path) {
             missing(format!("file `{written}` does not exist"));
@@ -42,7 +43,12 @@ pub(super) fn check_files(
         CertificateFiles::Pkcs12 { file } => vec![file],
     };
     for path in paths {
-        if !exists(&path.read) {
+        if !path.scope.admits(&path.given) {
+            missing(format!(
+                "client certificate file `{}` is outside the collection",
+                path.written
+            ));
+        } else if !exists(&path.read) {
             missing(format!(
                 "client certificate file `{}` does not exist",
                 path.written

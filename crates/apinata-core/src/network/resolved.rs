@@ -8,6 +8,7 @@ use url::Url;
 
 use super::hosts::ResolvedHostOverride;
 use crate::error::ResolveError;
+use crate::file_access::FileScope;
 
 /// What `encodeURIComponent` escapes: everything but alphanumerics and `-_.!~*'()`.
 const URI_COMPONENT: &AsciiSet = &NON_ALPHANUMERIC
@@ -212,6 +213,10 @@ pub struct CertPath {
     pub read: PathBuf,
     /// The path as written, before expansion.
     pub written: String,
+    /// The expanded path, before joining.
+    pub(crate) given: PathBuf,
+    /// The root and access the file is read under.
+    pub(crate) scope: FileScope,
 }
 
 /// The files of a chosen client certificate.

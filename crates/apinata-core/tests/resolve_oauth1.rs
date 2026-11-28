@@ -2,7 +2,9 @@
 
 use crate::common;
 
-use apinata_core::{Collection, ContextOptions, ResolveError, VarContext, named_secrets};
+use apinata_core::{
+    Collection, ContextOptions, FileAccess, ResolveError, VarContext, named_secrets,
+};
 use common::{at, request, setup, write_tree};
 
 const ROOT: &str = "opencollection: \"1.0.0\"\ninfo:\n  name: t\nrequest:\n  variables:\n    - name: ck\n      value: consumer\n";
@@ -122,12 +124,18 @@ fn keys_load_from_text_with_escaped_newlines_and_from_files() {
             "{key}"
         );
     }
+    // An absolute key outside the collection is read only when the context reads anywhere.
     let outside = write_tree(&[("abs.pem", PKCS1)]);
-    let r = file(&outside.path().join("abs.pem").display().to_string());
-    assert_eq!(
-        resolves(&[("opencollection.yml", ROOT), ("r.yml", &r)]),
-        Ok(())
+    let abs = outside.path().join("abs.pem").display().to_string();
+    let r = file(&abs);
+    let refused = resolves(&[("opencollection.yml", ROOT), ("r.yml", &r)]);
+    assert!(
+        matches!(&refused, Err(ResolveError::FileOutsideCollection { path, .. }) if path.to_str() == Some(abs.as_str())),
+        "{refused:?}"
     );
+    let (_d, c, ctx) = setup(&[("opencollection.yml", ROOT), ("r.yml", &r)]);
+    let anywhere = ctx.with_file_access(FileAccess::Anywhere);
+    assert_eq!(at(&c, &anywhere, "r.yml").map(|_| ()), Ok(()));
     // HMAC ignores the key, even one that would not parse.
     let r = http("    privateKey: garbage\n");
     assert_eq!(

@@ -7,9 +7,9 @@ use std::time::Duration;
 
 use apinata_core::{
     AssertionOutcome, Collection, ContextOptions, CookieOutcome, CookieRejection, EnvOverlay,
-    ExecError, GlobalEnvironments, ItemPath, OAuth2Error, RequestFile, RequestResult, ResolveError,
-    ResolvedRequest, Response, RuntimeVars, SecretStore, SetCookie, StreamLimits, TokenCache,
-    VarContext, VarOutcome, VarResult, Verdict, normalize_host,
+    ExecError, FileAccess, GlobalEnvironments, ItemPath, OAuth2Error, RequestFile, RequestResult,
+    ResolveError, ResolvedRequest, Response, RuntimeVars, SecretStore, SetCookie, StreamLimits,
+    TokenCache, VarContext, VarOutcome, VarResult, Verdict, normalize_host,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -270,7 +270,9 @@ pub(crate) fn context(
     tokens: TokenCache,
     overlay: EnvOverlay,
 ) -> Result<VarContext, String> {
+    // The agent writes the collection's files, so it never names one outside the root.
     let mut opts = ContextOptions::new()
+        .file_access(FileAccess::Collection)
         .secrets(store)
         .strict_secrets()
         .runtime_vars(runtime)
@@ -378,13 +380,13 @@ pub(crate) fn oauth2_message(err: &OAuth2Error, file: &RequestFile, ctx: &VarCon
     }
 }
 
-/// A failed send as one line, a connect failure with its plain-words hint. A body file that is
+/// A failed send as one line, a connect failure with its plain-words hint. A file that is
 /// missing, unreadable or outside the collection gets one message, so the agent cannot probe
 /// which files exist outside it.
 pub(crate) fn exec_message(err: &ExecError) -> String {
     match err {
         ExecError::FileOutsideCollection { path, .. } | ExecError::File { path, .. } => format!(
-            "body file `{}` is missing, unreadable or outside the collection; nothing was sent",
+            "file `{}` is missing, unreadable or outside the collection; nothing was sent",
             path.display()
         ),
         other => other.hinted_line().unwrap_or_else(|| other.to_string()),

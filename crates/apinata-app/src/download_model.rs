@@ -170,7 +170,7 @@ impl DownloadModel {
                 };
                 planned.context = planned.context.with_prompt_values(answers);
             }
-            planned.context = cx.update(|cx| settings::with_request_timeout(&planned.context, cx));
+            planned.context = cx.update(|cx| settings::with_send_settings(&planned.context, cx));
             let scripts = match prepare(root, &planned, cx) {
                 Prepared::Ready(scripts) => scripts,
                 Prepared::Ask(question) => question.ask(cx).await,

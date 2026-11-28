@@ -55,3 +55,28 @@ fn the_note_says_when_ask_asks(cx: &mut TestAppContext) {
          Preferences. Never: never run them."
     );
 }
+
+#[gpui_kit::test]
+fn the_outside_files_box_records_the_choice_in_the_trust_file(cx: &mut TestAppContext) {
+    let files = tempfile::tempdir().unwrap();
+    std::fs::create_dir(files.path().join("c")).unwrap();
+    let win = view(cx, &files);
+    let (file, root) = (
+        files.path().join("script-trust.json"),
+        files.path().join("c"),
+    );
+    let access = || {
+        apinata_core::ScriptTrust::load(&file)
+            .unwrap()
+            .file_access(&root)
+    };
+    assert_eq!(access(), apinata_core::FileAccess::Collection);
+    cx.update_window(win, |_, w, cx| w.click("outside-files", cx))
+        .unwrap();
+    frame(cx, win);
+    assert_eq!(access(), apinata_core::FileAccess::Anywhere);
+    cx.update_window(win, |_, w, cx| w.click("outside-files", cx))
+        .unwrap();
+    frame(cx, win);
+    assert_eq!(access(), apinata_core::FileAccess::Collection);
+}

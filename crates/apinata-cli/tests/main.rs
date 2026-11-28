@@ -90,6 +90,7 @@ mod cli_oauth2;
 mod cli_oauth2_tokens;
 mod cli_output_errors;
 mod cli_output_large;
+mod cli_outside_files;
 mod cli_prompt;
 mod cli_query_mismatch;
 mod cli_replace;

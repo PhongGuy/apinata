@@ -1,11 +1,13 @@
-//! `ExecOptions::confine_files`: body files must be relative and stay inside the collection
-//! root through `..` and symlinks, or nothing is read or sent.
+//! `ContextOptions::file_access`: by default every file a collection names (body files,
+//! multipart parts, JWT and OAuth 1.0 keys, client certificates) must stay inside the
+//! collection root through `..` and symlinks, or nothing is read or sent.
 #![cfg(unix)]
 
 use crate::common;
 
 use apinata_core::{
-    Collection, ContextOptions, ExecError, ExecOptions, Executor, ResolvedRequest, VarContext,
+    Collection, ContextOptions, ExecError, ExecOptions, Executor, FileAccess, ResolveError,
+    ResolvedRequest, VarContext,
 };
 use common::{at, write_tree};
 use std::os::unix::fs::symlink;
@@ -16,14 +18,17 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const ROOT: &str = "opencollection: \"1.0.0\"\ninfo:\n  name: t\n";
 
+/// Text in every file outside the root; no error may ever carry it.
+const SENTINEL: &str = "outside-sentinel";
+
 /// `<tmp>/coll` is the collection, with `data/in.txt`, `link.txt` pointing at
 /// `<tmp>/outside.txt` and `ldir` pointing at `<tmp>/outdir`.
 fn layout() -> TempDir {
     let tmp = write_tree(&[
         ("coll/opencollection.yml", ROOT),
         ("coll/data/in.txt", "inside"),
-        ("outside.txt", "outside"),
-        ("outdir/secret.txt", "secret"),
+        ("outside.txt", SENTINEL),
+        ("outdir/secret.txt", SENTINEL),
     ]);
     symlink(
         tmp.path().join("outside.txt"),
@@ -39,29 +44,33 @@ fn file_body(tmp: &Path, url: &str, file: &str) -> ResolvedRequest {
     let body = format!(
         "  body:\n    type: file\n    data:\n      - filePath: \"{file}\"\n        contentType: text/plain\n        selected: true\n"
     );
-    resolve_in(tmp, url, &body, &[])
+    resolve_in(tmp, url, &body, ContextOptions::new()).expect("resolves")
 }
 
 /// A POST to `url` whose multipart body has one file part with path `file`.
-fn multipart(tmp: &Path, url: &str, file: &str, process: &[(&str, &str)]) -> ResolvedRequest {
+fn multipart(tmp: &Path, url: &str, file: &str, options: ContextOptions) -> ResolvedRequest {
     let body = format!(
         "  body:\n    type: multipart-form\n    data:\n      - name: f\n        type: file\n        value:\n          - \"{file}\"\n"
     );
-    resolve_in(tmp, url, &body, process)
+    resolve_in(tmp, url, &body, options).expect("resolves")
 }
 
-fn resolve_in(tmp: &Path, url: &str, body: &str, process: &[(&str, &str)]) -> ResolvedRequest {
+fn resolve_in(
+    tmp: &Path,
+    url: &str,
+    extra: &str,
+    options: ContextOptions,
+) -> Result<ResolvedRequest, ResolveError> {
     let text =
-        format!("info:\n  name: r\n  type: http\nhttp:\n  method: POST\n  url: \"{url}\"\n{body}");
+        format!("info:\n  name: r\n  type: http\nhttp:\n  method: POST\n  url: \"{url}\"\n{extra}");
     std::fs::write(tmp.join("coll/r.yml"), text).unwrap();
     let c = Collection::open(tmp.join("coll")).expect("opens");
-    let options = ContextOptions::new().process_env(process.iter().copied());
     let ctx = VarContext::new(&c, options).unwrap();
-    at(&c, &ctx, "r.yml").expect("resolves")
+    at(&c, &ctx, "r.yml")
 }
 
-fn confined(tmp: &Path) -> Executor {
-    Executor::new(ExecOptions::new().confine_files(tmp.join("coll"))).unwrap()
+fn exec() -> Executor {
+    Executor::new(ExecOptions::new()).unwrap()
 }
 
 async fn server() -> MockServer {
@@ -74,10 +83,31 @@ async fn server() -> MockServer {
 }
 
 fn outside(err: ExecError) -> PathBuf {
+    assert!(!err.to_string().contains(SENTINEL), "{err}");
     match err {
         ExecError::FileOutsideCollection { path, .. } => path,
         other => panic!("expected FileOutsideCollection, got {other:?}"),
     }
+}
+
+fn resolve_outside(err: ResolveError) -> PathBuf {
+    assert!(!err.to_string().contains(SENTINEL), "{err}");
+    match err {
+        ResolveError::FileOutsideCollection { path, .. } => path,
+        other => panic!("expected FileOutsideCollection, got {other:?}"),
+    }
+}
+
+/// The ways a written path can leave `<tmp>/coll`.
+fn escapes(tmp: &Path) -> Vec<String> {
+    vec![
+        tmp.join("coll/data/in.txt").to_str().unwrap().to_owned(),
+        tmp.join("outside.txt").to_str().unwrap().to_owned(),
+        "../outside.txt".to_owned(),
+        "data/../../outside.txt".to_owned(),
+        "link.txt".to_owned(),
+        "ldir/secret.txt".to_owned(),
+    ]
 }
 
 #[tokio::test]
@@ -85,43 +115,29 @@ async fn files_inside_the_root_are_sent() {
     let tmp = layout();
     let server = server().await;
     let url = format!("{}/up", server.uri());
-    let exec = confined(tmp.path());
     for file in ["data/in.txt", "./data/../data/in.txt"] {
-        let res = exec.send(&file_body(tmp.path(), &url, file)).await;
+        let res = exec().send(&file_body(tmp.path(), &url, file)).await;
         assert_eq!(res.expect(file).status(), 200, "{file}");
     }
-    let res = exec
-        .send(&multipart(tmp.path(), &url, "data/in.txt", &[]))
-        .await;
-    assert_eq!(res.expect("multipart").status(), 200);
+    let req = multipart(tmp.path(), &url, "data/in.txt", ContextOptions::new());
+    assert_eq!(exec().send(&req).await.expect("multipart").status(), 200);
     let bodies = server.received_requests().await.unwrap();
     assert_eq!(bodies[0].body, b"inside");
 }
 
 #[tokio::test]
-async fn absolute_parent_and_symlink_escapes_are_refused_before_sending() {
+async fn body_and_multipart_escapes_are_refused_by_default_before_sending() {
     let tmp = layout();
     let server = server().await;
     let url = format!("{}/up", server.uri());
-    let exec = confined(tmp.path());
-    let inside_abs = tmp.path().join("coll/data/in.txt");
-    let cases = [
-        inside_abs.to_str().unwrap().to_owned(),
-        "../outside.txt".to_owned(),
-        "data/../../outside.txt".to_owned(),
-        "link.txt".to_owned(),
-        "ldir/secret.txt".to_owned(),
-    ];
-    for file in &cases {
-        let err = exec
+    for file in &escapes(tmp.path()) {
+        let err = exec()
             .send(&file_body(tmp.path(), &url, file))
             .await
             .unwrap_err();
         assert_eq!(outside(err), PathBuf::from(file), "{file}");
-        let err = exec
-            .send(&multipart(tmp.path(), &url, file, &[]))
-            .await
-            .unwrap_err();
+        let req = multipart(tmp.path(), &url, file, ContextOptions::new());
+        let err = exec().send(&req).await.unwrap_err();
         assert_eq!(outside(err), PathBuf::from(file), "multipart {file}");
     }
     assert!(server.received_requests().await.unwrap().is_empty());
@@ -133,13 +149,9 @@ async fn a_multipart_path_made_absolute_by_a_variable_reports_the_written_path()
     let server = server().await;
     let url = format!("{}/up", server.uri());
     let dir = tmp.path().join("outdir");
-    let req = multipart(
-        tmp.path(),
-        &url,
-        "{{process.env.DIR}}/secret.txt",
-        &[("DIR", dir.to_str().unwrap())],
-    );
-    let err = confined(tmp.path()).send(&req).await.unwrap_err();
+    let options = ContextOptions::new().process_env([("DIR", dir.to_str().unwrap())]);
+    let req = multipart(tmp.path(), &url, "{{process.env.DIR}}/secret.txt", options);
+    let err = exec().send(&req).await.unwrap_err();
     assert_eq!(
         outside(err),
         PathBuf::from("{{process.env.DIR}}/secret.txt")
@@ -148,9 +160,24 @@ async fn a_multipart_path_made_absolute_by_a_variable_reports_the_written_path()
 }
 
 #[tokio::test]
+async fn a_directory_swapped_for_a_symlink_after_resolving_is_refused() {
+    let tmp = layout();
+    std::fs::create_dir(tmp.path().join("coll/swap")).unwrap();
+    std::fs::write(tmp.path().join("coll/swap/secret.txt"), "inside").unwrap();
+    let server = server().await;
+    let url = format!("{}/up", server.uri());
+    let req = multipart(tmp.path(), &url, "swap/secret.txt", ContextOptions::new());
+    std::fs::remove_dir_all(tmp.path().join("coll/swap")).unwrap();
+    symlink(tmp.path().join("outdir"), tmp.path().join("coll/swap")).unwrap();
+    let err = exec().send(&req).await.unwrap_err();
+    assert_eq!(outside(err), PathBuf::from("swap/secret.txt"));
+    assert!(server.received_requests().await.unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn a_missing_file_inside_the_root_is_a_file_error() {
     let tmp = layout();
-    let err = confined(tmp.path())
+    let err = exec()
         .send(&file_body(
             tmp.path(),
             "http://127.0.0.1:9/",
@@ -165,18 +192,105 @@ async fn a_missing_file_inside_the_root_is_a_file_error() {
 }
 
 #[tokio::test]
-async fn without_confinement_any_path_is_read_as_before() {
+async fn anywhere_reads_paths_outside_the_root_as_before() {
     let tmp = layout();
     let server = server().await;
     let url = format!("{}/up", server.uri());
-    let exec = Executor::new(ExecOptions::new()).unwrap();
-    let res = exec
-        .send(&file_body(tmp.path(), &url, "../outside.txt"))
-        .await
-        .expect("sent");
+    let anywhere = ContextOptions::new().file_access(FileAccess::Anywhere);
+    let req = multipart(tmp.path(), &url, "../outside.txt", anywhere);
+    let res = exec().send(&req).await.expect("sent");
     assert_eq!(res.status(), 200);
-    assert_eq!(
-        server.received_requests().await.unwrap()[0].body,
-        b"outside"
+    let body = &server.received_requests().await.unwrap()[0].body;
+    assert!(String::from_utf8_lossy(body).contains(SENTINEL));
+}
+
+/// The auth block of a request that signs with the key file `key`.
+type AuthFor = fn(&str) -> String;
+
+fn jwt_auth(key: &str) -> String {
+    format!(
+        "  auth:\n    type: jwt\n    algorithm: RS256\n    privateKey:\n      type: file\n      value: \"{key}\"\n    payload: '{{\"sub\":\"1\"}}'\n    placement: header\n"
+    )
+}
+
+fn oauth1_auth(key: &str) -> String {
+    format!(
+        "  auth:\n    type: oauth1\n    consumerKey: ck\n    signatureMethod: RSA-SHA1\n    privateKey:\n      type: file\n      value: \"{key}\"\n    placement: header\n"
+    )
+}
+
+/// `<tmp>/coll` with `keys/in.pem` and `<tmp>/out.pem` both holding `pem`, `keys/link.pem`
+/// pointing at the outside copy.
+fn key_layout(pem: &str) -> TempDir {
+    let tmp = layout();
+    std::fs::create_dir(tmp.path().join("coll/keys")).unwrap();
+    std::fs::copy(pem, tmp.path().join("coll/keys/in.pem")).unwrap();
+    std::fs::copy(pem, tmp.path().join("out.pem")).unwrap();
+    symlink(
+        tmp.path().join("out.pem"),
+        tmp.path().join("coll/keys/link.pem"),
+    )
+    .unwrap();
+    tmp
+}
+
+fn fixture(rel: &str) -> String {
+    format!("{}/tests/fixtures/{rel}", env!("CARGO_MANIFEST_DIR"))
+}
+
+#[test]
+fn key_files_outside_the_root_are_refused_by_default() {
+    let cases: [(&str, AuthFor); 2] = [
+        ("jwt/rsa.pem", jwt_auth),
+        ("oauth1/rsa-pkcs8.pem", oauth1_auth),
+    ];
+    for (pem, auth) in cases {
+        let tmp = key_layout(&fixture(pem));
+        let url = "http://127.0.0.1:9/up";
+        resolve_in(tmp.path(), url, &auth("keys/in.pem"), ContextOptions::new())
+            .unwrap_or_else(|e| panic!("{pem} inside: {e}"));
+        let out = tmp.path().join("out.pem");
+        for key in [out.to_str().unwrap(), "../out.pem", "keys/link.pem"] {
+            let err = resolve_in(tmp.path(), url, &auth(key), ContextOptions::new()).unwrap_err();
+            assert_eq!(resolve_outside(err), PathBuf::from(key), "{pem} {key}");
+        }
+        let anywhere = ContextOptions::new().file_access(FileAccess::Anywhere);
+        resolve_in(tmp.path(), url, &auth("../out.pem"), anywhere)
+            .unwrap_or_else(|e| panic!("{pem} anywhere: {e}"));
+    }
+}
+
+fn cert_root(cert: &str, key: &str) -> String {
+    format!(
+        "{ROOT}config:\n  clientCertificates:\n    - domain: \"127.0.0.1\"\n      type: pem\n      certificateFilePath: '{cert}'\n      privateKeyFilePath: '{key}'\n"
+    )
+}
+
+#[tokio::test]
+async fn client_certificates_outside_the_root_are_refused_by_default() {
+    let tmp = layout();
+    let coll = tmp.path().join("coll");
+    std::fs::copy(fixture("network/client.pem"), coll.join("c.pem")).unwrap();
+    std::fs::copy(fixture("network/client.key"), coll.join("c.key")).unwrap();
+    std::fs::copy(fixture("network/client.key"), tmp.path().join("out.key")).unwrap();
+    let url = "https://127.0.0.1:9/up";
+    let abs = fixture("network/client.pem");
+    for (cert, key) in [(abs.as_str(), "c.key"), ("c.pem", "../out.key")] {
+        std::fs::write(coll.join("opencollection.yml"), cert_root(cert, key)).unwrap();
+        let req = resolve_in(tmp.path(), url, "", ContextOptions::new()).expect("resolves");
+        let err = exec().send(&req).await.unwrap_err();
+        let written = if cert == "c.pem" { key } else { cert };
+        assert_eq!(outside(err), PathBuf::from(written), "{cert} {key}");
+    }
+    // Inside the root, the identity loads and the send fails only at the closed port.
+    std::fs::write(coll.join("opencollection.yml"), cert_root("c.pem", "c.key")).unwrap();
+    let req = resolve_in(tmp.path(), url, "", ContextOptions::new()).expect("resolves");
+    let err = exec().send(&req).await.unwrap_err();
+    assert!(
+        !matches!(
+            err,
+            ExecError::FileOutsideCollection { .. } | ExecError::Certificate { .. }
+        ),
+        "{err:?}"
     );
 }
