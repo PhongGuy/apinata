@@ -40,6 +40,8 @@ quick-xml = "=0.41.0"
 ropey = { version = "=2.0.0-beta.1", default-features = false }
 # Same version gpui links, so `RgbaImage` is the type `WindowOptions.icon` takes.
 image = { version = "=0.25.10", default-features = false, features = ["png", "gif", "jpeg", "webp", "bmp"] }
+# Rasterizes SVG bodies under our own options; already in the lock through gpui.
+resvg = { version = "=0.46.0", default-features = false, features = ["text", "system-fonts"] }
 # Unused directly: turns on `debug-embed` for the kit's icon set, so debug builds carry
 # their SVGs instead of reading them from the cargo registry at runtime.
 rust-embed = { version = "=8.13.0", features = ["debug-embed"] }

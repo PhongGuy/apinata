@@ -31,11 +31,10 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{
     Anchor, AnyElement, App, Bounds, ClickEvent, ClipboardItem, DevicePixels, Entity, EventEmitter,
-    FocusHandle, Focusable, Font, FontFeatures, HighlightStyle, Hsla, Image, ImageFormat,
-    ListHorizontalSizingBehavior, MouseButton, MouseDownEvent, MouseMoveEvent, ObjectFit, Pixels,
-    Point, Rems, Result, ScrollStrategy, SharedString, Size, StyledText, Subscription, Task,
-    TestSupportExt, UniformListScrollHandle, WeakEntity, Window, canvas, div, img, point, px, size,
-    uniform_list,
+    FocusHandle, Focusable, Font, FontFeatures, HighlightStyle, Hsla, ListHorizontalSizingBehavior,
+    MouseButton, MouseDownEvent, MouseMoveEvent, ObjectFit, Pixels, Point, Rems, RenderImage,
+    Result, ScrollStrategy, SharedString, Size, StyledText, Subscription, Task, TestSupportExt,
+    UniformListScrollHandle, WeakEntity, Window, canvas, div, img, point, px, size, uniform_list,
 };
 
 use crate::app::AppState;
@@ -56,6 +55,7 @@ use crate::body_text::{
 };
 use crate::download_model::{DownloadModel, DownloadPolicy, DownloadState, download_policy};
 use crate::follow_url::{NO_URL, OPEN_URL, OpenUrl, OpenUrlAsRequest, url_at};
+use crate::image_guard;
 use crate::keymap::{ResetZoom, ZoomIn, ZoomOut};
 use crate::menu_focus;
 use crate::ui::{ChooseButton as _, LockButton as _};
@@ -275,8 +275,9 @@ pub struct BodyView {
     // The kind the body was detected as, and the one View as chose instead, if any.
     detected: Option<BodyKind>,
     kind_override: Option<BodyKind>,
-    // The shown image's bytes, built once per body so gpui's image cache key stays put.
-    image: Option<Arc<Image>>,
+    // The shown image, decoded off the main thread under the preview caps.
+    image: Option<PreviewImage>,
+    image_task: Option<Task<()>>,
     mode: BodyMode,
     binary_mode: BinaryMode,
     image_scale: ImageScale,
@@ -553,6 +554,7 @@ impl BodyView {
             detected: None,
             kind_override: None,
             image: None,
+            image_task: None,
             mode: BodyMode::Pretty,
             binary_mode: BinaryMode::Hex,
             image_scale: ImageScale::Fit,
@@ -2826,6 +2828,34 @@ impl BodyView {
         }));
     }
 
+    // Decodes the shown image body in the background; a newer body's generation drops it.
+    fn decode_image(&mut self, kind: ImageKind, cx: &mut Context<Self>) {
+        let Some(result) = self.result.clone() else {
+            return;
+        };
+        let generation = self.generation;
+        self.image = Some(PreviewImage::Decoding);
+        let job = cx.background_spawn(async move {
+            let body = result.response.as_ref().map_or(&[][..], |r| r.body());
+            let limits = &image_guard::PREVIEW_LIMITS;
+            match image_guard::decode_preview(kind, body, limits) {
+                Ok(image) => PreviewImage::Ready(image),
+                Err(refusal) => refusal
+                    .note(limits)
+                    .map_or(PreviewImage::Failed, |n| PreviewImage::Refused(n.into())),
+            }
+        });
+        self.image_task = Some(cx.spawn(async move |this, cx| {
+            let image = job.await;
+            let _ = this.update(cx, |this, cx| {
+                if this.generation == generation {
+                    this.image = Some(image);
+                    cx.notify();
+                }
+            });
+        }));
+    }
+
     // Lands a prepared body; `binary` holds a binary body's formatted rows, else nothing.
     fn apply(
         &mut self,
@@ -2850,13 +2880,7 @@ impl BodyView {
                 Shown::Binary(size)
             }
             Prepared::Image(info) => {
-                let body = (self.result.as_ref())
-                    .and_then(|r| r.response.as_ref())
-                    .map_or(&[][..], |r| r.body());
-                self.image = Some(Arc::new(Image::from_bytes(
-                    image_format(info.kind),
-                    body.to_vec(),
-                )));
+                self.decode_image(info.kind, cx);
                 Shown::Image(info)
             }
             Prepared::Lines(rows) => {
@@ -3017,18 +3041,23 @@ impl BodyView {
                     .size_full(),
                 )
         });
-        let content = self.image.clone().map(|image| {
+        let decode_error = move || {
+            div()
+                .id("body-image-error")
+                .test_support()
+                .text_color(muted)
+                .child("Could not decode the image.")
+                .into_any_element()
+        };
+        let ready = match &self.image {
+            Some(PreviewImage::Ready(image)) => Some(Arc::clone(image)),
+            _ => None,
+        };
+        let content = ready.map(|image| {
             let picture = img(image)
                 .object_fit(ObjectFit::Contain)
                 .size_full()
-                .with_fallback(move || {
-                    div()
-                        .id("body-image-error")
-                        .test_support()
-                        .text_color(muted)
-                        .child("Could not decode the image.")
-                        .into_any_element()
-                });
+                .with_fallback(decode_error);
             let frame = div()
                 .id("body-image-frame")
                 .test_support()
@@ -3063,6 +3092,21 @@ impl BodyView {
                     .into_any_element()
             }),
             _ => content.map(IntoElement::into_any_element),
+        };
+        // An image refused for its size, or one that failed, shows a line in its place.
+        let content = match &self.image {
+            Some(PreviewImage::Refused(note)) => Some(
+                div()
+                    .id("body-image-refused")
+                    .test_support()
+                    .aria_label(note.clone())
+                    .m_auto()
+                    .text_color(muted)
+                    .child(note.clone())
+                    .into_any_element(),
+            ),
+            Some(PreviewImage::Failed) => Some(decode_error()),
+            _ => content,
         };
         let area = div()
             .id("body-image")
@@ -4396,16 +4440,14 @@ fn paint_checker(
     }
 }
 
-// The gpui decoder format for an image kind.
-fn image_format(kind: ImageKind) -> ImageFormat {
-    match kind {
-        ImageKind::Png => ImageFormat::Png,
-        ImageKind::Jpeg => ImageFormat::Jpeg,
-        ImageKind::Gif => ImageFormat::Gif,
-        ImageKind::Webp => ImageFormat::Webp,
-        ImageKind::Svg => ImageFormat::Svg,
-        ImageKind::Bmp => ImageFormat::Bmp,
-    }
+// An image body on its way to the preview.
+#[derive(Clone)]
+enum PreviewImage {
+    Decoding,
+    Ready(Arc<RenderImage>),
+    // Over the caps, with the note shown in its place.
+    Refused(SharedString),
+    Failed,
 }
 
 // The kit's editor style with the find selection in place of the theme's.
