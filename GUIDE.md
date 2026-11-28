@@ -1274,11 +1274,12 @@ recorded connection, such as one restored from history, shows only the address.
 
 The response body's format menu shows text as Pretty (indented and
 highlighted) or Raw, and an HTML body also as Preview, a simple layout of its
-headings, text, lists, tables, links and images. The app has no web engine:
-Preview leaves out the page's scripts, stylesheets and title, its links open
-nothing, only PNG, JPEG, GIF, WebP and BMP images embedded as `data:` URLs
-show, and it is always the redacted copy. A page nested too deeply to lay out
-stays as text with a note.
+headings, text, lists, quotes, tables, code and images. The app has no web
+engine: Preview leaves out the page's scripts, stylesheets, title, SVG and
+embedded media, shows links as plain text, shows only PNG, JPEG, GIF, WebP and
+BMP images embedded as `data:` URLs, and is always the redacted copy. Lists and
+quotes nested more than six deep are flattened, and a very large or deeply
+nested page shows its start with a note.
 For the full page, Open in browser hands your browser a copy that blocks
 scripts, network loads and forms, with secrets redacted. The copy is a private
 temporary file that a later start of the app removes.
