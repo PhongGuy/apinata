@@ -1355,6 +1355,18 @@ apinata import collection openapi.yaml --into ./collections/Shop --update --take
 apinata import collection openapi.yaml --into ./collections/Shop --update --take-spec people/getUser.yml:docs
 ```
 
+Insomnia template tags are converted where Apinata has an equivalent. Faker
+names that match a dynamic value become `{{$name}}`, `uuid` becomes
+`{{$randomUUID}}`, and `now` in ISO 8601 or Unix seconds becomes
+`{{$isoTimestamp}}` or `{{$timestamp}}`. A `base64` or `hash` tag on literal text
+is computed during the import. A `response` tag that reads a plain JSONPath
+(`$.data.token`, `$.items[0]`) or a header of another request in the same
+collection becomes a post-response variable on that request, named like
+`res_log_in_data_token`, and the value refers to it. Send the source request
+first or run the folder in order, since it is never sent again on its own. Any
+other tag becomes a variable named after the tag, and the import report says
+why and asks for a value, so sending stops instead of sending the tag as text.
+
 To keep several descriptions in one collection, import each into its own folder
 with `--folder`. The folder is created when missing and must not hold requests
 yet. The imported collection's own auth, headers, variables, scripts and docs go

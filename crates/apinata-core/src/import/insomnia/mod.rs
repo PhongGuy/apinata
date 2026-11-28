@@ -1,9 +1,11 @@
 //! Importing Insomnia exports, v4 and v5.
 
 mod auth;
+mod chain;
 mod env;
 mod model;
 mod request;
+mod tags;
 mod template;
 mod tree;
 
@@ -13,8 +15,10 @@ use super::{
     CollectionOptions, DocumentError, ImportBundle, ImportNote, ImportedCollection, NoteKind,
 };
 use crate::edit::AuthSpec;
+use chain::Chains;
 use model::{Document, leftovers, name_or, rest_paths, text};
 use serde_json::Value;
+use std::collections::HashSet;
 
 /// Parse an Insomnia export into its collections and their environments.
 pub(crate) fn parse_insomnia(
@@ -32,6 +36,7 @@ fn parse_with(
     entries: u64,
 ) -> Result<Vec<ImportBundle>, DocumentError> {
     let mut budget = Budget::new(note_bytes, entries);
+    let taken = chain::taken_names(&loaded.value);
     let mut merge_notes = Vec::new();
     if loaded.syntax == Syntax::Yaml {
         for note in merge_key_notes(&loaded.value) {
@@ -40,8 +45,8 @@ fn parse_with(
         }
     }
     let mut bundles = match Version::of(&loaded.value)? {
-        Version::V4 => v4(loaded.value, &mut budget)?,
-        Version::V5 => vec![v5(loaded.value, &mut budget)?],
+        Version::V4 => v4(loaded.value, &taken, &mut budget)?,
+        Version::V5 => vec![v5(loaded.value, &taken, &mut budget)?],
     };
     if let Some(first) = bundles.first_mut() {
         first.collection.unwritten.splice(0..0, merge_notes);
@@ -82,7 +87,11 @@ impl Version {
     }
 }
 
-fn v4(mut root: Value, budget: &mut Budget) -> Result<Vec<ImportBundle>, DocumentError> {
+fn v4(
+    mut root: Value,
+    taken: &HashSet<String>,
+    budget: &mut Budget,
+) -> Result<Vec<ImportBundle>, DocumentError> {
     let resources = match root.get_mut("resources").map(Value::take) {
         Some(Value::Array(list)) => list,
         _ => {
@@ -99,11 +108,13 @@ fn v4(mut root: Value, budget: &mut Budget) -> Result<Vec<ImportBundle>, Documen
     let mut bundles = Vec::with_capacity(workspaces.len());
     for workspace in workspaces {
         let mut unwritten = workspace.notes;
-        let items = tree::items(workspace.nodes, &mut Vec::new(), &mut unwritten, budget)?;
+        budget.chains = Chains::new(tree::request_names(&workspace.nodes), taken.clone());
+        let mut items = tree::items(workspace.nodes, &mut Vec::new(), &mut unwritten, budget)?;
         let mut environments = Vec::new();
         for (base, subs) in workspace.environments {
             environments.extend(env::environments(base, subs, budget)?);
         }
+        budget.chains.attach(&mut items);
         let mut b = bundle(workspace.name, workspace.docs, items, unwritten);
         b.environments = environments;
         bundles.push(b);
@@ -115,7 +126,11 @@ fn v4(mut root: Value, budget: &mut Budget) -> Result<Vec<ImportBundle>, Documen
     Ok(bundles)
 }
 
-fn v5(root: Value, budget: &mut Budget) -> Result<ImportBundle, DocumentError> {
+fn v5(
+    root: Value,
+    taken: &HashSet<String>,
+    budget: &mut Budget,
+) -> Result<ImportBundle, DocumentError> {
     let doc: Document = serde_json::from_value(root).map_err(|_| DocumentError::Invalid {
         message: "not an Insomnia export".into(),
     })?;
@@ -158,8 +173,10 @@ fn v5(root: Value, budget: &mut Budget) -> Result<ImportBundle, DocumentError> {
         }
     };
     let nodes = tree::v5(list, &mut unwritten, budget)?;
-    let items = tree::items(nodes, &mut Vec::new(), &mut unwritten, budget)?;
+    budget.chains = Chains::new(tree::request_names(&nodes), taken.clone());
+    let mut items = tree::items(nodes, &mut Vec::new(), &mut unwritten, budget)?;
     let environments = env::v5(doc.environments, &mut unwritten, budget)?;
+    budget.chains.attach(&mut items);
     let name = name_or(doc.name.as_ref(), "Insomnia collection");
     let docs = text(doc.meta.as_ref().and_then(|m| m.get("description")));
     let mut b = bundle(name, docs, items, unwritten);
@@ -197,7 +214,34 @@ fn bundle(
     }
 }
 
-pub(super) use crate::import::budget::Budget;
+/// The import's note-byte and entry limits, plus the response chains of the collection being
+/// built; it derefs to the limits.
+pub(super) struct Budget {
+    limits: crate::import::budget::Budget,
+    pub(in crate::import::insomnia) chains: chain::Chains,
+}
+
+impl Budget {
+    fn new(bytes: u64, entries: u64) -> Budget {
+        Budget {
+            limits: crate::import::budget::Budget::new(bytes, entries),
+            chains: chain::Chains::default(),
+        }
+    }
+}
+
+impl std::ops::Deref for Budget {
+    type Target = crate::import::budget::Budget;
+    fn deref(&self) -> &Self::Target {
+        &self.limits
+    }
+}
+
+impl std::ops::DerefMut for Budget {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.limits
+    }
+}
 
 /// Notes whose source is an ancestor trail plus a name.
 pub(super) trait Crumbs {
@@ -219,7 +263,7 @@ pub(super) trait Crumbs {
     ) -> Result<ImportNote, DocumentError>;
 }
 
-impl Crumbs for Budget {
+impl Crumbs for crate::import::budget::Budget {
     fn unread(
         &mut self,
         trail: &[String],
@@ -389,6 +433,20 @@ mod tests {
         let bundles = parse(&root, NOTE_BYTES).expect("parses");
         let total: usize = bundles.iter().map(|b| requests(&b.collection.items)).sum();
         assert_eq!(total, 2);
+    }
+
+    #[test]
+    fn computed_values_longer_than_their_tags_are_charged() {
+        // Each tag of 31 bytes becomes a 128-character digest.
+        let url = "{% hash 'sha512', 'hex', 'a' %}".repeat(10_000);
+        let root = export(json!([{"_id": "wrk_1", "_type": "workspace"},
+            {"_id": "req_1", "_type": "request", "parentId": "wrk_1", "url": url}]));
+        let expected = DocumentError::TooLarge {
+            limit: 500_000,
+            unit: "imported bytes",
+        };
+        assert_eq!(parse(&root, 500_000).map(|_| ()).unwrap_err(), expected);
+        assert!(parse(&root, 2_000_000).is_ok());
     }
 
     #[test]

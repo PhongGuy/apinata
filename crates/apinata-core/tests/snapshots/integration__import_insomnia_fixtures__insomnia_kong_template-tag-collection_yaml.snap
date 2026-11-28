@@ -22,6 +22,25 @@ http:
         value: bar
   auth: inherit
 
+runtime:
+  actions:
+    - type: set-variable
+      phase: after-response
+      selector:
+        expression: res.body.method
+        method: jsonq
+      variable:
+        name: res_base_response_method
+        scope: runtime
+    - type: set-variable
+      phase: after-response
+      selector:
+        expression: res.headers['content-type']
+        method: jsonq
+      variable:
+        name: res_base_response_content_type
+        scope: runtime
+
 settings:
   encodeUrl: true
   timeout: inherit
@@ -45,15 +64,15 @@ http:
   body:
     type: text
     data: |
-      {{base64}}
-      {{base64}}
-      {{faker}}
+      aW5zb21uaWEtdGVzdA==
+      insomnia-test
+      {{$guid}}
       {{file}}
-      {{hash}}
+      b9c076eabf32fa4cdd7573a6df12d33c
       {{os}}
       {{jsonpath}}
       {{now}}
-      {{uuid}}
+      {{$randomUUID}}
       {{cookie}}
   auth: inherit
 
@@ -249,8 +268,8 @@ http:
   body:
     type: text
     data: |-
-      {{response}}
-      {{response}}
+      {{res_base_response_method}}
+      {{res_base_response_content_type}}
       {{response}}
   auth: inherit
 
@@ -276,7 +295,7 @@ http:
       value: insomnia/11.1.0
   body:
     type: text
-    data: "{{response}}"
+    data: "{{res_response_trigger_base_id}}"
   auth: inherit
 
 settings:
@@ -298,6 +317,17 @@ http:
     - name: User-Agent
       value: insomnia/11.1.0
   auth: inherit
+
+runtime:
+  actions:
+    - type: set-variable
+      phase: after-response
+      selector:
+        expression: res.body.id
+        method: jsonq
+      variable:
+        name: res_response_trigger_base_id
+        scope: runtime
 
 settings:
   encodeUrl: true
@@ -321,7 +351,7 @@ http:
       value: insomnia/11.1.0
   body:
     type: text
-    data: "{{response}}"
+    data: "{{res_response_trigger_base_id}}"
   auth: inherit
 
 settings:
@@ -346,7 +376,7 @@ http:
       value: insomnia/11.1.0
   body:
     type: text
-    data: "{{response}}"
+    data: "{{res_response_trigger_base_id}}"
   auth: inherit
 
 settings:
@@ -371,7 +401,7 @@ http:
       value: insomnia/11.1.0
   body:
     type: text
-    data: "{{response}}"
+    data: "{{res_response_trigger_base_id}}"
   auth: inherit
 
 settings:
@@ -396,18 +426,19 @@ extensions:
     presets:
       defaultEnvironment: Base Environment
 -- report
-NeedsInput Cookie Tag Error / body.text: a template tag has no equivalent, so each is written as a variable: `{% cookie 'http://127.0.0.1:4010/echo', 'does-not-exist' %}` as `{{cookie}}`; give `cookie` a value before sending (Cookie Tag Error.yml)
-NeedsInput File Tag Error / body.text: a template tag has no equivalent, so each is written as a variable: `{% file '/path/does/not/exist/nope.txt' %}` as `{{file}}`; give `file` a value before sending (File Tag Error.yml)
-NeedsInput Prompt Tag Masked / body.text: a template tag has no equivalent, so each is written as a variable: `{% prompt 'masked prompt test', 'Enter secret', '', 'masked-prompt-key', true, false %}` as `{{prompt}}`; give `prompt` a value before sending (Prompt Tag Masked.yml)
-NeedsInput External Vault Tag / body.text: a template tag has no equivalent, so each is written as a variable: `{% vault 'aws', '', '{}' %}` as `{{vault}}`, `{% vault 'gcp', '', '{}' %}` as `{{vault}}`, `{% vault 'hashicorp', '', '{}' %}` as `{{vault}}`; give `vault` a value before sending (External Vault Tag.yml)
-NeedsInput Prompt Tag / body.text: a template tag has no equivalent, so each is written as a variable: `{% prompt 'prompt test', '', 'test', 'insomnia-test', false, true %}` as `{{prompt}}`; give `prompt` a value before sending (Prompt Tag.yml)
-NeedsInput Response Trigger Always / body.text: a template tag has no equivalent, so each is written as a variable: `{% response 'body', 'req_60295920e8a9459fb32cacb739a261f6', 'b64::JC5pZA==::46b', 'always', 60 %}` as `{{response}}`; give `response` a value before sending (Response Trigger Always.yml)
-NeedsInput Response Trigger When Expired / body.text: a template tag has no equivalent, so each is written as a variable: `{% response 'body', 'req_60295920e8a9459fb32cacb739a261f6', 'b64::JC5pZA==::46b', 'when-expired', 0 %}` as `{{response}}`; give `response` a value before sending (Response Trigger When Expired.yml)
-NeedsInput Response Trigger No History / body.text: a template tag has no equivalent, so each is written as a variable: `{% response 'body', 'req_60295920e8a9459fb32cacb739a261f6', 'b64::JC5pZA==::46b', 'no-history', 60 %}` as `{{response}}`; give `response` a value before sending (Response Trigger No History.yml)
-NeedsInput Response Trigger Never / body.text: a template tag has no equivalent, so each is written as a variable: `{% response 'body', 'req_60295920e8a9459fb32cacb739a261f6', 'b64::JC5pZA==::46b', 'never', 60 %}` as `{{response}}`; give `response` a value before sending (Response Trigger Never.yml)
-NeedsInput Response Tag / body.text: a template tag has no equivalent, so each is written as a variable: `{% response 'body', 'req_60295920e8a9459fb32cacb739a261f5', 'b64::JC5tZXRob2Q=::46b', 'never', 60 %}` as `{{response}}`, `{% response 'header', 'req_60295920e8a9459fb32cacb739a261f5', 'b64::Y29udGVudC10eXBl::46b', 'never', 60 %}` as `{{response}}`, `{% response 'url', 'req_60295920e8a9459fb32cacb739a261f5', '', 'never', 60 %}` as `{{response}}`; give `response` a value before sending (Response Tag.yml)
-NeedsInput Common Tag / body.text: a template tag has no equivalent, so each is written as a variable: `{% base64 'encode', 'normal', 'insomnia-test' %}` as `{{base64}}`, `{% base64 'decode', 'normal', 'aW5zb21uaWEtdGVzdA==' %}` as `{{base64}}`, `{% faker 'guid' %}` as `{{faker}}`, `{% file '__TEMPLATE_TAG_FILE_PATH' %}` as `{{file}}`, `{% hash 'md5', 'hex', 'insomnia-test' %}` as `{{hash}}`, `{% os 'arch', '' %}` as `{{os}}`, `{% jsonpath '{"foo":"bar"}', 'b64::JC5mb28=::46b' %}` as `{{jsonpath}}`, `{% now 'millis', '' %}` as `{{now}}`, `{% uuid 'v4' %}` as `{{uuid}}`, `{% cookie 'http://127.0.0.1/echo', 'from' %}` as `{{cookie}}`; give `base64`, `faker`, `file`, `hash`, `os`, `jsonpath`, `now`, `uuid`, `cookie` a value before sending (Common Tag.yml)
-NeedsInput FolderWithRequest / Request Tag / body.text: a template tag has no equivalent, so each is written as a variable: `{% request 'name', '', '' %}` as `{{request}}`, `{% request 'folder', '', '' %}` as `{{request}}`, `{% request 'url', '', '' %}` as `{{request}}`, `{% request 'parameter', 'foo', '' %}` as `{{request}}`, `{% request 'cookie', 'from', '' %}` as `{{request}}`; give `request` a value before sending (FolderWithRequest/Request Tag.yml)
+NeedsInput Cookie Tag Error / body.text: a template tag could not be converted, so each is written as a variable: `{% cookie 'http://127.0.0.1:4010/echo', 'does-not-exist' %}` as `{{cookie}}` (it reads the cookie jar when sent); give `cookie` a value before sending (Cookie Tag Error.yml)
+NeedsInput File Tag Error / body.text: a template tag could not be converted, so each is written as a variable: `{% file '/path/does/not/exist/nope.txt' %}` as `{{file}}` (it reads a file when sent); give `file` a value before sending (File Tag Error.yml)
+NeedsInput Prompt Tag Masked / body.text: a template tag could not be converted, so each is written as a variable: `{% prompt 'masked prompt test', 'Enter secret', '', 'masked-prompt-key', true, false %}` as `{{prompt}}` (it asks for a value each time it is sent); give `prompt` a value before sending (Prompt Tag Masked.yml)
+NeedsInput External Vault Tag / body.text: a template tag could not be converted, so each is written as a variable: `{% vault 'aws', '', '{}' %}` as `{{vault}}` (it has no equivalent), `{% vault 'gcp', '', '{}' %}` as `{{vault}}` (it has no equivalent), `{% vault 'hashicorp', '', '{}' %}` as `{{vault}}` (it has no equivalent); give `vault` a value before sending (External Vault Tag.yml)
+NeedsInput Prompt Tag / body.text: a template tag could not be converted, so each is written as a variable: `{% prompt 'prompt test', '', 'test', 'insomnia-test', false, true %}` as `{{prompt}}` (it asks for a value each time it is sent); give `prompt` a value before sending (Prompt Tag.yml)
+Converted Response Trigger Always / body.text: `{% response 'body', 'req_60295920e8a9459fb32cacb739a261f6', 'b64::JC5pZA==::46b', 'always', 60 %}` reads `{{res_response_trigger_base_id}}`, which request `Response Trigger Base` sets from its response, so send that request first; it is not sent again before the read (Response Trigger Always.yml)
+Converted Response Trigger When Expired / body.text: `{% response 'body', 'req_60295920e8a9459fb32cacb739a261f6', 'b64::JC5pZA==::46b', 'when-expired', 0 %}` reads `{{res_response_trigger_base_id}}`, which request `Response Trigger Base` sets from its response, so send that request first; it is not sent again before the read (Response Trigger When Expired.yml)
+Converted Response Trigger No History / body.text: `{% response 'body', 'req_60295920e8a9459fb32cacb739a261f6', 'b64::JC5pZA==::46b', 'no-history', 60 %}` reads `{{res_response_trigger_base_id}}`, which request `Response Trigger Base` sets from its response, so send that request first; it is not sent again before the read (Response Trigger No History.yml)
+Converted Response Trigger Never / body.text: `{% response 'body', 'req_60295920e8a9459fb32cacb739a261f6', 'b64::JC5pZA==::46b', 'never', 60 %}` reads `{{res_response_trigger_base_id}}`, which request `Response Trigger Base` sets from its response, so send that request first (Response Trigger Never.yml)
+Converted Response Tag / body.text: `{% response 'body', 'req_60295920e8a9459fb32cacb739a261f5', 'b64::JC5tZXRob2Q=::46b', 'never', 60 %}` reads `{{res_base_response_method}}`, which request `Base Response` sets from its response, so send that request first; `{% response 'header', 'req_60295920e8a9459fb32cacb739a261f5', 'b64::Y29udGVudC10eXBl::46b', 'never', 60 %}` reads `{{res_base_response_content_type}}`, which request `Base Response` sets from its response, so send that request first (Response Tag.yml)
+NeedsInput Response Tag / body.text: a template tag could not be converted, so each is written as a variable: `{% response 'url', 'req_60295920e8a9459fb32cacb739a261f5', '', 'never', 60 %}` as `{{response}}` (only a body path or a header can be read from a response); give `response` a value before sending (Response Tag.yml)
+NeedsInput Common Tag / body.text: a template tag could not be converted, so each is written as a variable: `{% file '__TEMPLATE_TAG_FILE_PATH' %}` as `{{file}}` (it reads a file when sent), `{% os 'arch', '' %}` as `{{os}}` (it reads the sending machine), `{% jsonpath '{"foo":"bar"}', 'b64::JC5mb28=::46b' %}` as `{{jsonpath}}` (it has no equivalent), `{% now 'millis', '' %}` as `{{now}}` (only ISO 8601 and Unix seconds have an equivalent), `{% cookie 'http://127.0.0.1/echo', 'from' %}` as `{{cookie}}` (it reads the cookie jar when sent); give `file`, `os`, `jsonpath`, `now`, `cookie` a value before sending (Common Tag.yml)
+NeedsInput FolderWithRequest / Request Tag / body.text: a template tag could not be converted, so each is written as a variable: `{% request 'name', '', '' %}` as `{{request}}` (it reads the sending request), `{% request 'folder', '', '' %}` as `{{request}}` (it reads the sending request), `{% request 'url', '', '' %}` as `{{request}}` (it reads the sending request), `{% request 'parameter', 'foo', '' %}` as `{{request}}` (it reads the sending request), `{% request 'cookie', 'from', '' %}` as `{{request}}` (it reads the sending request); give `request` a value before sending (FolderWithRequest/Request Tag.yml)
 Converted FolderWithRequest / Request Tag / authentication: `oauth2` authentication is not supported; set to none (FolderWithRequest/Request Tag.yml)
 Dropped collection / cookieJar: cookies are not imported
 Converted collection: `Base Environment` is the default environment because it was imported first (opencollection.yml)
