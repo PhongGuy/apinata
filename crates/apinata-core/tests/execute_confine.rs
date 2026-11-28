@@ -6,12 +6,14 @@
 use crate::common;
 
 use apinata_core::{
-    Collection, ContextOptions, ExecError, ExecOptions, Executor, FileAccess, ResolveError,
+    ClientCertificate, Collection, ContextOptions, ExecError, ExecOptions, Executor, FileAccess,
+    NetworkAnswer, NetworkCheck, NetworkQuestion, NetworkSnapshot, QuestionKind, ResolveError,
     ResolvedRequest, VarContext,
 };
 use common::{at, write_tree};
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
 use wiremock::matchers::path;
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -286,6 +288,108 @@ async fn client_certificates_outside_the_root_are_refused_by_default() {
     std::fs::write(coll.join("opencollection.yml"), cert_root("c.pem", "c.key")).unwrap();
     let req = resolve_in(tmp.path(), url, "", ContextOptions::new()).expect("resolves");
     let err = exec().send(&req).await.unwrap_err();
+    assert!(
+        !matches!(
+            err,
+            ExecError::FileOutsideCollection { .. } | ExecError::Certificate { .. }
+        ),
+        "{err:?}"
+    );
+}
+
+/// `<tmp>/coll` whose one certificate for 127.0.0.1 is `c.pem` inside the root with the key
+/// `link.key`, a link to `<tmp>/out.key`.
+fn linked_key_layout() -> TempDir {
+    let tmp = layout();
+    let coll = tmp.path().join("coll");
+    std::fs::copy(fixture("network/client.pem"), coll.join("c.pem")).unwrap();
+    std::fs::copy(fixture("network/client.key"), tmp.path().join("out.key")).unwrap();
+    symlink(tmp.path().join("out.key"), coll.join("link.key")).unwrap();
+    std::fs::write(
+        coll.join("opencollection.yml"),
+        cert_root("c.pem", "link.key"),
+    )
+    .unwrap();
+    tmp
+}
+
+#[tokio::test]
+async fn a_client_certificate_linked_out_of_the_root_is_refused() {
+    let tmp = linked_key_layout();
+    let url = "https://127.0.0.1:9/up";
+    let req = resolve_in(tmp.path(), url, "", ContextOptions::new()).expect("resolves");
+    let err = exec().send(&req).await.unwrap_err();
+    assert_eq!(outside(err), PathBuf::from("link.key"));
+}
+
+/// The fingerprint of `<tmp>/coll`'s network settings in a context reading under `access`.
+fn fingerprint(tmp: &Path, access: FileAccess) -> String {
+    let c = Collection::open(tmp.join("coll")).expect("opens");
+    let ctx = VarContext::new(&c, ContextOptions::new().file_access(access)).unwrap();
+    NetworkSnapshot::resolve(&c.file().network(), &ctx, "salt").fingerprint()
+}
+
+#[test]
+fn a_certificate_outside_the_root_is_never_hashed() {
+    let tmp = linked_key_layout();
+    let coll = tmp.path().join("coll");
+    let out = tmp.path().join("out.key");
+    for key in [out.to_str().unwrap(), "../out.key", "link.key"] {
+        std::fs::write(coll.join("opencollection.yml"), cert_root("c.pem", key)).unwrap();
+        std::fs::write(&out, "first").unwrap();
+        let (confined, anywhere) = (
+            fingerprint(tmp.path(), FileAccess::Collection),
+            fingerprint(tmp.path(), FileAccess::Anywhere),
+        );
+        std::fs::write(&out, "second").unwrap();
+        assert_eq!(
+            fingerprint(tmp.path(), FileAccess::Collection),
+            confined,
+            "{key}"
+        );
+        assert_ne!(
+            fingerprint(tmp.path(), FileAccess::Anywhere),
+            anywhere,
+            "{key}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn the_network_check_never_reads_a_certificate_outside_the_root() {
+    let tmp = linked_key_layout();
+    let asked = Arc::new(Mutex::new(Vec::new()));
+    let log = asked.clone();
+    let ask = move |q: NetworkQuestion| {
+        log.lock().unwrap().push(q.kind());
+        async { NetworkAnswer::Send }
+    };
+    let check = NetworkCheck::new(tmp.path().join("ack.json"), ask);
+    let exec = Executor::new(ExecOptions::new().network_check(check)).unwrap();
+    let url = "https://127.0.0.1:9/up";
+    for content in ["first", "second"] {
+        std::fs::write(tmp.path().join("out.key"), content).unwrap();
+        let req = resolve_in(tmp.path(), url, "", ContextOptions::new()).expect("resolves");
+        let err = exec.send(&req).await.unwrap_err();
+        assert_eq!(outside(err), PathBuf::from("link.key"), "{content}");
+    }
+    // The outside file's change is never seen, so only the first sight was asked about.
+    assert_eq!(*asked.lock().unwrap(), [QuestionKind::FirstSeen]);
+}
+
+#[tokio::test]
+async fn certificates_from_the_options_are_read_anywhere() {
+    let tmp = layout();
+    let url = "https://127.0.0.1:9/up";
+    let (cert, key) = (fixture("network/client.pem"), fixture("network/client.key"));
+    let options = ContextOptions::new().client_certificates(vec![ClientCertificate::pem(
+        "127.0.0.1",
+        cert,
+        key,
+    )]);
+    let req = resolve_in(tmp.path(), url, "", options).expect("resolves");
+    let err = exec().send(&req).await.unwrap_err();
+    // The identity loads, so the send fails only at the closed port.
     assert!(
         !matches!(
             err,

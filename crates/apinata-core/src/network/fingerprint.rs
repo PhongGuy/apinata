@@ -5,9 +5,10 @@ use super::check::ShownNetwork;
 use super::model::{CertificateKind, CollectionNetwork, CollectionProxy, read_network};
 use crate::collection::ROOT_FILE;
 use crate::context::VarContext;
-use crate::document::{Document, read_regular, read_regular_text};
+use crate::document::{Document, read_regular_text};
 use crate::dynamic::Generator;
 use crate::error::FileError;
+use crate::file_access::{FileAccess, FileScope};
 use crate::interpolate::interpolate_tracked;
 use crate::trust::{TrustError, with_lock, write_atomic};
 use serde::{Deserialize, Serialize};
@@ -392,24 +393,45 @@ pub(crate) fn scope_expansions(
         .collect()
 }
 
-/// Hashes a certificate's file from its index in the certificate and its expanded path.
-pub(crate) type ContentHash<'a> = &'a dyn Fn(usize, &Expanded) -> String;
-
-/// SHA-256 hex of the file at `path`, or the unreadable marker.
-pub(crate) fn file_hash(path: &Path) -> String {
-    read_regular(path).map_or_else(|_| UNREADABLE.to_owned(), |bytes| content_hash(&bytes))
-}
+/// Hashes a certificate's file from the certificate's index in the network, the file's index in
+/// the certificate and its expanded path.
+pub(crate) type ContentHash<'a> = &'a dyn Fn(usize, usize, &Expanded) -> String;
 
 /// SHA-256 hex of `bytes`.
 pub(crate) fn content_hash(bytes: &[u8]) -> String {
     hex(&Sha256::digest(bytes))
 }
 
-/// The content hash of a certificate file whose path expanded to `path`, read under `root`.
-pub(crate) fn path_hash(root: &Path, path: &Expanded) -> String {
-    match path {
-        Expanded::Plain(p) | Expanded::Secret(p) => file_hash(&root.join(p)),
-        Expanded::Unresolved => UNREADABLE.to_owned(),
+/// Where a context's certificate files are read for hashing: the collection's own under the
+/// context's file access, those the options added anywhere, as a send reads them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CertFiles {
+    collection: FileScope,
+    own: usize,
+}
+
+impl CertFiles {
+    pub(crate) fn of(ctx: &VarContext) -> CertFiles {
+        CertFiles {
+            collection: ctx.file_scope(),
+            own: ctx.collection_certificates(),
+        }
+    }
+
+    /// The content hash of a file of certificate `cert` whose path expanded to `path`; a file
+    /// outside the scope is never read and hashes as unreadable.
+    pub(crate) fn hash(&self, cert: usize, path: &Expanded) -> String {
+        let scope = if cert < self.own {
+            self.collection.clone()
+        } else {
+            self.collection.with_access(FileAccess::Anywhere)
+        };
+        match path {
+            Expanded::Plain(p) | Expanded::Secret(p) => scope
+                .read(Path::new(p))
+                .map_or_else(|_| UNREADABLE.to_owned(), |bytes| content_hash(&bytes)),
+            Expanded::Unresolved => UNREADABLE.to_owned(),
+        }
     }
 }
 
@@ -430,20 +452,21 @@ impl NetworkSnapshot {
     /// becomes an "unresolved" marker, so it is neither an error nor a way to hide a change; a
     /// `{{$dynamic}}` field stays its template. Each certificate file is read and hashed.
     pub fn resolve(network: &CollectionNetwork, ctx: &VarContext, salt: &str) -> NetworkSnapshot {
-        Self::from_expansions(network, &scope_expansions(network, ctx), ctx.root(), salt)
+        let files = CertFiles::of(ctx);
+        Self::from_expansions(network, &scope_expansions(network, ctx), &files, salt)
     }
 
     /// The snapshot of `network` from `expansions` (see [`scope_expansions`]), reading each
-    /// certificate file under `root`.
+    /// certificate file through `files`.
     pub(crate) fn from_expansions(
         network: &CollectionNetwork,
         expansions: &BTreeMap<String, Expanded>,
-        root: &Path,
+        files: &CertFiles,
         salt: &str,
     ) -> NetworkSnapshot {
         // A text the map does not hold is never shown, so a miss cannot leak a value.
         let expand = |t: &str| expansions.get(t).cloned().unwrap_or(Expanded::Unresolved);
-        Self::build(network, salt, &expand, Some(&|_, p| path_hash(root, p)))
+        Self::build(network, salt, &expand, Some(&|c, _, p| files.hash(c, p)))
     }
 
     /// The snapshot of `network` with each text expanded by `expand`; `content` hashes a
@@ -495,8 +518,9 @@ impl NetworkSnapshot {
         let certificates: Vec<CertView> = network
             .certificates
             .iter()
-            .filter(|cert| cert.enabled)
-            .map(|cert| {
+            .enumerate()
+            .filter(|(_, cert)| cert.enabled)
+            .map(|(index, cert)| {
                 let text = |t: &String| text_field(salt, expand(t), t);
                 let (domain, u0) = text(&cert.domain);
                 let (kind, paths) = match &cert.kind {
@@ -515,7 +539,7 @@ impl NetworkSnapshot {
                 }
                 let content = content.map_or_else(Vec::new, |hash| {
                     (paths.iter().enumerate())
-                        .map(|(i, p)| hash(i, &expand(p)))
+                        .map(|(i, p)| hash(index, i, &expand(p)))
                         .collect()
                 });
                 CertView {

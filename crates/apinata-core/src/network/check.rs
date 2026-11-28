@@ -12,8 +12,8 @@ use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 use std::time::SystemTime;
 
 use super::fingerprint::{
-    AckState, Expanded, NetworkAck, NetworkChange, NetworkSnapshot, content_hash, expand_fixed,
-    path_hash, root_key, scope_expansions, templates,
+    AckState, CertFiles, Expanded, NetworkAck, NetworkChange, NetworkSnapshot, content_hash,
+    expand_fixed, root_key, scope_expansions, templates,
 };
 use super::model::CollectionNetwork;
 use super::resolved::domain_matches;
@@ -180,6 +180,7 @@ impl fmt::Debug for NetworkCheck {
 #[derive(Clone, PartialEq)]
 pub(crate) struct NetworkBasis {
     root: PathBuf,
+    files: CertFiles,
     network: CollectionNetwork,
     url: String,
     collection: BTreeMap<String, Expanded>,
@@ -265,6 +266,7 @@ impl NetworkBasis {
         let send = expand_all(&network, vars);
         NetworkBasis {
             root: ctx.root().to_path_buf(),
+            files: CertFiles::of(ctx),
             collection: scope_expansions(&network, ctx),
             baseline: expand_all(&network, &scope),
             verified: consistent(&send, actual),
@@ -277,7 +279,7 @@ impl NetworkBasis {
 
     /// The collection's settings as the Network section would show them.
     fn collection_snapshot(&self, salt: &str) -> NetworkSnapshot {
-        NetworkSnapshot::from_expansions(&self.network, &self.collection, &self.root, salt)
+        NetworkSnapshot::from_expansions(&self.network, &self.collection, &self.files, salt)
     }
 
     // A text as `values` expanded it, secret when it holds any of `sensitive`, so the send's
@@ -324,7 +326,7 @@ impl NetworkBasis {
         loaded: &Preloaded,
     ) -> NetworkSnapshot {
         let expand = |t: &str| Self::label(t, &self.send, sensitive);
-        let content = |i: usize, _: &Expanded| match loaded.0.get(i) {
+        let content = |_: usize, i: usize, _: &Expanded| match loaded.0.get(i) {
             Some(Ok(bytes)) => content_hash(bytes),
             _ => "unreadable".to_owned(),
         };
@@ -347,8 +349,11 @@ impl NetworkBasis {
                     _ => false,
                 }
         });
-        let root = &self.root;
-        let content = |_: usize, p: &Expanded| path_hash(root, p);
+        // The one certificate left is the network's certificate `chosen`.
+        let files = &self.files;
+        let content = |_: usize, _: usize, p: &Expanded| {
+            chosen.map_or_else(|| "unreadable".to_owned(), |cert| files.hash(cert, p))
+        };
         NetworkSnapshot::build(&self.with_only(chosen), salt, &expand, Some(&content))
     }
 }

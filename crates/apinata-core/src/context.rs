@@ -576,6 +576,12 @@ impl VarContext {
         FileScope::new(&self.root, self.file_access)
     }
 
+    /// How many of [`VarContext::network`]'s certificates the collection names; the options'
+    /// follow them.
+    pub(crate) fn collection_certificates(&self) -> usize {
+        self.own_certificates
+    }
+
     /// Whether certificate `index` of [`VarContext::network`] came from the options, which name
     /// files on the caller's authority rather than the collection's.
     pub(crate) fn is_option_certificate(&self, index: usize) -> bool {

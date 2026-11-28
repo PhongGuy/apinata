@@ -57,9 +57,35 @@ impl FileScope {
         }
     }
 
+    /// The same root read under `access`.
+    pub(crate) fn with_access(&self, access: FileAccess) -> FileScope {
+        FileScope::new(self.root.clone(), access)
+    }
+
     /// Whether `given` passes the lexical check; links are judged only when it is opened.
     pub(crate) fn admits(&self, given: &Path) -> bool {
         self.access == FileAccess::Anywhere || !escapes_root(given)
+    }
+
+    /// Whether `given` names something a read could find, judged by the same lookup beneath the
+    /// root as a read, so a link leading out is [`ReadFailure::Outside`]. Only metadata is read.
+    pub(crate) fn probe(&self, given: &Path) -> Result<(), ReadFailure> {
+        if self.access == FileAccess::Anywhere {
+            return std::fs::metadata(self.root.join(given))
+                .map(drop)
+                .map_err(ReadFailure::Io);
+        }
+        if escapes_root(given) {
+            return Err(ReadFailure::Outside);
+        }
+        let ambient = cap_std::ambient_authority();
+        let found = cap_std::fs::Dir::open_ambient_dir(&self.root, ambient)
+            .and_then(|dir| dir.metadata(or_root(given)));
+        match found {
+            Ok(_) => Ok(()),
+            Err(e) if self.leaves_root(given, &e) => Err(ReadFailure::Outside),
+            Err(e) => Err(ReadFailure::Io(e)),
+        }
     }
 
     /// The bytes of the regular file `given` names, relative to the root.
@@ -201,13 +227,16 @@ fn open_beneath(root: &Path, given: &Path, nonblocking: bool) -> io::Result<std:
     }
     #[cfg(not(unix))]
     let _ = nonblocking;
-    // An empty path or `.` names the root itself, which reads as a directory.
-    let given = if given.as_os_str().is_empty() {
+    Ok(dir.open_with(or_root(given), &options)?.into_std())
+}
+
+/// `given`, with an empty path naming the root itself as `.`.
+fn or_root(given: &Path) -> &Path {
+    if given.as_os_str().is_empty() {
         Path::new(".")
     } else {
         given
-    };
-    Ok(dir.open_with(given, &options)?.into_std())
+    }
 }
 
 #[cfg(test)]

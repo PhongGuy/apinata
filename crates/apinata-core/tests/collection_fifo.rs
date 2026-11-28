@@ -431,6 +431,14 @@ fn a_legacy_plan_passes_over_a_pipe_root_collection() {
 }
 
 #[test]
+fn a_pipe_as_a_jwt_key_file_fails_the_send() {
+    let auth = "  auth:\n    type: jwt\n    algorithm: RS256\n    privateKey:\n      type: file\n      value: k.pem\n    payload: '{}'\n    placement: header\n";
+    let (dir, pipe) = request_over_a_pipe(auth, "k.pem");
+    let failure = send_failure(dir.path(), &pipe);
+    assert!(failure.contains("not a regular file"), "{failure}");
+}
+
+#[test]
 fn a_pipe_as_an_oauth1_key_file_fails_the_send() {
     let auth = "  auth:\n    type: oauth1\n    consumerKey: ck\n    signatureMethod: RSA-SHA1\n    privateKey:\n      type: file\n      value: k.pem\n    placement: header\n";
     let (dir, pipe) = request_over_a_pipe(auth, "k.pem");
