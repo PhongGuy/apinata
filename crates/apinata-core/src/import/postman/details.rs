@@ -4,8 +4,8 @@
 use super::notes::members;
 use super::{ImportNote, NoteKind, ensure_string, js_string, truthy};
 use crate::edit::{
-    ApiKeyPlacement, AuthSpec, ClientAuth, EdgeGridSpec, JwtAlgorithm, JwtPlacement, JwtSpec,
-    OAuth1KeyKind, OAuth1Placement, OAuth1PrivateKey, OAuth1SignatureMethod, OAuth1Spec,
+    ApiKeyPlacement, AuthSpec, ClientAuth, EdgeGridSpec, HawkSpec, JwtAlgorithm, JwtPlacement,
+    JwtSpec, OAuth1KeyKind, OAuth1Placement, OAuth1PrivateKey, OAuth1SignatureMethod, OAuth1Spec,
     OAuth2Flow, OAuth2Param, OAuth2ParamPlacement, OAuth2Spec, OAuth2Stage, RequestSettings,
     TlsVerify, TokenPlacement, VarValue, Variable,
 };
@@ -61,6 +61,13 @@ pub(super) fn auth(
         Some("oauth1") => AuthSpec::OAuth1(oauth1(values)),
         Some("edgegrid") => AuthSpec::EdgeGrid(edgegrid(values)),
         Some("jwt") => AuthSpec::Jwt(jwt(values)),
+        Some("hawk") => {
+            // The user field never reaches the header, so a stated one is noted and dropped.
+            if !get("user").trim().is_empty() {
+                drop_notes(notes, &source, &["user"], "Hawk never sends it");
+            }
+            AuthSpec::Hawk(hawk(values))
+        }
         Some("ntlm") => {
             // Apinata derives the workstation itself, so a stated one is noted and dropped.
             if !get("workstation").is_empty() {
@@ -420,6 +427,28 @@ fn jwt(values: Option<&Value>) -> JwtSpec {
         },
         header_prefix: Some(header_prefix),
         query_param_key: filled("queryParamKey").unwrap_or_else(|| "token".to_owned()),
+    }
+}
+
+/// The runtime's hawk keys; `extraData` is `ext` and `delegation` is `dlg`, and a blank
+/// algorithm is `sha256`.
+fn hawk(values: Option<&Value>) -> HawkSpec {
+    let get = |key: &str| ensure_string(auth_value(values, key));
+    let algorithm = get("algorithm").trim().to_owned();
+    HawkSpec {
+        auth_id: get("authId"),
+        auth_key: get("authKey"),
+        algorithm: if algorithm.is_empty() {
+            "sha256".to_owned()
+        } else {
+            algorithm
+        },
+        ext: get("extraData"),
+        app: get("app"),
+        dlg: get("delegation"),
+        nonce: get("nonce"),
+        timestamp: get("timestamp"),
+        include_payload_hash: truthy(auth_value(values, "includePayloadHash")),
     }
 }
 

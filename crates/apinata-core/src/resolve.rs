@@ -22,12 +22,13 @@ use crate::edit::KeyValue;
 use crate::edit::omitted_names;
 use crate::edit::settings::{read_http_version, read_verify};
 use crate::edit::{
-    AuthSpec, EdgeGridSpec, JwtAlgorithm, JwtPlacement, JwtSpec, OAuth1KeyKind, OAuth1Placement,
-    OAuth1SignatureMethod, OAuth1Spec, OAuth2Spec, TokenPlacement, TokenSource,
+    AuthSpec, EdgeGridSpec, HawkSpec, JwtAlgorithm, JwtPlacement, JwtSpec, OAuth1KeyKind,
+    OAuth1Placement, OAuth1SignatureMethod, OAuth1Spec, OAuth2Spec, TokenPlacement, TokenSource,
 };
 use crate::edit::{Param, ParamKind};
 use crate::encode_url::{authority_span, encode_url};
 use crate::error::ResolveError;
+use crate::hawk;
 use crate::header_check::header_problem;
 use crate::interpolate::{Tracker, Vars, interpolate, interpolate_tracked};
 use crate::item_path::ItemPath;
@@ -83,7 +84,7 @@ pub struct ResolvedRequest {
 }
 
 /// Auth that cannot be a header at resolve: digest answers a challenge, WSSE needs a fresh nonce
-/// per send, NTLM answers a challenge, and SigV4, OAuth 1.0 and EdgeGrid sign each hop.
+/// per send, NTLM answers a challenge, and SigV4, OAuth 1.0, EdgeGrid and Hawk sign each hop.
 #[derive(Clone, PartialEq)]
 pub(crate) enum SendAuth {
     Digest {
@@ -102,6 +103,7 @@ pub(crate) enum SendAuth {
         domain: String,
     },
     EdgeGrid(Box<edgegrid::Signer>),
+    Hawk(Box<hawk::Signer>),
 }
 
 /// A file the body reads: the path read, the path before joining to the root, and the text as
@@ -1398,7 +1400,7 @@ fn auth_mode(value: Option<&Value>) -> Result<AuthMode<'_>, ResolveError> {
             match kind.as_deref() {
                 Some(
                     "basic" | "bearer" | "apikey" | "digest" | "awsv4" | "oauth1" | "wsse" | "ntlm"
-                    | "akamai-edgegrid" | "jwt",
+                    | "akamai-edgegrid" | "jwt" | "hawk",
                 ) => Ok(AuthMode::Apply(map)),
                 // An oauth2 block without a known flow stays unsupported.
                 Some("oauth2") if OAuth2Spec::from_yaml(whole).is_some() => {
@@ -1901,12 +1903,13 @@ fn apply_auth(
     Ok(())
 }
 
-/// The per-hop auth of a digest, awsv4, oauth1, wsse, ntlm or akamai-edgegrid `auth`, its fields
+/// The per-hop auth of a digest, awsv4, oauth1, wsse, ntlm, akamai-edgegrid or hawk `auth`, its fields
 /// interpolated. Digest needs a non-blank username and password. SigV4 takes its keys from a
 /// named profile when it can be read (pushing them to `secrets`), infers its scope from `url`'s
 /// host, and is `None` with [`Warning::AwsV4Unsigned`] when a key or the service stays blank.
 /// OAuth 1.0 and WSSE always sign, and NTLM carries its three fields as they are (blanks
-/// included); EdgeGrid fails with [`ResolveError::EdgeGrid`] when it cannot.
+/// included); EdgeGrid and Hawk fail with [`ResolveError::EdgeGrid`] and [`ResolveError::Hawk`]
+/// when they cannot.
 fn per_hop_auth(
     auth: &Mapping,
     scope: &Scope,
@@ -2006,6 +2009,26 @@ fn per_hop_auth(
                 .map_err(|reason| ResolveError::EdgeGrid { reason })?;
             secrets.extend([spec.access_token, spec.client_token, spec.client_secret]);
             Ok(Some(SendAuth::EdgeGrid(Box::new(signer))))
+        }
+        Some("hawk") => {
+            // Every string is expanded before the signer's checks, so a variable error wins.
+            let mut spec = HawkSpec::from_yaml(&Value::Mapping(auth.clone()));
+            for value in [
+                &mut spec.auth_id,
+                &mut spec.auth_key,
+                &mut spec.algorithm,
+                &mut spec.ext,
+                &mut spec.app,
+                &mut spec.dlg,
+                &mut spec.nonce,
+                &mut spec.timestamp,
+            ] {
+                *value = scope.expand(value)?;
+            }
+            let signer =
+                hawk::Signer::new(&spec).map_err(|reason| ResolveError::Hawk { reason })?;
+            secrets.push(spec.auth_key);
+            Ok(Some(SendAuth::Hawk(Box::new(signer))))
         }
         _ => Ok(None),
     }

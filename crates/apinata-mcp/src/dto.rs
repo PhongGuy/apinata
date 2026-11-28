@@ -244,6 +244,8 @@ pub(crate) enum AuthDoc {
     },
     /// JWT Bearer, signed fresh on every send.
     Jwt(JwtDoc),
+    /// Hawk, signed per hop.
+    Hawk(HawkDoc),
     /// An auth mode Apinata does not model; shown, never written.
     Unsupported {
         mode: String,
@@ -267,6 +269,22 @@ pub(crate) struct JwtDoc {
     pub placement: String,
     pub header_prefix: Option<String>,
     pub query_param_key: String,
+}
+
+/// Hawk settings. `algorithm` is `sha256` or `sha1`; a blank `nonce` or `timestamp` is
+/// generated per hop, and `dlg` is sent only with `app`.
+#[derive(Serialize, Deserialize, JsonSchema, Clone, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct HawkDoc {
+    pub auth_id: String,
+    pub auth_key: String,
+    pub algorithm: String,
+    pub ext: String,
+    pub app: String,
+    pub dlg: String,
+    pub nonce: String,
+    pub timestamp: String,
+    pub include_payload_hash: bool,
 }
 
 /// OAuth 2.0 settings. `flow`, `client_auth` (`null` when unset), `token_source` and the
@@ -752,6 +770,17 @@ pub(crate) fn auth(a: AuthSpec) -> Result<AuthDoc, String> {
             expires_in: j.expires_in,
             header_prefix: j.header_prefix,
             query_param_key: j.query_param_key,
+        }),
+        AuthSpec::Hawk(h) => AuthDoc::Hawk(HawkDoc {
+            auth_id: h.auth_id,
+            auth_key: h.auth_key,
+            algorithm: h.algorithm,
+            ext: h.ext,
+            app: h.app,
+            dlg: h.dlg,
+            nonce: h.nonce,
+            timestamp: h.timestamp,
+            include_payload_hash: h.include_payload_hash,
         }),
         _ => return Err(unsupported("auth mode")),
     })

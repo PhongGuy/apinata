@@ -605,6 +605,29 @@ fn a_custom_bearer_prefix_becomes_a_header() {
 }
 
 #[test]
+fn hawk_maps_each_member_and_validate_payload_becomes_the_hash_flag() {
+    let r = auth_of(
+        json!({"type": "hawk", "id": "id-1", "key": "{{ _.hawk_key }}",
+        "algorithm": "sha1", "ext": "x", "validatePayload": true}),
+    );
+    let AuthSpec::Hawk(spec) = r.request.auth else {
+        panic!("not hawk: {:?}", r.request.auth)
+    };
+    assert_eq!(spec.auth_id, "id-1");
+    assert_eq!(spec.auth_key, "{{hawk_key}}");
+    assert_eq!(spec.algorithm, "sha1");
+    assert_eq!(spec.ext, "x");
+    assert!(spec.include_payload_hash);
+    assert!(r.notes.is_empty(), "{:#?}", r.notes);
+    let bare = auth_of(json!({"type": "hawk", "id": "i", "key": "k"}));
+    let AuthSpec::Hawk(spec) = bare.request.auth else {
+        panic!("not hawk")
+    };
+    assert_eq!(spec.algorithm, "sha256");
+    assert!(!spec.include_payload_hash);
+}
+
+#[test]
 fn other_auth_types_are_none_with_a_note() {
     for auth in [
         json!({"type": "apikey", "key": "c", "value": "v", "addTo": "cookie"}),
@@ -612,7 +635,6 @@ fn other_auth_types_are_none_with_a_note() {
         json!({"type": "oauth2", "grantType": "client_credentials"}),
         json!({"type": "oauth1"}),
         json!({"type": "ntlm"}),
-        json!({"type": "hawk"}),
         json!({"type": "iam"}),
         json!({"type": "asap"}),
         json!({"type": "netrc"}),

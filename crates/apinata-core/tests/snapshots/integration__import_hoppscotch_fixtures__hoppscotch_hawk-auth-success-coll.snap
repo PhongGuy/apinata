@@ -12,6 +12,17 @@ info:
 http:
   method: GET
   url: "{{url}}"
+  auth:
+    type: hawk
+    authId: "{{id}}"
+    authKey: "{{key}}"
+    algorithm: "{{algorithm}}"
+    ext: "{{ext}}"
+    app: "{{app}}"
+    dlg: "{{dlg}}"
+    nonce: "{{nonce}}"
+    timestamp: "{{timestamp}}"
+    includePayloadHash: false
 
 settings:
   encodeUrl: true
@@ -31,6 +42,6 @@ extensions:
       - node_modules
       - .git
 == report
-Converted hawk-auth-headers / auth: `hawk` auth is not supported; imported as no auth (hawk-auth-headers.yml)
+Dropped hawk-auth-headers / auth.user: Hawk never sends it (hawk-auth-headers.yml)
 Dropped hawk-auth-headers / testScript: scripts are not imported (hawk-auth-headers.yml)
-NeedsInput collection: needs a value: `url`; nothing imported defines it, so add it to the collection's variables or an environment before sending (-)
+NeedsInput collection: needs a value: `algorithm`, `app`, `dlg`, `ext`, `id`, `key`, `nonce`, `timestamp`, `url`; nothing imported defines them, so add them to the collection's variables or an environment before sending (-)

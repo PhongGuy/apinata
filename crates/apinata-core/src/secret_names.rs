@@ -876,6 +876,9 @@ pub(crate) fn auth_secrets(
             Some(SendAuth::EdgeGrid(signer)) => {
                 signer.secrets().into_iter().map(str::to_owned).collect()
             }
+            Some(SendAuth::Hawk(signer)) => {
+                signer.secrets().into_iter().map(str::to_owned).collect()
+            }
             None => Vec::new(),
         },
     };

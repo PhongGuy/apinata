@@ -3,7 +3,7 @@
 use super::model::{Member, text};
 use super::template::apply;
 use super::{Budget, Crumbs};
-use crate::edit::{ApiKeyPlacement, AuthSpec, KeyValue};
+use crate::edit::{ApiKeyPlacement, AuthSpec, HawkSpec, KeyValue};
 use crate::import::{DocumentError, ImportNote, NoteKind};
 use serde_json::{Map, Value};
 
@@ -104,6 +104,21 @@ pub(super) fn auth(
                     return set_none(&path, trail, notes, budget, detail);
                 }
             }
+        }
+        "hawk" => {
+            let algorithm = take(&mut auth, "algorithm");
+            AuthSpec::Hawk(HawkSpec {
+                auth_id: templated(&mut auth, "id", notes, budget)?,
+                auth_key: templated(&mut auth, "key", notes, budget)?,
+                algorithm: if algorithm.trim().is_empty() {
+                    "sha256".to_owned()
+                } else {
+                    algorithm
+                },
+                ext: templated(&mut auth, "ext", notes, budget)?,
+                include_payload_hash: auth.remove("validatePayload") == Some(Value::Bool(true)),
+                ..HawkSpec::default()
+            })
         }
         other => {
             let detail = format!("`{other}` authentication is not supported; set to none");
