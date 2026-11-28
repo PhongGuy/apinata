@@ -20,7 +20,9 @@ fn a_command_on_stdin_becomes_a_request_named_after_the_url() {
         .assert()
         .code(0)
         .stdout("users.yml\n")
-        .stderr(contains("note: dropped curl flag -k: "));
+        .stderr(contains(
+            "note: converted curl flag -k: certificate checks are off for this request",
+        ));
     assert!(dir.path().join("users.yml").is_file());
 }
 
