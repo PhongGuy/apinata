@@ -60,7 +60,7 @@ use crate::keymap::{ResetZoom, ZoomIn, ZoomOut};
 use crate::menu_focus;
 use crate::ui::{ChooseButton as _, LockButton as _};
 use crate::zoom::{self, ZoomStep, ZoomTarget::Response};
-use crate::{confirm, open_external, style, ui};
+use crate::{confirm, html_preview, open_external, style, ui};
 use gpui_kit::component::input::{
     RangeDecoration, RangeDecorationCollection, RangeDecorationStyle,
 };
@@ -71,6 +71,8 @@ use gpui_kit::component::input::{
 #[derive(Default)]
 struct Mask {
     text: OnceLock<Option<Arc<str>>>,
+    // The preview's copy of the shown text, made once so a frame never copies the body.
+    page: OnceLock<Option<(SharedString, bool)>>,
     runs: AtomicUsize,
 }
 
@@ -109,6 +111,12 @@ pub fn opened_note(page: bool) -> Option<&'static str> {
 
 /// The banner a whole body over the editor's limits shows under its bar.
 pub const LARGE_BODY_NOTE: &str = "Large body: shown as plain text, folding and editing are off";
+
+/// The banner a page too large to preview whole shows under its bar.
+pub const PREVIEW_CUT_NOTE: &str = "Large page: the preview shows its start";
+
+/// The banner when the parser fails on a page, which then shows as text.
+pub const PREVIEW_FAILED_NOTE: &str = "This page could not be previewed, so it shows as text";
 
 /// How long typing in the filter, or a rows-mode find query, must pause before it runs.
 pub const SETTLE: Duration = Duration::from_millis(250);
@@ -278,6 +286,8 @@ pub struct BodyView {
     // The shown image's bytes, built once per body so gpui's image cache key stays put.
     image: Option<Arc<Image>>,
     mode: BodyMode,
+    // Whether an HTML body is laid out instead of shown as text; kept across bodies.
+    preview: bool,
     binary_mode: BinaryMode,
     image_scale: ImageScale,
     editing: bool,
@@ -554,6 +564,7 @@ impl BodyView {
             kind_override: None,
             image: None,
             mode: BodyMode::Pretty,
+            preview: false,
             binary_mode: BinaryMode::Hex,
             image_scale: ImageScale::Fit,
             editing: false,
@@ -791,7 +802,14 @@ impl BodyView {
 
     // What the banner under the bar says about how much of the body is on screen: the cut
     // point when the body was cut, and that it is plain text when too large for the editor.
+    // A page too large to preview whole says so instead.
     fn banner_text(&self) -> Option<String> {
+        if self.preview_cut() {
+            return Some(PREVIEW_CUT_NOTE.into());
+        }
+        if self.previewing() && matches!(self.mask.page.get(), Some(None)) {
+            return Some(PREVIEW_FAILED_NOTE.into());
+        }
         let large = self.in_rows() && !self.editor_backed;
         let cut = (self.result.as_ref())
             .and_then(|r| r.response.as_ref())
@@ -886,11 +904,11 @@ impl BodyView {
         self.refresh(window, cx);
     }
 
-    /// Switches between pretty and raw, re-preparing the shown body. Choosing the mode
-    /// already shown does nothing; with scratch edits it first asks, and switches only on
-    /// Discard.
+    /// Switches between pretty and raw, re-preparing the shown body and leaving any preview.
+    /// Choosing the mode already shown, outside a preview, does nothing; with scratch edits it
+    /// first asks, and switches only on Discard.
     pub fn set_mode(&mut self, mode: BodyMode, window: &mut Window, cx: &mut Context<Self>) {
-        if mode == self.mode || self.asking {
+        if (mode == self.mode && !self.preview) || self.asking {
             return;
         }
         self.discarding_edits(window, cx, move |view, window, cx| {
@@ -900,8 +918,62 @@ impl BodyView {
 
     fn apply_mode(&mut self, mode: BodyMode, window: &mut Window, cx: &mut Context<Self>) {
         self.mode = mode;
+        self.preview = false;
         self.refresh(window, cx);
         cx.notify();
+    }
+
+    /// Whether the body is laid out as a page: Preview was chosen, the body is HTML text in
+    /// the editor, and it is not being edited.
+    pub fn previewing(&self) -> bool {
+        self.preview
+            && self.kind == Some(BodyKind::Html)
+            && self.shown == Shown::Editor
+            && !self.edit_on()
+    }
+
+    /// Lays an HTML body out as a page, or goes back to its text. Scratch edits are asked
+    /// about first, and the find bar closes, since the page has nothing to find in.
+    pub fn set_preview(&mut self, on: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if on == self.preview || self.asking {
+            return;
+        }
+        self.discarding_edits(window, cx, move |view, window, cx| {
+            view.preview = on;
+            if on {
+                view.editing = false;
+                view.close_find(window, cx);
+            }
+            // Discarded edits leave the editor, so the body is prepared again.
+            view.refresh(window, cx);
+            cx.notify();
+        });
+    }
+
+    /// The Markdown the preview lays out, made from the redacted copy, since the page has no
+    /// eye. `None` when not previewing or before the redacted copy is made.
+    pub fn preview_markdown(&self) -> Option<SharedString> {
+        self.preview_page().map(|(markdown, _)| markdown.clone())
+    }
+
+    // The prepared page and whether it was cut, made once per body; `None` when not
+    // previewing, before the redacted copy is made, or when the page failed to parse.
+    fn preview_page(&self) -> Option<&(SharedString, bool)> {
+        if !self.previewing() {
+            return None;
+        }
+        let raw = self.result.as_ref()?.response.as_ref()?.text();
+        let masked = self.mask.text.get()?;
+        let page = self.mask.page.get_or_init(|| {
+            let page = html_preview::prepare(masked.as_deref().unwrap_or(raw))?;
+            Some((SharedString::from(page.markdown), page.cut))
+        });
+        page.as_ref()
+    }
+
+    // Whether the previewed page passed the node bound, so only its start shows.
+    fn preview_cut(&self) -> bool {
+        self.preview_page().is_some_and(|(_, cut)| *cut)
     }
 
     /// How an image body is sized; Fit until changed, kept across bodies.
@@ -1012,7 +1084,9 @@ impl BodyView {
     /// Opens the find bar when the editor or the rows show text, focuses its field and
     /// selects its text.
     pub fn open_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !matches!(self.shown, Shown::Editor | Shown::Lines(_)) {
+        if !matches!(self.shown, Shown::Editor | Shown::Lines(_))
+            || self.preview_markdown().is_some()
+        {
             return;
         }
         self.find_open = true;
@@ -1776,6 +1850,8 @@ impl BodyView {
         let view = cx.entity().downgrade();
         let text = self.wrap_offered();
         let (mode, wrap, kind, detected) = (self.mode, self.wrap, self.kind, self.detected);
+        let preview = self.preview_markdown().is_some();
+        let page = kind == Some(BodyKind::Html) && self.shown == Shown::Editor;
         let button = Button::new("body-format-button")
             .solid_ring(cx)
             .ghost()
@@ -1788,16 +1864,21 @@ impl BodyView {
                     menu = menu
                         .item(format_item(
                             "Pretty",
-                            mode == BodyMode::Pretty,
+                            mode == BodyMode::Pretty && !preview,
                             &view,
                             |v, w, cx| v.set_mode(BodyMode::Pretty, w, cx),
                         ))
                         .item(format_item(
                             "Raw",
-                            mode == BodyMode::Raw,
+                            mode == BodyMode::Raw && !preview,
                             &view,
                             |v, w, cx| v.set_mode(BodyMode::Raw, w, cx),
                         ))
+                        .when(page, |menu| {
+                            menu.item(format_item("Preview", preview, &view, |v, w, cx| {
+                                v.set_preview(true, w, cx)
+                            }))
+                        })
                         .separator()
                         .item(format_item("Wrap", wrap, &view, |v, w, cx| {
                             v.set_wrap(!v.wrap, w, cx)
@@ -2881,6 +2962,10 @@ impl BodyView {
         }
         self.reshape(false, window, cx);
         self.end_find_without_text(window, cx);
+        // A body landing in the preview has no text on screen to find in.
+        if self.find_open && self.preview_markdown().is_some() {
+            self.close_find(window, cx);
+        }
         self.run_find(cx);
         cx.notify();
     }
@@ -4147,6 +4232,14 @@ impl Render for BodyView {
                     .into_any_element()
             }
             Shown::Image(info) => self.image_preview(&info, cx),
+            Shown::Editor if let Some(page) = self.preview_markdown() => div()
+                .id("body-html-preview")
+                .test_support()
+                .flex_1()
+                .min_h_0()
+                .w_full()
+                .child(html_preview::view("body-html-preview-page", page).size_full())
+                .into_any_element(),
             Shown::Editor => div()
                 .id("body-editor")
                 .test_support()
