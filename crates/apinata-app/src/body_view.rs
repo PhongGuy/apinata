@@ -72,7 +72,7 @@ use gpui_kit::component::input::{
 struct Mask {
     text: OnceLock<Option<Arc<str>>>,
     // The preview's copy of the shown text, made once so a frame never copies the body.
-    page: OnceLock<SharedString>,
+    page: OnceLock<Option<SharedString>>,
     runs: AtomicUsize,
 }
 
@@ -111,6 +111,9 @@ pub fn opened_note(page: bool) -> Option<&'static str> {
 
 /// The banner a whole body over the editor's limits shows under its bar.
 pub const LARGE_BODY_NOTE: &str = "Large body: shown as plain text, folding and editing are off";
+
+/// The banner an HTML body too deeply nested to preview shows under its bar.
+pub const TOO_DEEP_NOTE: &str = "Nested too deeply to preview: shown as text";
 
 /// How long typing in the filter, or a rows-mode find query, must pause before it runs.
 pub const SETTLE: Duration = Duration::from_millis(250);
@@ -796,7 +799,11 @@ impl BodyView {
 
     // What the banner under the bar says about how much of the body is on screen: the cut
     // point when the body was cut, and that it is plain text when too large for the editor.
+    // A page too deeply nested to preview says so instead.
     fn banner_text(&self) -> Option<String> {
+        if self.preview_refused() {
+            return Some(TOO_DEEP_NOTE.into());
+        }
         let large = self.in_rows() && !self.editor_backed;
         let cut = (self.result.as_ref())
             .and_then(|r| r.response.as_ref())
@@ -938,18 +945,28 @@ impl BodyView {
     }
 
     /// The HTML the preview lays out: always the redacted copy, since the page has no eye.
-    /// `None` when not previewing or before the redacted copy is made.
+    /// `None` when not previewing, before the redacted copy is made, or when the page nests
+    /// too deeply to lay out.
     pub fn preview_html(&self) -> Option<SharedString> {
+        self.preview_page()?.clone()
+    }
+
+    // The prepared page, made once per body: `Some(None)` when it nests too deeply, `None`
+    // when not previewing or before the redacted copy is made.
+    fn preview_page(&self) -> Option<&Option<SharedString>> {
         if !self.previewing() {
             return None;
         }
         let raw = self.result.as_ref()?.response.as_ref()?.text();
         let masked = self.mask.text.get()?;
-        let page = self.mask.page.get_or_init(|| match masked {
-            Some(masked) => SharedString::from(Arc::clone(masked)),
-            None => SharedString::from(raw.to_owned()),
-        });
-        Some(page.clone())
+        Some(self.mask.page.get_or_init(|| {
+            html_preview::prepare(masked.as_deref().unwrap_or(raw)).map(SharedString::from)
+        }))
+    }
+
+    // Whether Preview was chosen but the page nests too deeply, so its text shows instead.
+    fn preview_refused(&self) -> bool {
+        matches!(self.preview_page(), Some(None))
     }
 
     /// How an image body is sized; Fit until changed, kept across bodies.
@@ -1060,7 +1077,7 @@ impl BodyView {
     /// Opens the find bar when the editor or the rows show text, focuses its field and
     /// selects its text.
     pub fn open_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !matches!(self.shown, Shown::Editor | Shown::Lines(_)) || self.previewing() {
+        if !matches!(self.shown, Shown::Editor | Shown::Lines(_)) || self.preview_html().is_some() {
             return;
         }
         self.find_open = true;
@@ -1824,7 +1841,7 @@ impl BodyView {
         let view = cx.entity().downgrade();
         let text = self.wrap_offered();
         let (mode, wrap, kind, detected) = (self.mode, self.wrap, self.kind, self.detected);
-        let preview = self.previewing();
+        let preview = self.preview_html().is_some();
         let page = kind == Some(BodyKind::Html) && self.shown == Shown::Editor;
         let button = Button::new("body-format-button")
             .solid_ring(cx)
@@ -2936,6 +2953,10 @@ impl BodyView {
         }
         self.reshape(false, window, cx);
         self.end_find_without_text(window, cx);
+        // A body landing in the preview has no text on screen to find in.
+        if self.find_open && self.preview_html().is_some() {
+            self.close_find(window, cx);
+        }
         self.run_find(cx);
         cx.notify();
     }
