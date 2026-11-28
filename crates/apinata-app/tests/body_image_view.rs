@@ -161,9 +161,6 @@ fn the_checkerboard_is_drawn_only_behind_images_that_can_be_transparent(cx: &mut
         result(opaque(8, 8, image::ImageFormat::Jpeg), "image/jpeg"),
     );
     assert!(present(cx, win, "body-image") && !present(cx, win, "body-image-checker"));
-    let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"/>"#;
-    show(cx, win, &view, result(svg.to_vec(), "image/svg+xml"));
-    assert!(present(cx, win, "body-image-checker"));
 }
 
 #[gpui_kit::test]

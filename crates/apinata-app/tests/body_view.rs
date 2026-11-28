@@ -295,7 +295,7 @@ fn an_image_body_shows_a_preview_and_its_caption(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn an_svg_body_is_an_image(cx: &mut TestAppContext) {
+fn an_svg_body_shows_as_its_source_with_a_note(cx: &mut TestAppContext) {
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="12"><rect width="10" height="12"/></svg>"#;
     let s = send_once(
         cx,
@@ -304,16 +304,15 @@ fn an_svg_body_is_an_image(cx: &mut TestAppContext) {
     );
     let (win, view) = host(cx);
     show(cx, win, &view, &s);
-    assert_eq!(
-        view.read_with(cx, |v, _| v.shown()),
-        Shown::Image(ImageInfo {
-            kind: ImageKind::Svg,
-            size: svg.len() as u64,
-            dimensions: Some((10, 12)),
-            alpha: true,
+    assert_eq!(view.read_with(cx, |v, _| v.shown()), Shown::Editor);
+    assert!(!present(cx, win, "body-image"));
+    let note = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.find("body-svg-source").label().map(str::to_owned)
         })
-    );
-    assert!(present(cx, win, "body-image"));
+        .unwrap();
+    assert_eq!(note.as_deref(), Some("SVG images are shown as source."));
 }
 
 #[gpui_kit::test]

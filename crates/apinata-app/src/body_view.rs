@@ -49,7 +49,7 @@ use crate::body_node::{
     SetJsonVariable, json_token_starts, node_entries, node_menu, row_offset,
 };
 use crate::body_text::{
-    BINARY_VIEW_CAP, BinaryMode, BodyKind, Chunked, EDITOR_MAX_BYTES, ImageInfo, ImageKind,
+    self, BINARY_VIEW_CAP, BinaryMode, BodyKind, Chunked, EDITOR_MAX_BYTES, ImageInfo, ImageKind,
     Prepared, ROW_WIDTH, binary_rows, body_kind, cells, chunk_lines, display_text, format_size,
     image_caption, json_problem, prepare, prepare_body, size_labels, wrap_columns,
 };
@@ -736,9 +736,20 @@ impl BodyView {
     }
 
     // The open button shows for these bodies even when cut, disabled, so the bar does not shift.
+    // An SVG that is not text, gzipped or not UTF-8, is never opened at all.
     fn open_offered(&self, cx: &App) -> bool {
-        (matches!(self.shown, Shown::Binary(_)) || self.browser_page().is_some())
+        let svg = (self.result.as_ref())
+            .and_then(|r| r.response.as_ref())
+            .is_some_and(|r| body_text::is_svg(r.headers()));
+        (matches!(self.shown, Shown::Binary(_)) && !svg || self.browser_page().is_some())
             && open_external::installed(cx)
+    }
+
+    // Whether the shown text is an SVG body's source.
+    fn svg_source(&self) -> bool {
+        let response = (self.result.as_ref()).and_then(|r| r.response.as_ref());
+        matches!(self.shown, Shown::Editor | Shown::Lines(_))
+            && response.is_some_and(|r| body_text::is_svg(r.headers()))
     }
 
     // Which inert browser copy the body opens as. An SVG is redacted as text, so one that is
@@ -748,7 +759,7 @@ impl BodyView {
             .and_then(|r| r.response.as_ref())
             .map_or(&[][..], |r| r.body());
         match self.shown {
-            Shown::Image(info) if info.kind == ImageKind::Svg => std::str::from_utf8(body)
+            _ if self.svg_source() => std::str::from_utf8(body)
                 .is_ok()
                 .then_some(BrowserPage::Svg),
             Shown::Editor | Shown::Lines(_) if self.kind == Some(BodyKind::Html) => {
@@ -4115,6 +4126,15 @@ impl Render for BodyView {
                 })
                 .children(controls)
         });
+        let svg_note = self.svg_source().then(|| {
+            div()
+                .id("body-svg-source")
+                .test_support()
+                .aria_label(SVG_SOURCE_NOTE)
+                .text_size(style::TEXT_SMALL)
+                .text_color(cx.theme().muted_foreground)
+                .child(SVG_SOURCE_NOTE)
+        });
         let json_note = (self.json_problem.clone())
             .filter(|_| self.applied_filter.is_none())
             .map(|note| {
@@ -4341,6 +4361,7 @@ impl Render for BodyView {
             .on_action(|_: &ZoomOut, _, cx| zoom::apply_step(Response, ZoomStep::Out, cx))
             .on_action(|_: &ResetZoom, _, cx| zoom::apply_step(Response, ZoomStep::Reset, cx))
             .children(banner)
+            .children(svg_note)
             .children(json_note)
             .children(filter_bar)
             .children(filter_chip)
@@ -4439,6 +4460,9 @@ fn paint_checker(
         }
     }
 }
+
+// An SVG can name local files and expand without bound when drawn, so it is shown as text.
+const SVG_SOURCE_NOTE: &str = "SVG images are shown as source.";
 
 // An image body on its way to the preview.
 #[derive(Clone)]

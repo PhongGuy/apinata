@@ -1,12 +1,8 @@
-//! Image bodies are decoded by the app under limits: an SVG never reaches a local file, and
-//! a raster's header is checked against the caps before any pixel is decoded.
-
-use std::sync::Arc;
-use std::time::Duration;
+//! Raster image bodies are decoded by the app under limits: the header is checked against
+//! the caps before any pixel is decoded, and a decoder panic becomes a refusal.
 
 use apinata_app::body_text::ImageKind;
 use apinata_app::image_guard::{self, ImageLimits, PREVIEW_LIMITS, Refusal};
-use base64::Engine as _;
 
 fn png(image: image::RgbaImage) -> Vec<u8> {
     let mut out = std::io::Cursor::new(Vec::new());
@@ -22,26 +18,6 @@ fn red_png() -> Vec<u8> {
         4,
         image::Rgba([255, 0, 0, 255]),
     ))
-}
-
-// A 4x4 SVG drawing each href as a full-size image.
-fn svg_with_images(hrefs: &[&str]) -> Vec<u8> {
-    let images: String = hrefs
-        .iter()
-        .map(|h| format!(r#"<image href="{h}" x="0" y="0" width="4" height="4"/>"#))
-        .collect();
-    format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4">{images}</svg>"#)
-        .into_bytes()
-}
-
-fn all_clear(image: &gpui_kit::RenderImage) -> bool {
-    image
-        .as_bytes(0)
-        .unwrap()
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .all(|p| p[3] == 0)
 }
 
 // A GIF whose logical screen is `w` x `h` holding one 1x1 frame: a few dozen bytes.
@@ -113,49 +89,56 @@ fn a_png_decodes_to_the_bgra_order_gpui_paints() {
     assert_eq!(&image.as_bytes(0).unwrap()[..4], &[0, 0, 255, 255]);
 }
 
-#[test]
-fn an_svg_is_rasterized_at_its_own_size() {
-    let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="6" height="3"><rect width="6" height="3" fill="red"/></svg>"#;
-    let image = image_guard::decode_preview(ImageKind::Svg, svg, &PREVIEW_LIMITS).unwrap();
-    let size = image.size(0);
-    assert_eq!((size.width.0, size.height.0), (6, 3));
-    assert_eq!(&image.as_bytes(0).unwrap()[..4], &[0, 0, 255, 255]);
-}
-
-#[test]
-fn an_svg_never_draws_a_local_file_it_names() {
-    let dir = tempfile::tempdir().unwrap();
-    let file = dir.path().join("red.png");
-    std::fs::write(&file, red_png()).unwrap();
-    let svg = svg_with_images(&["/etc/hostname", file.to_str().unwrap()]);
-    let image = image_guard::decode_preview(ImageKind::Svg, &svg, &PREVIEW_LIMITS).unwrap();
-    assert!(all_clear(&image), "a local file named by the SVG was drawn");
-}
-
-#[test]
-fn an_svg_does_not_draw_an_embedded_data_image() {
-    let data = base64::engine::general_purpose::STANDARD.encode(red_png());
-    let svg = svg_with_images(&[&format!("data:image/png;base64,{data}")]);
-    let image = image_guard::decode_preview(ImageKind::Svg, &svg, &PREVIEW_LIMITS).unwrap();
-    assert!(all_clear(&image), "an embedded raster was decoded");
-}
-
-#[cfg(unix)]
-#[test]
-fn an_svg_naming_a_fifo_does_not_block() {
-    let dir = tempfile::tempdir().unwrap();
-    let fifo = dir.path().join("pipe.png");
-    let made = std::process::Command::new("mkfifo")
-        .arg(&fifo)
-        .status()
+// An animated WebP of `frames` 1x1 frames, each a copy of one lossless 1x1 still.
+fn animated_webp(frames: usize) -> Vec<u8> {
+    let mut still = Vec::new();
+    image::codecs::webp::WebPEncoder::new_lossless(&mut still)
+        .encode(&[255, 0, 0, 255], 1, 1, image::ExtendedColorType::Rgba8)
         .unwrap();
-    assert!(made.success());
-    let svg = Arc::new(svg_with_images(&[fifo.to_str().unwrap()]));
-    // A reader blocked on the FIFO never answers; the wait is bounded so the test fails
-    // instead of hanging.
-    let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        let _ = tx.send(image_guard::decode_preview(ImageKind::Svg, &svg, &PREVIEW_LIMITS).is_ok());
-    });
-    assert_eq!(rx.recv_timeout(Duration::from_secs(10)), Ok(true));
+    // The still is RIFF, size, WEBP, then one VP8L chunk; that chunk is each frame's payload.
+    let vp8l = &still[12..];
+    let chunk = |tag: &[u8], body: &[u8]| {
+        let mut c = tag.to_vec();
+        c.extend_from_slice(&(body.len() as u32).to_le_bytes());
+        c.extend_from_slice(body);
+        if body.len() % 2 == 1 {
+            c.push(0);
+        }
+        c
+    };
+    let mut body = b"WEBP".to_vec();
+    // VP8X: animation and alpha flags, then a 1x1 canvas as width-1 and height-1.
+    body.extend(chunk(b"VP8X", &[0x12, 0, 0, 0, 0, 0, 0, 0, 0, 0]));
+    body.extend(chunk(b"ANIM", &[0, 0, 0, 0, 0, 0]));
+    for _ in 0..frames {
+        // Offset 0,0, size 1x1 (stored minus one), 100 ms, no blending.
+        let mut frame = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0x02];
+        frame.extend_from_slice(vp8l);
+        body.extend(chunk(b"ANMF", &frame));
+    }
+    let mut riff = b"RIFF".to_vec();
+    riff.extend_from_slice(&(body.len() as u32).to_le_bytes());
+    riff.extend(body);
+    riff
+}
+
+#[test]
+fn an_animated_webp_with_more_frames_than_allowed_is_refused() {
+    let limits = ImageLimits {
+        max_frames: 3,
+        ..PREVIEW_LIMITS
+    };
+    let three = image_guard::decode_preview(ImageKind::Webp, &animated_webp(3), &limits);
+    assert_eq!(three.map(|i| i.frame_count()).ok(), Some(3));
+    assert!(matches!(
+        image_guard::decode_preview(ImageKind::Webp, &animated_webp(4), &limits),
+        Err(Refusal::TooManyFrames)
+    ));
+}
+
+#[test]
+fn a_decoder_panic_is_contained_as_a_refusal() {
+    let decoded = image_guard::contained(|| panic!("a decoder bug"));
+    assert_eq!(decoded.err(), Some(Refusal::Crashed));
+    assert!(Refusal::Crashed.note(&PREVIEW_LIMITS).is_some());
 }

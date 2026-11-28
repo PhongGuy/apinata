@@ -1,13 +1,13 @@
-//! Decodes untrusted image bodies for the preview under fixed caps. A raster's header is
-//! checked before any pixel is decoded, an animation is counted frame by frame, and an SVG
-//! is drawn with every external or embedded reference refused, so no local file is opened.
+//! Decodes untrusted raster images (PNG, JPEG, GIF, WebP, BMP) for the preview under fixed
+//! caps. The header is checked before any pixel is decoded, an animation is counted frame by
+//! frame, and a decoder panic becomes a refusal. SVG is never decoded here.
 
 use std::io::Cursor;
-use std::sync::{Arc, LazyLock};
+use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::sync::Arc;
 
 use gpui_kit::RenderImage;
 use image::ImageDecoder as _;
-use resvg::{tiny_skia, usvg};
 
 use crate::body_text::ImageKind;
 
@@ -32,9 +32,6 @@ pub const PREVIEW_LIMITS: ImageLimits = ImageLimits {
     max_frames: 2_000,
 };
 
-// An SVG is drawn no larger than this on either side, scaled down to fit.
-const SVG_MAX_SIDE: f32 = 4096.0;
-
 /// Why an image was not decoded.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refusal {
@@ -49,6 +46,8 @@ pub enum Refusal {
     TooManyFrames,
     /// The bytes do not decode.
     Undecodable,
+    /// The decoder panicked on the bytes.
+    Crashed,
 }
 
 impl Refusal {
@@ -72,18 +71,15 @@ impl Refusal {
                 limits.max_frames,
                 limits.max_total_bytes / (1024 * 1024)
             )),
+            Refusal::Crashed => Some("Image not shown: its decoder failed on these bytes.".into()),
             Refusal::Undecodable => None,
         }
     }
 }
 
-/// Checks a raster's declared size against the caps without decoding pixels. An SVG always
-/// passes, since it is drawn scaled down to a fixed size.
+/// Checks a raster's declared size against the caps without decoding pixels.
 pub fn check(kind: ImageKind, bytes: &[u8], limits: &ImageLimits) -> Result<(), Refusal> {
-    let Some(format) = raster_format(kind) else {
-        return Ok(());
-    };
-    let decoder = image::ImageReader::with_format(Cursor::new(bytes), format)
+    let decoder = image::ImageReader::with_format(Cursor::new(bytes), raster_format(kind))
         .into_decoder()
         .map_err(|_| Refusal::Undecodable)?;
     let (width, height) = decoder.dimensions();
@@ -96,31 +92,37 @@ pub fn check(kind: ImageKind, bytes: &[u8], limits: &ImageLimits) -> Result<(), 
     Ok(())
 }
 
-/// Decodes an image body into the BGRA frames gpui paints, refusing anything over `limits`.
+/// Decodes untrusted raster bytes, such as a response body or a `data:` image, into the
+/// BGRA frames gpui paints. Anything over `limits` is refused before it is decoded, and a
+/// panic in the decoder comes back as [`Refusal::Crashed`]. Run it off the main thread.
 pub fn decode_preview(
     kind: ImageKind,
     bytes: &[u8],
     limits: &ImageLimits,
 ) -> Result<Arc<RenderImage>, Refusal> {
-    let frames = match raster_format(kind) {
-        None => vec![draw_svg(bytes)?],
-        Some(format) => {
-            check(kind, bytes, limits)?;
-            decode_raster(format, bytes, limits)?
-        }
-    };
-    Ok(Arc::new(RenderImage::new(frames)))
+    contained(|| {
+        check(kind, bytes, limits)?;
+        let frames = decode_raster(raster_format(kind), bytes, limits)?;
+        Ok(Arc::new(RenderImage::new(frames)))
+    })
 }
 
-fn raster_format(kind: ImageKind) -> Option<image::ImageFormat> {
-    Some(match kind {
+/// Runs a decode, turning a panic inside it into [`Refusal::Crashed`].
+pub fn contained(
+    decode: impl FnOnce() -> Result<Arc<RenderImage>, Refusal>,
+) -> Result<Arc<RenderImage>, Refusal> {
+    // The payload is dropped unread: it may quote the body.
+    catch_unwind(AssertUnwindSafe(decode)).unwrap_or(Err(Refusal::Crashed))
+}
+
+fn raster_format(kind: ImageKind) -> image::ImageFormat {
+    match kind {
         ImageKind::Png => image::ImageFormat::Png,
         ImageKind::Jpeg => image::ImageFormat::Jpeg,
         ImageKind::Gif => image::ImageFormat::Gif,
         ImageKind::Webp => image::ImageFormat::WebP,
         ImageKind::Bmp => image::ImageFormat::Bmp,
-        ImageKind::Svg => return None,
-    })
+    }
 }
 
 // The decoder's own limits back up the header check, so a frame larger than the canvas it
@@ -204,49 +206,4 @@ fn bgra(mut frame: image::Frame) -> image::Frame {
         pixel.swap(0, 2);
     }
     frame
-}
-
-// System fonts are loaded once, on the first SVG, for its text.
-static FONTS: LazyLock<Arc<usvg::fontdb::Database>> = LazyLock::new(|| {
-    let mut db = usvg::fontdb::Database::new();
-    db.load_system_fonts();
-    Arc::new(db)
-});
-
-// Draws an SVG with no base directory and an `<image>` resolver that refuses every href, a
-// local path, a URL or an embedded data: image alike, then scales it to fit the size cap.
-fn draw_svg(bytes: &[u8]) -> Result<image::Frame, Refusal> {
-    let options = usvg::Options {
-        resources_dir: None,
-        image_href_resolver: usvg::ImageHrefResolver {
-            resolve_data: Box::new(|_, _, _| None),
-            resolve_string: Box::new(|_, _| None),
-        },
-        fontdb: FONTS.clone(),
-        ..usvg::Options::default()
-    };
-    let tree = usvg::Tree::from_data(bytes, &options).map_err(|_| Refusal::Undecodable)?;
-    let size = tree.size();
-    let scale = (SVG_MAX_SIDE / size.width())
-        .min(SVG_MAX_SIDE / size.height())
-        .min(1.0);
-    let width = (size.width() * scale).ceil().max(1.0) as u32;
-    let height = (size.height() * scale).ceil().max(1.0) as u32;
-    let mut pixmap = tiny_skia::Pixmap::new(width, height).ok_or(Refusal::Undecodable)?;
-    resvg::render(
-        &tree,
-        tiny_skia::Transform::from_scale(scale, scale),
-        &mut pixmap.as_mut(),
-    );
-    // tiny-skia keeps premultiplied RGBA; gpui wants straight alpha.
-    let pixels: Vec<u8> = pixmap
-        .pixels()
-        .iter()
-        .flat_map(|p| {
-            let c = p.demultiply();
-            [c.red(), c.green(), c.blue(), c.alpha()]
-        })
-        .collect();
-    let buffer = image::RgbaImage::from_raw(width, height, pixels).ok_or(Refusal::Undecodable)?;
-    Ok(bgra(image::Frame::new(buffer)))
 }
