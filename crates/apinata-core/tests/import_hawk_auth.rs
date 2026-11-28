@@ -3,7 +3,8 @@
 use crate::export_support::{exported, http, open};
 
 use apinata_core::import::{
-    ImportNote, ImportedCollection, ImportedItem, NoteKind, parse_postman, write_collection,
+    ImportNote, ImportedCollection, ImportedItem, NoteKind, auth_secret_fields, parse_postman,
+    replace_auth_secret, write_collection,
 };
 use apinata_core::{
     AuthSpec, Collection, ContextOptions, HawkSpec, MemoryStore, SecretStore, VarContext, resolve,
@@ -142,4 +143,22 @@ fn an_imported_literal_key_goes_to_the_store_and_still_resolves() {
     .unwrap();
     let r = resolve(&collection.tree().requests()[0], &ctx).unwrap();
     assert!(r.sensitive_values().iter().any(|v| v == "literal-hawk-key"));
+}
+
+#[test]
+fn move_to_a_secret_finds_and_replaces_only_the_key() {
+    let mut spec = HawkSpec::default();
+    spec.auth_id = "literal-hawk-key".into();
+    spec.auth_key = "literal-hawk-key".into();
+    let mut auth = AuthSpec::Hawk(spec);
+    assert_eq!(
+        auth_secret_fields(&auth),
+        [("auth_key", "literal-hawk-key".to_owned())]
+    );
+    replace_auth_secret(&mut auth, "literal-hawk-key", "{{hawk_key}}");
+    let AuthSpec::Hawk(moved) = auth else {
+        panic!("not hawk")
+    };
+    assert_eq!(moved.auth_key, "{{hawk_key}}");
+    assert_eq!(moved.auth_id, "literal-hawk-key");
 }
