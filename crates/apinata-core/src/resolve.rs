@@ -22,7 +22,7 @@ use crate::edit::KeyValue;
 use crate::edit::omitted_names;
 use crate::edit::settings::{read_http_version, read_verify};
 use crate::edit::{
-    AuthSpec, EdgeGridSpec, HawkSpec, JwtAlgorithm, JwtPlacement, JwtSpec, OAuth1KeyKind,
+    AsapSpec, AuthSpec, EdgeGridSpec, HawkSpec, JwtAlgorithm, JwtPlacement, JwtSpec, OAuth1KeyKind,
     OAuth1Placement, OAuth1SignatureMethod, OAuth1Spec, OAuth2Spec, TokenPlacement, TokenSource,
 };
 use crate::edit::{Param, ParamKind};
@@ -872,7 +872,12 @@ pub fn resolve_prepared(
             None => None,
         };
         let signed = match &auth {
-            Some(auth) => place_jwt_token(auth, &scope, ctx.root(), &mut headers, &mut url)?,
+            Some(auth) => {
+                match place_jwt_token(auth, &scope, ctx.root(), &mut headers, &mut url)? {
+                    Some(signed) => Some(signed),
+                    None => place_asap_token(auth, &scope, &mut headers)?,
+                }
+            }
             None => None,
         };
         let mut files = Vec::new();
@@ -1400,7 +1405,7 @@ fn auth_mode(value: Option<&Value>) -> Result<AuthMode<'_>, ResolveError> {
             match kind.as_deref() {
                 Some(
                     "basic" | "bearer" | "apikey" | "digest" | "awsv4" | "oauth1" | "wsse" | "ntlm"
-                    | "akamai-edgegrid" | "jwt" | "hawk",
+                    | "akamai-edgegrid" | "jwt" | "hawk" | "asap",
                 ) => Ok(AuthMode::Apply(map)),
                 // An oauth2 block without a known flow stays unsupported.
                 Some("oauth2") if OAuth2Spec::from_yaml(whole).is_some() => {
@@ -1853,6 +1858,55 @@ fn place_jwt_token(
     }
     secrets.push(token.clone());
     Ok(Some((secrets, token)))
+}
+
+/// Signs the token of an asap `auth` and sends it as `Authorization: Bearer`. Returns the
+/// values to hide (the key as written and as PEM, and the token) and the token, or `None` for
+/// any other auth. Every field is expanded before any check, so a variable error wins.
+fn place_asap_token(
+    auth: &Mapping,
+    scope: &Scope,
+    headers: &mut Vec<(String, String)>,
+) -> Result<Option<(Vec<String>, String)>, ResolveError> {
+    if auth.get("type").and_then(js::yaml_to_string).as_deref() != Some("asap") {
+        return Ok(None);
+    }
+    let mut spec = AsapSpec::from_yaml(&Value::Mapping(auth.clone()));
+    for value in [
+        &mut spec.algorithm,
+        &mut spec.issuer,
+        &mut spec.audience,
+        &mut spec.key_id,
+        &mut spec.subject,
+        &mut spec.expires_in,
+        &mut spec.additional_claims,
+        &mut spec.private_key,
+    ] {
+        *value = scope.expand(value)?;
+    }
+    let now = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let fields = jwt_auth::Asap {
+        algorithm: &spec.algorithm,
+        issuer: &spec.issuer,
+        audience: &spec.audience,
+        key_id: &spec.key_id,
+        subject: &spec.subject,
+        expires_in: &spec.expires_in,
+        additional_claims: &spec.additional_claims,
+        private_key: &spec.private_key,
+    };
+    let jti = uuid::Uuid::new_v4().to_string();
+    let signed =
+        jwt_auth::asap_token(&fields, now, &jti).map_err(|reason| ResolveError::Asap { reason })?;
+    set_header(
+        headers,
+        "Authorization".to_owned(),
+        format!("Bearer {}", signed.token),
+    );
+    let secrets = vec![spec.private_key, signed.pem, signed.token.clone()];
+    Ok(Some((secrets, signed.token)))
 }
 
 /// Applies basic, bearer or apikey auth with its fields interpolated; bearer and header apikey

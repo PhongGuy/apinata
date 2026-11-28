@@ -4,10 +4,10 @@
 use super::notes::members;
 use super::{ImportNote, NoteKind, ensure_string, js_string, truthy};
 use crate::edit::{
-    ApiKeyPlacement, AuthSpec, ClientAuth, EdgeGridSpec, HawkSpec, JwtAlgorithm, JwtPlacement,
-    JwtSpec, OAuth1KeyKind, OAuth1Placement, OAuth1PrivateKey, OAuth1SignatureMethod, OAuth1Spec,
-    OAuth2Flow, OAuth2Param, OAuth2ParamPlacement, OAuth2Spec, OAuth2Stage, RequestSettings,
-    TlsVerify, TokenPlacement, VarValue, Variable,
+    ApiKeyPlacement, AsapSpec, AuthSpec, ClientAuth, EdgeGridSpec, HawkSpec, JwtAlgorithm,
+    JwtPlacement, JwtSpec, OAuth1KeyKind, OAuth1Placement, OAuth1PrivateKey, OAuth1SignatureMethod,
+    OAuth1Spec, OAuth2Flow, OAuth2Param, OAuth2ParamPlacement, OAuth2Spec, OAuth2Stage,
+    RequestSettings, TlsVerify, TokenPlacement, VarValue, Variable,
 };
 use crate::http_version::HttpVersionPolicy;
 use crate::js;
@@ -61,6 +61,7 @@ pub(super) fn auth(
         Some("oauth1") => AuthSpec::OAuth1(oauth1(values)),
         Some("edgegrid") => AuthSpec::EdgeGrid(edgegrid(values)),
         Some("jwt") => AuthSpec::Jwt(jwt(values)),
+        Some("asap") => AuthSpec::Asap(asap(values)),
         Some("hawk") => {
             // The user field never reaches the header, so a stated one is noted and dropped.
             if !get("user").trim().is_empty() {
@@ -427,6 +428,30 @@ fn jwt(values: Option<&Value>) -> JwtSpec {
         },
         header_prefix: Some(header_prefix),
         query_param_key: filled("queryParamKey").unwrap_or_else(|| "token".to_owned()),
+    }
+}
+
+/// The runtime's asap keys. Claims given as an object are written as their JSON text, and a
+/// blank algorithm is `RS256`.
+fn asap(values: Option<&Value>) -> AsapSpec {
+    let get = |key: &str| ensure_string(auth_value(values, key));
+    let algorithm = get("alg").trim().to_owned();
+    AsapSpec {
+        algorithm: if algorithm.is_empty() {
+            "RS256".to_owned()
+        } else {
+            algorithm
+        },
+        issuer: get("iss"),
+        audience: get("aud"),
+        key_id: get("kid"),
+        subject: get("sub"),
+        expires_in: get("exp"),
+        additional_claims: match auth_value(values, "claims") {
+            Some(claims @ Value::Object(_)) => claims.to_string(),
+            _ => get("claims"),
+        },
+        private_key: get("privateKey"),
     }
 }
 

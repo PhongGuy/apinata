@@ -628,6 +628,25 @@ fn hawk_maps_each_member_and_validate_payload_becomes_the_hash_flag() {
 }
 
 #[test]
+fn asap_maps_each_member_with_a_fixed_algorithm_and_expiry() {
+    let r = auth_of(json!({"type": "asap", "issuer": "svc/a", "subject": "s",
+        "audience": "svc/b", "keyId": "k1", "additionalClaims": "{\"x\":1}",
+        "privateKey": "{{ _.asap_key }}"}));
+    let AuthSpec::Asap(spec) = &r.request.auth else {
+        panic!("not asap: {:?}", r.request.auth)
+    };
+    assert_eq!(spec.algorithm, "RS256");
+    assert_eq!(spec.issuer, "svc/a");
+    assert_eq!(spec.subject, "s");
+    assert_eq!(spec.audience, "svc/b");
+    assert_eq!(spec.key_id, "k1");
+    assert_eq!(spec.expires_in, "600");
+    assert_eq!(spec.additional_claims, "{\"x\":1}");
+    assert_eq!(spec.private_key, "{{asap_key}}");
+    assert!(r.notes.is_empty(), "{:#?}", r.notes);
+}
+
+#[test]
 fn other_auth_types_are_none_with_a_note() {
     for auth in [
         json!({"type": "apikey", "key": "c", "value": "v", "addTo": "cookie"}),
@@ -636,7 +655,6 @@ fn other_auth_types_are_none_with_a_note() {
         json!({"type": "oauth1"}),
         json!({"type": "ntlm"}),
         json!({"type": "iam"}),
-        json!({"type": "asap"}),
         json!({"type": "netrc"}),
         json!({"type": "singleToken", "token": "t"}),
     ] {

@@ -187,12 +187,12 @@ pub use dotenv_names::{
 };
 pub use dynamic::dynamic_variables;
 pub use edit::{
-    ApiKeyPlacement, AuthJsonError, AuthJsonPosition, AuthSpec, BodySpec, ClientAuth, EdgeGridSpec,
-    FileEntry, HawkSpec, JwtAlgorithm, JwtPlacement, JwtSpec, KeyValue, MultipartField,
-    MultipartValue, OAuth1KeyKind, OAuth1Placement, OAuth1PrivateKey, OAuth1SignatureMethod,
-    OAuth1Spec, OAuth2Flow, OAuth2Param, OAuth2ParamPlacement, OAuth2Spec, OAuth2Stage, Param,
-    ParamKind, RequestSettings, Timeout, TlsVerify, TokenPlacement, TokenSource, VarValue,
-    Variable, collection_relative, parse_auth_json,
+    ApiKeyPlacement, AsapSpec, AuthJsonError, AuthJsonPosition, AuthSpec, BodySpec, ClientAuth,
+    EdgeGridSpec, FileEntry, HawkSpec, JwtAlgorithm, JwtPlacement, JwtSpec, KeyValue,
+    MultipartField, MultipartValue, OAuth1KeyKind, OAuth1Placement, OAuth1PrivateKey,
+    OAuth1SignatureMethod, OAuth1Spec, OAuth2Flow, OAuth2Param, OAuth2ParamPlacement, OAuth2Spec,
+    OAuth2Stage, Param, ParamKind, RequestSettings, Timeout, TlsVerify, TokenPlacement,
+    TokenSource, VarValue, Variable, collection_relative, parse_auth_json,
 };
 // The auth JSON parser's two paths, for the test that holds them equal.
 pub use connection::{TlsDetails, TlsVersion, status_description};

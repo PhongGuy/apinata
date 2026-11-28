@@ -188,6 +188,12 @@ pub enum ResolveError {
         /// What is wrong: a missing id or key, the algorithm, the timestamp or an attribute.
         reason: String,
     },
+    /// The ASAP auth cannot sign; `reason` names the field, never the key or claims.
+    #[error("ASAP: {reason}")]
+    Asap {
+        /// What is wrong: a missing field, the algorithm, the expiry, the claims or the key.
+        reason: String,
+    },
     /// The JWT auth cannot sign; `reason` never quotes the payload, key or secret.
     #[error("JWT: {reason}")]
     Jwt {
