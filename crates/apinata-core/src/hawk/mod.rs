@@ -146,7 +146,7 @@ impl Signer {
         if !self.app.is_empty() {
             normalized.push_str(&format!("{}\n{}\n", self.app, self.dlg));
         }
-        let mac = STANDARD.encode(self.hmac(normalized.as_bytes()));
+        let mac = STANDARD.encode(self.hmac(normalized.as_bytes())?);
         let mut header = format!(
             "Hawk id=\"{}\", ts=\"{ts}\", nonce=\"{}\"",
             escape(&self.id),
@@ -186,23 +186,19 @@ impl Signer {
         STANDARD.encode(digest)
     }
 
-    fn hmac(&self, text: &[u8]) -> Vec<u8> {
-        // HMAC takes a key of any length, so construction cannot fail.
+    fn hmac(&self, text: &[u8]) -> Result<Vec<u8>, String> {
         match self.algorithm {
-            Algorithm::Sha1 => {
-                let mut mac = Hmac::<sha1::Sha1>::new_from_slice(self.key.as_bytes())
-                    .expect("HMAC accepts any key length");
-                mac.update(text);
-                mac.finalize().into_bytes().to_vec()
-            }
-            Algorithm::Sha256 => {
-                let mut mac = Hmac::<sha2::Sha256>::new_from_slice(self.key.as_bytes())
-                    .expect("HMAC accepts any key length");
-                mac.update(text);
-                mac.finalize().into_bytes().to_vec()
-            }
+            Algorithm::Sha1 => keyed::<Hmac<sha1::Sha1>>(self.key.as_bytes(), text),
+            Algorithm::Sha256 => keyed::<Hmac<sha2::Sha256>>(self.key.as_bytes(), text),
         }
     }
+}
+
+/// The HMAC of `text` under `key`; never fails in practice, since HMAC takes any key length.
+fn keyed<M: Mac + KeyInit>(key: &[u8], text: &[u8]) -> Result<Vec<u8>, String> {
+    let mut mac = <M as KeyInit>::new_from_slice(key).map_err(|_| "the key was refused")?;
+    mac.update(text);
+    Ok(mac.finalize().into_bytes().to_vec())
 }
 
 /// A header attribute with its backslashes and quotes escaped.
