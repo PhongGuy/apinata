@@ -109,8 +109,6 @@ fn edgegrid(e: &EdgeGridSpec) -> Vec<Value> {
     out
 }
 
-/// The runtime's jwt list. The headers go out as an object when they parse as one, an inline
-/// key as text (a file key is blank), and an absent prefix as `Bearer`.
 /// Postman's asap keys; the claims go out as the text written.
 fn asap(a: &AsapSpec) -> Vec<Value> {
     strings(&[
@@ -142,6 +140,8 @@ fn hawk(h: &HawkSpec) -> Vec<Value> {
     out
 }
 
+/// The runtime's jwt list. The headers go out as an object when they parse as one, an inline
+/// key as text (a file key is blank), and an absent prefix as `Bearer`.
 fn jwt(j: &JwtSpec) -> Vec<Value> {
     let key = match &j.private_key {
         Some(k) if k.kind != OAuth1KeyKind::File => k.value.as_str(),
