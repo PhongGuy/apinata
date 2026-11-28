@@ -304,8 +304,9 @@ pub use resolve::{
 pub use response::{CookieOrigin, HOP_BODY_LIMIT, Hop, Response, SentRequest};
 pub use results_report::{ResponseDetail, ResultsReport};
 pub use runner::{
-    Outcome, RecheckRefused, RequestResult, RunError, RunEvent, RunOptions, RunPlan, RunReport,
-    RunStop, SelectError, StatusRule, Summary, recheck_assertions, rerun_slots, run, send_one,
+    MAX_PARALLEL, Outcome, ParallelBlocker, ParallelError, RecheckRefused, RequestResult, RunError,
+    RunEvent, RunOptions, RunPlan, RunReport, RunStop, SelectError, StatusRule, Summary,
+    recheck_assertions, rerun_slots, run, send_one,
 };
 pub use runtime_vars::{RuntimeVar, RuntimeVars};
 pub use schema_test::schema_test_script;

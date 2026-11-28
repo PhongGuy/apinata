@@ -162,6 +162,9 @@ pub enum Warning {
     NextRequestNotFound,
     /// Scripts jumped between requests more than 10,000 times, so the run ended.
     NextRequestLoop,
+    /// A parallel run: the request changed cookies, and the later requests of its iteration
+    /// read the jar as the iteration began, so they did not see the change.
+    ParallelCookiesUnseen,
     /// AWS SigV4 auth lacks an access key, a secret key or a service, so the request is unsigned.
     AwsV4Unsigned,
     /// The AWS profile could not be read, so the auth fields were used.
@@ -203,6 +206,9 @@ impl fmt::Display for Warning {
             }
             Warning::NextRequestLoop => {
                 "scripts jumped between requests more than 10,000 times, so the run ended"
+            }
+            Warning::ParallelCookiesUnseen => {
+                "its cookie changes reach the next iteration, not the requests running alongside it"
             }
             Warning::AwsV4Unsigned => {
                 "AWS SigV4 needs an access key, a secret key and a service; the request is sent unsigned"

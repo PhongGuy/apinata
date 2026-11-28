@@ -602,6 +602,7 @@ Data-driven runs:
 | `--json-file-path <PATH>` | Run once per object of a JSON array file; each key is a `{{variable}}`. Not with `--csv-file-path`. |
 | `--iterations <N>` | Run the collection N times; with a data file, use at most its first N rows. |
 | `--delay <MS>` | Wait this many milliseconds between requests (default 0). |
+| `--parallel <N>` | Send up to N requests of each iteration at once (1 to 64, default 1); iterations still run one after another. Each request sees the cookies as they were when its iteration began, and their cookie changes apply afterwards in run order, so the jar ends as a one-at-a-time run would leave it. Reports keep run order. The run refuses to start when a request sets post-response variables, or a script calls a variable setter or deleter, `setNextRequest`, `stopExecution`, `runRequest` or `resetOauth2Credential`; a call that slips past that check errors its request. With `--bail`, requests already in flight finish, so which ones are skipped can depend on timing. Not with `--delay`. |
 
 Retries and status:
 

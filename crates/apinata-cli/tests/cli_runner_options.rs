@@ -1,4 +1,4 @@
-//! `--delay`, `--tags`, `--exclude-tags`, `--tests-only` and the data-file flags.
+//! `--delay`, `--tags`, `--exclude-tags`, `--tests-only`, `--parallel` and the data-file flags.
 
 use crate::common;
 
@@ -218,4 +218,82 @@ async fn tests_only_sends_only_requests_with_checks_and_counts_the_rest() {
         "stderr: {err}"
     );
     assert_eq!(served(&s).await.len(), 1, "nothing more was sent");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn parallel_sends_every_request_and_reports_in_plan_order() {
+    let s = ok_server().await;
+    let u = s.uri();
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("a.yml", &tagged("A", 1, &format!("{u}/a"), "")),
+        ("b.yml", &tagged("B", 2, &format!("{u}/b"), "")),
+        ("c.yml", &tagged("C", 3, &format!("{u}/c"), "")),
+    ]);
+    let (code, report) = run_json(dir.path(), &["--parallel", "3"]);
+    assert_eq!(code, 0);
+    assert_eq!(column(&report, "path"), ["a.yml", "b.yml", "c.yml"]);
+    let mut got = served(&s).await;
+    got.sort();
+    assert_eq!(got, ["/a", "/b", "/c"]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn parallel_refuses_a_request_that_writes_shared_variables() {
+    let s = ok_server().await;
+    let setter = format!(
+        "{}runtime:\n  scripts:\n    - type: tests\n      code: |-\n        bru.setVar(\"t\", 1);\n",
+        tagged("B", 2, &format!("{}/b", s.uri()), "")
+    );
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("a.yml", &tagged("A", 1, &format!("{}/a", s.uri()), "")),
+        ("b.yml", &setter),
+    ]);
+    let out = apinata()
+        .arg("run")
+        .arg(dir.path())
+        .args(["--parallel", "2"])
+        .output()
+        .expect("runs");
+    assert_eq!(out.status.code(), Some(3));
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        err.contains("b.yml cannot run in parallel: its tests script calls setVar"),
+        "stderr: {err}"
+    );
+    assert!(served(&s).await.is_empty());
+    // With scripts off the call never runs, so the run may go ahead.
+    let out = apinata()
+        .arg("run")
+        .arg(dir.path())
+        .args(["--parallel", "2", "--no-scripts"])
+        .output()
+        .expect("runs");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn parallel_takes_one_to_sixty_four_and_conflicts_with_delay() {
+    for n in ["0", "65"] {
+        let out = apinata()
+            .args(["run", ".", "--parallel", n])
+            .output()
+            .expect("runs");
+        assert_eq!(out.status.code(), Some(3), "{n}");
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(err.contains("--parallel"), "{n}: {err}");
+    }
+    let out = apinata()
+        .args(["run", ".", "--parallel", "2", "--delay", "10"])
+        .output()
+        .expect("runs");
+    assert_eq!(out.status.code(), Some(3));
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("cannot be used with"), "{err}");
 }

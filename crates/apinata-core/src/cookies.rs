@@ -109,6 +109,28 @@ pub struct CookieJar {
     revision: AtomicU64,
     /// The sealed file behind an opened jar; `None` keeps the jar in memory only.
     backing: Option<Backing>,
+    /// An overlay's record of the changes made to it, replayed later on the jar it came from.
+    journal: Option<Mutex<Vec<JarOp>>>,
+}
+
+/// One change made to an overlay, kept with its inputs so it can be judged again on replay.
+enum JarOp {
+    Store { values: Vec<Vec<u8>>, url: Url },
+    StoreFor { url: Url, cookie: ScriptCookie },
+    DeleteFor { url: Url, name: String },
+    DeleteAllFor { url: Url },
+    ClearAll,
+}
+
+/// The changes an overlay recorded, in the order they were made.
+#[derive(Default)]
+pub(crate) struct JarJournal(Vec<JarOp>);
+
+impl JarJournal {
+    /// Whether the overlay changed nothing.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
 }
 
 impl Default for CookieJar {
@@ -119,6 +141,7 @@ impl Default for CookieJar {
             ))),
             revision: AtomicU64::new(0),
             backing: None,
+            journal: None,
         }
     }
 }
@@ -587,7 +610,7 @@ fn bad_value(value: &str) -> bool {
 }
 
 /// A cookie a script asks to store for a URL, before the jar's rules apply.
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ScriptCookie {
     pub(crate) key: String,
@@ -945,6 +968,59 @@ impl CookieJar {
         self.revision.fetch_add(1, Ordering::SeqCst);
     }
 
+    /// An in-memory copy of this jar's cookies that records every change made to it, so a send
+    /// can read a frozen view while its changes wait to be replayed here in plan order.
+    pub(crate) fn overlay(&self) -> CookieJar {
+        CookieJar {
+            store: RwLock::new(self.read().clone()),
+            journal: Some(Mutex::new(Vec::new())),
+            ..CookieJar::default()
+        }
+    }
+
+    /// The changes recorded since the last take; always empty for a jar that is no overlay.
+    pub(crate) fn take_journal(&self) -> JarJournal {
+        JarJournal(
+            self.journal
+                .as_ref()
+                .map(|j| std::mem::take(&mut *j.lock().unwrap_or_else(PoisonError::into_inner)))
+                .unwrap_or_default(),
+        )
+    }
+
+    /// Makes an overlay's recorded changes again on this jar, each judged against its cookies.
+    pub(crate) fn replay(&self, journal: JarJournal) {
+        for op in journal.0 {
+            match op {
+                JarOp::Store { values, url } => {
+                    self.store(values, &url);
+                }
+                JarOp::StoreFor { url, cookie } => {
+                    self.store_for(&url, &cookie);
+                }
+                JarOp::DeleteFor { url, name } => {
+                    self.delete_for(&url, &name);
+                }
+                JarOp::DeleteAllFor { url } => {
+                    self.delete_all_for(&url);
+                }
+                JarOp::ClearAll => {
+                    self.clear_all();
+                }
+            }
+        }
+    }
+
+    // Only an overlay keeps a journal, and only changes are worth replaying.
+    fn note(&self, op: impl FnOnce() -> JarOp) {
+        if let Some(journal) = &self.journal {
+            journal
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(op());
+        }
+    }
+
     /// The `Cookie` header value for `url`, built as reqwest's own jar builds it, or `None`
     /// when no stored cookie matches.
     pub(crate) fn header_for(&self, url: &Url) -> Option<String> {
@@ -964,9 +1040,13 @@ impl CookieJar {
         I: IntoIterator,
         I::Item: AsRef<[u8]>,
     {
+        let values: Vec<Vec<u8>> = set_cookies
+            .into_iter()
+            .map(|v| v.as_ref().to_vec())
+            .collect();
         let mut store = self.write();
-        let rows: Vec<SetCookie> = (set_cookies.into_iter())
-            .map(|v| match SetCookie::read(v.as_ref()) {
+        let rows: Vec<SetCookie> = (values.iter())
+            .map(|v| match SetCookie::read(v) {
                 Ok(raw) => SetCookie::parsed(&raw, judge(&mut store, &raw, url)),
                 Err(row) => row,
             })
@@ -977,6 +1057,10 @@ impl CookieJar {
             .any(|c| matches!(c.outcome, CookieOutcome::Stored | CookieOutcome::Removed));
         if changed {
             self.bump();
+            self.note(|| JarOp::Store {
+                values,
+                url: url.clone(),
+            });
         }
         rows
     }
@@ -1007,6 +1091,10 @@ impl CookieJar {
         match store.insert_raw(&raw, url) {
             Ok(action) => {
                 self.bump();
+                self.note(|| JarOp::StoreFor {
+                    url: url.clone(),
+                    cookie: cookie.clone(),
+                });
                 match action {
                     StoreAction::ExpiredExisting => (CookieOutcome::Removed, None),
                     _ => (CookieOutcome::Stored, None),
@@ -1047,6 +1135,10 @@ impl CookieJar {
         let gone = doomed.filter(|c| store.remove(&c.domain, &c.path, name).is_some());
         if gone.is_some() {
             self.bump();
+            self.note(|| JarOp::DeleteFor {
+                url: url.clone(),
+                name: name.to_owned(),
+            });
         }
         gone.cloned()
     }
@@ -1060,6 +1152,7 @@ impl CookieJar {
             .collect();
         if !removed.is_empty() {
             self.bump();
+            self.note(|| JarOp::DeleteAllFor { url: url.clone() });
         }
         removed
     }
@@ -1152,6 +1245,7 @@ impl CookieJar {
         let removed = sorted(store.iter_unexpired().map(info).collect());
         store.clear();
         self.bump();
+        self.note(|| JarOp::ClearAll);
         removed
     }
 }
@@ -1773,5 +1867,87 @@ mod tests {
                 assert_eq!(got, (CookieOutcome::Stored, None), "{domain}");
             }
         }
+    }
+
+    fn names(jar: &CookieJar) -> Vec<String> {
+        let mut names: Vec<String> = jar.list().into_iter().map(|c| c.name).collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn an_overlay_reads_the_snapshot_and_keeps_its_own_writes() {
+        let real = jar();
+        let url = Url::parse("http://www.example.com/").unwrap();
+        let overlay = real.overlay();
+        overlay.store(["x=1; Path=/"], &url);
+        real.store(["late=1; Path=/"], &url);
+        assert_eq!(names(&real), ["late", "sid", "theme"]);
+        assert_eq!(names(&overlay), ["sid", "theme", "x"]);
+        assert!(overlay.header_for(&url).expect("header").contains("x=1"));
+    }
+
+    #[test]
+    fn replayed_journals_apply_in_the_order_given() {
+        let real = jar();
+        let url = Url::parse("http://www.example.com/").unwrap();
+        let (a, b) = (real.overlay(), real.overlay());
+        a.store(["y=1; Path=/"], &url);
+        b.store(["y=2; Path=/"], &url);
+        real.replay(a.take_journal());
+        real.replay(b.take_journal());
+        let y: Vec<String> = real
+            .list()
+            .into_iter()
+            .filter(|c| c.name == "y")
+            .map(|c| c.value)
+            .collect();
+        assert_eq!(y, ["2"]);
+    }
+
+    #[test]
+    fn a_replayed_clear_removes_what_an_earlier_journal_added() {
+        let real = jar();
+        let url = Url::parse("http://www.example.com/").unwrap();
+        let (a, b) = (real.overlay(), real.overlay());
+        a.store(["y=1; Path=/"], &url);
+        let _ = b.clear_all();
+        real.replay(a.take_journal());
+        real.replay(b.take_journal());
+        assert!(real.list().is_empty());
+    }
+
+    #[test]
+    fn script_writes_and_deletes_are_journaled() {
+        let real = jar();
+        let url = Url::parse("http://www.example.com/").unwrap();
+        let overlay = real.overlay();
+        let cookie: ScriptCookie =
+            serde_json::from_value(serde_json::json!({"key": "k", "value": "v"})).unwrap();
+        assert_eq!(overlay.store_for(&url, &cookie).0, CookieOutcome::Stored);
+        assert!(overlay.delete_for(&url, "sid").is_some());
+        real.replay(overlay.take_journal());
+        assert_eq!(names(&real), ["k", "theme"]);
+        let overlay = real.overlay();
+        assert_eq!(overlay.delete_all_for(&url).len(), 2);
+        real.replay(overlay.take_journal());
+        assert!(real.list().is_empty());
+    }
+
+    #[test]
+    fn only_changes_are_journaled_and_a_replay_bumps_the_revision() {
+        use std::sync::atomic::Ordering;
+        let real = jar();
+        let url = Url::parse("http://www.example.com/").unwrap();
+        let overlay = real.overlay();
+        overlay.store(std::iter::empty::<&str>(), &url);
+        assert!(overlay.delete_for(&url, "missing").is_none());
+        assert!(overlay.take_journal().is_empty());
+        overlay.store(["z=1"], &url);
+        let journal = overlay.take_journal();
+        assert!(!journal.is_empty());
+        let before = real.revision.load(Ordering::SeqCst);
+        real.replay(journal);
+        assert!(real.revision.load(Ordering::SeqCst) > before);
     }
 }
