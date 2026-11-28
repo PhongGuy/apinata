@@ -216,6 +216,22 @@ mod tests {
     const PATH: &AsciiSet = &UNRESERVED.remove(b'/');
 
     #[test]
+    fn an_html_entity_echo_is_redacted() {
+        let r = Redactor::new(&["p&<>\"'s+\u{e9}1"]);
+        for echo in [
+            "p&amp;&lt;&gt;&quot;&#x27;s+\u{e9}1",
+            "p&#38;&#60;&#62;&#34;&#39;s+\u{e9}1",
+            "p&amp;&lt;&gt;&quot;&#39;s+&#233;1",
+        ] {
+            assert_eq!(
+                r.redact(&format!("<b>{echo}</b>")),
+                "<b>[redacted]</b>",
+                "{echo}"
+            );
+        }
+    }
+
+    #[test]
     fn holds_finds_a_value_in_a_large_input_either_way() {
         let r = Redactor::new(&["ab\u{e9}"]);
         let filler = vec![b'a'; 200_000];

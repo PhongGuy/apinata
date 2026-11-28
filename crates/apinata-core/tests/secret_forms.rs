@@ -225,3 +225,65 @@ fn every_legacy_list_is_a_subset_of_the_generator() {
         }
     }
 }
+
+/// A value holding every character HTML escapers rewrite, plus `+` and a non-ASCII letter.
+const MARKUP: &str = "p&<>\"'s+\u{e9}1";
+
+/// `MARKUP` as each HTML escaper family writes it, by hand so the test does not trust the
+/// generator: quote styles, Go's `+`, all-numeric with and without zero padding, and
+/// non-ASCII as a numeric reference.
+const MARKUP_ECHOES: [&str; 16] = [
+    "p&amp;&lt;&gt;\"'s+\u{e9}1",
+    "p&amp;&lt;&gt;&quot;'s+\u{e9}1",
+    "p&amp;&lt;&gt;&quot;&#39;s+\u{e9}1",
+    "p&amp;&lt;&gt;&quot;&#039;s+\u{e9}1",
+    "p&amp;&lt;&gt;&quot;&#x27;s+\u{e9}1",
+    "p&amp;&lt;&gt;&quot;&apos;s+\u{e9}1",
+    "p&amp;&lt;&gt;&#34;&#39;s+\u{e9}1",
+    "p&amp;&lt;&gt;&#34;&#39;s&#43;\u{e9}1",
+    "p&#38;&#60;&#62;&#34;&#39;s+\u{e9}1",
+    "p&#x26;&#x3c;&#x3e;&#x22;&#x27;s+\u{e9}1",
+    "p&#X26;&#X3C;&#X3E;&#X22;&#X27;s+\u{e9}1",
+    "p&#038;&#060;&#062;&#034;&#039;s+\u{e9}1",
+    "p&#x0026;&#x003C;&#x003E;&#x0022;&#x0027;s+\u{e9}1",
+    "p&amp;&lt;&gt;&quot;&#39;s+&#233;1",
+    "p&amp;&lt;&gt;&quot;&#39;s+&#xe9;1",
+    "P&AMP;&LT;&GT;&QUOT;&#39;S+\u{e9}1",
+];
+
+#[test]
+fn every_html_escaper_family_is_listed_in_any_ascii_case() {
+    let folded: Vec<String> = (texts(MARKUP, p()).iter())
+        .map(|f| f.to_ascii_uppercase())
+        .collect();
+    for echo in MARKUP_ECHOES {
+        assert!(has(&folded, &echo.to_ascii_uppercase()), "{echo} missing");
+    }
+}
+
+#[test]
+fn an_html_echo_in_a_page_is_replaced_whole() {
+    use apinata_core::{derived_secrets, replace_secrets};
+    let secrets = derived_secrets(&[MARKUP.to_owned()]);
+    for echo in MARKUP_ECHOES {
+        let page = format!("<p title=\"{echo}\">{echo}</p>");
+        let hidden = replace_secrets(&page, &secrets);
+        assert_eq!(hidden, "<p title=\"[redacted]\">[redacted]</p>", "{echo}");
+    }
+}
+
+#[test]
+fn a_value_without_markup_characters_gains_no_entity_form() {
+    for v in ["hunter22", "Sk Live/9-x", "Key/a b~*"] {
+        for f in texts(v, p()) {
+            assert!(!f.contains("&#") && !f.contains("&amp;"), "{v}: {f}");
+        }
+    }
+}
+
+#[test]
+fn a_short_value_gets_no_entity_forms() {
+    for f in texts("a&b", p()) {
+        assert!(!f.contains("&amp;") && !f.contains("&#"), "{f}");
+    }
+}

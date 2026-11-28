@@ -689,3 +689,18 @@ fn a_url_password_after_a_backslash_or_a_placeholder_is_hidden() {
     }
     assert!(!snapshot_url("http://h\\u:pwsecret@x", &[]).contains("pwsecret"));
 }
+
+#[test]
+fn an_html_entity_echo_of_a_secret_is_scrubbed() {
+    let s = secrets(&["p&<>\"'s+\u{e9}1"]);
+    for echo in [
+        "p&amp;&lt;&gt;\"'s+\u{e9}1",
+        "p&amp;&lt;&gt;&quot;&#039;s+\u{e9}1",
+        "p&#x26;&#x3C;&#x3E;&#x22;&#x27;s+\u{e9}1",
+    ] {
+        assert_eq!(
+            scrub_text(&format!("<i>{echo}</i>"), &s),
+            "<i>[redacted]</i>"
+        );
+    }
+}

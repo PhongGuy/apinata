@@ -198,7 +198,7 @@ fn basic_texts(value: &str) -> Vec<String> {
 }
 
 // Every other text form: case, deeper JSON, rescapes, the remaining percent sets in both hex
-// cases, each percent form encoded again, and JSON-escaped echoes of all of them.
+// cases, each percent form encoded again, HTML escapes, and JSON-escaped echoes of all of them.
 fn extended_texts(value: &str) -> Vec<String> {
     let mut forms = vec![value.to_ascii_lowercase()];
 
@@ -243,6 +243,7 @@ fn extended_texts(value: &str) -> Vec<String> {
     forms.extend(twice);
 
     forms.extend(host_forms(value));
+    forms.extend(html_forms(value));
 
     let echoed: Vec<String> = forms
         .iter()
@@ -251,6 +252,73 @@ fn extended_texts(value: &str) -> Vec<String> {
         .collect();
     forms.extend(echoed);
     forms
+}
+
+// The whole value as each HTML escaper family writes it: `&<>` named and the quotes in each
+// library's style, Go's template escaping of `+`, every markup character as a decimal or hex
+// reference with and without zero padding, and non-ASCII as a reference. Hex case needs no
+// variant, since redactors match text forms in any ASCII case.
+fn html_forms(value: &str) -> Vec<String> {
+    if !value.contains(['&', '<', '>', '"', '\'', '+']) && value.is_ascii() {
+        return Vec::new();
+    }
+    let escaped = |rewrite: &dyn Fn(char) -> Option<String>| -> String {
+        let mut out = String::new();
+        for c in value.chars() {
+            match rewrite(c) {
+                Some(reference) => out.push_str(&reference),
+                None => out.push(c),
+            }
+        }
+        out
+    };
+    let named = |dq: &'static str, sq: &'static str, plus: bool, wide: Option<bool>| {
+        move |c: char| match c {
+            '&' => Some("&amp;".to_owned()),
+            '<' => Some("&lt;".to_owned()),
+            '>' => Some("&gt;".to_owned()),
+            '"' => Some(dq.to_owned()),
+            '\'' => Some(sq.to_owned()),
+            '+' if plus => Some("&#43;".to_owned()),
+            c if !c.is_ascii() => wide.map(|hex| numeric(c, hex, false)),
+            _ => None,
+        }
+    };
+    let markup = |hex: bool, padded: bool| {
+        move |c: char| matches!(c, '&' | '<' | '>' | '"' | '\'').then(|| numeric(c, hex, padded))
+    };
+    let mut out = Vec::new();
+    for (dq, sq) in [
+        ("\"", "'"),
+        ("&quot;", "'"),
+        ("&quot;", "&#39;"),
+        ("&quot;", "&#039;"),
+        ("&quot;", "&#x27;"),
+        ("&quot;", "&apos;"),
+        ("&#34;", "&#39;"),
+    ] {
+        out.push(escaped(&named(dq, sq, false, None)));
+    }
+    out.push(escaped(&named("&#34;", "&#39;", true, None)));
+    for hex in [false, true] {
+        out.push(escaped(&named("&quot;", "&#39;", false, Some(hex))));
+        for padded in [false, true] {
+            out.push(escaped(&markup(hex, padded)));
+        }
+    }
+    out.retain(|f| f != value);
+    out
+}
+
+// A numeric character reference for `c`; padding widens decimal to 3 and hex to 4 digits.
+fn numeric(c: char, hex: bool, padded: bool) -> String {
+    let n = u32::from(c);
+    match (hex, padded) {
+        (false, false) => format!("&#{n};"),
+        (false, true) => format!("&#{n:03};"),
+        (true, false) => format!("&#x{n:X};"),
+        (true, true) => format!("&#x{n:04X};"),
+    }
 }
 
 // The value as the `url` crate writes it into a path, query, fragment, username or password.
