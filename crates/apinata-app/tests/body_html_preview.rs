@@ -300,11 +300,16 @@ fn prepare(html: &str) -> html_preview::Page {
     html_preview::prepare(html, &|t| t.to_owned()).expect("the page parses")
 }
 
-const SECRET: &str = "s&k<\u{e9}9";
+const SECRET: &str = "s&k<\u{e9}-9";
+const SPACED: &str = "pa ss";
 
-// The page as the preview shows it with `SECRET` masked, its Markdown escapes taken out.
+// The page as the preview shows it with `SECRET` and `SPACED` masked, its Markdown escapes
+// taken out.
 fn redacted(html: &str) -> String {
-    let redact = |t: &str| t.replace(SECRET, "[redacted]");
+    let redact = |t: &str| {
+        t.replace(SECRET, "[redacted]")
+            .replace(SPACED, "[redacted]")
+    };
     let page = html_preview::prepare(html, &redact).expect("the page parses");
     page.markdown.replace('\\', "")
 }
@@ -313,10 +318,12 @@ fn redacted(html: &str) -> String {
 #[test]
 fn a_secret_the_parser_decodes_is_masked_in_text() {
     for spelling in [
-        "s&ampk&lt&eacute9",
-        "s&#38k&#60\u{e9}9",
-        "s&#x26k&#x3c&eacute;9",
-        "s&amp;k&#x3C\u{e9}9",
+        "s&ampk&lt&eacute-9",
+        "s&#38k&#60\u{e9}-9",
+        "s&#x26k&#x3c&eacute;-9",
+        "s&amp;k&#x3C\u{e9}-9",
+        "s&AMPk&LT&#233-9",
+        "s&#0038;k&#060;&#00233;-9",
     ] {
         let md = redacted(&format!("<p>a {spelling} b</p>"));
         assert_eq!(md, "a [redacted] b\n", "{spelling}");
@@ -325,15 +332,39 @@ fn a_secret_the_parser_decodes_is_masked_in_text() {
 
 #[test]
 fn a_secret_the_parser_decodes_is_masked_in_an_image_alt() {
-    let md = redacted(r#"<img alt="s&#38k&#x3c&eacute;9" src="http://127.0.0.1:9/p.png">"#);
+    let md = redacted(r#"<img alt="s&#38k&#x3c&eacute;-9" src="http://127.0.0.1:9/p.png">"#);
     assert_eq!(md, "[redacted]\n");
 }
 
-// A comment leaves no gap in the preview, so the text either side of it is matched as one.
+// A shown image drops control characters from its alt, so a line feed inside the secret
+// leaves it whole on screen.
+#[test]
+fn a_secret_whole_once_a_data_image_alt_drops_controls_is_masked() {
+    let md = redacted(
+        r#"<img alt="s&amp;k&#10;&lt;&eacute;-9" src="data:image/png;base64,iVBORw0KGgo=">"#,
+    );
+    assert_eq!(md, "![[redacted]](data:image/png;base64,iVBORw0KGgo=)\n");
+}
+
+// Whitespace runs show as one space, so any run inside a secret with a space still shows it.
+#[test]
+fn a_secret_whole_once_whitespace_collapses_is_masked() {
+    for spelling in ["pa\nss", "pa&#9;ss", "pa  ss", "pa\r\n ss"] {
+        let md = redacted(&format!("<p>a {spelling} b</p>"));
+        assert_eq!(md, "a [redacted] b\n", "{spelling}");
+        let md = redacted(&format!("<p>a <code>{spelling}</code> b</p>"));
+        assert_eq!(md, "a `[redacted]` b\n", "{spelling}");
+    }
+}
+
+// A comment or processing instruction leaves no gap in the preview, so the text either side
+// of it is matched as one.
 #[test]
 fn a_secret_split_by_a_comment_is_masked() {
-    let md = redacted("<p>s&amp;k<!-- x -->&lt;&eacute;9</p>");
-    assert_eq!(md, "[redacted]\n");
+    for split in ["<!-- x -->", "<?x?>"] {
+        let md = redacted(&format!("<p>s&amp;k{split}&lt;&eacute;-9</p>"));
+        assert_eq!(md, "[redacted]\n", "{split}");
+    }
 }
 
 const CHILD: &str = "APINATA_HTML_PREVIEW_CHILD";

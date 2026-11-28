@@ -44,7 +44,7 @@ pub struct Page {
 }
 
 /// The page `html` as the preview shows it, or `None` when the parser fails on it. `redact`
-/// masks secrets in each text and attribute value the parser decoded.
+/// masks secrets in each piece of text exactly as it will be shown.
 pub fn prepare(html: &str, redact: &dyn Fn(&str) -> String) -> Option<Page> {
     // The arena freezes at the bound and stands in a placeholder for later nodes; should the
     // tree builder trip over that, the page is not previewed rather than taking the app down.
@@ -62,9 +62,9 @@ pub fn prepare(html: &str, redact: &dyn Fn(&str) -> String) -> Option<Page> {
         parser.finish()
     });
     let mut arena = parsed.ok()?;
-    arena.redact(redact);
+    arena.join_text();
     Some(Page {
-        markdown: Writer::new(&arena).write(),
+        markdown: Writer::new(&arena, redact).write(),
         cut: arena.full,
         nodes: arena.nodes.len(),
     })
@@ -268,10 +268,10 @@ impl Arena {
         }
     }
 
-    // Masks secrets in what the parser decoded, since references can spell a secret in ways
-    // no masking of the source catches. Comments show nothing, so they are dropped first and
-    // the text either side joined, leaving no secret split across two text nodes.
-    fn redact(&mut self, redact: &dyn Fn(&str) -> String) {
+    // Drops comments, which show nothing, and joins the text either side, so a secret is not
+    // split across two text nodes when the writer masks it. Empty inline elements, skipped
+    // subtrees and invisible characters can still split one.
+    fn join_text(&mut self) {
         for parent in 0..self.nodes.len() {
             let children = std::mem::take(&mut self.nodes[parent].children);
             let mut kept: Vec<usize> = Vec::with_capacity(children.len());
@@ -292,17 +292,6 @@ impl Arena {
                 kept.push(child);
             }
             self.nodes[parent].children = kept;
-        }
-        for node in &mut self.nodes {
-            match &mut node.kind {
-                Kind::Text(text) => *text = redact(text),
-                Kind::Element { attrs, .. } => {
-                    for attr in attrs {
-                        attr.value = StrTendril::from(redact(&attr.value));
-                    }
-                }
-                Kind::Document | Kind::Other => {}
-            }
         }
     }
 }
@@ -486,6 +475,8 @@ struct Table {
 // the only syntax is what the walk writes, and its nesting is capped.
 struct Writer<'a> {
     arena: &'a Arena,
+    // Masks secrets in text as it will be shown, before its Markdown escapes.
+    redact: &'a dyn Fn(&str) -> String,
     out: String,
     line: String,
     space: bool,
@@ -505,9 +496,10 @@ struct Writer<'a> {
 }
 
 impl<'a> Writer<'a> {
-    fn new(arena: &'a Arena) -> Writer<'a> {
+    fn new(arena: &'a Arena, redact: &'a dyn Fn(&str) -> String) -> Writer<'a> {
         Writer {
             arena,
+            redact,
             out: String::new(),
             line: String::new(),
             space: false,
@@ -740,17 +732,19 @@ impl<'a> Writer<'a> {
         }
     }
 
-    // Adds page text: raw inside a code block or span, otherwise collapsed and escaped.
+    // Adds page text: raw inside a code block, otherwise collapsed and, outside a code span,
+    // escaped. It is masked in the form it shows in, each whitespace run as one space.
     fn text(&mut self, text: &str) {
-        let text = &plain(text);
+        let redact = self.redact;
+        let text = plain(text);
         if let Some(pre) = &mut self.pre {
-            pre.push_str(text);
+            pre.push_str(&redact(&text));
             return;
         }
         if self.table.is_some() && !self.cell {
             return;
         }
-        for c in text.chars() {
+        for c in redact(&collapse(&text)).chars() {
             if matches!(c, ' ' | '\t' | '\n' | '\r' | '\x0c') {
                 self.space = true;
                 continue;
@@ -831,7 +825,8 @@ impl<'a> Writer<'a> {
             Some(src) if self.table.is_none() || self.cell => {
                 self.word_start();
                 self.line.push_str("![");
-                for c in plain(&alt).chars().filter(|c| !c.is_control()) {
+                let shown: String = plain(&alt).chars().filter(|c| !c.is_control()).collect();
+                for c in (self.redact)(&shown).chars() {
                     if c.is_ascii_punctuation() {
                         self.line.push('\\');
                     }
@@ -965,6 +960,21 @@ fn plain(text: &str) -> String {
         _ => c,
     };
     text.chars().map(plain).collect()
+}
+
+// `text` with each run of HTML whitespace as one space, as the preview shows it.
+fn collapse(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        if matches!(c, ' ' | '\t' | '\n' | '\r' | '\x0c') {
+            if !out.ends_with(' ') {
+                out.push(' ');
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 // The longest run of `c` in `text`.
