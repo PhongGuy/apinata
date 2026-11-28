@@ -336,7 +336,7 @@ fn the_key_is_sensitive_and_the_token_is_derived() {
         "the key is hidden"
     );
     let t = token(&r);
-    assert!(r.sensitive_values().iter().any(|v| *v == t));
+    assert!(r.sensitive_values().contains(&t));
 }
 
 #[tokio::test]
