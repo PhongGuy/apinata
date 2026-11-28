@@ -510,6 +510,7 @@ mod runner_fail_on_status;
 mod runner_isolation;
 mod runner_layout;
 mod runner_model;
+mod runner_parallel;
 mod runner_rerun_failed;
 mod runner_retry;
 mod runner_saved_options;

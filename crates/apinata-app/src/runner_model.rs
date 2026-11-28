@@ -7,9 +7,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use apinata_core::{
-    CancelHandle, CookieInfo, CookieJar, Executor, ItemPath, IterationData, RequestFile,
-    RequestResult, ResultsReport, RunEvent, RunOptions, StatusRule, StreamLimits, Summary,
-    TagFilter, VarContext, iteration_total, rerun_slots,
+    CancelHandle, CookieInfo, CookieJar, Executor, ItemPath, IterationData, MAX_PARALLEL,
+    RequestFile, RequestResult, ResultsReport, RunEvent, RunOptions, StatusRule, StreamLimits,
+    Summary, TagFilter, VarContext, iteration_total, rerun_slots,
 };
 use gpui_kit::{App, AsyncApp, Context, Entity, Task, WeakEntity};
 use serde::{Deserialize, Serialize};
@@ -114,6 +114,8 @@ pub struct RunnerModel {
     target: RunTarget,
     bail: bool,
     delay_ms: u64,
+    /// How many requests of an iteration the next run keeps in flight at once.
+    parallel: usize,
     retries: u32,
     retry_delay_ms: u64,
     retry_unsafe: bool,
@@ -166,9 +168,9 @@ pub struct RunnerModel {
     run_files: HashMap<ItemPath, RequestFile>,
     run_context: Option<VarContext>,
     run_secrets: Vec<String>,
-    // The row (as an index into `rows`) waiting out the pause before a retry, with the attempt
-    // about to start and the most there may be.
-    retrying: Option<(usize, u32, u32)>,
+    // Each row (as an index into `rows`) waiting out the pause before a retry, with the attempt
+    // about to start and the most there may be; a parallel run can have several at once.
+    retrying: HashMap<usize, (u32, u32)>,
     // What the last fresh run kept of its own, so "Re-run failed" continues it: its jar and
     // whether that goes back into the shared one, and its forked variables.
     own_jar: Option<(Arc<CookieJar>, bool)>,
@@ -178,6 +180,17 @@ pub struct RunnerModel {
     jar_before: Vec<CookieInfo>,
     // Cancel was pressed while this pass was sending, so its cookies are not kept.
     cancelled: bool,
+}
+
+// The plan run `n` at a time, or why it cannot be, with the way back to a sequential run.
+fn parallel_plan(
+    plan: apinata_core::RunPlan,
+    n: usize,
+    ctx: &VarContext,
+    scripts: bool,
+) -> Result<apinata_core::RunPlan, String> {
+    plan.parallel(n, ctx, scripts)
+        .map_err(|e| format!("{e}; set Parallel to 1 to run it in turn"))
 }
 
 // The plan narrowed to the requests the runner's checkboxes leave in, in plan order.
@@ -204,6 +217,7 @@ type RunChoice = (
     (u32, u64, bool),
     Option<StatusRule>,
     bool,
+    usize,
 );
 
 impl RunnerModel {
@@ -224,6 +238,7 @@ impl RunnerModel {
             target,
             bail: false,
             delay_ms: 0,
+            parallel: 1,
             retries: 0,
             retry_delay_ms: 0,
             retry_unsafe: false,
@@ -260,7 +275,7 @@ impl RunnerModel {
             run_files: HashMap::new(),
             run_context: None,
             run_secrets: Vec::new(),
-            retrying: None,
+            retrying: HashMap::new(),
             own_jar: None,
             jar_before: Vec::new(),
             cancelled: false,
@@ -317,6 +332,18 @@ impl RunnerModel {
     /// Sets the pause between requests for the next run.
     pub fn set_delay_ms(&mut self, ms: u64, cx: &mut Context<Self>) {
         self.delay_ms = ms;
+        self.save_options(cx);
+        cx.notify();
+    }
+
+    /// How many requests of an iteration the next run keeps in flight at once; 1 sends them in turn.
+    pub fn parallel(&self) -> usize {
+        self.parallel
+    }
+
+    /// Sets the next run's parallel degree, held to 1 to [`MAX_PARALLEL`].
+    pub fn set_parallel(&mut self, n: usize, cx: &mut Context<Self>) {
+        self.parallel = n.clamp(1, MAX_PARALLEL);
         self.save_options(cx);
         cx.notify();
     }
@@ -487,6 +514,7 @@ impl RunnerModel {
         let Some(saved) = saved else { return };
         self.bail = saved.bail;
         self.delay_ms = saved.delay_ms;
+        self.parallel = saved.parallel.unwrap_or(1).clamp(1, MAX_PARALLEL);
         self.retries = saved.retries;
         self.retry_delay_ms = saved.retry_delay_ms;
         self.retry_unsafe = saved.retry_unsafe;
@@ -519,6 +547,7 @@ impl RunnerModel {
             run_cookies: self.run_cookies,
             keep_cookies: self.keep_cookies,
             fork_variables: !self.keep_variables,
+            parallel: (self.parallel > 1).then_some(self.parallel),
         };
         let session = self.workspace.read(cx).session().clone();
         let stored = session
@@ -723,6 +752,7 @@ impl RunnerModel {
             (self.retries, self.retry_delay_ms, self.retry_unsafe),
             self.fail_on_status,
             self.tests_only,
+            self.parallel,
         )
     }
 
@@ -752,9 +782,7 @@ impl RunnerModel {
     /// The attempt about to start and the most there may be, for row `ix` while it waits out
     /// the pause before a retry; `None` otherwise.
     pub fn retrying(&self, ix: usize) -> Option<(u32, u32)> {
-        self.retrying
-            .filter(|(row, ..)| *row == ix)
-            .map(|(_, attempt, of)| (attempt, of))
+        self.retrying.get(&ix).copied()
     }
 
     /// The planned requests in run order.
@@ -857,6 +885,13 @@ impl RunnerModel {
             }
         };
         self.ran_data = data.clone();
+        // A parallel run sends without pauses, so a delay would be silently dropped.
+        if self.parallel > 1 && self.delay_ms > 0 {
+            let why = "A parallel run cannot pause between requests: set the delay to 0, or \
+                       Parallel to 1";
+            self.finish(RunState::Failed(why.into()), cx);
+            return true;
+        }
         let filter = TagFilter::new(
             TagFilter::parse_list(&self.tags),
             TagFilter::parse_list(&self.exclude_tags),
@@ -891,6 +926,7 @@ impl RunnerModel {
             (self.retries, self.retry_delay_ms, self.retry_unsafe);
         let count = self.iteration_count;
         let (fail_on_status, tests_only) = (self.fail_on_status, self.tests_only);
+        let parallel = self.parallel;
         self.task = Some(cx.spawn(async move |this, cx| {
             // A reply channel that closes unanswered means the actor is gone.
             let planned = match answer.recv().await {
@@ -924,10 +960,15 @@ impl RunnerModel {
             } else {
                 plan
             };
-            let plan = match choose_checked(plan, &unchecked) {
+            // Post-response variables rule a parallel run out whatever the answers, so that
+            // is refused before anything is asked; scripts are judged once the gate decides.
+            let plan = choose_checked(plan, &unchecked)
+                .map_err(|e| e.to_string())
+                .and_then(|plan| parallel_plan(plan, parallel, &context, false));
+            let plan = match plan {
                 Ok(plan) => plan,
-                Err(e) => {
-                    let failed = RunState::Failed(e.to_string());
+                Err(why) => {
+                    let failed = RunState::Failed(why);
                     return drop(this.update(cx, |m, cx| m.finish(failed, cx)));
                 }
             };
@@ -974,6 +1015,15 @@ impl RunnerModel {
                     question.ask(cx).await
                 }
             };
+            let Planned { plan, context } = planned;
+            let plan = match parallel_plan(plan, parallel, &context, scripts.is_enabled()) {
+                Ok(plan) => plan,
+                Err(why) => {
+                    let failed = RunState::Failed(why);
+                    return drop(this.update(cx, |m, cx| m.finish(failed, cx)));
+                }
+            };
+            let planned = Planned { plan, context };
             let _ = this.update(cx, |m, cx| {
                 m.waiting = false;
                 m.template = planned
@@ -1192,7 +1242,7 @@ impl RunnerModel {
             copy_cookies(changed, shared.cookies(), "kept from the run", cx);
         }
         self.state = state;
-        self.retrying = None;
+        self.retrying.clear();
         self.cancel = None;
         self.waiting = false;
         // The run's requests and scripts may have changed the jar.
@@ -1240,9 +1290,13 @@ impl RunnerModel {
         match event {
             RunEvent::Retrying {
                 index, attempt, of, ..
-            } => self.retrying = at(index, self).map(|ix| (ix, attempt, of)),
+            } => {
+                if let Some(ix) = at(index, self) {
+                    self.retrying.insert(ix, (attempt, of));
+                }
+            }
             RunEvent::IterationStarted { index, .. } => {
-                self.retrying = None;
+                self.retrying.clear();
                 self.iteration = index;
                 if index > 0 {
                     let fresh: Vec<RunRow> = (self.template.iter())
@@ -1255,15 +1309,21 @@ impl RunnerModel {
                     self.place(fresh);
                 }
             }
+            // A row's own start or finish ends its pause; other rows keep theirs.
             RunEvent::RequestStarted { index, .. } => {
-                self.retrying = None;
-                if let Some(row) = at(index, self).and_then(|ix| self.rows.get_mut(ix)) {
+                let ix = at(index, self);
+                if let Some(ix) = ix {
+                    self.retrying.remove(&ix);
+                }
+                if let Some(row) = ix.and_then(|ix| self.rows.get_mut(ix)) {
                     row.state = RowState::Running;
                 }
             }
             RunEvent::RequestFinished { index, result } => {
-                self.retrying = None;
                 let ix = at(index, self);
+                if let Some(ix) = ix {
+                    self.retrying.remove(&ix);
+                }
                 // Every send is kept once, a re-run's included: a re-run that fails again is a
                 // second send, so History lists it as its own, later row.
                 self.record(Arc::clone(&result), cx);

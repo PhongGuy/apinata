@@ -6,9 +6,9 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use apinata_core::{
-    Collection, ItemPath, IterationData, OAuth2Error, Outcome, RequestFile, RequestResult,
-    ResolvedRequest, RunError, RunPlan, Summary, TagFilter, VarContext, assertion_sensitive_values,
-    resolve,
+    Collection, ItemPath, IterationData, MAX_PARALLEL, OAuth2Error, Outcome, ParallelBlocker,
+    ParallelError, RequestFile, RequestResult, ResolvedRequest, RunError, RunPlan, Summary,
+    TagFilter, VarContext, assertion_sensitive_values, resolve,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -81,6 +81,13 @@ pub(crate) struct RunArgs {
     /// Neither store `Set-Cookie` headers nor send the jar's cookies during this run.
     #[serde(default)]
     pub disable_cookies: bool,
+    /// Send up to this many requests of each iteration at once, 1 to 64; 1 (the default) sends
+    /// them in turn. Refused, sending nothing, with `delay_ms`, or when a request could see
+    /// another's effects: post-response variables, or a script that writes variables or steers
+    /// the run. Results stay in run order. Each request reads the cookies as its iteration
+    /// began; a change it makes reaches the next iteration, and its result warns.
+    #[schemars(range(min = 1, max = 64))]
+    pub parallel: Option<u64>,
 }
 
 /// The most passes one `run_folder` call may make, and the most data rows it may carry.
@@ -127,6 +134,37 @@ impl RunArgs {
         };
         Ok((data, count))
     }
+}
+
+impl RunArgs {
+    /// How many requests may be in flight at once, checked against the range and the delay.
+    pub(crate) fn parallel_degree(&self) -> Result<usize, String> {
+        let n = self.parallel.unwrap_or(1);
+        if !(1..=MAX_PARALLEL as u64).contains(&n) {
+            return Err(format!("`parallel` is {n}; it takes 1 to {MAX_PARALLEL}"));
+        }
+        if n > 1 && self.delay_ms > 0 {
+            return Err("`parallel` above 1 cannot be combined with `delay_ms`".to_owned());
+        }
+        Ok(n as usize)
+    }
+}
+
+/// `plan` run `n` at a time, or the refusal; `scripts` is whether scripts may run, so a
+/// refusal over a script call points at `skip_scripts`.
+pub(crate) fn parallel(
+    plan: RunPlan,
+    n: usize,
+    ctx: &VarContext,
+    scripts: bool,
+) -> Result<RunPlan, String> {
+    plan.parallel(n, ctx, scripts).map_err(|e| match e {
+        ParallelError::Blocked {
+            reason: ParallelBlocker::ScriptCall { .. },
+            ..
+        } => format!("{e}; nothing was sent. Run it without `parallel`, or pass `skip_scripts`"),
+        e => format!("{e}; nothing was sent"),
+    })
 }
 
 impl RunArgs {
@@ -201,6 +239,10 @@ pub(crate) struct RunItem {
     /// Present when the request's URL query and enabled query params disagree.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query_mismatch: Option<QueryMismatchDoc>,
+    /// What the send noted without failing, such as cookie changes a parallel run's other
+    /// requests could not see; absent when none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
 }
 
 /// What `run_folder` returns; no bodies.
@@ -430,6 +472,7 @@ pub(crate) fn item(
         stream_end,
         events,
         query_mismatch: file.and_then(dto::query_mismatch_doc),
+        warnings: result.warnings.iter().map(ToString::to_string).collect(),
     }
 }
 
