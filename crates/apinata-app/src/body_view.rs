@@ -975,10 +975,12 @@ impl BodyView {
         if !self.previewing() {
             return None;
         }
-        let raw = self.result.as_ref()?.response.as_ref()?.text();
+        let result = self.result.as_ref()?;
+        let raw = result.response.as_ref()?.text();
         let masked = self.mask.text.get()?;
         let page = self.mask.page.get_or_init(|| {
-            let page = html_preview::prepare(masked.as_deref().unwrap_or(raw))?;
+            let redact = result.redactor();
+            let page = html_preview::prepare(masked.as_deref().unwrap_or(raw), &redact)?;
             Some((SharedString::from(page.markdown), page.cut))
         });
         page.as_ref()

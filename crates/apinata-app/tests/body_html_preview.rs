@@ -297,7 +297,43 @@ fn hostile_pages() -> Vec<(String, String)> {
 
 // The page as the preview shows it; every page here parses without a panic.
 fn prepare(html: &str) -> html_preview::Page {
-    html_preview::prepare(html).expect("the page parses")
+    html_preview::prepare(html, &|t| t.to_owned()).expect("the page parses")
+}
+
+const SECRET: &str = "s&k<\u{e9}9";
+
+// The page as the preview shows it with `SECRET` masked, its Markdown escapes taken out.
+fn redacted(html: &str) -> String {
+    let redact = |t: &str| t.replace(SECRET, "[redacted]");
+    let page = html_preview::prepare(html, &redact).expect("the page parses");
+    page.markdown.replace('\\', "")
+}
+
+// Spellings no escaper writes, which the parser still decodes to the secret.
+#[test]
+fn a_secret_the_parser_decodes_is_masked_in_text() {
+    for spelling in [
+        "s&ampk&lt&eacute9",
+        "s&#38k&#60\u{e9}9",
+        "s&#x26k&#x3c&eacute;9",
+        "s&amp;k&#x3C\u{e9}9",
+    ] {
+        let md = redacted(&format!("<p>a {spelling} b</p>"));
+        assert_eq!(md, "a [redacted] b\n", "{spelling}");
+    }
+}
+
+#[test]
+fn a_secret_the_parser_decodes_is_masked_in_an_image_alt() {
+    let md = redacted(r#"<img alt="s&#38k&#x3c&eacute;9" src="http://127.0.0.1:9/p.png">"#);
+    assert_eq!(md, "[redacted]\n");
+}
+
+// A comment leaves no gap in the preview, so the text either side of it is matched as one.
+#[test]
+fn a_secret_split_by_a_comment_is_masked() {
+    let md = redacted("<p>s&amp;k<!-- x -->&lt;&eacute;9</p>");
+    assert_eq!(md, "[redacted]\n");
 }
 
 const CHILD: &str = "APINATA_HTML_PREVIEW_CHILD";

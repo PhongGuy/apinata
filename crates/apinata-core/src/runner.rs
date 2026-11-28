@@ -2500,6 +2500,12 @@ impl RequestResult {
         Redactor::new(&self.log_values).redact(text)
     }
 
+    /// [`RequestResult::redact`] for many texts, with the secrets' forms built once.
+    pub fn redactor(&self) -> impl Fn(&str) -> String + '_ {
+        let redactor = Redactor::new(&self.log_values);
+        move |text| redactor.redact(text)
+    }
+
     /// A header value as the session log shows it: replaced whole for a credential header,
     /// else redacted like [`RequestResult::redact`].
     pub fn redact_header(&self, name: &str, value: &str) -> String {

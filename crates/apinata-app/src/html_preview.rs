@@ -43,8 +43,9 @@ pub struct Page {
     pub nodes: usize,
 }
 
-/// The page `html` as the preview shows it, or `None` when the parser fails on it.
-pub fn prepare(html: &str) -> Option<Page> {
+/// The page `html` as the preview shows it, or `None` when the parser fails on it. `redact`
+/// masks secrets in each text and attribute value the parser decoded.
+pub fn prepare(html: &str, redact: &dyn Fn(&str) -> String) -> Option<Page> {
     // The arena freezes at the bound and stands in a placeholder for later nodes; should the
     // tree builder trip over that, the page is not previewed rather than taking the app down.
     let parsed = std::panic::catch_unwind(|| {
@@ -60,7 +61,8 @@ pub fn prepare(html: &str) -> Option<Page> {
         }
         parser.finish()
     });
-    let arena = parsed.ok()?;
+    let mut arena = parsed.ok()?;
+    arena.redact(redact);
     Some(Page {
         markdown: Writer::new(&arena).write(),
         cut: arena.full,
@@ -262,6 +264,44 @@ impl Arena {
                     self.nodes[node].parent = Some(parent);
                     self.nodes[parent].children.insert(ix, node);
                 }
+            }
+        }
+    }
+
+    // Masks secrets in what the parser decoded, since references can spell a secret in ways
+    // no masking of the source catches. Comments show nothing, so they are dropped first and
+    // the text either side joined, leaving no secret split across two text nodes.
+    fn redact(&mut self, redact: &dyn Fn(&str) -> String) {
+        for parent in 0..self.nodes.len() {
+            let children = std::mem::take(&mut self.nodes[parent].children);
+            let mut kept: Vec<usize> = Vec::with_capacity(children.len());
+            for child in children {
+                match std::mem::replace(&mut self.nodes[child].kind, Kind::Other) {
+                    Kind::Other => continue,
+                    Kind::Text(text) => {
+                        if let Some(&last) = kept.last()
+                            && let Kind::Text(before) = &mut self.nodes[last].kind
+                        {
+                            before.push_str(&text);
+                            continue;
+                        }
+                        self.nodes[child].kind = Kind::Text(text);
+                    }
+                    kind => self.nodes[child].kind = kind,
+                }
+                kept.push(child);
+            }
+            self.nodes[parent].children = kept;
+        }
+        for node in &mut self.nodes {
+            match &mut node.kind {
+                Kind::Text(text) => *text = redact(text),
+                Kind::Element { attrs, .. } => {
+                    for attr in attrs {
+                        attr.value = StrTendril::from(redact(&attr.value));
+                    }
+                }
+                Kind::Document | Kind::Other => {}
             }
         }
     }
