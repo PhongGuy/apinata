@@ -1389,6 +1389,21 @@ Environments from Postman and Hoppscotch go into an existing collection:
 apinata import environment staging.json --collection ./my-api
 ```
 
+A Postman data export (Settings, Export data) comes in whole. Give the zip, the
+folder it unzips to, or that folder's `archive.json`; in the app, choose it in
+Import collection or drop it on the window. Each Postman collection becomes its
+own collection, and each gets a copy of every exported environment, with secret
+values kept in the keychain. Postman exports globals separately, and a globals
+file found in the export is listed as not imported. The zip is read in memory
+and never unpacked; one over 256 MiB, with more than 10,000 files or 512 MiB of
+content, is refused. An entry that cannot be read is skipped, the rest is still
+written, and each skipped entry is listed on stderr as `not imported:` with its
+reason; the command then exits 3:
+
+```sh
+apinata import postman-export ~/Downloads/postman-export.zip --into ./collections
+```
+
 One curl command becomes a request. Give it a file, or leave the file out to
 read stdin; in the app, paste the command into the URL bar instead:
 

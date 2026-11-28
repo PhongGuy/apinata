@@ -304,6 +304,7 @@ mod import_postman;
 mod import_postman_auth_e2e;
 mod import_postman_coverage;
 mod import_postman_details;
+mod import_postman_export;
 mod import_postman_graphql;
 mod import_scripts_e2e;
 mod import_scripts_write;
