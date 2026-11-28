@@ -48,6 +48,8 @@ pub enum Refusal {
     Undecodable,
     /// The decoder panicked on the bytes.
     Crashed,
+    /// The encoded bytes are over the size cap, so they were not read.
+    Oversized,
 }
 
 impl Refusal {
@@ -72,6 +74,7 @@ impl Refusal {
                 limits.max_total_bytes / (1024 * 1024)
             )),
             Refusal::Crashed => Some("Image not shown: its decoder failed on these bytes.".into()),
+            Refusal::Oversized => Some("Image not shown: its data is over the size limit.".into()),
             Refusal::Undecodable => None,
         }
     }
