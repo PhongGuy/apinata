@@ -189,3 +189,103 @@ fn a_symlink_in_an_export_folder_is_skipped() {
     assert_eq!(names, ["Alpha", "Zeta"]);
     assert_eq!(skipped, ["collection/link.json"]);
 }
+
+#[test]
+fn a_symlink_entry_in_a_zip_is_skipped() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("export.zip");
+    let mut zip = zip::ZipWriter::new(fs::File::create(&path).unwrap());
+    for (name, text) in entries() {
+        zip.start_file(name.as_str(), SimpleFileOptions::default())
+            .unwrap();
+        zip.write_all(text.as_bytes()).unwrap();
+    }
+    zip.add_symlink(
+        "export/collection/link.json",
+        "/etc/passwd",
+        SimpleFileOptions::default(),
+    )
+    .unwrap();
+    zip.finish().unwrap();
+    let export = parse_postman_export(&path).expect("parsed");
+    let (names, _, skipped) = summary(&export);
+    assert_eq!(names, ["Alpha", "Zeta"]);
+    assert_eq!(skipped, ["export/collection/link.json"]);
+}
+
+#[test]
+fn a_folder_holding_the_export_folder_reads_as_an_export() {
+    let dir = tempfile::tempdir().unwrap();
+    folder_of(dir.path(), &entries());
+    assert!(looks_like_postman_export(dir.path()));
+    let (names, _, _) = summary(&parse_postman_export(dir.path()).expect("parsed"));
+    assert_eq!(names, ["Alpha", "Zeta"]);
+}
+
+#[test]
+fn a_skip_note_never_repeats_a_value_from_the_entry() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("export.zip");
+    let mut all = entries();
+    let leaky = format!(r#"{{"info":{{"name":"x","schema":"{V21}"}},"item":"tok-s3cret"}}"#);
+    all.push(("export/collection/leaky.json".into(), leaky));
+    all.push((
+        "export/collection/cut.json".into(),
+        format!(r#"{{"info":{{"name":"x","schema":"{V21}"}},"auth":"tok-s3cret"#),
+    ));
+    zip_of(&path, &all);
+    let export = parse_postman_export(&path).expect("parsed");
+    assert_eq!(export.skipped.len(), 2, "{:?}", export.skipped);
+    for note in &export.skipped {
+        assert!(!note.detail.contains("s3cret"), "{}", note.detail);
+    }
+}
+
+/// Run `f` on another thread, failing when it does not return within ten seconds.
+#[cfg(unix)]
+fn within_seconds<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(f());
+    });
+    rx.recv_timeout(std::time::Duration::from_secs(10))
+        .expect("the read hung")
+}
+
+#[cfg(unix)]
+fn mkfifo(path: &Path) {
+    let status = std::process::Command::new("mkfifo")
+        .arg(path)
+        .status()
+        .unwrap();
+    assert!(status.success());
+}
+
+#[cfg(unix)]
+#[test]
+fn a_fifo_in_an_export_folder_is_skipped_without_opening_it() {
+    let dir = tempfile::tempdir().unwrap();
+    folder_of(dir.path(), &entries());
+    mkfifo(&dir.path().join("export/collection/pipe.json"));
+    let root = dir.path().join("export");
+    let export = within_seconds(move || parse_postman_export(&root).expect("parsed"));
+    let (names, _, skipped) = summary(&export);
+    assert_eq!(names, ["Alpha", "Zeta"]);
+    assert_eq!(skipped, ["collection/pipe.json"]);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_fifo_given_as_the_path_is_refused_without_opening_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let pipe = dir.path().join("export.zip");
+    mkfifo(&pipe);
+    let (looks, parsed) = within_seconds(move || {
+        (
+            looks_like_postman_export(&pipe),
+            parse_postman_export(&pipe).is_err(),
+        )
+    });
+    assert!(!looks);
+    assert!(parsed);
+}

@@ -10,8 +10,9 @@ use serde_json::Value;
 
 use super::load::load;
 use super::{
-    CollectionFormat, CollectionOptions, EnvironmentFormat, ImportBundle, ImportNote,
-    ImportedCollection, ImportedEnvironment, NoteKind, parse_collections, parse_environments,
+    CollectionFormat, CollectionOptions, EnvironmentFormat, FormatError, ImportBundle, ImportNote,
+    ImportedCollection, ImportedEnvironment, NoteKind, PostmanError, parse_collections,
+    parse_environments,
 };
 
 /// The file that marks a folder or zip as a Postman data export.
@@ -83,15 +84,20 @@ pub enum ExportError {
     },
 }
 
-/// Whether `path` should be read as a Postman data export: a folder holding `archive.json`,
-/// an `archive.json` itself, or a zip archive, which no other import reads. A cheap check; a zip
-/// that turns out not to be an export fails `parse_postman_export` with `NotExport`.
+/// Whether `path` should be read as a Postman data export: a folder holding `archive.json`
+/// directly or one folder in, an `archive.json` itself, or a zip archive, which no other import
+/// reads. A cheap check; a zip that turns out not to be an export fails `parse_postman_export`
+/// with `NotExport`.
 pub fn looks_like_postman_export(path: &Path) -> bool {
     if path.is_dir() {
-        return path.join(MARKER).is_file();
+        return path.join(MARKER).is_file() || holds_marked_folder(path);
+    }
+    // Only a regular file is opened, since opening a FIFO blocks until someone writes to it.
+    if !path.is_file() {
+        return false;
     }
     if path.file_name().is_some_and(|n| n == MARKER) {
-        return path.is_file();
+        return true;
     }
     let mut magic = [0u8; 2];
     File::open(path)
@@ -106,6 +112,15 @@ pub fn parse_postman_export(path: &Path) -> Result<PostmanExport, ExportError> {
     parse_with(path, Limits::DEFAULT)
 }
 
+// Matches the reader, which takes an `archive.json` one folder below the root as the marker.
+fn holds_marked_folder(dir: &Path) -> bool {
+    fs::read_dir(dir).is_ok_and(|entries| {
+        entries
+            .flatten()
+            .any(|e| e.file_type().is_ok_and(|t| t.is_dir()) && e.path().join(MARKER).is_file())
+    })
+}
+
 pub(crate) fn parse_with(path: &Path, limits: Limits) -> Result<PostmanExport, ExportError> {
     let unreadable = |e: std::io::Error| ExportError::Unreadable {
         path: path.to_path_buf(),
@@ -115,8 +130,16 @@ pub(crate) fn parse_with(path: &Path, limits: Limits) -> Result<PostmanExport, E
     let mut gathered = Gathered::default();
     if meta.is_dir() {
         read_folder(path, path, limits, &mut gathered)?;
+    } else if !meta.is_file() {
+        return Err(ExportError::Unreadable {
+            path: path.to_path_buf(),
+            reason: "it is not a regular file".to_owned(),
+        });
     } else if path.file_name().is_some_and(|n| n == MARKER) {
-        let root = path.parent().unwrap_or(Path::new("."));
+        let root = path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
         read_folder(root, root, limits, &mut gathered)?;
     } else {
         read_zip(path, limits, &mut gathered)?;
@@ -156,17 +179,20 @@ impl Gathered {
     /// Read `reader` within the caps and recognize what it holds. An entry over the entry cap is
     /// skipped; going over the total cap ends the whole read.
     fn take(&mut self, label: &str, reader: impl Read, limits: Limits) -> Result<(), ExportError> {
+        // What was inflated counts toward the total even when the entry then fails, so a run of
+        // entries that each break at the end cannot inflate without bound.
         let mut bytes = Vec::new();
-        if let Err(e) = reader.take(limits.entry + 1).read_to_end(&mut bytes) {
-            self.skip(label, format!("cannot be read: {e}"));
-            return Ok(());
-        }
+        let read = reader.take(limits.entry + 1).read_to_end(&mut bytes);
         self.bytes += bytes.len() as u64;
         if self.bytes > limits.total {
             return Err(ExportError::TooLarge {
                 limit: limits.total,
                 unit: "bytes",
             });
+        }
+        if let Err(e) = read {
+            self.skip(label, format!("cannot be read: {e}"));
+            return Ok(());
         }
         if bytes.len() as u64 > limits.entry {
             self.skip(label, format!("larger than {} bytes", limits.entry));
@@ -194,14 +220,14 @@ impl Gathered {
                         .into_iter()
                         .map(|b| (label.to_owned(), b.collection)),
                 ),
-                Err(e) => self.skip(label, e.to_string()),
+                Err(e) => self.skip(label, parse_failure(&e)),
             }
         } else if EnvironmentFormat::detect(bytes) == Some(EnvironmentFormat::Postman) {
             match parse_environments(Some(EnvironmentFormat::Postman), bytes) {
                 Ok(envs) => self
                     .environments
                     .extend(envs.into_iter().map(|e| (label.to_owned(), e))),
-                Err(e) => self.skip(label, e.to_string()),
+                Err(e) => self.skip(label, parse_failure(&e)),
             }
         } else if is_globals(bytes) {
             self.skip(
@@ -240,6 +266,18 @@ impl Gathered {
             bundles,
             skipped: self.skipped,
         })
+    }
+}
+
+// A parser's message can quote a value from the entry, which may be a secret, so a skip names
+// only where the entry broke.
+fn parse_failure(error: &FormatError) -> String {
+    match error {
+        FormatError::Postman(PostmanError::Parse { line, column, .. }) => {
+            format!("not a readable Postman file (line {line}, column {column})")
+        }
+        FormatError::Postman(PostmanError::UnsupportedSchema { .. }) => error.to_string(),
+        _ => "not a readable Postman collection or environment".to_owned(),
     }
 }
 
@@ -295,6 +333,8 @@ fn read_folder(
             } else {
                 read_folder(root, &path, limits, gathered)?;
             }
+        } else if !meta.is_file() {
+            gathered.skip(&label, "not a regular file");
         } else {
             gathered.count(limits)?;
             match File::open(&path) {
@@ -428,6 +468,41 @@ mod tests {
         assert_eq!(export.skipped.len(), 1);
         assert_eq!(export.skipped[0].source, "big.json");
         assert!(export.skipped[0].detail.contains("larger than 1024 bytes"));
+    }
+
+    #[test]
+    fn bytes_read_before_an_entry_fails_still_count_toward_the_total() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("e.zip");
+        let stored =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        let mut zip = zip::ZipWriter::new(File::create(&path).unwrap());
+        zip.start_file("archive.json", stored).unwrap();
+        zip.write_all(ARCHIVE.as_bytes()).unwrap();
+        for name in ["a.json", "b.json"] {
+            zip.start_file(name, stored).unwrap();
+            zip.write_all(&[b'A'; 600]).unwrap();
+        }
+        zip.finish().unwrap();
+        // Change one stored byte in each entry, so both fail their checksum at the very end.
+        let mut bytes = fs::read(&path).unwrap();
+        let mut at = 0;
+        while let Some(found) = bytes[at..].windows(600).position(|w| w == [b'A'; 600]) {
+            bytes[at + found] = b'B';
+            at += found + 600;
+        }
+        fs::write(&path, bytes).unwrap();
+        let result = parse_with(&path, small(10, 1024, 1000));
+        assert!(
+            matches!(
+                result,
+                Err(ExportError::TooLarge {
+                    limit: 1000,
+                    unit: "bytes"
+                })
+            ),
+            "{result:?}"
+        );
     }
 
     #[test]
