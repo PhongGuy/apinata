@@ -339,6 +339,23 @@ fn the_key_is_sensitive_and_the_token_is_derived() {
     assert!(r.sensitive_values().contains(&t));
 }
 
+#[test]
+fn the_pem_rebuilt_from_a_data_uri_or_der_is_sensitive() {
+    let uri = format!("data:application/pkcs8;kid=k;base64,{}", der_base64());
+    for key in [format!("\"{uri}\""), der_base64()] {
+        let r = resolved(&format!(
+            "  auth:\n    type: asap\n    issuer: i\n    audience: a\n    privateKey: {key}\n    keyId: k\n"
+        ));
+        let rebuilt = r
+            .sensitive_values()
+            .iter()
+            .find(|v| v.starts_with("-----BEGIN PRIVATE KEY-----"));
+        let rebuilt = rebuilt.expect("the rebuilt PEM is hidden");
+        let first_line = RSA.lines().nth(1).unwrap();
+        assert!(rebuilt.contains(first_line), "the same key");
+    }
+}
+
 #[tokio::test]
 async fn a_same_origin_redirect_keeps_the_token_and_another_origin_drops_it() {
     let first = MockServer::start().await;
