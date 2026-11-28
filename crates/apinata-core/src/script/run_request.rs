@@ -41,6 +41,9 @@ pub(crate) fn installer(state: Arc<HostState>, deadline: Option<Instant>) -> Ins
 /// What the nested run's scripts read stays sensitive for the caller, and its host-policy
 /// refusals are recorded on the caller.
 async fn answer(state: &HostState, path: &str, deadline: Option<Instant>) -> Value {
+    if state.parallel() {
+        return json!({ "message": state.refuse_parallel("bru.runRequest") });
+    }
     match run_nested(state, path, deadline).await {
         Ok(result) => {
             note_read(state, result.script_sensitive_values().iter().cloned());

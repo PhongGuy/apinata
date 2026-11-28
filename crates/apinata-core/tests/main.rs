@@ -415,6 +415,8 @@ mod runner_choose;
 mod runner_fail_on_status;
 mod runner_failed;
 mod runner_iterations;
+mod runner_parallel;
+mod runner_parallel_plan;
 mod runner_plan;
 mod runner_retry;
 mod runner_retry_cancel;
