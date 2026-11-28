@@ -116,7 +116,10 @@ fn collection_auth_sits_on_top_and_deferring_or_unmappable_folders_omit_auth() {
                 "  auth:\n    type: basic\n    username: u\n    password: p\n",
             ),
         ),
-        ("d/folder.yml", &folder("d", 4, "  auth:\n    type: asap\n")),
+        (
+            "d/folder.yml",
+            &folder("d", 4, "  auth:\n    type: kerberos\n"),
+        ),
     ]);
     let v = exported(&c);
     assert_eq!(keys(&v), ["info", "item", "variable", "auth"]);
@@ -134,17 +137,17 @@ fn collection_auth_sits_on_top_and_deferring_or_unmappable_folders_omit_auth() {
     }
     assert_eq!(
         notes(&c),
-        pairs(&[("d / auth", "the asap authentication cannot be exported")])
+        pairs(&[("d / auth", "the kerberos authentication cannot be exported")])
     );
 
-    let asap = format!("{ROOT}request:\n  auth:\n    type: asap\n");
-    let (_d, c) = open(&[("opencollection.yml", &asap)]);
+    let kerberos = format!("{ROOT}request:\n  auth:\n    type: kerberos\n");
+    let (_d, c) = open(&[("opencollection.yml", &kerberos)]);
     assert_eq!(keys(&exported(&c)), ["info", "item", "variable"]);
     assert_eq!(
         notes(&c),
         pairs(&[(
             "collection / auth",
-            "the asap authentication cannot be exported"
+            "the kerberos authentication cannot be exported"
         )])
     );
 }

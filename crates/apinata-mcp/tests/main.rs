@@ -21,6 +21,7 @@ mod network_support;
 mod ntlm_support;
 
 mod argument_errors;
+mod asap_auth;
 mod assertion_checks;
 mod bodies;
 mod body_filter;

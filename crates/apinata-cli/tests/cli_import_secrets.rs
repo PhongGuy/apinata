@@ -312,3 +312,47 @@ fn with_no_keychain_answering_each_import_says_so_once_in_plain_words() {
     assert_one_plain_keychain_note(&all, &["k"]);
     assert!(!all_text(&root).contains("req-pw-s3cret") && !all_text(&root).contains("env-s3cret"));
 }
+
+const ASAP: &str = r#"{"info":{"name":"Shop","schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+  "item":[{"name":"Get user","request":{"method":"GET","url":"https://x.test/u",
+    "auth":{"type":"asap","asap":[{"key":"iss","value":"i"},{"key":"privateKey","value":"asap-key-s3cret"}]}}}]}"#;
+
+// An ASAP key behaves like any other credential without the keychain: kept out of the files
+// and the store, and left to enter under its secret variable.
+#[test]
+fn without_the_keychain_an_asap_key_is_left_to_enter() {
+    let work = tempfile::tempdir().unwrap();
+    let input = work.path().join("shop.json");
+    fs::write(&input, ASAP).unwrap();
+    let into = work.path().join("into");
+    fs::create_dir_all(&into).unwrap();
+    let out = apinata()
+        .env(
+            "APINATA_TEST_SECRETS_FILE",
+            work.path().join("secrets.json"),
+        )
+        .env("XDG_RUNTIME_DIR", work.path().join("xdg"))
+        .args(["import", "collection"])
+        .arg(&input)
+        .arg("--into")
+        .arg(&into)
+        .args(["--format", "json", "--no-keychain"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert_eq!(out.status.code(), Some(0), "{stderr}");
+    assert!(!stdout.contains("asap-key-s3cret") && !stderr.contains("asap-key-s3cret"));
+    let files = all_text(&into);
+    assert!(!files.contains("asap-key-s3cret"), "{files}");
+    assert!(
+        files.contains("privateKey: \"{{get_user_private_key}}\""),
+        "{files}"
+    );
+    assert!(!work.path().join("secrets.json").exists());
+    let report: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(
+        report["secrets_to_enter"],
+        serde_json::json!([{"environment": "Environment", "variable": "get_user_private_key"}])
+    );
+}
