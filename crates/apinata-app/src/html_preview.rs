@@ -36,10 +36,11 @@ fn data_image(uri: &str) -> Option<(ImageFormat, Vec<u8>)> {
     Some((format, bytes))
 }
 
-/// The preview of `html`: links are inert, since a page's own links could hand any scheme to
-/// the system opener.
+/// The preview of `html`, scrolling in its own list. Links are inert, since a page's own
+/// links could hand any scheme to the system opener.
 pub fn view(id: impl Into<ElementId>, html: SharedString) -> TextView {
     TextView::html(id, html)
+        .scrollable(true)
         .image_source(image_source)
         .on_link_click(|_, _, _, _| {})
 }
