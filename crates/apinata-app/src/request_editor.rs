@@ -11,7 +11,7 @@ use apinata_core::import::{ImportNote, ParsedRequest, RequestFormat, parse_reque
 use apinata_core::{
     AuthSpec, BodySpec, CollectionNetwork, EnvVariable, GlobalEnvironments, HeaderSource, ItemPath,
     KeyValue, Param, ParamKind, PostResponseVar, RequestKind, RequestResult, RequestSettings,
-    ScriptPhase, Snippet, Timeout, VarValue, Variable, VariableSet,
+    ScriptPhase, Snippet, Timeout, TlsVerify, VarValue, Variable, VariableSet,
 };
 use gpui_kit::assets::IconName;
 use gpui_kit::component::IndexPath;
@@ -2960,9 +2960,11 @@ impl RequestEditor {
                     (save, None)
                 };
                 let badge = undefined_badge(&self.undefined_shown(), cx);
+                let unverified = self.unverified_badge(cx);
                 h_flex()
                     .flex_none()
                     .gap(style::SPACE_1)
+                    .children(unverified)
                     .children(badge)
                     .children(lead)
                     .child(self.send_button(window, cx))
@@ -3413,6 +3415,33 @@ impl RequestEditor {
             .filter(|name| !defined(name))
             .map(|name| SharedString::from(name.clone()))
             .collect()
+    }
+
+    // A mark before Send while the request's own setting turns certificate checks off, since
+    // a file an agent wrote can say so unseen; the Preferences default alone shows nothing.
+    // A click opens the Settings tab where the choice is made.
+    fn unverified_badge(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let view = self.view(cx)?;
+        if view.settings.verify_tls != TlsVerify::Off {
+            return None;
+        }
+        let label = "Certificate checks are off for this request";
+        let button = Button::new("tls-unverified-button")
+            .solid_ring(cx)
+            .ghost()
+            .xsmall()
+            .icon(Icon::new(IconName::LockOpen).small())
+            .label("Unverified")
+            .text_color(cx.theme().warning)
+            .on_click(cx.listener(|this, _, _, cx| this.show(Section::Settings, cx)));
+        let badge = div()
+            .id("tls-unverified")
+            .test_support()
+            .flex_none()
+            .aria_label(label)
+            .tooltip(ui::text_tooltip("tls-unverified-tooltip", label))
+            .child(button);
+        Some(badge.into_any_element())
     }
 
     // Send while idle, Cancel while a send is planning or in flight.

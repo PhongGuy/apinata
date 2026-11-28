@@ -2,7 +2,9 @@
 //! curl flag is dropped without a note.
 
 use apinata_core::import::{ImportedRequest, NoteKind, ParsedCurl, add_request, parse_curl};
-use apinata_core::{AuthSpec, Collection, ContextOptions, ItemPath, Timeout, VarContext};
+use apinata_core::{
+    AuthSpec, Collection, ContextOptions, ItemPath, Timeout, TlsVerify, VarContext,
+};
 
 use crate::common;
 use std::fs;
@@ -283,6 +285,25 @@ fn an_unreadable_max_time_is_noted_and_keeps_the_default() {
             "{value}"
         );
     }
+}
+
+#[test]
+fn insecure_turns_the_certificate_check_off_with_a_note() {
+    for flag in ["-k", "--insecure"] {
+        let parsed = parse(&format!("curl {flag} {URL}"));
+        let settings = parsed.request.settings.expect("settings");
+        assert_eq!(settings.verify_tls, TlsVerify::Off, "{flag}");
+        assert_eq!(
+            notes(&parsed),
+            [note(&format!("curl flag {flag}"), NoteKind::Converted)],
+            "{flag}"
+        );
+    }
+    let plain = parse(&format!("curl {URL}"))
+        .request
+        .settings
+        .expect("settings");
+    assert_eq!(plain.verify_tls, TlsVerify::Inherit);
 }
 
 fn redirects(command: &str) -> u32 {

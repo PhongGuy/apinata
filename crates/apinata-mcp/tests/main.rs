@@ -45,6 +45,7 @@ mod graphql_query;
 mod graphql_requests;
 mod graphql_schema;
 mod harness;
+mod hawk_auth;
 mod host_overrides;
 mod http_version;
 mod import_collection;

@@ -26,6 +26,7 @@ pub(super) fn auth_label(spec: &AuthSpec) -> String {
         AuthSpec::Ntlm { .. } => "NTLM",
         AuthSpec::EdgeGrid(_) => "Akamai EdgeGrid",
         AuthSpec::Jwt(_) => "JWT Bearer",
+        AuthSpec::Hawk(_) => "Hawk",
         AuthSpec::Unsupported { mode } => mode,
     }
     .to_owned()

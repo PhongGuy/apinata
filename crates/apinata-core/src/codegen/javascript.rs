@@ -1,5 +1,5 @@
-//! The JavaScript targets: Node ES modules sending the request with `fetch` or `axios` and
-//! printing the status and body.
+//! The JavaScript targets: Node ES modules sending the request with `fetch`, `axios` or the
+//! built-in `http` module and printing the status and body.
 
 use crate::execute::form_payload;
 use crate::multipart::PartValue;
@@ -188,5 +188,94 @@ pub(super) fn axios(req: &ResolvedRequest) -> String {
         "  transformRequest: (d) => d,\n  transformResponse: (r) => r,\n  validateStatus: () => true,\n});\n\
          console.log(response.status);\nconsole.log(response.data);\n",
     );
+    out
+}
+
+/// A module sending the request with Node's `http` or `https` module, picked by the scheme.
+/// The body goes to `end` whole, so Node sends a Content-Length; multipart is built by hand.
+/// Node passes URL credentials on as Basic auth itself.
+pub(super) fn node_http(req: &ResolvedRequest) -> String {
+    let mut out = String::new();
+    if let Some(note) = omitted_auth(req, false) {
+        out.push_str(&format!("// {note}\n"));
+    }
+    if req.follow_redirects() {
+        out.push_str(
+            "// Node's http module does not follow redirects; this prints the first response.\n",
+        );
+    }
+    let reads_file = match req.body() {
+        Body::File { .. } => true,
+        Body::Multipart(parts) => parts
+            .iter()
+            .any(|p| matches!(p.value(), PartValue::File(_))),
+        _ => false,
+    };
+    if reads_file {
+        out.push_str("import fs from 'node:fs';\n");
+    }
+    let secure = req
+        .url()
+        .get(..6)
+        .is_some_and(|s| s.eq_ignore_ascii_case("https:"));
+    let module = if secure { "https" } else { "http" };
+    out.push_str(&format!("import {module} from 'node:{module}';\n\n"));
+
+    out.push_str(&format!("const url = {};\n", literal(req.url())));
+    let mut headers: Vec<(String, String)> = sent_headers(req)
+        .map(|(name, value)| (literal(name), header_value(value)))
+        .collect();
+    if matches!(req.body(), Body::Multipart(_)) {
+        headers.push((
+            literal("Content-Type"),
+            literal(&format!("multipart/form-data; boundary={BOUNDARY}")),
+        ));
+    }
+    if headers.is_empty() {
+        out.push_str("const headers = {};\n");
+    } else {
+        out.push_str("const headers = {\n");
+        for (name, value) in headers {
+            out.push_str(&format!("  {name}: {value},\n"));
+        }
+        out.push_str("};\n");
+    }
+    let read =
+        |path: &std::path::Path| format!("fs.readFileSync({})", literal(&path.to_string_lossy()));
+    let body = match req.body() {
+        Body::None => None,
+        Body::Text(text) => Some(literal(text)),
+        Body::FormUrlEncoded(pairs) => Some(literal(&form_payload(pairs))),
+        Body::File { path, .. } => Some(read(path)),
+        Body::Multipart(parts) => {
+            let mut joined = String::from("Buffer.concat([\n");
+            for segment in multipart_segments(parts) {
+                let item = match segment {
+                    Segment::Text(text) => format!("Buffer.from({})", literal(&text)),
+                    Segment::File(path) => read(path),
+                };
+                joined.push_str(&format!("  {item},\n"));
+            }
+            joined.push_str("])");
+            Some(joined)
+        }
+    };
+    let end = match body {
+        Some(body) => {
+            out.push_str(&format!("const body = {body};\n"));
+            "body"
+        }
+        None => "",
+    };
+
+    out.push_str(&format!(
+        "\nconst req = {module}.request(url, {{ method: {}, headers }}, (res) => {{\n\
+         \x20 console.log(res.statusCode);\n\
+         \x20 const chunks = [];\n\
+         \x20 res.on('data', (chunk) => chunks.push(chunk));\n\
+         \x20 res.on('end', () => console.log(Buffer.concat(chunks).toString()));\n\
+         }});\nreq.end({end});\n",
+        literal(req.method())
+    ));
     out
 }

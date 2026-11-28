@@ -31,6 +31,7 @@ and a quick start, see the [README](README.md).
   - [GraphQL queries](#graphql-queries)
   - [OAuth 2.0 and scripts](#oauth-20-and-scripts)
   - [JWT Bearer auth](#jwt-bearer-auth)
+  - [Hawk auth](#hawk-auth)
   - [Team servers](#team-servers)
   - [Timeouts, streams and body size](#timeouts-streams-and-body-size)
   - [Reading responses](#reading-responses)
@@ -453,12 +454,14 @@ setting.
 In the app, the request's Settings tab has a Certificate check select (Default,
 Verify, Don't verify) and an HTTP version select (Default, HTTP/1.1, Auto, HTTP/2
 prior knowledge). The Default entry names the Preferences value it follows, and
-choosing it removes the key from the file. A hop made without a certificate check
-says so in the address card, on the `--verbose` `tls:` line and as
+choosing it removes the key from the file. While the request's own setting is Don't
+verify, an unlocked mark before Send says so, and clicking it opens the Settings tab.
+A hop made without a certificate check says so in the address card, on the `--verbose` `tls:` line and as
 `"tls_unverified": true` on the request's row in the JSON report. The cookie jar is
 shared, so cookies flow between checked and unchecked sends as they do with
-`--insecure`. A token request for OAuth 2.0 follows the default, not the request's own
-setting.
+`--insecure`. The OAuth 2.0 token request a request makes follows that request's own
+setting; a folder's or the collection's Get token follows the default. A cached token
+is shared by every request with the same OAuth 2.0 settings, whichever check fetched it.
 
 Under the MCP server, a request's own `verifySsl: false` is honoured only for a
 loopback or `localhost` host reached directly, since an agent can edit the file. A
@@ -466,7 +469,8 @@ host override that maps the name anywhere but loopback, or a proxy on the route,
 refused too. The send fails before it connects, and every redirect is checked again. Starting the server with
 `--insecure` still turns the check off everywhere.
 
-Postman's `protocolProfileBehavior.strictSSL` and `protocolVersion` import into these
+A pasted curl command's `-k` or `--insecure` imports as `verifySsl: false`, with a
+note. Postman's `protocolProfileBehavior.strictSSL` and `protocolVersion` import into these
 keys and export back: `http1` is HTTP/1.1, `auto` is Auto, and `http2` imports as Auto
 with a note, since Postman negotiates it. HTTP/2 prior knowledge has no Postman
 setting and exports with a note.
@@ -1015,6 +1019,40 @@ apinata item request users/get.yml --auth-json '{"type": "jwt", "algorithm": "HS
 `private_key` is `{"type": "text", "value": "{{jwt_key}}"}` or `{"type": "file", "value":
 "keys/k.pem"}`. Values are written into the file as given, so keep the secret and key in an
 environment (`apinata env set --secret`) and refer to them as `{{name}}`.
+
+### Hawk auth
+
+A request, folder or collection with `type: hawk` auth signs every hop with a Hawk
+`Authorization` header:
+
+```yaml
+auth:
+  type: hawk
+  authId: dh37fgj492je
+  authKey: "{{hawk_key}}"
+  algorithm: sha256           # sha256 or sha1
+  ext: ""                     # optional application data
+  app: ""                     # optional; dlg is sent only with app
+  dlg: ""
+  nonce: ""                   # blank makes a fresh one per hop
+  timestamp: ""               # blank uses the current time
+  includePayloadHash: false   # true also signs the body and its Content-Type
+```
+
+The MAC covers the method, path and query, host and port, so a redirect is signed again; a hop
+to another origin is signed only when `forwardAuthorizationHeader` is on. A blank id or key, an
+unknown algorithm, a timestamp that is not a whole number or an attribute outside printable
+ASCII stops the request before it is sent, and the error never shows the key. The key, the
+header and its MAC are hidden in history, reports and the Timeline. Postman, Insomnia and
+Hoppscotch Hawk auth import as this kind, and Postman export maps it back.
+
+`--auth-json` and MCP take every field in snake_case:
+
+```sh
+apinata item request users/get.yml --auth-json '{"type": "hawk", "auth_id": "dh37fgj492je",
+  "auth_key": "{{hawk_key}}", "algorithm": "sha256", "ext": "", "app": "", "dlg": "",
+  "nonce": "", "timestamp": "", "include_payload_hash": false}'
+```
 
 ### Team servers
 

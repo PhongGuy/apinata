@@ -1,0 +1,7 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+wget --quiet --output-document=- --content-on-error --method='GET' \
+  --max-redirect=0 \
+  'http://x.test/n'

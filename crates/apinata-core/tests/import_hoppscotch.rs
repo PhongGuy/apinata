@@ -646,12 +646,50 @@ fn auth_maps_basic_bearer_api_key_inherit_and_none() {
 }
 
 #[test]
+fn hawk_maps_each_member_and_notes_a_user_it_drops() {
+    let (got, c) = auth(
+        json!({"authType": "hawk", "authActive": true, "authId": "id-1",
+        "authKey": "<<hawk_key>>", "algorithm": "sha1", "includePayloadHash": true,
+        "user": "alice", "nonce": "n1", "ext": "x", "app": "a", "dlg": "d",
+        "timestamp": "1353832234"}),
+    );
+    let AuthSpec::Hawk(spec) = got else {
+        panic!("not hawk: {got:?}")
+    };
+    assert_eq!(spec.auth_id, "id-1");
+    assert_eq!(spec.auth_key, "{{hawk_key}}");
+    assert_eq!(spec.algorithm, "sha1");
+    assert!(spec.include_payload_hash);
+    assert_eq!(
+        (spec.nonce.as_str(), spec.ext.as_str(), spec.app.as_str()),
+        ("n1", "x", "a")
+    );
+    assert_eq!(
+        (spec.dlg.as_str(), spec.timestamp.as_str()),
+        ("d", "1353832234")
+    );
+    assert!(
+        has(&c, NoteKind::Dropped, "r / auth.user"),
+        "{:?}",
+        notes(&c)
+    );
+    let (bare, c) = auth(
+        json!({"authType": "hawk", "authActive": true, "authId": "i",
+        "authKey": "k", "algorithm": "", "includePayloadHash": false, "user": ""}),
+    );
+    let AuthSpec::Hawk(spec) = bare else {
+        panic!("not hawk")
+    };
+    assert_eq!(spec.algorithm, "sha256");
+    assert!(notes(&c).is_empty(), "{:?}", notes(&c));
+}
+
+#[test]
 fn unsupported_auth_is_none_with_one_note_for_the_whole_object() {
     for kind in [
         "oauth-2",
         "aws-signature",
         "digest",
-        "hawk",
         "akamai-eg",
         "something-new",
     ] {

@@ -1,0 +1,8 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+wget --quiet --output-document=- --content-on-error --method='GET' \
+  --user='alice' \
+  --password='p'\''w' \
+  'http://x.test/digest'

@@ -5,8 +5,8 @@
 //! repeat an input value, since auth JSON is full of credentials.
 
 use super::{
-    ApiKeyPlacement, AuthSpec, ClientAuth, EdgeGridSpec, JwtAlgorithm, JwtPlacement, JwtSpec,
-    OAuth1KeyKind, OAuth1Placement, OAuth1PrivateKey, OAuth1SignatureMethod, OAuth1Spec,
+    ApiKeyPlacement, AuthSpec, ClientAuth, EdgeGridSpec, HawkSpec, JwtAlgorithm, JwtPlacement,
+    JwtSpec, OAuth1KeyKind, OAuth1Placement, OAuth1PrivateKey, OAuth1SignatureMethod, OAuth1Spec,
     OAuth2Flow, OAuth2Param, OAuth2ParamPlacement, OAuth2Spec, OAuth2Stage, TokenPlacement,
     TokenSource,
 };
@@ -189,6 +189,7 @@ fn spec(mode: String, rest: impl Fields) -> Result<AuthSpec, AuthJsonError> {
         }
         "edgegrid" => rest.read::<EdgeGridJson>()?.into_spec(),
         "jwt" => rest.read::<JwtJson>()?.into_spec(),
+        "hawk" => rest.read::<HawkJson>()?.into_spec(),
         _ => {
             return Err(AuthJsonError::UnknownType {
                 mode,
@@ -397,6 +398,21 @@ struct EdgeGridJson {
     base_url: String,
     headers_to_sign: String,
     max_body_size: Option<MaxBodySize>,
+}
+
+/// Every Hawk field; `algorithm` keeps any spelling, since a variable may supply it.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HawkJson {
+    auth_id: String,
+    auth_key: String,
+    algorithm: String,
+    ext: String,
+    app: String,
+    dlg: String,
+    nonce: String,
+    timestamp: String,
+    include_payload_hash: bool,
 }
 
 /// `algorithm` and `placement` keep any spelling, since a variable may supply them; the send
@@ -621,6 +637,22 @@ impl OAuth1KeyJson {
             OAuth1KeyKindJson::File => OAuth1KeyKind::File,
         };
         OAuth1PrivateKey::new(kind, self.value)
+    }
+}
+
+impl HawkJson {
+    fn into_spec(self) -> AuthSpec {
+        AuthSpec::Hawk(HawkSpec {
+            auth_id: self.auth_id,
+            auth_key: self.auth_key,
+            algorithm: self.algorithm,
+            ext: self.ext,
+            app: self.app,
+            dlg: self.dlg,
+            nonce: self.nonce,
+            timestamp: self.timestamp,
+            include_payload_hash: self.include_payload_hash,
+        })
     }
 }
 
