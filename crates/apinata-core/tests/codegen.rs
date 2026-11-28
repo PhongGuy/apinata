@@ -159,6 +159,17 @@ const REDIRECT_FLAGS: &[(Target, &str, bool)] = &[
     ),
     (Target::KotlinOkHttp, ".followRedirects(false)", false),
     (Target::SwiftUrlSession, "willPerformHTTPRedirection", false),
+    (Target::Wget, "--max-redirect=0", false),
+    (
+        Target::PythonHttpClient,
+        "http.client does not follow redirects",
+        true,
+    ),
+    (
+        Target::NodeHttp,
+        "http module does not follow redirects",
+        true,
+    ),
 ];
 
 /// Targets with no redirect setting at all: one message, written the same either way.
@@ -300,10 +311,13 @@ fn every_target_is_in_the_picker_in_order() {
         [
             "curl",
             "httpie",
+            "wget",
             "raw-http",
             "python-requests",
+            "python-http-client",
             "js-fetch",
             "node-axios",
+            "node-http",
             "go",
             "powershell",
             "php-curl",
@@ -321,10 +335,13 @@ fn every_target_is_in_the_picker_in_order() {
         [
             "curl",
             "HTTPie",
+            "wget",
             "Raw HTTP",
             "Python (requests)",
+            "Python (http.client)",
             "JavaScript (fetch)",
             "Node.js (axios)",
+            "Node.js (http)",
             "Go (net/http)",
             "PowerShell (Invoke-RestMethod)",
             "PHP (curl)",
@@ -1325,4 +1342,126 @@ fn swift_names_the_headers_urlsession_sets_itself() {
         "{out}"
     );
     assert!(!out.contains("\"y.test\""), "{out}");
+}
+
+#[test]
+fn wget_snapshots() {
+    snapshots_with_parts(Target::Wget);
+}
+
+#[test]
+fn wget_sends_url_credentials_up_front_and_writes_digest_natively() {
+    let out = generate(
+        &resolved_one("GET", "http://u:p@x.test/c", "", ""),
+        Target::Wget,
+    );
+    assert!(out.contains("--auth-no-challenge"), "{out}");
+    let out = generate(&case("get"), Target::Wget);
+    assert!(!out.contains("--auth-no-challenge"), "{out}");
+    let out = generate(&case("digest"), Target::Wget);
+    assert!(
+        out.contains("--user='alice'") && out.contains("--password='p'\\''w'"),
+        "{out}"
+    );
+    assert!(!out.contains("not included"), "{out}");
+}
+
+#[test]
+fn wget_builds_a_multipart_body_in_a_temporary_file() {
+    let out = generate(&mixed(), Target::Wget);
+    assert!(out.contains("body=$(mktemp)"), "{out}");
+    assert!(out.contains("cat '/data/up.bin'"), "{out}");
+    assert!(out.contains("--body-file=\"$body\""), "{out}");
+    assert!(out.ends_with("rm -f \"$body\"\n"), "{out}");
+}
+
+#[test]
+fn wget_parses_with_bash() {
+    if !toolchain("bash") {
+        return;
+    }
+    toolchain_check(Target::Wget, "snippet.sh", |file| {
+        std::process::Command::new("bash")
+            .arg("-n")
+            .arg(file)
+            .output()
+            .unwrap()
+    });
+}
+
+#[test]
+fn python_http_client_snapshots() {
+    snapshots_with_parts(Target::PythonHttpClient);
+}
+
+#[test]
+fn python_http_client_splits_the_url_and_picks_the_connection_class() {
+    let req = resolved_one("GET", "https://x.test:8443/p q?a=1#frag", "", "");
+    let out = generate(&req, Target::PythonHttpClient);
+    assert!(
+        out.contains("conn = http.client.HTTPSConnection('x.test', 8443)"),
+        "{out}"
+    );
+    assert!(out.contains("conn.request('GET', '/p%20q?a=1'"), "{out}");
+    let out = generate(&case("get"), Target::PythonHttpClient);
+    assert!(
+        out.contains("conn = http.client.HTTPConnection('x.test')\n"),
+        "{out}"
+    );
+}
+
+#[test]
+fn python_http_client_encodes_url_credentials_at_run_time() {
+    let req = resolved_one("GET", "http://u:p%40w@x.test/c", "", "");
+    let out = generate(&req, Target::PythonHttpClient);
+    assert!(out.contains("import base64\n"), "{out}");
+    assert!(
+        out.contains("'Basic ' + base64.b64encode('u:p@w'.encode('utf-8')).decode('ascii')"),
+        "{out}"
+    );
+    assert!(!out.contains("x.test@"), "{out}");
+}
+
+#[test]
+fn python_http_client_compiles_with_python() {
+    if !toolchain("python3") {
+        return;
+    }
+    toolchain_check(Target::PythonHttpClient, "snippet.py", |file| {
+        std::process::Command::new("python3")
+            .args(["-m", "py_compile"])
+            .arg(file)
+            .output()
+            .unwrap()
+    });
+}
+
+#[test]
+fn node_http_snapshots() {
+    snapshots_with_parts(Target::NodeHttp);
+}
+
+#[test]
+fn node_http_picks_the_module_by_scheme() {
+    let req = resolved_one("GET", "https://x.test/s", "", "");
+    let out = generate(&req, Target::NodeHttp);
+    assert!(out.contains("import https from 'node:https';\n"), "{out}");
+    assert!(out.contains("https.request(url, "), "{out}");
+    let out = generate(&case("get"), Target::NodeHttp);
+    assert!(out.contains("import http from 'node:http';\n"), "{out}");
+    assert!(out.contains("http.request(url, "), "{out}");
+}
+
+#[test]
+fn node_http_checks_with_node() {
+    if !toolchain("node") {
+        return;
+    }
+    toolchain_check(Target::NodeHttp, "snippet.mjs", |file| {
+        std::process::Command::new("node")
+            .arg("--check")
+            .arg(file)
+            .output()
+            .unwrap()
+    });
 }
