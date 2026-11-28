@@ -35,12 +35,14 @@ pub struct Page {
     pub markdown: String,
     /// Whether the page passed [`MAX_NODES`] or [`MAX_DEPTH`], so only its start is shown.
     pub cut: bool,
+    /// How many nodes the page was parsed into.
+    pub nodes: usize,
 }
 
-/// The page `html` as the preview shows it.
-pub fn prepare(html: &str) -> Page {
+/// The page `html` as the preview shows it, or `None` when the parser fails on it.
+pub fn prepare(html: &str) -> Option<Page> {
     // The arena freezes at the bound and stands in a placeholder for later nodes; should the
-    // tree builder trip over that, the page shows as cut rather than taking the app down.
+    // tree builder trip over that, the page is not previewed rather than taking the app down.
     let parsed = std::panic::catch_unwind(|| {
         let mut parser = parse_document(Arena::new(), Default::default());
         let mut rest = html;
@@ -54,16 +56,12 @@ pub fn prepare(html: &str) -> Page {
         }
         parser.finish()
     });
-    match parsed {
-        Ok(arena) => Page {
-            markdown: Writer::new(&arena).write(),
-            cut: arena.full,
-        },
-        Err(_) => Page {
-            markdown: String::new(),
-            cut: true,
-        },
-    }
+    let arena = parsed.ok()?;
+    Some(Page {
+        markdown: Writer::new(&arena).write(),
+        cut: arena.full,
+        nodes: arena.nodes.len(),
+    })
 }
 
 /// Where a previewed image comes from: a raster `data:` image decoded in place, and for any
@@ -128,9 +126,6 @@ struct Arena {
 struct Node {
     parent: Option<usize>,
     children: Vec<usize>,
-    // Levels below the document when last attached; a later move of an ancestor can leave
-    // it stale, which only matters to the parse bound, never to the Markdown's depth.
-    depth: usize,
     kind: Kind,
 }
 
@@ -160,7 +155,6 @@ impl Arena {
         let node = |kind| Node {
             parent: None,
             children: Vec::new(),
-            depth: 0,
             kind,
         };
         Arena {
@@ -178,7 +172,6 @@ impl Arena {
         self.nodes.push(Node {
             parent: None,
             children: Vec::new(),
-            depth: 0,
             kind,
         });
         self.nodes.len() - 1
@@ -193,15 +186,27 @@ impl Arena {
         }
     }
 
+    // How far below the document `node` sits, counted up its parent links and capped just
+    // past the bound, so a subtree moved before its new parent was attached is never stale.
+    fn depth(&self, mut node: usize) -> usize {
+        let mut depth = 0;
+        while let Some(parent) = self.nodes[node].parent
+            && depth <= MAX_DEPTH
+        {
+            node = parent;
+            depth += 1;
+        }
+        depth
+    }
+
     // Puts `child` into `parent` at `ix`, merging text into a text node just before it.
     fn insert(&mut self, parent: usize, ix: usize, child: NodeOrText<usize>) {
         match child {
             NodeOrText::AppendNode(node) => {
                 self.detach(node);
                 let ix = ix.min(self.nodes[parent].children.len());
-                let depth = self.nodes[parent].depth + 1;
+                let depth = self.depth(parent) + 1;
                 self.nodes[node].parent = Some(parent);
-                self.nodes[node].depth = depth;
                 self.nodes[parent].children.insert(ix, node);
                 self.full |= depth > MAX_DEPTH;
             }
@@ -340,10 +345,8 @@ impl TreeSink for Arena {
             return;
         }
         let children = std::mem::take(&mut self.nodes[*node].children);
-        let depth = self.nodes[*new_parent].depth + 1;
         for &child in &children {
             self.nodes[child].parent = Some(*new_parent);
-            self.nodes[child].depth = depth;
         }
         self.nodes[*new_parent].children.extend(children);
     }
@@ -364,6 +367,14 @@ impl TreeSink for Arena {
 enum Container {
     Quote { first: bool },
     Item { marker: String, first: bool },
+}
+
+// Which line of a block a prefix is for.
+#[derive(Clone, Copy, PartialEq)]
+enum Line {
+    Gap,
+    First,
+    Rest,
 }
 
 // What leaving an element undoes.
@@ -652,6 +663,7 @@ impl<'a> Writer<'a> {
 
     // Adds page text: raw inside a code block or span, otherwise collapsed and escaped.
     fn text(&mut self, text: &str) {
+        let text = &plain(text);
         if let Some(pre) = &mut self.pre {
             pre.push_str(text);
             return;
@@ -740,7 +752,7 @@ impl<'a> Writer<'a> {
             Some(src) if self.table.is_none() || self.cell => {
                 self.word_start();
                 self.line.push_str("![");
-                for c in alt.chars().filter(|c| !c.is_control()) {
+                for c in plain(&alt).chars().filter(|c| !c.is_control()) {
                     if c.is_ascii_punctuation() {
                         self.line.push('\\');
                     }
@@ -785,12 +797,12 @@ impl<'a> Writer<'a> {
     // Writes one block, a blank line after the last, each line behind its containers' prefix.
     fn block(&mut self, text: &str) {
         if !self.out.is_empty() {
-            let gap = self.prefix(false);
+            let gap = self.prefix(Line::Gap);
             self.out.push_str(gap.trim_end());
             self.out.push('\n');
         }
         for (ix, line) in text.split('\n').enumerate() {
-            let prefix = self.prefix(ix == 0);
+            let prefix = self.prefix(if ix == 0 { Line::First } else { Line::Rest });
             self.out.push_str(&prefix);
             self.out.push_str(line);
             self.out.push('\n');
@@ -801,17 +813,18 @@ impl<'a> Writer<'a> {
         }
     }
 
-    // The prefix of a block's first line, or of its later lines and the gap before it; a
-    // quote that has written nothing yet leaves the gap outside it.
-    fn prefix(&self, first_line: bool) -> String {
+    // The prefix of a block's first line, its later lines, or the gap before it; a quote
+    // that has written nothing yet leaves the gap outside it.
+    fn prefix(&self, line: Line) -> String {
         let mut prefix = String::new();
         for container in &self.nest {
             match container {
-                Container::Quote { first } if *first && !first_line => {}
+                Container::Quote { first: true } if line == Line::Gap => {}
                 Container::Quote { .. } => prefix.push_str("> "),
-                Container::Item { marker, first } if *first && first_line => {
-                    prefix.push_str(marker)
-                }
+                Container::Item {
+                    marker,
+                    first: true,
+                } if line == Line::First => prefix.push_str(marker),
                 Container::Item { marker, .. } => prefix.push_str(&" ".repeat(marker.len())),
             }
         }
@@ -862,6 +875,19 @@ fn is_block(tag: &LocalName) -> bool {
     )
 }
 
+// Page text with every line ending Markdown knows as `\n` and every other control or line
+// separator as a space, so no page text starts a line outside its containers' prefix.
+fn plain(text: &str) -> String {
+    let text = text.replace("\r\n", "\n");
+    let plain = |c: char| match c {
+        '\n' | '\t' => c,
+        '\r' => '\n',
+        _ if c.is_control() || matches!(c, '\u{2028}' | '\u{2029}') => ' ',
+        _ => c,
+    };
+    text.chars().map(plain).collect()
+}
+
 // The longest run of `c` in `text`.
 fn longest_run(text: &str, c: char) -> usize {
     let (mut longest, mut run) = (0, 0);
@@ -885,4 +911,34 @@ fn destination(url: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The adoption agency moves an element's children under a new element before attaching
+    // it; nesting under a moved child must still count its depth from the document.
+    #[test]
+    fn a_child_moved_before_its_new_parent_is_attached_keeps_its_depth() {
+        let mut arena = Arena::new();
+        let div = QualName::new(None, ns!(html), local_name!("div"));
+        let nest = |arena: &mut Arena, parent: usize| {
+            let node = arena.create_element(div.clone(), Vec::new(), ElementFlags::default());
+            arena.append(&parent, NodeOrText::AppendNode(node));
+            node
+        };
+        let mut top = DOCUMENT;
+        for _ in 0..MAX_DEPTH - 10 {
+            top = nest(&mut arena, top);
+        }
+        let mut deep = nest(&mut arena, top);
+        let moved_to = arena.create_element(div.clone(), Vec::new(), ElementFlags::default());
+        arena.reparent_children(&top, &moved_to);
+        arena.append(&top, NodeOrText::AppendNode(moved_to));
+        for _ in 0..20 {
+            deep = nest(&mut arena, deep);
+        }
+        assert!(arena.full);
+    }
 }

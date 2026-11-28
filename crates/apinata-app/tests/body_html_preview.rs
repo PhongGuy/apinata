@@ -210,10 +210,33 @@ fn mdast_depth(md: &str) -> (usize, bool) {
 
 // Pages built to nest past any bound: each tag the tree builder keeps open, foreign content,
 // a comment closed by `--!>`, tags joined across a removed script, and formatting elements
-// the adoption agency rebuilds one level deeper each round.
-fn hostile_pages() -> Vec<(&'static str, String)> {
+// the adoption agency rebuilds one level deeper each round, and a line ending or control
+// character in preformatted text inside a quote or list item, followed by quote markers.
+fn hostile_pages() -> Vec<(String, String)> {
     let reconstruct: String = (0..10_000).map(|n| format!("<b><i id={n}></b>x")).collect();
-    vec![
+    let breaks = [
+        "&#10;",
+        "&#13;",
+        "&#13;&#10;",
+        "\r",
+        "\0",
+        "\u{b}",
+        "\u{c}",
+        "\u{85}",
+        "\u{2028}",
+        "\u{2029}",
+    ];
+    let wraps = [
+        ("<blockquote>", "</blockquote>"),
+        ("<ul><li>", "</li></ul>"),
+    ];
+    let controls = breaks.iter().flat_map(|b| {
+        wraps.iter().map(move |(open, close)| {
+            let page = format!("{open}<pre>x{b}{}</pre>{close}", ">".repeat(50_000));
+            (format!("pre {b:?} in {open}"), page)
+        })
+    });
+    let pages = vec![
         ("divs", "<div>".repeat(50_000)),
         ("optgroup", "<optgroup>".repeat(25_000)),
         ("rt", "<rt>".repeat(60_000)),
@@ -227,7 +250,16 @@ fn hostile_pages() -> Vec<(&'static str, String)> {
             "rebuilt script",
             "<<script></script>script>alert(1)</script>".repeat(1_000),
         ),
-    ]
+    ];
+    let pages = pages
+        .into_iter()
+        .map(|(name, page)| (name.to_owned(), page));
+    pages.chain(controls).collect()
+}
+
+// The page as the preview shows it; every page here parses without a panic.
+fn prepare(html: &str) -> html_preview::Page {
+    html_preview::prepare(html).expect("the page parses")
 }
 
 const CHILD: &str = "APINATA_HTML_PREVIEW_CHILD";
@@ -240,7 +272,7 @@ fn hostile_pages_preview_within_a_shallow_tree() {
         let worker = std::thread::Builder::new().stack_size(1 << 20);
         let checked = worker.spawn(|| {
             for (name, page) in hostile_pages() {
-                let page = html_preview::prepare(&page);
+                let page = prepare(&page);
                 let (depth, html) = mdast_depth(&page.markdown);
                 assert!(depth <= 24, "{name}: the preview tree is {depth} deep");
                 assert!(!html, "{name}: raw HTML reached the preview");
@@ -268,26 +300,39 @@ fn hostile_pages_preview_within_a_shallow_tree() {
 }
 
 #[test]
+fn a_page_the_adoption_agency_deepens_stops_at_the_depth_bound() {
+    // The adoption agency moves children under an element before attaching it, so a depth
+    // kept per node goes stale; the parse must still stop near the depth bound.
+    let page = prepare(&"<b><div><span></b>".repeat(20_000));
+    assert!(page.cut);
+    assert!(
+        page.nodes < html_preview::MAX_NODES / 10,
+        "{} nodes",
+        page.nodes
+    );
+}
+
+#[test]
 fn a_page_past_a_bound_is_cut() {
-    let page = html_preview::prepare(&"<br>".repeat(html_preview::MAX_NODES + 1_000));
+    let page = prepare(&"<br>".repeat(html_preview::MAX_NODES + 1_000));
     assert!(page.cut);
     let deep = "<div>".repeat(html_preview::MAX_DEPTH + 10);
-    assert!(html_preview::prepare(&deep).cut);
-    assert!(!html_preview::prepare(&"<div>".repeat(100)).cut);
-    assert!(!html_preview::prepare("<p>short</p>").cut);
+    assert!(prepare(&deep).cut);
+    assert!(!prepare(&"<div>".repeat(100)).cut);
+    assert!(!prepare("<p>short</p>").cut);
 }
 
 #[test]
 fn script_style_and_title_text_is_left_out() {
     let page = "<title>T</title><h1>a<script>alert(1)</script>b<STYLE>p{}</style>c</h1>\
         <span><script src=x></script></span><p>d</p><script>never closed";
-    assert_eq!(html_preview::prepare(page).markdown, "# abc\n\nd\n");
+    assert_eq!(prepare(page).markdown, "# abc\n\nd\n");
 }
 
 #[test]
 fn page_text_is_escaped_so_it_makes_no_markup() {
     let page = "<p>*not* <b>bold</b> # [x](y) &lt;i&gt; $5 | `c` www.example.com</p>";
-    let md = html_preview::prepare(page).markdown;
+    let md = prepare(page).markdown;
     let root = markdown::to_mdast(&md, &kit_options()).unwrap();
     let mut kinds = Vec::new();
     let mut stack = vec![&root];
@@ -313,7 +358,7 @@ fn headings_lists_tables_and_code_keep_their_shape() {
         <table><tr><th>Name</th><th>Role</th></tr><tr><td>Ada</td><td><i>admin</i></td></tr></table>\
         <pre>let x = 1;\n  y</pre><p>a <code>c</code> b</p>";
     assert_eq!(
-        html_preview::prepare(page).markdown,
+        prepare(page).markdown,
         "## Users\n\n- one\n\n- two\n\n  1. inner\n\n> quoted\n\n\
          | Name | Role |\n| --- | --- |\n| Ada | *admin* |\n\n\
          ```\nlet x = 1;\n  y\n```\n\na `c` b\n"
@@ -327,7 +372,7 @@ fn only_a_raster_data_image_is_kept_as_an_image() {
         r#"<img src="http://127.0.0.1:9/p.png" alt="remote"><img src="data:image/svg+xml,x" alt="svg">"#
     );
     assert_eq!(
-        html_preview::prepare(page).markdown,
+        prepare(page).markdown,
         "![dot](data:image/png;base64,iVBORw0KGgo=)remotesvg\n"
     );
 }

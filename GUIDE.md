@@ -1279,7 +1279,8 @@ engine: Preview leaves out the page's scripts, stylesheets, title, SVG and
 embedded media, shows links as plain text, shows only PNG, JPEG, GIF, WebP and
 BMP images embedded as `data:` URLs, and is always the redacted copy. Lists and
 quotes nested more than six deep are flattened, and a very large or deeply
-nested page shows its start with a note.
+nested page shows its start with a note. A page the parser fails on shows as
+text, with a note.
 For the full page, Open in browser hands your browser a copy that blocks
 scripts, network loads and forms, with secrets redacted. The copy is a private
 temporary file that a later start of the app removes.

@@ -72,7 +72,7 @@ use gpui_kit::component::input::{
 struct Mask {
     text: OnceLock<Option<Arc<str>>>,
     // The preview's copy of the shown text, made once so a frame never copies the body.
-    page: OnceLock<(SharedString, bool)>,
+    page: OnceLock<Option<(SharedString, bool)>>,
     runs: AtomicUsize,
 }
 
@@ -114,6 +114,9 @@ pub const LARGE_BODY_NOTE: &str = "Large body: shown as plain text, folding and 
 
 /// The banner a page too large to preview whole shows under its bar.
 pub const PREVIEW_CUT_NOTE: &str = "Large page: the preview shows its start";
+
+/// The banner when the parser fails on a page, which then shows as text.
+pub const PREVIEW_FAILED_NOTE: &str = "This page could not be previewed, so it shows as text";
 
 /// How long typing in the filter, or a rows-mode find query, must pause before it runs.
 pub const SETTLE: Duration = Duration::from_millis(250);
@@ -804,6 +807,9 @@ impl BodyView {
         if self.preview_cut() {
             return Some(PREVIEW_CUT_NOTE.into());
         }
+        if self.previewing() && matches!(self.mask.page.get(), Some(None)) {
+            return Some(PREVIEW_FAILED_NOTE.into());
+        }
         let large = self.in_rows() && !self.editor_backed;
         let cut = (self.result.as_ref())
             .and_then(|r| r.response.as_ref())
@@ -951,17 +957,18 @@ impl BodyView {
     }
 
     // The prepared page and whether it was cut, made once per body; `None` when not
-    // previewing or before the redacted copy is made.
+    // previewing, before the redacted copy is made, or when the page failed to parse.
     fn preview_page(&self) -> Option<&(SharedString, bool)> {
         if !self.previewing() {
             return None;
         }
         let raw = self.result.as_ref()?.response.as_ref()?.text();
         let masked = self.mask.text.get()?;
-        Some(self.mask.page.get_or_init(|| {
-            let page = html_preview::prepare(masked.as_deref().unwrap_or(raw));
-            (SharedString::from(page.markdown), page.cut)
-        }))
+        let page = self.mask.page.get_or_init(|| {
+            let page = html_preview::prepare(masked.as_deref().unwrap_or(raw))?;
+            Some((SharedString::from(page.markdown), page.cut))
+        });
+        page.as_ref()
     }
 
     // Whether the previewed page passed the node bound, so only its start shows.
