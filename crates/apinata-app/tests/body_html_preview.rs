@@ -8,7 +8,6 @@ use std::sync::Arc;
 use apinata_app::body_view::BodyView;
 use apinata_app::html_preview;
 use apinata_core::{Outcome, RequestResult, Response};
-use gpui_kit::test::TestWindowExt;
 use gpui_kit::{
     AnyWindowHandle, AppContext, Entity, ImageFormat, ImageSource, SharedUri, TestAppContext,
     WindowOptions, point, px,
