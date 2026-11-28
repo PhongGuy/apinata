@@ -1331,6 +1331,11 @@ set when it ends. A collection or folder runner remembers these choices.
 Only requests with tests leaves out the requests `--tests-only` would, for
 that tab only; the list shows what will run, and a finished run notes how many
 it left out.
+Parallel sends up to that many requests of each iteration at once, with the
+same rules and limits as `--parallel`. A run that cannot go in parallel stops
+before anything is sent and names the request; Delay is locked while Parallel
+is above 1, and a row whose cookie changes the requests sent alongside it could
+not see says so.
 
 The bottom dock has Console, Network and Variables tabs. Variables lists the
 variables the active request sees, grouped by the scope that defines them, after
@@ -1616,7 +1621,7 @@ Changing requests and folders:
 Sending, examples and exports:
 
 - `send_request`: send one request and return its response.
-- `run_folder`: run every request under a folder.
+- `run_folder`: run every request under a folder; `parallel` sends up to that many of each iteration at once, as `--parallel` does, and every send still needs a trusted host.
 - `generate_code`: write a request as code, sending nothing.
 - `oauth2_token`: show, fetch, refresh or clear a request's or folder's OAuth 2.0 token, never returning the token.
 - `save_example`, `rename_example` and `delete_example`: keep the last response as a saved example, or rename or remove one.

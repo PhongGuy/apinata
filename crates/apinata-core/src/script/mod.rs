@@ -272,7 +272,8 @@ impl ScriptOptions {
         self.approved.is_some()
     }
 
-    pub(crate) fn is_enabled(&self) -> bool {
+    /// Whether scripts run, as [`ScriptOptions::enabled`] set it.
+    pub fn is_enabled(&self) -> bool {
         self.enabled
     }
 

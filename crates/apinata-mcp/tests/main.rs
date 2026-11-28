@@ -76,6 +76,7 @@ mod restore_item;
 mod row_defaults;
 mod run_fail_on_status;
 mod run_folder;
+mod run_parallel;
 mod run_retry;
 mod run_timeout;
 mod runtime_set;

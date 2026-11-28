@@ -174,6 +174,13 @@ pub struct SavedRunnerOptions {
     pub keep_cookies: bool,
     /// Whether a run works on a copy of the variables, dropping the values it sets.
     pub fork_variables: bool,
+    /// How many requests of an iteration may be in flight at once; `None` sends them in turn.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "lenient::option"
+    )]
+    pub parallel: Option<usize>,
 }
 
 /// A saved tab that can be the active one: a request or an example tab.
