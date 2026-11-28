@@ -194,6 +194,7 @@ pub mod url_unit;
 pub mod var_complete;
 pub mod var_tokens;
 pub mod variables_overview;
+pub mod vim;
 pub mod watch;
 pub mod window_drop;
 pub mod workspace;

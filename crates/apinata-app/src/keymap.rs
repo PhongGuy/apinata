@@ -31,6 +31,7 @@ use crate::ui::{
     ActivateSegment, DIALOG_FOOTER_CONTEXT, DIALOG_SELECT_CONTEXT, NextSegment, OpenSelect,
     PrevSegment, SEGMENTED_CONTEXT,
 };
+use crate::vim::{EnterNormal, INSERT_PREDICATE};
 
 /// The key context of the window's root view.
 pub const SHELL_CONTEXT: &str = "Shell";
@@ -261,6 +262,8 @@ pub fn fixed_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("down", ListDown, Some(KEY_LIST)),
         KeyBinding::new("enter", ListOpen, Some(KEY_LIST)),
         KeyBinding::new("escape", ListBack, Some(KEY_LIST)),
+        // Insert mode's Escape returns to Normal once the editor's own Escape has passed.
+        KeyBinding::new("escape", EnterNormal, Some(INSERT_PREDICATE)),
     ]
 }
 

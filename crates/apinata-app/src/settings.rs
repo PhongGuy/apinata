@@ -47,6 +47,8 @@ pub struct Settings {
     pub preview_tabs: bool,
     /// Wrap long lines in the body and script editors; each editor can still toggle it.
     pub wrap_editors: bool,
+    /// The key map of the body, script and docs editors.
+    pub editor_keymap: EditorKeymap,
     /// The global proxy; its password lives in the secret store, never here.
     pub proxy: ProxyPrefs,
     /// A PEM file of extra CA certificates to trust.
@@ -100,6 +102,14 @@ pub fn wrap_editors(cx: &App) -> bool {
         .is_none_or(|state| state.settings.read(cx).get().wrap_editors)
 }
 
+/// The Preferences key map of the code editors; the default when the app state is absent
+/// (tests).
+pub fn editor_keymap(cx: &App) -> EditorKeymap {
+    cx.try_global::<AppState>()
+        .map(|state| state.settings.read(cx).get().editor_keymap)
+        .unwrap_or_default()
+}
+
 /// Whether a sidebar click opens a preview tab rather than a kept one; on when the app state
 /// is absent (tests).
 pub fn preview_tabs(cx: &App) -> bool {
@@ -133,6 +143,7 @@ impl Default for Settings {
             autosave: false,
             preview_tabs: true,
             wrap_editors: true,
+            editor_keymap: EditorKeymap::default(),
             proxy: ProxyPrefs::default(),
             ca_file: None,
             keep_default_cas: true,
@@ -183,6 +194,18 @@ pub enum HttpVersionPref {
     Auto,
     /// Speak HTTP/2 from the first byte, also over plain HTTP.
     Http2PriorKnowledge,
+}
+
+/// The key bindings of the code editors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EditorKeymap {
+    /// Vim's Normal and Insert modes.
+    Vim,
+    /// The editor's own keys. A key map this version does not know reads as this one.
+    #[default]
+    #[serde(other)]
+    Default,
 }
 
 /// Where the response panel sits.

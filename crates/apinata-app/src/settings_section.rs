@@ -23,6 +23,7 @@ use crate::settings::HttpVersionPref;
 use crate::style::{self, FORM_INPUT_WIDTH, SPACE_1, SPACE_2};
 use crate::tag_input::{TagField, TagsChanged};
 use crate::ui;
+use crate::vim::Vim;
 
 /// Why a typed custom timeout was refused: the limit is lifted by No limit, never by 0.
 pub const TIMEOUT_ZERO_NOTE: &str = "Enter a number above 0, or choose No limit.";
@@ -836,7 +837,9 @@ pub struct DocsSection {
     mode: DocsMode,
     /// Set by the first `load` or any `set_mode`; after that only the toggle moves the mode.
     mode_chosen: bool,
+    vim: Entity<Vim>,
     _sub: Subscription,
+    _vim_sub: Subscription,
 }
 
 impl EventEmitter<SectionEdit> for DocsSection {}
@@ -855,11 +858,15 @@ impl DocsSection {
                 cx.emit(SectionEdit::new(Edit::Docs(text)));
             }
         });
+        let vim = cx.new(|cx| Vim::new(&code, cx));
+        let vim_sub = cx.observe(&vim, |_, _, cx| cx.notify());
         DocsSection {
             code,
             mode: DocsMode::Edit,
             mode_chosen: false,
+            vim,
             _sub: sub,
+            _vim_sub: vim_sub,
         }
     }
 
@@ -897,6 +904,11 @@ impl DocsSection {
         self.code.read(cx).value()
     }
 
+    /// The Vim key map of the markdown editor.
+    pub fn vim(&self) -> &Entity<Vim> {
+        &self.vim
+    }
+
     /// The markdown editor.
     pub fn code(&self) -> &Entity<EditorState> {
         &self.code
@@ -924,10 +936,9 @@ impl Render for DocsSection {
         );
         // The preview takes the editor's slot so switching views never moves the layout.
         let body = match self.mode {
-            DocsMode::Edit => div().id("docs-code").child(ui::ringed_editor(
-                Editor::new(&self.code).h_full(),
-                &self.code,
-            )),
+            DocsMode::Edit => crate::vim::scope(div().id("docs-code"), &self.vim, cx).child(
+                ui::ringed_editor(Editor::new(&self.code).h_full(), &self.code),
+            ),
             DocsMode::Preview => {
                 let text = self.preview_text(cx);
                 let content = if text.trim().is_empty() {
@@ -947,7 +958,12 @@ impl Render for DocsSection {
                 div().id("docs-preview").child(content)
             }
         };
-        v_flex().w_full().flex_1().gap(SPACE_2).child(toggle).child(
+        let header = h_flex()
+            .gap(SPACE_2)
+            .items_center()
+            .child(toggle)
+            .children(crate::vim::mode_label("docs-vim-mode", &self.vim, cx));
+        v_flex().w_full().flex_1().gap(SPACE_2).child(header).child(
             body.test_support()
                 .w_full()
                 .flex_1()
