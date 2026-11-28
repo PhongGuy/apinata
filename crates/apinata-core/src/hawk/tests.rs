@@ -12,12 +12,16 @@ const NONCE: &str = "j4h3g2";
 const RESOURCE: &str = "http://example.com:8000/resource/1?b=1&a=2";
 
 fn spec(ext: &str) -> HawkSpec {
-    let mut spec = HawkSpec::default();
-    spec.auth_id = ID.to_owned();
-    spec.auth_key = KEY.to_owned();
-    spec.ext = ext.to_owned();
-    spec
+    HawkSpec {
+        auth_id: ID.to_owned(),
+        auth_key: KEY.to_owned(),
+        ext: ext.to_owned(),
+        ..HawkSpec::default()
+    }
 }
+
+/// One bad setting: the error it must name and how it breaks a valid spec.
+type BadCase = (&'static str, fn(&mut HawkSpec));
 
 fn sign(spec: &HawkSpec, method: &str, url: &str, ct: Option<&str>, body: &[u8]) -> Signed {
     let signer = Signer::new(spec).expect("valid");
@@ -151,7 +155,7 @@ fn fresh_nonces_differ_per_signature() {
 
 #[test]
 fn bad_settings_are_refused_without_quoting_the_key() {
-    let cases: [(&str, fn(&mut HawkSpec)); 5] = [
+    let cases: [BadCase; 5] = [
         ("authId is required", |s| s.auth_id.clear()),
         ("authKey is required", |s| s.auth_key.clear()),
         ("unknown algorithm", |s| s.algorithm = "md5".to_owned()),
