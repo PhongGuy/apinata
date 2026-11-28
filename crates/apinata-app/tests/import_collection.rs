@@ -204,7 +204,7 @@ fn the_key_starts_an_import(cx: &mut TestAppContext) {
 /// `Shop` whose one request uses an auth type the import does not support.
 pub fn shop_with_oauth() -> String {
     format!(
-        r#"{{"info":{{"name":"Shop","schema":"{V21}"}},"item":[{{"name":"Get user","request":{{"method":"GET","url":"https://x.test/users/1","auth":{{"type":"asap"}}}}}}]}}"#
+        r#"{{"info":{{"name":"Shop","schema":"{V21}"}},"item":[{{"name":"Get user","request":{{"method":"GET","url":"https://x.test/users/1","auth":{{"type":"kerberos"}}}}}}]}}"#
     )
 }
 
@@ -230,7 +230,7 @@ fn report_lines_name_each_note_without_backticks() {
     assert!(
         lines
             .iter()
-            .any(|l| l.starts_with("asap authentication is not supported")),
+            .any(|l| l.starts_with("kerberos authentication is not supported")),
         "{lines:?}"
     );
     assert!(lines.iter().all(|l| !l.contains('`')), "{lines:?}");
@@ -244,12 +244,12 @@ fn report_lines_name_each_note_without_backticks() {
 #[test]
 fn each_kind_of_note_is_one_line_with_its_places_and_files_under_it() {
     let report = report_of(&shop_with_oauth_requests(2));
-    let asap: Vec<_> = report
+    let kerberos: Vec<_> = report
         .notes
         .iter()
-        .filter(|n| n.detail.starts_with("`asap`"))
+        .filter(|n| n.detail.starts_with("`kerberos`"))
         .collect();
-    assert_eq!(asap.len(), 2, "{:?}", report.notes);
+    assert_eq!(kerberos.len(), 2, "{:?}", report.notes);
     let place = |n: &apinata_core::import::ImportNote| {
         format!(
             "{}, in {}",
@@ -258,9 +258,9 @@ fn each_kind_of_note_is_one_line_with_its_places_and_files_under_it() {
         )
     };
     let expected = format!(
-        "asap authentication is not supported; set to none\n{}\n{}",
-        place(asap[0]),
-        place(asap[1])
+        "kerberos authentication is not supported; set to none\n{}\n{}",
+        place(kerberos[0]),
+        place(kerberos[1])
     );
     assert!(
         expected.contains("\nrequest Get user 1, auth, in "),
@@ -429,7 +429,7 @@ fn shop_with_oauth_requests(n: usize) -> String {
     let items: Vec<String> = (1..=n)
         .map(|i| {
             format!(
-                r#"{{"name":"Get user {i}","request":{{"method":"GET","url":"https://x.test/users/{i}","auth":{{"type":"asap"}}}}}}"#
+                r#"{{"name":"Get user {i}","request":{{"method":"GET","url":"https://x.test/users/{i}","auth":{{"type":"kerberos"}}}}}}"#
             )
         })
         .collect();
@@ -635,7 +635,7 @@ fn an_import_without_environments_selects_none(cx: &mut TestAppContext) {
 // A note's file is shown in full however deep it sits, wrapping inside its place's width.
 #[gpui_kit::test]
 fn a_long_file_in_the_report_wraps_in_full(cx: &mut TestAppContext) {
-    let request = r#"{"name":"Get user","request":{"method":"GET","url":"https://x.test/u","auth":{"type":"asap"}}}"#;
+    let request = r#"{"name":"Get user","request":{"method":"GET","url":"https://x.test/u","auth":{"type":"kerberos"}}}"#;
     let mut item = request.to_owned();
     for i in 0..8 {
         item = format!(r#"{{"name":"a-rather-long-folder-name-{i}","item":[{item}]}}"#);

@@ -2,6 +2,9 @@
 //!
 //! Every error names the field or the algorithm, never the payload, key or secret text.
 
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD;
+use percent_encoding::percent_decode_str;
 use serde_json::{Map, Value};
 
 use crate::edit::JwtAlgorithm;
@@ -67,6 +70,132 @@ pub(crate) fn token(claims: &Claims<'_>, key: &Key, now: u64) -> Result<String, 
     let header = Value::Object(header).to_string();
     let payload = Value::Object(payload).to_string();
     sign(alg, &header, &payload, &input).map_err(|_| format!("the key cannot be used with {alg}"))
+}
+
+/// The fields of an ASAP token after variables are filled in.
+pub(crate) struct Asap<'a> {
+    pub(crate) algorithm: &'a str,
+    pub(crate) issuer: &'a str,
+    pub(crate) audience: &'a str,
+    pub(crate) key_id: &'a str,
+    pub(crate) subject: &'a str,
+    pub(crate) expires_in: &'a str,
+    pub(crate) additional_claims: &'a str,
+    pub(crate) private_key: &'a str,
+}
+
+/// A signed ASAP token and its key as the PEM text it was signed with.
+pub(crate) struct AsapSigned {
+    pub(crate) token: String,
+    pub(crate) pem: String,
+}
+
+/// Signs an ASAP token: the header is `alg` then `kid`, the claims `iss`, `sub` (the issuer
+/// when blank), `aud`, `iat` (`now`), `exp` (an hour unless set) and `jti`, and any
+/// additional claim then replaces or extends them. Errors name the field, never a value.
+pub(crate) fn asap_token(f: &Asap<'_>, now: u64, jti: &str) -> Result<AsapSigned, String> {
+    let alg = f.algorithm;
+    let algorithm = JwtAlgorithm::parse(alg);
+    if matches!(algorithm, JwtAlgorithm::Other(_)) || algorithm.uses_secret() {
+        return Err("the algorithm is not one of RS, PS or ES with 256, 384 or 512".to_owned());
+    }
+    for (name, value) in [("issuer", f.issuer), ("audience", f.audience)] {
+        if value.trim().is_empty() {
+            return Err(format!("{name} is required"));
+        }
+    }
+    if f.private_key.trim().is_empty() {
+        return Err("the private key is blank".to_owned());
+    }
+    let (pem, uri_kid) = asap_pem(f.private_key)?;
+    let kid = match (f.key_id.trim(), uri_kid) {
+        ("", Some(kid)) => kid,
+        ("", None) => return Err("keyId is required".to_owned()),
+        (given, Some(kid)) if given != kid => {
+            return Err("keyId does not match the key id of the data URI key".to_owned());
+        }
+        (given, _) => given.to_owned(),
+    };
+    let seconds = match f.expires_in.trim() {
+        "" => 3600,
+        n => n
+            .parse::<u64>()
+            .map_err(|_| "expiresIn is not a whole number of seconds".to_owned())?,
+    };
+    let subject = if f.subject.trim().is_empty() {
+        f.issuer
+    } else {
+        f.subject
+    };
+    let mut payload = Map::new();
+    payload.insert("iss".to_owned(), Value::from(f.issuer));
+    payload.insert("sub".to_owned(), Value::from(subject));
+    payload.insert("aud".to_owned(), Value::from(f.audience));
+    payload.insert("iat".to_owned(), Value::from(now));
+    payload.insert("exp".to_owned(), Value::from(now.saturating_add(seconds)));
+    payload.insert("jti".to_owned(), Value::from(jti));
+    let extra = object(f.additional_claims, "additionalClaims")
+        .map_err(|_| "additionalClaims is not a JSON object".to_owned())?;
+    payload.extend(extra);
+    let mut header = Map::new();
+    header.insert("kid".to_owned(), Value::from(kid));
+    let claims = Claims {
+        algorithm: alg,
+        headers: &Value::Object(header).to_string(),
+        payload: &Value::Object(payload).to_string(),
+        expires_in: None,
+    };
+    let token = token(&claims, &Key::Pem(pem.clone()), now)?;
+    Ok(AsapSigned { token, pem })
+}
+
+/// The key as PEM, with the key id a data URI names. PEM text is kept (a literal `\n` read as
+/// a line break); a `data:application/pkcs8;kid=..;base64,..` URI or bare base64 is PKCS#8 DER.
+fn asap_pem(key: &str) -> Result<(String, Option<String>), String> {
+    let bad =
+        || "the private key is not PEM, a data:application/pkcs8 URI or base64 DER".to_owned();
+    let key = key.replace("\\n", "\n");
+    let key = key.trim();
+    if key.contains("-----BEGIN") {
+        return Ok((key.to_owned(), None));
+    }
+    let (kid, data) = match key.strip_prefix("data:") {
+        Some(rest) => {
+            let (meta, data) = rest.split_once(',').ok_or_else(bad)?;
+            let mut parts = meta.split(';');
+            if parts.next() != Some("application/pkcs8") {
+                return Err(bad());
+            }
+            let (mut kid, mut base64) = (None, false);
+            for part in parts {
+                match part.strip_prefix("kid=") {
+                    Some(id) => {
+                        let id = percent_decode_str(id).decode_utf8().map_err(|_| bad())?;
+                        kid = Some(id.into_owned());
+                    }
+                    None => base64 |= part == "base64",
+                }
+            }
+            if !base64 {
+                return Err(bad());
+            }
+            (kid, data)
+        }
+        None => (None, key),
+    };
+    let compact: String = data.chars().filter(|c| !c.is_whitespace()).collect();
+    let der = STANDARD.decode(compact).map_err(|_| bad())?;
+    let body = STANDARD.encode(der);
+    let lines: Vec<&str> = body
+        .as_bytes()
+        .chunks(64)
+        .filter_map(|c| std::str::from_utf8(c).ok())
+        .collect();
+    let pem = format!(
+        "-----BEGIN PRIVATE KEY-----\n{}\n-----END PRIVATE KEY-----\n",
+        lines.join("\n")
+    );
+    Ok((pem, kid))
 }
 
 #[cfg(test)]

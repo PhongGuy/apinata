@@ -32,6 +32,7 @@ and a quick start, see the [README](README.md).
   - [OAuth 2.0 and scripts](#oauth-20-and-scripts)
   - [JWT Bearer auth](#jwt-bearer-auth)
   - [Hawk auth](#hawk-auth)
+  - [Atlassian ASAP auth](#atlassian-asap-auth)
   - [Team servers](#team-servers)
   - [Timeouts, streams and body size](#timeouts-streams-and-body-size)
   - [Reading responses](#reading-responses)
@@ -1053,6 +1054,46 @@ Hoppscotch Hawk auth import as this kind, and Postman export maps it back.
 apinata item request users/get.yml --auth-json '{"type": "hawk", "auth_id": "dh37fgj492je",
   "auth_key": "{{hawk_key}}", "algorithm": "sha256", "ext": "", "app": "", "dlg": "",
   "nonce": "", "timestamp": "", "include_payload_hash": false}'
+```
+
+### Atlassian ASAP auth
+
+A request, folder or collection with `type: asap` auth signs a short-lived token on every send
+and sends it as `Authorization: Bearer <token>`:
+
+```yaml
+auth:
+  type: asap
+  algorithm: RS256            # RS, PS or ES with 256, 384 or 512
+  issuer: svc/client
+  audience: svc/server
+  keyId: svc/client/key1      # blank takes the kid of a data URI key
+  subject: ""                 # blank sends the issuer
+  expiresIn: ""               # seconds; blank is 3600
+  additionalClaims: ""        # JSON object text; its claims win over the standard ones
+  privateKey: "{{asap_key}}"
+```
+
+The token's header carries `alg` and `kid`, and its claims are `iss`, `sub`, `aud`, `iat`,
+`exp` and a fresh `jti`. The private key is PEM text (PKCS#8, PKCS#1 or SEC1, with line breaks
+or literal `\n`), a `data:application/pkcs8;kid=...;base64,...` URI or bare base64 DER. It is
+always inline, never a file path, so keep it in an environment secret and refer to it as
+`{{name}}`. One hour is the longest lifetime most ASAP servers accept, so a server with a
+skewed clock may want a shorter `expiresIn`.
+
+A blank issuer, audience, key id or key, an unknown algorithm, an expiry that is not a whole
+number or claims that are not a JSON object stop the request before it is sent, and the error
+never shows the key. The key and the token are hidden in history, reports and the Timeline, and
+a redirect to another origin drops the header unless `forwardAuthorizationHeader` is on.
+Postman and Insomnia ASAP auth import as this kind (Insomnia's as RS256 with a ten-minute
+expiry), an imported key goes to the keychain, and Postman export maps it back.
+
+`--auth-json` and MCP take every field in snake_case:
+
+```sh
+apinata item request users/get.yml --auth-json '{"type": "asap", "algorithm": "RS256",
+  "issuer": "svc/client", "audience": "svc/server", "key_id": "svc/client/key1",
+  "subject": "", "expires_in": "", "additional_claims": "", "private_key": "{{asap_key}}"}'
 ```
 
 ### Team servers
