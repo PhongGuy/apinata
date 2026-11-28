@@ -4,8 +4,8 @@ use apinata_app::auth_section::{AuthField, AuthMode, AuthSection};
 use apinata_app::command::Edit;
 use apinata_app::style::{FORM_LABEL_WIDTH, JWT_BLOCK_MAX_HEIGHT, at_zoom};
 use apinata_core::{
-    ApiKeyPlacement, AuthSpec, EdgeGridSpec, OAuth1SignatureMethod, OAuth1Spec, OAuth2Flow,
-    OAuth2Spec,
+    ApiKeyPlacement, AuthSpec, EdgeGridSpec, HawkSpec, OAuth1SignatureMethod, OAuth1Spec,
+    OAuth2Flow, OAuth2Spec,
 };
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, TestAppContext};
@@ -286,6 +286,7 @@ fn switching_to_the_new_modes_sends_empty_specs_and_back_restores(cx: &mut TestA
             "AWS Sig v4",
             "WSSE",
             "Akamai EdgeGrid",
+            "Hawk",
             "OAuth 1.0",
             "OAuth 2.0"
         ]
@@ -808,7 +809,7 @@ fn a_secret_field_reveals_with_its_eye_and_stays_shown_while_typing(cx: &mut Tes
 // plain one has none.
 #[gpui_kit::test]
 fn every_secret_input_has_an_eye_button(cx: &mut TestAppContext) {
-    let cases: [(AuthMode, &[&str]); 10] = [
+    let cases: [(AuthMode, &[&str]); 11] = [
         (AuthMode::Basic, &["auth-password"]),
         (AuthMode::Digest, &["auth-password"]),
         (AuthMode::Wsse, &["auth-password"]),
@@ -827,6 +828,7 @@ fn every_secret_input_has_an_eye_button(cx: &mut TestAppContext) {
                 "auth-eg-client-secret",
             ],
         ),
+        (AuthMode::Hawk, &["auth-hawk-auth-key"]),
         (
             AuthMode::OAuth1,
             &["oauth1-consumer-secret", "oauth1-token-secret"],
@@ -890,6 +892,8 @@ fn auth_fields_show_example_placeholders(cx: &mut TestAppContext) {
         (AuthField::Timestamp, "Generated when sent"),
         (AuthField::HeadersToSign, "X-Header-One, X-Header-Two"),
         (AuthField::MaxBodySize, "131072"),
+        (AuthField::HawkNonce, "Generated when sent"),
+        (AuthField::HawkTimestamp, "Generated when sent"),
     ];
     for (f, want) in expected {
         assert_eq!(hint(cx, f), want, "{f:?}");
@@ -1049,4 +1053,161 @@ fn switching_back_restores_the_first_types_credentials(cx: &mut TestAppContext) 
     assert_eq!(last_auth(cx, &host), basic("u", "p"));
     mode(cx, win, &s, AuthMode::Wsse);
     assert_eq!(last_auth(cx, &host), wsse("u", "p2"));
+}
+
+fn hawk(f: impl FnOnce(&mut HawkSpec)) -> AuthSpec {
+    let mut s = HawkSpec::default();
+    f(&mut s);
+    AuthSpec::Hawk(s)
+}
+
+fn hawk_filled(s: &mut HawkSpec) {
+    s.auth_id = "id".into();
+    s.auth_key = "key".into();
+    s.algorithm = "sha1".into();
+    s.ext = "e".into();
+    s.app = "a".into();
+    s.dlg = "d".into();
+    s.nonce = "n".into();
+    s.timestamp = "1700000000".into();
+    s.include_payload_hash = true;
+}
+
+const HAWK_IDS: [&str; 9] = [
+    "auth-hawk-auth-id",
+    "auth-hawk-auth-key",
+    "auth-hawk-algorithm",
+    "auth-hawk-ext",
+    "auth-hawk-app",
+    "auth-hawk-dlg",
+    "auth-hawk-nonce",
+    "auth-hawk-timestamp",
+    "auth-hawk-include-payload-hash",
+];
+
+#[gpui_kit::test]
+fn hawk_loads_every_field_with_only_the_key_masked(cx: &mut TestAppContext) {
+    let (win, host, s) = auth(cx, hawk(hawk_filled));
+    assert_eq!(s.read_with(cx, |s, _| s.mode()), Some(AuthMode::Hawk));
+    assert_eq!(AuthMode::Hawk.key(), "hawk");
+    assert_eq!(AuthMode::of(&hawk(|_| {})), Some(AuthMode::Hawk));
+    assert_eq!(shown(cx, win, HAWK_IDS), [true; 9]);
+    let read = |cx: &mut TestAppContext, f: AuthField| {
+        let input = s.read_with(cx, |s, _| s.input(f).clone());
+        input.read_with(cx, |i, _| {
+            (i.presentation().is_masked(), i.value().to_string())
+        })
+    };
+    let fields = [
+        (AuthField::HawkAuthId, false, "id"),
+        (AuthField::HawkAuthKey, true, "key"),
+        (AuthField::HawkExt, false, "e"),
+        (AuthField::HawkApp, false, "a"),
+        (AuthField::HawkDlg, false, "d"),
+        (AuthField::HawkNonce, false, "n"),
+        (AuthField::HawkTimestamp, false, "1700000000"),
+    ];
+    for (f, masked, value) in fields {
+        assert_eq!(read(cx, f), (masked, value.to_owned()), "{f:?}");
+    }
+    let algorithm = cx
+        .update_window(win, |_, w, _| {
+            w.find("auth-hawk-algorithm").value().map(str::to_owned)
+        })
+        .unwrap();
+    assert_eq!(algorithm.as_deref(), Some("SHA-1"));
+    // An edit carries every loaded field, the algorithm and the checkbox included.
+    type_at_end(cx, win, None, "auth-hawk-ext", "x");
+    cx.run_until_parked();
+    assert_eq!(
+        last_auth(cx, &host),
+        hawk(|s| {
+            hawk_filled(s);
+            s.ext = "ex".into();
+        })
+    );
+}
+
+// Sets the one Hawk field an input edits.
+type SetHawk = fn(&mut HawkSpec);
+
+#[gpui_kit::test]
+fn hawk_typing_emits_the_field_it_names(cx: &mut TestAppContext) {
+    let (win, host, _s) = auth(cx, hawk(|_| {}));
+    let cases: [(&'static str, SetHawk); 7] = [
+        ("auth-hawk-auth-id", |s| s.auth_id = "z".into()),
+        ("auth-hawk-auth-key", |s| s.auth_key = "z".into()),
+        ("auth-hawk-ext", |s| s.ext = "z".into()),
+        ("auth-hawk-app", |s| s.app = "z".into()),
+        ("auth-hawk-dlg", |s| s.dlg = "z".into()),
+        ("auth-hawk-nonce", |s| s.nonce = "z".into()),
+        ("auth-hawk-timestamp", |s| s.timestamp = "z".into()),
+    ];
+    for (id, set) in cases {
+        replace_input(cx, win, None, id, "z");
+        cx.run_until_parked();
+        assert_eq!(last_auth(cx, &host), hawk(set), "{id}");
+        replace_input(cx, win, None, id, "");
+        cx.run_until_parked();
+    }
+}
+
+#[gpui_kit::test]
+fn hawk_algorithm_select_and_payload_hash_checkbox_emit(cx: &mut TestAppContext) {
+    let (win, host, _s) = auth(cx, hawk(|_| {}));
+    let click = |cx: &mut TestAppContext, id: &'static str| {
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.click(id, cx)
+        })
+        .unwrap();
+        cx.run_until_parked();
+    };
+    click(cx, "auth-hawk-algorithm");
+    click(cx, "auth-hawk-algorithm-option-sha1");
+    assert_eq!(last_auth(cx, &host), hawk(|s| s.algorithm = "sha1".into()));
+    click(cx, "auth-hawk-include-payload-hash");
+    assert_eq!(
+        last_auth(cx, &host),
+        hawk(|s| {
+            s.algorithm = "sha1".into();
+            s.include_payload_hash = true;
+        })
+    );
+    click(cx, "auth-hawk-algorithm");
+    click(cx, "auth-hawk-algorithm-option-sha256");
+    assert_eq!(
+        last_auth(cx, &host),
+        hawk(|s| s.include_payload_hash = true)
+    );
+}
+
+// An algorithm spelling the picker does not offer is kept through unrelated edits.
+#[gpui_kit::test]
+fn hawk_keeps_an_unknown_algorithm_spelling(cx: &mut TestAppContext) {
+    let (win, host, _s) = auth(cx, hawk(|s| s.algorithm = "SHA512".into()));
+    type_at_end(cx, win, None, "auth-hawk-auth-id", "i");
+    cx.run_until_parked();
+    assert_eq!(
+        last_auth(cx, &host),
+        hawk(|s| {
+            s.algorithm = "SHA512".into();
+            s.auth_id = "i".into();
+        })
+    );
+}
+
+#[gpui_kit::test]
+fn switching_to_hawk_sends_the_default_spec_and_back_restores(cx: &mut TestAppContext) {
+    let (win, host, s) = auth(cx, basic("u", "p"));
+    mode(cx, win, &s, AuthMode::Hawk);
+    assert_eq!(last_auth(cx, &host), AuthSpec::Hawk(HawkSpec::default()));
+    type_at_end(cx, win, None, "auth-hawk-auth-key", "k");
+    cx.run_until_parked();
+    let typed = hawk(|s| s.auth_key = "k".into());
+    assert_eq!(last_auth(cx, &host), typed);
+    mode(cx, win, &s, AuthMode::Basic);
+    assert_eq!(last_auth(cx, &host), basic("u", "p"));
+    mode(cx, win, &s, AuthMode::Hawk);
+    assert_eq!(last_auth(cx, &host), typed);
 }
