@@ -1907,7 +1907,9 @@ impl ApinataServer {
         description = "Run every request under the folder `path` (a request file runs alone; \
                        empty runs the whole collection) in the app's order, and return each \
                        outcome, status and assertion verdicts, without bodies. `bail` stops at \
-                       the first failure; `tags` and `exclude_tags` filter by request tag and \
+                       the first failure; `tags` and `exclude_tags` filter by request tag, \
+                       `tests_only` keeps only requests with their own assertions or `test(...)` \
+                       calls and reports the rest as `skipped_without_tests`, and \
                        `delay_ms` pauses between requests. `retries` (0 to 10) sends a request again when the send \
                        fails in transit or the answer is 502, 503 or 504, pausing `retry_delay_ms` (a longer \
                        Retry-After wins); POST and PATCH retry only with `retry_unsafe`, and a retried item \
@@ -1959,6 +1961,7 @@ impl ApinataServer {
         let (bail, skip) = (args.bail, args.skip_scripts);
         let (path, delay) = (args.path.clone(), Duration::from_millis(args.delay_ms));
         let filter = args.tag_filter();
+        let tests_only = args.tests_only;
         let limits = send::stream_limits(args.stream_max_seconds, args.stream_max_events);
         let plan_filter = filter.clone();
         let (ctx, plan) = self
@@ -1967,7 +1970,7 @@ impl ApinataServer {
                 let env = args.environment.as_deref();
                 let ctx =
                     send::context(c, env, &no_vars, &options, store, runtime, tokens, overlay)?;
-                Ok((ctx, run::plan(c, &args.path, &plan_filter)?))
+                Ok((ctx, run::plan(c, &args.path, &plan_filter, tests_only)?))
             })
             .await?;
         let requests: Vec<_> = plan
@@ -2053,7 +2056,9 @@ impl ApinataServer {
         }
 
         let (redactor, prepared) = self
-            .with_collection(move |c| Ok(run::prepare(c, &path, &filter, ctx, &scripted)))
+            .with_collection(move |c| {
+                Ok(run::prepare(c, &path, &filter, tests_only, ctx, &scripted))
+            })
             .await
             .inspect_err(|_| watcher.abort())?;
         // Registered before the outcome is looked at, so a refusal quoting a secret is scrubbed.
@@ -2152,6 +2157,7 @@ impl ApinataServer {
             results,
             iterations,
             load_errors: report.load_errors.iter().map(ToString::to_string).collect(),
+            skipped_without_tests: prepared.plan.untested_dropped(),
         }))
     }
 
