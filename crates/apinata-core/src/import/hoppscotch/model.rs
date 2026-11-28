@@ -189,6 +189,21 @@ pub(super) enum Mapped {
         add_to: Option<String>,
     },
     Jwt(Box<JwtMembers>),
+    Hawk(Box<HawkMembers>),
+}
+
+/// A Hawk auth's members as text.
+pub(super) struct HawkMembers {
+    pub(super) auth_id: String,
+    pub(super) auth_key: String,
+    pub(super) algorithm: String,
+    pub(super) include_payload_hash: bool,
+    pub(super) user: String,
+    pub(super) nonce: String,
+    pub(super) ext: String,
+    pub(super) app: String,
+    pub(super) dlg: String,
+    pub(super) timestamp: String,
 }
 
 /// A JWT auth's members as text; an absent prefix or placement is `None`.
@@ -251,6 +266,22 @@ impl<'de> Deserialize<'de> for Auth {
             #[serde(flatten)]
             rest: Map<String, Value>,
         }
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Hawk {
+            auth_id: Option<Text>,
+            auth_key: Option<Text>,
+            algorithm: Option<Text>,
+            include_payload_hash: Option<bool>,
+            user: Option<Text>,
+            nonce: Option<Text>,
+            ext: Option<Text>,
+            app: Option<Text>,
+            dlg: Option<Text>,
+            timestamp: Option<Text>,
+            #[serde(flatten)]
+            rest: Map<String, Value>,
+        }
         fn read<'de, T: Deserialize<'de>, E: de::Error>(rest: Map<String, Value>) -> Result<T, E> {
             T::deserialize(Value::Object(rest)).map_err(E::custom)
         }
@@ -299,6 +330,22 @@ impl<'de> Deserialize<'de> for Auth {
                     param_name: text(j.param_name),
                 };
                 (Mapped::Jwt(Box::new(members)), j.rest)
+            }
+            "hawk" => {
+                let h: Hawk = read(head.rest)?;
+                let members = HawkMembers {
+                    auth_id: text(h.auth_id),
+                    auth_key: text(h.auth_key),
+                    algorithm: text(h.algorithm),
+                    include_payload_hash: h.include_payload_hash.unwrap_or(false),
+                    user: text(h.user),
+                    nonce: text(h.nonce),
+                    ext: text(h.ext),
+                    app: text(h.app),
+                    dlg: text(h.dlg),
+                    timestamp: text(h.timestamp),
+                };
+                (Mapped::Hawk(Box::new(members)), h.rest)
             }
             other => return Ok(Auth::Unsupported(other.to_owned())),
         };

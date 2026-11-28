@@ -188,8 +188,8 @@ pub(crate) fn sent_headers(req: &ResolvedRequest) -> impl Iterator<Item = &(Stri
     })
 }
 
-/// The sentence naming send-time auth the snippet leaves out: SigV4, OAuth 1.0, WSSE and
-/// EdgeGrid always, and digest unless the target writes digest itself (`natively_digest`).
+/// The sentence naming send-time auth the snippet leaves out: SigV4, OAuth 1.0, WSSE, EdgeGrid
+/// and Hawk always, and digest unless the target writes digest itself (`natively_digest`).
 pub(crate) fn omitted_auth(req: &ResolvedRequest, natively_digest: bool) -> Option<&'static str> {
     match req.send_auth()? {
         SendAuth::AwsV4(_) => Some("AWS Signature auth is not included in this snippet."),
@@ -197,6 +197,7 @@ pub(crate) fn omitted_auth(req: &ResolvedRequest, natively_digest: bool) -> Opti
         SendAuth::Wsse { .. } => Some("WSSE auth is not included in this snippet."),
         SendAuth::Ntlm { .. } => Some("NTLM auth is not included in this snippet."),
         SendAuth::EdgeGrid(_) => Some("Akamai EdgeGrid auth is not included in this snippet."),
+        SendAuth::Hawk(_) => Some("Hawk auth is not included in this snippet."),
         SendAuth::Digest { .. } if !natively_digest => {
             Some("Digest auth is not included in this snippet.")
         }
@@ -241,7 +242,8 @@ pub(crate) fn digest_credentials(req: &ResolvedRequest) -> Option<(&str, &str)> 
         | SendAuth::OAuth1(_)
         | SendAuth::Wsse { .. }
         | SendAuth::Ntlm { .. }
-        | SendAuth::EdgeGrid(_) => None,
+        | SendAuth::EdgeGrid(_)
+        | SendAuth::Hawk(_) => None,
     }
 }
 

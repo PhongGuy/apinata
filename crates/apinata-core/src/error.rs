@@ -182,6 +182,12 @@ pub enum ResolveError {
         /// What is wrong: a missing credential or a baseURL that does not parse.
         reason: String,
     },
+    /// The Hawk auth cannot sign; `reason` names the field, never the key.
+    #[error("Hawk: {reason}")]
+    Hawk {
+        /// What is wrong: a missing id or key, the algorithm, the timestamp or an attribute.
+        reason: String,
+    },
     /// The JWT auth cannot sign; `reason` never quotes the payload, key or secret.
     #[error("JWT: {reason}")]
     Jwt {

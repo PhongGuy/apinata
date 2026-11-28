@@ -25,6 +25,7 @@ use crate::cookies::CookieJar;
 use crate::default_headers::{defaults_without, omits};
 use crate::digest;
 use crate::edgegrid;
+use crate::hawk;
 use crate::host_guard::{
     Guard, HostPolicy, Lookup, SystemLookup, judge_with_overrides, refusal_in,
 };
@@ -1586,6 +1587,28 @@ impl Executor {
                 buf.place(&value);
                 sending.retain(|(n, _)| !n.eq_ignore_ascii_case("authorization"));
                 sending.push(("authorization".to_owned(), value));
+            }
+            // Hawk binds this hop's method, target, host and port (and body hash when asked)
+            // under a fresh nonce; like EdgeGrid, an off-origin hop is signed only when forwarding.
+            if let Some(SendAuth::Hawk(signer)) = req.send_auth()
+                && (!left_origin || req.forward_authorization_header())
+            {
+                let content_type = sending
+                    .iter()
+                    .find(|(n, _)| n.eq_ignore_ascii_case("content-type"))
+                    .map(|(_, v)| v.as_str());
+                let signed = signer
+                    .sign(&hawk::Outgoing {
+                        method: method.as_str(),
+                        url: &url,
+                        content_type,
+                        body: &body,
+                    })
+                    .map_err(|e| invalid(format!("could not sign the request: {e}")))?;
+                buf.place(&signed.header);
+                buf.place(&signed.mac);
+                sending.retain(|(n, _)| !n.eq_ignore_ascii_case("authorization"));
+                sending.push(("authorization".to_owned(), signed.header));
             }
             if let Some(value) = digest_header.take() {
                 buf.place(&value);

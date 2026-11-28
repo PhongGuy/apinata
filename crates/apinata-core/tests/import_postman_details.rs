@@ -91,7 +91,7 @@ fn auth_maps_supported_types_and_sets_the_rest_to_none() {
             placement: ApiKeyPlacement::Header
         }
     );
-    for unsupported in ["hawk", "asap"] {
+    for unsupported in ["asap"] {
         let c = request(
             &format!(r#", "auth": {{"type": "{unsupported}", "{unsupported}": []}}"#),
             "",
