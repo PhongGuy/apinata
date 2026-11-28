@@ -430,6 +430,21 @@ mod tests {
             .to_owned()
     }
 
+    #[test]
+    fn an_html_entity_echo_is_scrubbed() {
+        let r = redactor(&["p&<>\"'s+\u{e9}1"]);
+        for echo in [
+            "p&amp;&lt;&gt;&quot;&apos;s+\u{e9}1",
+            "p&amp;&lt;&gt;&#34;&#39;s&#43;\u{e9}1",
+        ] {
+            assert_eq!(
+                r.scrub(&format!("<i>{echo}</i>")),
+                "<i><secret></i>",
+                "{echo}"
+            );
+        }
+    }
+
     /// Pins that doubly escaped JSON stays scrubbed; it already was before core's forms joined.
     #[test]
     fn a_doubly_escaped_json_secret_is_scrubbed() {

@@ -4,10 +4,10 @@
 use super::notes::members;
 use super::{ImportNote, NoteKind, ensure_string, js_string, truthy};
 use crate::edit::{
-    ApiKeyPlacement, AuthSpec, ClientAuth, EdgeGridSpec, HawkSpec, JwtAlgorithm, JwtPlacement,
-    JwtSpec, OAuth1KeyKind, OAuth1Placement, OAuth1PrivateKey, OAuth1SignatureMethod, OAuth1Spec,
-    OAuth2Flow, OAuth2Param, OAuth2ParamPlacement, OAuth2Spec, OAuth2Stage, RequestSettings,
-    TlsVerify, TokenPlacement, VarValue, Variable,
+    ApiKeyPlacement, AsapSpec, AuthSpec, ClientAuth, EdgeGridSpec, HawkSpec, JwtAlgorithm,
+    JwtPlacement, JwtSpec, OAuth1KeyKind, OAuth1Placement, OAuth1PrivateKey, OAuth1SignatureMethod,
+    OAuth1Spec, OAuth2Flow, OAuth2Param, OAuth2ParamPlacement, OAuth2Spec, OAuth2Stage,
+    RequestSettings, TlsVerify, TokenPlacement, VarValue, Variable,
 };
 use crate::http_version::HttpVersionPolicy;
 use crate::js;
@@ -61,6 +61,23 @@ pub(super) fn auth(
         Some("oauth1") => AuthSpec::OAuth1(oauth1(values)),
         Some("edgegrid") => AuthSpec::EdgeGrid(edgegrid(values)),
         Some("jwt") => AuthSpec::Jwt(jwt(values)),
+        Some("asap") => {
+            let mut spec = asap(values);
+            let given = spec.expires_in.trim().to_owned();
+            spec.expires_in = runtime_expiry(&given);
+            if spec.expires_in != given {
+                let detail = match spec.expires_in.as_str() {
+                    "" => format!(
+                        "the ASAP expiry `{given}` is not a positive whole number of seconds; the default hour is used"
+                    ),
+                    seconds => format!(
+                        "the ASAP expiry `{given}` is read as `{seconds}`, a lifetime in seconds"
+                    ),
+                };
+                notes.push(ImportNote::new(source, NoteKind::Converted, detail));
+            }
+            AuthSpec::Asap(spec)
+        }
         Some("hawk") => {
             // The user field never reaches the header, so a stated one is noted and dropped.
             if !get("user").trim().is_empty() {
@@ -427,6 +444,45 @@ fn jwt(values: Option<&Value>) -> JwtSpec {
         },
         header_prefix: Some(header_prefix),
         query_param_key: filled("queryParamKey").unwrap_or_else(|| "token".to_owned()),
+    }
+}
+
+/// The runtime's asap keys. Claims given as an object are written as their JSON text, and a
+/// blank algorithm is `RS256`.
+fn asap(values: Option<&Value>) -> AsapSpec {
+    let get = |key: &str| ensure_string(auth_value(values, key));
+    let algorithm = get("alg").trim().to_owned();
+    AsapSpec {
+        algorithm: if algorithm.is_empty() {
+            "RS256".to_owned()
+        } else {
+            algorithm
+        },
+        issuer: get("iss"),
+        audience: get("aud"),
+        key_id: get("kid"),
+        subject: get("sub"),
+        expires_in: get("exp"),
+        additional_claims: match auth_value(values, "claims") {
+            Some(claims @ Value::Object(_)) => claims.to_string(),
+            _ => get("claims"),
+        },
+        private_key: get("privateKey"),
+    }
+}
+
+/// The expiry the runtime sends for `given`: like `parseInt`, the leading whole number, and
+/// blank (the default hour) when there is none or it is not positive.
+fn runtime_expiry(given: &str) -> String {
+    let digits: String = given
+        .strip_prefix('+')
+        .unwrap_or(given)
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect();
+    match digits.parse::<u64>() {
+        Ok(n) if n > 0 => n.to_string(),
+        _ => String::new(),
     }
 }
 

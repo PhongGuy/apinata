@@ -21,6 +21,7 @@ mod network_support;
 mod ntlm_support;
 
 mod argument_errors;
+mod asap_auth;
 mod assertion_checks;
 mod bodies;
 mod body_filter;
@@ -76,6 +77,7 @@ mod restore_item;
 mod row_defaults;
 mod run_fail_on_status;
 mod run_folder;
+mod run_parallel;
 mod run_retry;
 mod run_timeout;
 mod runtime_set;

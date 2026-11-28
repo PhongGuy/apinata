@@ -164,8 +164,8 @@ fn a_bad_jwt_document_names_its_field_and_never_its_values() {
 
 #[test]
 fn an_unknown_mode_is_named() {
-    let err = parse_auth_json(r#"{"type":"asap","issuer":"x"}"#).expect_err("refused");
-    assert!(err.to_string().contains("asap"), "{err}");
+    let err = parse_auth_json(r#"{"type":"kerberos","realm":"x"}"#).expect_err("refused");
+    assert!(err.to_string().contains("kerberos"), "{err}");
 }
 
 /// A Hawk document with every field given.

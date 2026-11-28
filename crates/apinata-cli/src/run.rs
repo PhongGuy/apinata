@@ -329,11 +329,14 @@ pub async fn run(
     show: Show,
     write_failed: &std::sync::atomic::AtomicBool,
 ) -> anyhow::Result<ResultsReport> {
-    let target = open(args)?;
+    let mut target = open(args)?;
     // A run that would send nothing is a usage error, so a typo in a tag cannot pass CI.
     if let Some(message) = target.plan.empty_message(&tag_filter(args)) {
         return Err(NothingToRun(message).into());
     }
+    target.plan = target
+        .plan
+        .parallel(args.parallel as usize, &target.ctx, !args.no_scripts)?;
     let dropped = target.plan.untested_dropped();
     if dropped > 0 {
         let noun = if dropped == 1 { "request" } else { "requests" };

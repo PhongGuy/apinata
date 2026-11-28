@@ -15,6 +15,7 @@
 // default depth.
 #![recursion_limit = "256"]
 
+mod asap_auth;
 mod check_files;
 mod check_load;
 mod check_shapes;
@@ -29,6 +30,7 @@ mod git_support;
 mod hawk_auth_edit;
 mod header_hints;
 mod header_validity;
+mod import_asap_auth;
 mod import_hawk_auth;
 mod network_support;
 mod ntlm_support;
@@ -416,6 +418,8 @@ mod runner_choose;
 mod runner_fail_on_status;
 mod runner_failed;
 mod runner_iterations;
+mod runner_parallel;
+mod runner_parallel_plan;
 mod runner_plan;
 mod runner_retry;
 mod runner_retry_cancel;

@@ -5,8 +5,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use apinata_core::{
-    ApiKeyPlacement, AuthSource, AuthSpec, Collection, EdgeGridSpec, HawkSpec, InheritedAuth,
-    JwtSpec, OAuth1Spec, OAuth2Flow, OAuth2Spec, VariableSet,
+    ApiKeyPlacement, AsapSpec, AuthSource, AuthSpec, Collection, EdgeGridSpec, HawkSpec,
+    InheritedAuth, JwtSpec, OAuth1Spec, OAuth2Flow, OAuth2Spec, VariableSet,
 };
 use gpui_kit::component::IndexPath;
 use gpui_kit::component::button::Button;
@@ -48,13 +48,14 @@ pub enum AuthMode {
     Wsse,
     EdgeGrid,
     Hawk,
+    Asap,
     OAuth1,
     OAuth2,
 }
 
 impl AuthMode {
     /// Every mode, in picker order.
-    pub const ALL: [AuthMode; 14] = [
+    pub const ALL: [AuthMode; 15] = [
         AuthMode::None,
         AuthMode::Inherit,
         AuthMode::Basic,
@@ -67,6 +68,7 @@ impl AuthMode {
         AuthMode::Wsse,
         AuthMode::EdgeGrid,
         AuthMode::Hawk,
+        AuthMode::Asap,
         AuthMode::OAuth1,
         AuthMode::OAuth2,
     ];
@@ -86,6 +88,7 @@ impl AuthMode {
             AuthMode::Wsse => "WSSE",
             AuthMode::EdgeGrid => "Akamai EdgeGrid",
             AuthMode::Hawk => "Hawk",
+            AuthMode::Asap => "Atlassian ASAP",
             AuthMode::OAuth1 => "OAuth 1.0",
             AuthMode::OAuth2 => "OAuth 2.0",
         }
@@ -106,6 +109,7 @@ impl AuthMode {
             AuthMode::Wsse => "wsse",
             AuthMode::EdgeGrid => "edgegrid",
             AuthMode::Hawk => "hawk",
+            AuthMode::Asap => "asap",
             AuthMode::OAuth1 => "oauth1",
             AuthMode::OAuth2 => "oauth2",
         }
@@ -126,6 +130,7 @@ impl AuthMode {
             AuthSpec::Wsse { .. } => AuthMode::Wsse,
             AuthSpec::EdgeGrid(_) => AuthMode::EdgeGrid,
             AuthSpec::Hawk(_) => AuthMode::Hawk,
+            AuthSpec::Asap(_) => AuthMode::Asap,
             AuthSpec::OAuth1(_) => AuthMode::OAuth1,
             AuthSpec::OAuth2(_) => AuthMode::OAuth2,
             _ => return None,
@@ -172,6 +177,7 @@ impl AuthMode {
             },
             AuthMode::EdgeGrid => AuthSpec::EdgeGrid(EdgeGridSpec::default()),
             AuthMode::Hawk => AuthSpec::Hawk(HawkSpec::default()),
+            AuthMode::Asap => AuthSpec::Asap(AsapSpec::default()),
             AuthMode::OAuth1 => AuthSpec::OAuth1(OAuth1Spec::default()),
             AuthMode::OAuth2 => AuthSpec::OAuth2(OAuth2Spec::new(OAuth2Flow::AuthorizationCode)),
         }
@@ -209,6 +215,13 @@ pub enum AuthField {
     HawkDlg,
     HawkNonce,
     HawkTimestamp,
+    AsapIssuer,
+    AsapAudience,
+    AsapKeyId,
+    AsapSubject,
+    AsapExpiresIn,
+    AsapAdditionalClaims,
+    AsapPrivateKey,
 }
 
 /// The level whose auth the section edits; it picks the No Auth wording.
@@ -300,6 +313,34 @@ const HAWK_FIELDS: [(&str, &str, bool); 7] = [
 // The Hawk algorithms the picker offers: the spelling written to the file and the label.
 const HAWK_ALGORITHMS: [(&str, &str); 2] = [("sha256", "SHA-256"), ("sha1", "SHA-1")];
 
+// The `AuthField` of each `ASAP_FIELDS` row.
+const ASAP_AUTH_FIELDS: [AuthField; 7] = [
+    AuthField::AsapIssuer,
+    AuthField::AsapAudience,
+    AuthField::AsapKeyId,
+    AuthField::AsapSubject,
+    AuthField::AsapExpiresIn,
+    AuthField::AsapAdditionalClaims,
+    AuthField::AsapPrivateKey,
+];
+
+// The ASAP inputs in `AuthField` order: label, element id, and whether it is masked. The
+// algorithm select sits above them.
+const ASAP_FIELDS: [(&str, &str, bool); 7] = [
+    ("Issuer", "auth-asap-issuer", false),
+    ("Audience", "auth-asap-audience", false),
+    ("Key ID", "auth-asap-key-id", false),
+    ("Subject", "auth-asap-subject", false),
+    ("Expires in (seconds)", "auth-asap-expires-in", false),
+    ("Additional claims", "auth-asap-additional-claims", false),
+    ("Private key", "auth-asap-private-key", true),
+];
+
+// The ASAP algorithms the picker offers, each written to the file as shown.
+const ASAP_ALGORITHMS: [&str; 9] = [
+    "RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512",
+];
+
 // The mode select's rows, each found by its mode's key.
 fn mode_rows(modes: &[AuthMode]) -> Vec<IdItem> {
     modes
@@ -380,6 +421,12 @@ pub struct AuthSection {
     hawk_algorithm: String,
     hawk_payload_hash: bool,
     hawk_select: Entity<IdSelect>,
+    // The ASAP inputs, in `ASAP_FIELDS` order.
+    asap: [Entity<InputState>; 7],
+    // The ASAP algorithm last loaded or picked; every ASAP edit carries it, so a spelling the
+    // picker does not offer survives an unrelated edit.
+    asap_algorithm: String,
+    asap_select: Entity<IdSelect>,
     // The EdgeGrid Max Body Size last loaded or validly typed; every EdgeGrid edit carries it.
     edgegrid_max: Option<f64>,
     // Its input has its own subscription, so a refused parse never reaches `emit`.
@@ -425,6 +472,7 @@ impl AuthSection {
         let aws = AWS_FIELDS.map(|(_, _, masked)| input(masked));
         let edgegrid = EDGEGRID_FIELDS.map(|(_, _, masked)| input(masked));
         let hawk = HAWK_FIELDS.map(|(_, _, masked)| input(masked));
+        let asap = ASAP_FIELDS.map(|(_, _, masked)| input(masked));
         let max_body_size = input(false);
         // Fields whose format is not obvious show a short example while empty.
         let hints = [
@@ -442,6 +490,9 @@ impl AuthSection {
             (&max_body_size, "131072"),
             (&hawk[5], "Generated when sent"),
             (&hawk[6], "Generated when sent"),
+            (&asap[3], "Same as issuer"),
+            (&asap[4], "3600"),
+            (&asap[5], "{\"scope\": \"read\"}"),
         ];
         for (state, hint) in hints {
             state.update(cx, |s, cx| s.set_placeholder(hint, window, cx));
@@ -452,6 +503,12 @@ impl AuthSection {
             .collect();
         let hawk_select =
             cx.new(|cx| SelectState::new(algorithms, Some(IndexPath::new(0)), window, cx));
+        let asap_rows = ASAP_ALGORITHMS
+            .iter()
+            .map(|alg| IdItem::new("auth-asap-algorithm", alg, *alg))
+            .collect();
+        let asap_select =
+            cx.new(|cx| SelectState::new(asap_rows, Some(IndexPath::new(0)), window, cx));
         let oauth1 = cx.new(|cx| OAuth1Editor::new(window, cx));
         let oauth2 = cx.new(|cx| OAuth2Editor::new(window, cx));
         let jwt_auth = cx.new(|cx| JwtEditor::new(window, cx));
@@ -524,6 +581,18 @@ impl AuthSection {
                 },
             ),
             cx.subscribe_in(
+                &asap_select,
+                window,
+                |this, _, event: &SelectEvent<Vec<IdItem>>, window, cx| {
+                    if let SelectEvent::Confirm(Some(label)) = event
+                        && let Some(alg) = ASAP_ALGORITHMS.iter().find(|a| **a == label.as_ref())
+                        && this.asap_algorithm != *alg
+                    {
+                        this.set_asap_algorithm(alg, window, cx);
+                    }
+                },
+            ),
+            cx.subscribe_in(
                 &placement_select,
                 window,
                 |this, _, event: &SelectEvent<Vec<IdItem>>, window, cx| {
@@ -541,6 +610,7 @@ impl AuthSection {
             .chain(&aws)
             .chain(&edgegrid)
             .chain(&hawk)
+            .chain(&asap)
         {
             subs.push(cx.subscribe(state, |this, _, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change)
@@ -596,6 +666,9 @@ impl AuthSection {
             hawk_algorithm: HawkSpec::default().algorithm,
             hawk_payload_hash: false,
             hawk_select,
+            asap,
+            asap_algorithm: AsapSpec::default().algorithm,
+            asap_select,
             max_body_size,
             max_refused: false,
             oauth1,
@@ -843,7 +916,7 @@ impl AuthSection {
         ];
         let fields = own.into_iter().chain([&self.value, &self.max_body_size]);
         let typed = fields.chain(&self.aws).chain(&self.edgegrid);
-        for input in typed.chain(&self.hawk) {
+        for input in typed.chain(&self.hawk).chain(&self.asap) {
             crate::ui::end_input_run(input, window, cx);
         }
         self.oauth1.update(cx, |o, cx| o.end_typing(window, cx));
@@ -881,6 +954,13 @@ impl AuthSection {
             AuthField::HawkDlg => &self.hawk[4],
             AuthField::HawkNonce => &self.hawk[5],
             AuthField::HawkTimestamp => &self.hawk[6],
+            AuthField::AsapIssuer => &self.asap[0],
+            AuthField::AsapAudience => &self.asap[1],
+            AuthField::AsapKeyId => &self.asap[2],
+            AuthField::AsapSubject => &self.asap[3],
+            AuthField::AsapExpiresIn => &self.asap[4],
+            AuthField::AsapAdditionalClaims => &self.asap[5],
+            AuthField::AsapPrivateKey => &self.asap[6],
         }
     }
 
@@ -991,6 +1071,18 @@ impl AuthSection {
                 spec.include_payload_hash = self.hawk_payload_hash;
                 AuthSpec::Hawk(spec)
             }
+            AuthMode::Asap => {
+                let mut spec = AsapSpec::default();
+                spec.algorithm = self.asap_algorithm.clone();
+                spec.issuer = text(AuthField::AsapIssuer);
+                spec.audience = text(AuthField::AsapAudience);
+                spec.key_id = text(AuthField::AsapKeyId);
+                spec.subject = text(AuthField::AsapSubject);
+                spec.expires_in = text(AuthField::AsapExpiresIn);
+                spec.additional_claims = text(AuthField::AsapAdditionalClaims);
+                spec.private_key = text(AuthField::AsapPrivateKey);
+                AuthSpec::Asap(spec)
+            }
             AuthMode::OAuth1 => AuthSpec::OAuth1(self.oauth1.read(cx).spec(cx)),
             AuthMode::OAuth2 => AuthSpec::OAuth2(self.oauth2.read(cx).spec(cx)),
             AuthMode::Jwt => AuthSpec::Jwt(self.jwt_auth.read(cx).spec(cx)),
@@ -1099,12 +1191,58 @@ impl AuthSection {
                 self.hawk_payload_hash = h.include_payload_hash;
                 self.show_hawk_algorithm(&h.algorithm, window, cx);
             }
+            AuthSpec::Asap(a) => {
+                let values = [
+                    &a.issuer,
+                    &a.audience,
+                    &a.key_id,
+                    &a.subject,
+                    &a.expires_in,
+                    &a.additional_claims,
+                    &a.private_key,
+                ];
+                for (state, value) in self.asap.iter().zip(values) {
+                    self.masks.fill(state, value, window, cx);
+                }
+                self.show_asap_algorithm(&a.algorithm, window, cx);
+            }
             AuthSpec::OAuth1(o) => self.oauth1.update(cx, |e, cx| e.load(o, window, cx)),
             AuthSpec::OAuth2(o) => self.oauth2.update(cx, |e, cx| e.load(o, window, cx)),
             AuthSpec::Jwt(j) => self.jwt_auth.update(cx, |e, cx| e.load(j, window, cx)),
             _ => {}
         }
         self.refresh_jwt(cx);
+        cx.notify();
+    }
+
+    /// Sets the ASAP algorithm spelling, sending an edit while ASAP is shown.
+    pub fn set_asap_algorithm(
+        &mut self,
+        algorithm: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.show_asap_algorithm(algorithm, window, cx);
+        if self.mode == Some(AuthMode::Asap)
+            && let Some(auth) = self.current(cx)
+        {
+            self.emit(auth, cx);
+        }
+    }
+
+    // Selects the algorithm's row; a spelling the picker does not offer clears the selection
+    // and is shown as the placeholder instead.
+    fn show_asap_algorithm(
+        &mut self,
+        algorithm: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.asap_algorithm = algorithm.to_owned();
+        let row = ASAP_ALGORITHMS.iter().position(|a| *a == algorithm);
+        self.asap_select.update(cx, |s, cx| {
+            s.set_selected_index(row.map(IndexPath::new), window, cx)
+        });
         cx.notify();
     }
 
@@ -1525,7 +1663,7 @@ pub fn inherit_text(inherited: &InheritedAuth, collection: &Collection) -> Strin
 }
 
 // The masked inputs, re-checked every render so a lone reference shows while typed.
-const SECRET_FIELDS: [AuthField; 9] = [
+const SECRET_FIELDS: [AuthField; 10] = [
     AuthField::Password,
     AuthField::Token,
     AuthField::Value,
@@ -1535,6 +1673,7 @@ const SECRET_FIELDS: [AuthField; 9] = [
     AuthField::ClientToken,
     AuthField::ClientSecret,
     AuthField::HawkAuthKey,
+    AuthField::AsapPrivateKey,
 ];
 
 impl Render for AuthSection {
@@ -1717,6 +1856,23 @@ impl Render for AuthSection {
                                 cx.listener(|t, on: &bool, _, cx| t.set_hawk_payload_hash(*on, cx)),
                             ),
                     ))
+                    .into_any_element()
+            }
+            (Some(AuthMode::Asap), _) => {
+                let known = ASAP_ALGORITHMS.contains(&self.asap_algorithm.as_str());
+                let unknown = (!known).then(|| self.asap_algorithm.clone());
+                v_flex()
+                    .gap_2()
+                    .child(ui::form_row(
+                        "auth-asap-algorithm-row",
+                        "Algorithm",
+                        div().w(style::MODE_SELECT_WIDTH).max_w_full().child(
+                            Select::new(&self.asap_select)
+                                .id("auth-asap-algorithm")
+                                .when_some(unknown, |s, p| s.placeholder(p)),
+                        ),
+                    ))
+                    .child(self.table_fields(&ASAP_FIELDS, &self.asap, &ASAP_AUTH_FIELDS, vars, cx))
                     .into_any_element()
             }
             (Some(AuthMode::OAuth1), _) => self.oauth1.clone().into_any_element(),

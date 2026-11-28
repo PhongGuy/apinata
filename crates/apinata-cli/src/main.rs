@@ -1551,6 +1551,17 @@ pub struct RunArgs {
     /// Pause this many milliseconds between requests.
     #[arg(long, value_name = "MS", default_value_t = 0)]
     pub delay: u64,
+    /// Send up to N requests of each iteration at once (1 to 64). Each sees the cookies as its
+    /// iteration began; results and cookie changes keep run order. Refused when a request sets
+    /// post-response variables or its scripts write variables or steer the run.
+    #[arg(
+        long,
+        value_name = "N",
+        default_value_t = 1,
+        value_parser = clap::value_parser!(u64).range(1..=apinata_core::MAX_PARALLEL as u64),
+        conflicts_with = "delay"
+    )]
+    pub parallel: u64,
     /// Send a request again, up to N more times, when the send fails in transit (timeout, refused connection, reset) or the answer is 502, 503 or 504. A failed assertion, test or script never retries, and scripts, variables and assertions run once, on the last attempt. Only GET, HEAD, OPTIONS, PUT, DELETE and TRACE retry unless --retry-unsafe is given. A run-wide --timeout is not retried.
     #[arg(long, value_name = "N", default_value_t = 0)]
     pub retries: u32,

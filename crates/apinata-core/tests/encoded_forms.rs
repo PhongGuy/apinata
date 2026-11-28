@@ -186,6 +186,8 @@ fn the_full_form_lists_are_pinned() {
             "P%c3%a9%f0%9f%98%80ss",
             r"P\u00E9\uD83D\uDE00ss",
             r"P\u00e9\ud83d\ude00ss",
+            "P&#233;&#128512;ss",
+            "P&#xE9;&#x1F600;ss",
             "xn--pss-bma90525d",
             "UMOp8J+YgHNz",
             "UMOp8J-YgHNz",

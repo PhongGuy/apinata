@@ -4,7 +4,7 @@ use crate::assertion::{AssertionOutcome, Verdict, evaluate, evaluate_scripted};
 use crate::cancel::CancelHandle;
 use crate::collection::{Collection, Folder};
 use crate::context::VarContext;
-use crate::cookies::SetCookie;
+use crate::cookies::{CookieJar, JarJournal, SetCookie};
 use crate::error::{FileError, ResolveError, UndefinedHint};
 use crate::execute::{ExecError, Executor, SendTag};
 use crate::item_path::ItemPath;
@@ -24,10 +24,12 @@ use crate::script::{
     TestOutcome,
 };
 use crate::secret_names::log_values;
-use crate::session_log::{ConsoleLine, Logged, Redactor, SendHold, SendSource};
+use crate::session_log::{ConsoleLine, HoldGuard, Logged, Redactor, SendHold, SendSource};
 use crate::stream::{HiddenValues, StreamEnd, StreamEvent, StreamLimits, StreamOptions};
 use crate::subscription::is_subscription;
 use crate::tags::{TagFilter, normalize};
+use futures_util::stream::{FuturesUnordered, StreamExt};
+use std::collections::BTreeMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, PoisonError};
@@ -41,6 +43,100 @@ pub struct RunPlan {
     requests: Vec<(ItemPath, RequestFile, Vec<String>)>,
     load_errors: Vec<FileError>,
     untested_dropped: usize,
+    /// How many requests of one iteration may be in flight at once; 1 runs them in turn.
+    parallel: usize,
+}
+
+/// The most requests a parallel run keeps in flight at once.
+pub const MAX_PARALLEL: usize = 64;
+
+/// The script calls that read or steer state other requests share, refused in a parallel run.
+const SHARED_STATE_CALLS: &[&str] = &[
+    "setVar",
+    "deleteVar",
+    "deleteAllVars",
+    "setEnvVar",
+    "deleteEnvVar",
+    "deleteAllEnvVars",
+    "setGlobalEnvVar",
+    "deleteGlobalEnvVar",
+    "deleteAllGlobalEnvVars",
+    "setCollectionVar",
+    "deleteCollectionVar",
+    "deleteAllCollectionVars",
+    "setNextRequest",
+    "stopExecution",
+    "runRequest",
+    "resetOauth2Credential",
+];
+
+/// Why a plan cannot run in parallel.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum ParallelError {
+    /// The degree asked for is zero or above [`MAX_PARALLEL`].
+    #[error("a parallel run takes 1 to {MAX_PARALLEL} requests at a time, not {n}")]
+    OutOfRange {
+        /// The degree that was given.
+        n: usize,
+    },
+    /// A request shares state with the others, so running it alongside them could race.
+    #[error("{request} cannot run in parallel: {reason}")]
+    Blocked {
+        /// The first such request in run order.
+        request: ItemPath,
+        /// What it shares.
+        reason: ParallelBlocker,
+    },
+}
+
+/// What makes a request share state with the others of a run.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum ParallelBlocker {
+    /// One of its scripts, its own or a folder's or the collection's, names a call that
+    /// writes shared variables or steers the run.
+    #[error("its {} script calls {call}", phase.as_str())]
+    ScriptCall {
+        /// The phase whose script names the call.
+        phase: ScriptPhase,
+        /// The call's name.
+        call: String,
+    },
+    /// It captures post-response variables, its own or inherited.
+    #[error("it sets post-response variables the other requests may read")]
+    PostResponseVars,
+}
+
+/// What, if anything, keeps `request` from running alongside others; `scripts` says whether
+/// its scripts will run at all.
+fn parallel_blocker(
+    request: &RequestFile,
+    ctx: &VarContext,
+    scripts: bool,
+) -> Option<ParallelBlocker> {
+    if !ctx.post_response_vars_for(request).is_empty() {
+        return Some(ParallelBlocker::PostResponseVars);
+    }
+    if !scripts {
+        return None;
+    }
+    [
+        ScriptPhase::PreRequest,
+        ScriptPhase::PostResponse,
+        ScriptPhase::Tests,
+    ]
+    .into_iter()
+    .find_map(|phase| {
+        segments(request, ctx, phase).iter().find_map(|segment| {
+            crate::js_scan::first_name(&segment.code, SHARED_STATE_CALLS).map(|call| {
+                ParallelBlocker::ScriptCall {
+                    phase,
+                    call: call.to_owned(),
+                }
+            })
+        })
+    })
 }
 
 /// Whether `request` checks something itself: an enabled assertion or a `test(...)` call.
@@ -120,6 +216,41 @@ impl RunPlan {
         self.requests.retain(|(_, request, _)| has_tests(request));
         self.untested_dropped += before - self.requests.len();
         self
+    }
+
+    /// The plan run up to `n` requests at a time within each iteration. Refused when `n` is
+    /// outside 1 to [`MAX_PARALLEL`], or, for `n` above 1, when a request shares state with
+    /// the others: post-response variables, or a script call that writes runtime,
+    /// environment, global or collection variables, steers the run, runs another request or
+    /// resets an OAuth 2.0 credential. `scripts` is whether scripts will run; off, only the
+    /// post-response variables are checked. A later filter only drops requests, so the
+    /// verdict holds.
+    pub fn parallel(
+        mut self,
+        n: usize,
+        ctx: &VarContext,
+        scripts: bool,
+    ) -> Result<RunPlan, ParallelError> {
+        if !(1..=MAX_PARALLEL).contains(&n) {
+            return Err(ParallelError::OutOfRange { n });
+        }
+        if n > 1 {
+            for (path, request, _) in &self.requests {
+                if let Some(reason) = parallel_blocker(request, ctx, scripts) {
+                    return Err(ParallelError::Blocked {
+                        request: path.clone(),
+                        reason,
+                    });
+                }
+            }
+        }
+        self.parallel = n;
+        Ok(self)
+    }
+
+    /// How many requests of one iteration may be in flight at once.
+    pub fn parallelism(&self) -> usize {
+        self.parallel
     }
 
     /// How many requests [`RunPlan::retain_tested`] dropped.
@@ -208,6 +339,7 @@ impl Collection {
             requests,
             load_errors,
             untested_dropped: 0,
+            parallel: 1,
         })
     }
 
@@ -230,6 +362,7 @@ impl Collection {
                 requests: Vec::new(),
                 load_errors: Vec::new(),
                 untested_dropped: 0,
+                parallel: 1,
             };
         };
         plan.requests
@@ -334,6 +467,10 @@ pub struct RunOptions {
     retry: Retry,
     on_retry: Option<RetryHook>,
     fail_on_status: Option<StatusRule>,
+    /// Set by a parallel run on its sends, so their scripts refuse shared-state calls.
+    parallel: bool,
+    /// The log hold a parallel run opened for one send, published when its result is released.
+    hold: Option<SendHold>,
 }
 
 /// Which reply statuses fail a request that otherwise passed.
@@ -417,6 +554,8 @@ impl fmt::Debug for RunOptions {
             .field("retry_unsafe", &self.retry.unsafe_methods)
             .field("on_retry", &self.on_retry.is_some())
             .field("fail_on_status", &self.fail_on_status)
+            .field("parallel", &self.parallel)
+            .field("hold", &self.hold.is_some())
             .finish()
     }
 }
@@ -1125,6 +1264,11 @@ impl Walk {
         cancel: &CancelHandle,
         on_event: &mut (dyn FnMut(RunEvent) + Send),
     ) {
+        if plan.parallel > 1 {
+            return self
+                .pass_parallel(plan, ctx, iteration, exec, opts, cancel, on_event)
+                .await;
+        }
         let mut index = 0;
         while let Some((path, request, _)) = plan.requests.get(index) {
             let mut next = index + 1;
@@ -1174,14 +1318,7 @@ impl Walk {
                     )
                     .await
                 };
-                self.stop = if result.outcome == Outcome::Cancelled || result.network_declined {
-                    Some(RunStop::Cancelled)
-                } else if opts.bail && matches!(result.outcome, Outcome::Failed | Outcome::Errored)
-                {
-                    Some(RunStop::FirstFailure)
-                } else {
-                    None
-                };
+                self.stop = stop_after(&result, opts);
                 if self.stop.is_none() {
                     match step(names, index, &result.control, &mut self.jumps) {
                         Step::To(to) => next = to,
@@ -1203,6 +1340,191 @@ impl Walk {
             index = next;
         }
     }
+}
+
+impl Walk {
+    /// One walk of the plan with up to `plan.parallel` requests in flight, launched in plan
+    /// order. Each send reads the jar as the iteration began, through an overlay that records
+    /// its changes; finished sends wait until every earlier one has finished, then their
+    /// changes are replayed on the jar and their results reported, so both follow plan order.
+    /// Progress events of sends in flight interleave, each carrying its index. A bail, a cancel
+    /// or a declined host stops new launches; the sends in flight finish and the rest are
+    /// skipped, so which requests are skipped depends on which send finished first.
+    #[allow(clippy::too_many_arguments)]
+    async fn pass_parallel(
+        &mut self,
+        plan: &RunPlan,
+        ctx: &VarContext,
+        iteration: Option<usize>,
+        exec: &Arc<Executor>,
+        opts: &RunOptions,
+        cancel: &CancelHandle,
+        on_event: &mut (dyn FnMut(RunEvent) + Send),
+    ) {
+        let opts = RunOptions {
+            parallel: true,
+            ..opts.clone()
+        };
+        let total = plan.requests.len();
+        let start = exec.cookies().overlay();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut flying = FuturesUnordered::new();
+        let mut parked: BTreeMap<usize, Finished> = BTreeMap::new();
+        let (mut launched, mut released) = (0, 0);
+        loop {
+            if self.stop.is_none() && cancel.is_cancelled() {
+                self.stop = Some(RunStop::Cancelled);
+            }
+            while self.stop.is_none() && launched < total && flying.len() < plan.parallel {
+                let (path, request, _) = &plan.requests[launched];
+                on_event(RunEvent::RequestStarted {
+                    index: launched,
+                    path: path.clone(),
+                });
+                self.sent_any = true;
+                let jar = Arc::new(start.overlay());
+                let sender = Arc::new(exec.with_overlay_jar(Arc::clone(&jar)));
+                // Each send's log entries wait in its own hold until its result is released,
+                // so a log reader sees them in run order too.
+                let (hold, guard) = match exec.session_log() {
+                    Some(log) => {
+                        let (hold, guard) = SendHold::open(log.clone());
+                        (Some(hold), Some(guard))
+                    }
+                    None => (None, None),
+                };
+                let own = RunOptions {
+                    hold,
+                    ..opts.clone()
+                };
+                flying.push(send_parallel_one(
+                    launched,
+                    path.clone(),
+                    request,
+                    ctx,
+                    (sender, jar),
+                    own,
+                    cancel,
+                    tx.clone(),
+                    guard,
+                ));
+                launched += 1;
+            }
+            while let Some(finished) = parked.remove(&released) {
+                self.release(released, finished, total, iteration, exec, on_event);
+                released += 1;
+            }
+            // Nothing in flight means every launched send is released and no more will launch.
+            if flying.is_empty() {
+                break;
+            }
+            tokio::select! {
+                biased;
+                Some(event) = rx.recv() => on_event(event),
+                Some((index, finished)) = flying.next() => {
+                    while let Ok(event) = rx.try_recv() {
+                        on_event(event);
+                    }
+                    if self.stop.is_none() {
+                        self.stop = stop_after(&finished.result, &opts);
+                    }
+                    parked.insert(index, finished);
+                }
+            }
+        }
+        for (index, (path, request, _)) in plan.requests.iter().enumerate().skip(released) {
+            let finished = Finished {
+                result: RequestResult::new(path.clone(), request, Outcome::Skipped),
+                journal: JarJournal::default(),
+                guard: None,
+            };
+            self.release(index, finished, total, iteration, exec, on_event);
+        }
+    }
+
+    /// Replays a finished send's cookie changes on the run's jar, publishes its log entries
+    /// and reports its result.
+    fn release(
+        &mut self,
+        index: usize,
+        finished: Finished,
+        total: usize,
+        iteration: Option<usize>,
+        exec: &Executor,
+        on_event: &mut (dyn FnMut(RunEvent) + Send),
+    ) {
+        let Finished {
+            mut result,
+            journal,
+            guard,
+        } = finished;
+        if !journal.is_empty() && index + 1 < total {
+            result.warnings.push(Warning::ParallelCookiesUnseen);
+        }
+        exec.cookies().replay(journal);
+        drop(guard);
+        result.iteration = iteration;
+        let result = Arc::new(result);
+        on_event(RunEvent::RequestFinished {
+            index,
+            result: Arc::clone(&result),
+        });
+        self.results.push(result);
+    }
+}
+
+/// What ends a run after `result`, as a sequential walk judges it before any script jump.
+fn stop_after(result: &RequestResult, opts: &RunOptions) -> Option<RunStop> {
+    if result.outcome == Outcome::Cancelled || result.network_declined {
+        Some(RunStop::Cancelled)
+    } else if opts.bail && matches!(result.outcome, Outcome::Failed | Outcome::Errored) {
+        Some(RunStop::FirstFailure)
+    } else {
+        None
+    }
+}
+
+/// A send of a parallel run that has ended, waiting for its turn to be reported.
+struct Finished {
+    result: RequestResult,
+    /// The changes it tried to make to the jar.
+    journal: JarJournal,
+    /// Publishes its log entries when dropped.
+    guard: Option<HoldGuard>,
+}
+
+/// One send of a parallel run on its own executor and jar overlay, forwarding its progress
+/// events to `tx`; returns its index and what it left to report.
+#[allow(clippy::too_many_arguments)]
+async fn send_parallel_one(
+    index: usize,
+    path: ItemPath,
+    request: &RequestFile,
+    ctx: &VarContext,
+    (exec, jar): (Arc<Executor>, Arc<CookieJar>),
+    opts: RunOptions,
+    cancel: &CancelHandle,
+    tx: tokio::sync::mpsc::UnboundedSender<RunEvent>,
+    guard: Option<HoldGuard>,
+) -> (usize, Finished) {
+    let opts = &opts;
+    let mut emit = move |event: RunEvent| {
+        let _ = tx.send(event);
+    };
+    let result = if opts.stream.is_some() {
+        send_streaming_one(index, path, request, ctx, &exec, opts, cancel, &mut emit).await
+    } else {
+        send_retrying_one(index, path, request, ctx, &exec, opts, cancel, &mut emit).await
+    };
+    let journal = jar.take_journal();
+    (
+        index,
+        Finished {
+            result,
+            journal,
+            guard,
+        },
+    )
 }
 
 /// What the body-read sink and the end hook push to the walk.
@@ -1384,6 +1706,7 @@ pub(crate) struct Nesting {
 impl Nesting {
     /// The handle of a top-level send: depth 0, the send's options minus the run-only fields.
     fn top(opts: &RunOptions) -> Nesting {
+        let hold = opts.hold.clone();
         let opts = RunOptions {
             bail: false,
             guard: opts.guard.clone(),
@@ -1399,6 +1722,8 @@ impl Nesting {
             retry: Retry::default(),
             on_retry: None,
             fail_on_status: None,
+            parallel: opts.parallel,
+            hold: None,
         };
         Nesting {
             depth: 0,
@@ -1407,13 +1732,18 @@ impl Nesting {
                 .map(|_| tokio::sync::Mutex::new(()))
                 .collect(),
             deadline: None,
-            hold: None,
+            hold,
         }
     }
 
     /// The deadline this send's phases inherit from the phase that nested it, if any.
     pub(crate) fn deadline(&self) -> Option<Instant> {
         self.deadline
+    }
+
+    /// Whether the send belongs to a parallel run.
+    pub(crate) fn parallel(&self) -> bool {
+        self.opts.parallel
     }
 
     /// The hold this send's log items are staged in, when a log is attached.
@@ -1524,6 +1854,18 @@ async fn send_at(
         nesting,
     )
     .await;
+    // A shared-state call a parallel run refused after the request was sent errors it now, so
+    // a script that caught the refusal cannot pass it off; expressions are checked here too.
+    let late = record.parallel_refused.take().or_else(|| {
+        let state = record.state.as_ref()?;
+        Some((ScriptPhase::Tests, state.take_parallel_refusal()?))
+    });
+    if let Some((phase, message)) = late
+        && result.outcome != Outcome::Cancelled
+    {
+        result.outcome = Outcome::Errored;
+        result.error = Some(RunError::Script { phase, message });
+    }
     // Expressions read after the last phase, so the shared scope is tainted once more here.
     if let Some(state) = &record.state {
         ctx.runtime_vars().taint(&lock_sensitive(state));
@@ -2199,6 +2541,7 @@ mod tests {
             requests: Vec::new(),
             load_errors,
             untested_dropped: 0,
+            parallel: 1,
         }
     }
 

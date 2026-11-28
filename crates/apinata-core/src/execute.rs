@@ -632,7 +632,7 @@ impl ExecError {
 /// Sends resolved requests, sharing one cookie jar and one connection pool per proxy rule.
 #[non_exhaustive]
 pub struct Executor {
-    clients: Clients,
+    clients: Arc<Clients>,
     network: NetworkSettings,
     system: Arc<SystemProxy>,
     insecure: bool,
@@ -759,7 +759,7 @@ impl Executor {
             _ => SystemProxy::new(Matcher::builder().build()),
         };
         Ok(Executor {
-            clients: Clients::default(),
+            clients: Arc::default(),
             network,
             system: Arc::new(system),
             insecure: opts.insecure,
@@ -784,7 +784,7 @@ impl Executor {
     #[must_use]
     pub fn with_cookie_jar(&self, jar: Arc<CookieJar>) -> Executor {
         Executor {
-            clients: Clients::default(),
+            clients: Arc::default(),
             network: self.network.clone(),
             system: Arc::clone(&self.system),
             insecure: self.insecure,
@@ -801,6 +801,15 @@ impl Executor {
             http_version: self.http_version,
             timeout_cap: self.timeout_cap,
             network_check: self.network_check.clone(),
+        }
+    }
+
+    /// An executor like [`Executor::with_cookie_jar`] that shares this one's connections, for a
+    /// send of a parallel run reading and writing its own overlay of the jar.
+    pub(crate) fn with_overlay_jar(&self, jar: Arc<CookieJar>) -> Executor {
+        Executor {
+            clients: Arc::clone(&self.clients),
+            ..self.with_cookie_jar(jar)
         }
     }
 

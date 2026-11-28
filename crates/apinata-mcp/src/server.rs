@@ -1945,6 +1945,7 @@ impl ApinataServer {
         let (data, count) = args.iteration_plan()?;
         let (retries, retry_delay, retry_unsafe) = args.retry_plan()?;
         let status_rule = args.status_rule()?;
+        let degree = args.parallel_degree()?;
         // A cookieless run gets its own executor over the shared jar with both switches off, so
         // nothing shared is mutated and concurrent sends keep their cookies.
         let cap = send::timeout_cap(args.timeout_secs)?;
@@ -1969,7 +1970,11 @@ impl ApinataServer {
                 let env = args.environment.as_deref();
                 let ctx =
                     send::context(c, env, &no_vars, &options, store, runtime, tokens, overlay)?;
-                Ok((ctx, run::plan(c, &args.path, &plan_filter, tests_only)?))
+                // A plan that cannot run in parallel is refused before any approval is filed or
+                // token fetched; scripts count as running, since the gate has not ruled yet.
+                let plan = run::plan(c, &args.path, &plan_filter, tests_only)?;
+                let plan = run::parallel(plan, degree, &ctx, !skip)?;
+                Ok((ctx, plan))
             })
             .await?;
         let requests: Vec<_> = plan
@@ -2062,7 +2067,10 @@ impl ApinataServer {
             .inspect_err(|_| watcher.abort())?;
         // Registered before the outcome is looked at, so a refusal quoting a secret is scrubbed.
         self.remember(&redactor);
-        let prepared = prepared.inspect_err(|_| watcher.abort())?;
+        let mut prepared = prepared.inspect_err(|_| watcher.abort())?;
+        // Planned afresh above, so the degree is checked again on the plan that runs.
+        let checked = run::parallel(prepared.plan, degree, &prepared.ctx, !skip);
+        prepared.plan = checked.inspect_err(|_| watcher.abort())?;
 
         // The runner reports from a synchronous callback; a channel carries each finished
         // request to this task, which sends it on as a progress notification.
