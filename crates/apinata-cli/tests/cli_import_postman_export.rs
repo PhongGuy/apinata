@@ -207,3 +207,45 @@ fn a_zip_that_is_not_an_export_writes_nothing() {
     assert!(stderr.contains("not a Postman data export"), "{stderr}");
     assert!(!into.exists());
 }
+
+#[test]
+fn a_bare_archive_json_reads_the_folder_it_sits_in() {
+    let work = tempfile::tempdir().unwrap();
+    let export = work.path().join("export");
+    fs::create_dir_all(export.join("collection")).unwrap();
+    fs::write(export.join("archive.json"), ARCHIVE).unwrap();
+    fs::write(export.join("collection/c1.json"), collection("Shop")).unwrap();
+    let into = work.path().join("into");
+    let out = apinata()
+        .current_dir(&export)
+        .args(["import", "postman-export", "archive.json", "--into"])
+        .arg(&into)
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert_eq!(out.status.code(), Some(0), "{stderr}");
+    assert_eq!(names(&into), ["Shop"]);
+}
+
+#[test]
+fn skipped_entry_names_print_without_control_characters_or_values() {
+    let work = tempfile::tempdir().unwrap();
+    let zip = work.path().join("export.zip");
+    let leaky = format!(r#"{{"info":{{"name":"x","schema":"{V21}"}},"item":"{SECRET}"}}"#);
+    export_zip(
+        &zip,
+        &[
+            ("export/\u{1b}[2Jevil.json", "{not json"),
+            ("export/collection/leaky.json", &leaky),
+        ],
+    );
+    let into = work.path().join("into");
+    let (code, stdout, stderr) = import(work.path(), &zip, &into, &[]);
+    assert_eq!(code, Some(3), "{stdout}\n{stderr}");
+    assert!(stderr.contains("evil.json"), "{stderr}");
+    assert!(!stderr.contains('\u{1b}'), "{stderr:?}");
+    assert!(
+        !stderr.contains(SECRET) && !stdout.contains(SECRET),
+        "{stderr}"
+    );
+}

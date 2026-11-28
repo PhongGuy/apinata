@@ -442,7 +442,11 @@ fn import_postman_export(args: &PostmanExportArgs) -> anyhow::Result<()> {
         .with_context(|| format!("cannot import {}", args.path.display()))?;
     let not_imported = |notes: &[ImportNote]| {
         for note in notes {
-            eprintln!("not imported: {}: {}", note.source, note.detail);
+            eprintln!(
+                "not imported: {}: {}",
+                printable(&note.source),
+                printable(&note.detail)
+            );
         }
     };
     if export.bundles.is_empty() {
@@ -461,6 +465,20 @@ fn import_postman_export(args: &PostmanExportArgs) -> anyhow::Result<()> {
         0 => Ok(()),
         n => Err(anyhow!("{n} entries of the export were not imported")),
     }
+}
+
+// Entry names come from the archive, so control characters are shown escaped rather than
+// reaching the terminal.
+fn printable(text: &str) -> String {
+    text.chars()
+        .map(|c| {
+            if c.is_control() {
+                c.escape_default().to_string()
+            } else {
+                c.to_string()
+            }
+        })
+        .collect()
 }
 
 // Place the one collection of the input directly in `--folder` of the existing collection at
