@@ -85,6 +85,8 @@ impl Asset for DataImage {
     type Source = SharedUri;
     type Output = Result<Arc<RenderImage>, ImageCacheError>;
 
+    // An async fn would capture the App borrow, and the trait wants a 'static future.
+    #[allow(clippy::manual_async_fn)]
     fn load(uri: SharedUri, _: &mut App) -> impl Future<Output = Self::Output> + Send + 'static {
         async move {
             load_data_image(&uri)
