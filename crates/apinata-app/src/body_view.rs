@@ -72,7 +72,7 @@ use gpui_kit::component::input::{
 struct Mask {
     text: OnceLock<Option<Arc<str>>>,
     // The preview's copy of the shown text, made once so a frame never copies the body.
-    page: OnceLock<Option<SharedString>>,
+    page: OnceLock<(SharedString, bool)>,
     runs: AtomicUsize,
 }
 
@@ -112,8 +112,8 @@ pub fn opened_note(page: bool) -> Option<&'static str> {
 /// The banner a whole body over the editor's limits shows under its bar.
 pub const LARGE_BODY_NOTE: &str = "Large body: shown as plain text, folding and editing are off";
 
-/// The banner an HTML body too deeply nested to preview shows under its bar.
-pub const TOO_DEEP_NOTE: &str = "Nested too deeply to preview: shown as text";
+/// The banner a page too large to preview whole shows under its bar.
+pub const PREVIEW_CUT_NOTE: &str = "Large page: the preview shows its start";
 
 /// How long typing in the filter, or a rows-mode find query, must pause before it runs.
 pub const SETTLE: Duration = Duration::from_millis(250);
@@ -799,10 +799,10 @@ impl BodyView {
 
     // What the banner under the bar says about how much of the body is on screen: the cut
     // point when the body was cut, and that it is plain text when too large for the editor.
-    // A page too deeply nested to preview says so instead.
+    // A page too large to preview whole says so instead.
     fn banner_text(&self) -> Option<String> {
-        if self.preview_refused() {
-            return Some(TOO_DEEP_NOTE.into());
+        if self.preview_cut() {
+            return Some(PREVIEW_CUT_NOTE.into());
         }
         let large = self.in_rows() && !self.editor_backed;
         let cut = (self.result.as_ref())
@@ -944,29 +944,29 @@ impl BodyView {
         });
     }
 
-    /// The HTML the preview lays out: always the redacted copy, since the page has no eye.
-    /// `None` when not previewing, before the redacted copy is made, or when the page nests
-    /// too deeply to lay out.
-    pub fn preview_html(&self) -> Option<SharedString> {
-        self.preview_page()?.clone()
+    /// The Markdown the preview lays out, made from the redacted copy, since the page has no
+    /// eye. `None` when not previewing or before the redacted copy is made.
+    pub fn preview_markdown(&self) -> Option<SharedString> {
+        self.preview_page().map(|(markdown, _)| markdown.clone())
     }
 
-    // The prepared page, made once per body: `Some(None)` when it nests too deeply, `None`
-    // when not previewing or before the redacted copy is made.
-    fn preview_page(&self) -> Option<&Option<SharedString>> {
+    // The prepared page and whether it was cut, made once per body; `None` when not
+    // previewing or before the redacted copy is made.
+    fn preview_page(&self) -> Option<&(SharedString, bool)> {
         if !self.previewing() {
             return None;
         }
         let raw = self.result.as_ref()?.response.as_ref()?.text();
         let masked = self.mask.text.get()?;
         Some(self.mask.page.get_or_init(|| {
-            html_preview::prepare(masked.as_deref().unwrap_or(raw)).map(SharedString::from)
+            let page = html_preview::prepare(masked.as_deref().unwrap_or(raw));
+            (SharedString::from(page.markdown), page.cut)
         }))
     }
 
-    // Whether Preview was chosen but the page nests too deeply, so its text shows instead.
-    fn preview_refused(&self) -> bool {
-        matches!(self.preview_page(), Some(None))
+    // Whether the previewed page passed the node bound, so only its start shows.
+    fn preview_cut(&self) -> bool {
+        self.preview_page().is_some_and(|(_, cut)| *cut)
     }
 
     /// How an image body is sized; Fit until changed, kept across bodies.
@@ -1077,7 +1077,9 @@ impl BodyView {
     /// Opens the find bar when the editor or the rows show text, focuses its field and
     /// selects its text.
     pub fn open_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !matches!(self.shown, Shown::Editor | Shown::Lines(_)) || self.preview_html().is_some() {
+        if !matches!(self.shown, Shown::Editor | Shown::Lines(_))
+            || self.preview_markdown().is_some()
+        {
             return;
         }
         self.find_open = true;
@@ -1841,7 +1843,7 @@ impl BodyView {
         let view = cx.entity().downgrade();
         let text = self.wrap_offered();
         let (mode, wrap, kind, detected) = (self.mode, self.wrap, self.kind, self.detected);
-        let preview = self.preview_html().is_some();
+        let preview = self.preview_markdown().is_some();
         let page = kind == Some(BodyKind::Html) && self.shown == Shown::Editor;
         let button = Button::new("body-format-button")
             .solid_ring(cx)
@@ -2954,7 +2956,7 @@ impl BodyView {
         self.reshape(false, window, cx);
         self.end_find_without_text(window, cx);
         // A body landing in the preview has no text on screen to find in.
-        if self.find_open && self.preview_html().is_some() {
+        if self.find_open && self.preview_markdown().is_some() {
             self.close_find(window, cx);
         }
         self.run_find(cx);
@@ -4223,13 +4225,13 @@ impl Render for BodyView {
                     .into_any_element()
             }
             Shown::Image(info) => self.image_preview(&info, cx),
-            Shown::Editor if let Some(html) = self.preview_html() => div()
+            Shown::Editor if let Some(page) = self.preview_markdown() => div()
                 .id("body-html-preview")
                 .test_support()
                 .flex_1()
                 .min_h_0()
                 .w_full()
-                .child(html_preview::view("body-html-preview-page", html).size_full())
+                .child(html_preview::view("body-html-preview-page", page).size_full())
                 .into_any_element(),
             Shown::Editor => div()
                 .id("body-editor")

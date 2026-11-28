@@ -1,21 +1,90 @@
-//! An HTML body laid out by the kit's renderer, which has no script engine; script, style and
-//! title elements are removed first, since the kit shows their text in some places. The page
-//! is untrusted, so its links open nothing, only raster images carried inline as `data:` URLs
-//! are shown, and no other URL ever reaches a loader.
+//! An HTML body shown as a simple page. The untrusted page is parsed here by the same parser
+//! the kit uses, into a flat arena with no recursion, then written out as Markdown whose text
+//! is escaped and whose nesting is capped, so the kit lays out a tree of known, shallow depth.
+//! Script, style, title and foreign content are left out, links show as text, and only raster
+//! images carried inline as `data:` URLs are shown; no other URL ever reaches a loader.
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
-use gpui_kit::component::text::TextView;
+use gpui_kit::component::text::{MarkdownExtensions, TextView};
 use gpui_kit::{ElementId, Image, ImageFormat, ImageSource, SharedString, SharedUri};
+use html5ever::tendril::{StrTendril, TendrilSink as _};
+use html5ever::tree_builder::{ElementFlags, NodeOrText, QuirksMode, TreeSink};
+use html5ever::{
+    Attribute, ExpandedName, LocalName, QualName, local_name, namespace_url, ns, parse_document,
+};
 
-/// Where a previewed image comes from: a `data:` image decoded in place, and for any other
-/// URL (remote, `file:`, relative) an empty image that fails to decode, so nothing is fetched.
+/// Most nodes a page is parsed into; past it the preview shows the page's start.
+pub const MAX_NODES: usize = 50_000;
+
+/// Deepest a page is parsed; past it the preview shows the page's start. The parser scans
+/// its open elements for each tag, so this also bounds the parse's time.
+pub const MAX_DEPTH: usize = 512;
+
+/// Deepest nesting of lists and quotes the Markdown keeps; deeper ones are flattened.
+pub const MAX_NEST: usize = 6;
+
+// The page is fed to the parser in pieces this size, so the node bound stops a page that
+// grows quadratically before it costs much.
+const CHUNK: usize = 1024;
+
+/// A page ready for the preview.
+pub struct Page {
+    /// The page as Markdown.
+    pub markdown: String,
+    /// Whether the page passed [`MAX_NODES`] or [`MAX_DEPTH`], so only its start is shown.
+    pub cut: bool,
+}
+
+/// The page `html` as the preview shows it.
+pub fn prepare(html: &str) -> Page {
+    // The arena freezes at the bound and stands in a placeholder for later nodes; should the
+    // tree builder trip over that, the page shows as cut rather than taking the app down.
+    let parsed = std::panic::catch_unwind(|| {
+        let mut parser = parse_document(Arena::new(), Default::default());
+        let mut rest = html;
+        while !rest.is_empty() && !parser.tokenizer.sink.sink.full {
+            let mut end = rest.len().min(CHUNK);
+            while !rest.is_char_boundary(end) {
+                end += 1;
+            }
+            parser.process(StrTendril::from_slice(&rest[..end]));
+            rest = &rest[end..];
+        }
+        parser.finish()
+    });
+    match parsed {
+        Ok(arena) => Page {
+            markdown: Writer::new(&arena).write(),
+            cut: arena.full,
+        },
+        Err(_) => Page {
+            markdown: String::new(),
+            cut: true,
+        },
+    }
+}
+
+/// Where a previewed image comes from: a raster `data:` image decoded in place, and for any
+/// other URL an empty image that fails to decode, so nothing is fetched.
 pub fn image_source(uri: &SharedUri) -> ImageSource {
     let (format, bytes) = data_image(uri).unwrap_or((ImageFormat::Png, Vec::new()));
     ImageSource::Image(Arc::new(Image::from_bytes(format, bytes)))
 }
 
-// The format and bytes of a `data:<mime>[;base64],<data>` image, or `None` for any other URL.
+/// The preview of `markdown`, scrolling in its own list. Raw HTML is off and links are inert,
+/// so nothing in the page reaches the HTML parser or the system opener.
+pub fn view(id: impl Into<ElementId>, markdown: SharedString) -> TextView {
+    TextView::markdown(id, markdown)
+        .markdown_extensions(MarkdownExtensions::default().raw_html(false))
+        .scrollable(true)
+        .image_source(image_source)
+        .on_link_click(|_, _, _, _| {})
+}
+
+// The format and bytes of a raster `data:<mime>[;base64],<data>` image, or `None` for any
+// other URL. An SVG is refused, since its decoder reads local files the SVG names.
 fn data_image(uri: &str) -> Option<(ImageFormat, Vec<u8>)> {
     let rest = uri
         .get(..5)?
@@ -23,7 +92,6 @@ fn data_image(uri: &str) -> Option<(ImageFormat, Vec<u8>)> {
         .then(|| &uri[5..])?;
     let (header, data) = rest.split_once(',')?;
     let mime = header.split(';').next()?.trim().to_ascii_lowercase();
-    // Raster formats only: an SVG can name local files for its decoder to read.
     let format = ImageFormat::from_mime_type(&mime).filter(|f| {
         matches!(
             f,
@@ -47,90 +115,774 @@ fn data_image(uri: &str) -> Option<(ImageFormat, Vec<u8>)> {
     Some((format, bytes))
 }
 
-/// The preview of `html`, scrolling in its own list. Links are inert, since a page's own
-/// links could hand any scheme to the system opener.
-pub fn view(id: impl Into<ElementId>, html: SharedString) -> TextView {
-    TextView::html(id, html)
-        .scrollable(true)
-        .image_source(image_source)
-        .on_link_click(|_, _, _, _| {})
+// The parsed page: nodes in a flat list, linked by index, so neither building nor dropping it
+// recurses however deep the page nests.
+struct Arena {
+    nodes: Vec<Node>,
+    // Set at the node or depth bound; from then on the tree no longer changes.
+    full: bool,
+    // The name a placeholder answers to.
+    span: QualName,
 }
 
-/// Deepest tag nesting the preview lays out. The kit parses with recursion several frames deep
-/// per level on a background thread; 256 levels stay far inside a 2 MiB stack.
-pub const MAX_DEPTH: usize = 256;
+struct Node {
+    parent: Option<usize>,
+    children: Vec<usize>,
+    // Levels below the document when last attached; a later move of an ancestor can leave
+    // it stale, which only matters to the parse bound, never to the Markdown's depth.
+    depth: usize,
+    kind: Kind,
+}
 
-// Void elements, and elements whose end tag the parser implies when a sibling starts; neither
-// adds a level, so pages that never close their `<p>` or `<li>` still preview.
-const FLAT: &[&str] = &[
-    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track",
-    "wbr", "p", "li", "dt", "dd", "tr", "td", "th", "option", "optgroup", "thead", "tbody",
-    "tfoot", "colgroup", "rt", "rp",
-];
+enum Kind {
+    Document,
+    Element {
+        name: QualName,
+        attrs: Vec<Attribute>,
+        integration: bool,
+    },
+    Text(String),
+    Other,
+}
 
-// Elements whose text is never page content, removed with everything inside them.
-const DROPPED: &[&str] = &["script", "style", "title"];
+const DOCUMENT: usize = 0;
+// A detached element handed out for every node created past the bound.
+const PLACEHOLDER: usize = 1;
 
-/// The HTML the preview lays out: `html` without its script, style and title elements, or
-/// `None` when its tags nest deeper than [`MAX_DEPTH`]. One pass over the text, no recursion:
-/// a stack of open names, where a close tag pops back to its own name and is otherwise
-/// ignored, as the parser does, and a self-closing `/>` still opens an HTML element.
-pub fn prepare(html: &str) -> Option<String> {
-    // ASCII lowercasing keeps every byte offset, so names and end tags are matched in `lower`.
-    let lower = html.to_ascii_lowercase();
-    let mut out = String::with_capacity(html.len());
-    let mut open: Vec<&str> = Vec::new();
-    let (mut at, mut kept) = (0, 0);
-    while let Some(found) = lower[at..].find('<') {
-        let lt = at + found;
-        let rest = &lower[lt + 1..];
-        if rest.starts_with("!--") {
-            at = rest.find("-->").map_or(lower.len(), |end| lt + 1 + end + 3);
-            continue;
+impl Arena {
+    fn new() -> Arena {
+        let span = QualName::new(None, ns!(html), local_name!("span"));
+        let placeholder = Kind::Element {
+            name: span.clone(),
+            attrs: Vec::new(),
+            integration: false,
+        };
+        let node = |kind| Node {
+            parent: None,
+            children: Vec::new(),
+            depth: 0,
+            kind,
+        };
+        Arena {
+            nodes: vec![node(Kind::Document), node(placeholder)],
+            full: false,
+            span,
         }
-        let closing = rest.starts_with('/');
-        let start = lt + 1 + usize::from(closing);
-        let len = lower[start..]
-            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-'))
-            .unwrap_or(lower.len() - start);
-        let name = &lower[start..start + len];
-        if !name.starts_with(|c: char| c.is_ascii_alphabetic()) {
-            at = lt + 1;
-            continue;
+    }
+
+    fn add(&mut self, kind: Kind) -> usize {
+        if self.full || self.nodes.len() >= MAX_NODES {
+            self.full = true;
+            return PLACEHOLDER;
         }
-        let end = lower[start..]
-            .find('>')
-            .map_or(lower.len(), |gt| start + gt + 1);
-        if !closing && DROPPED.contains(&name) {
-            // Everything up to its end tag goes; one that never closes takes the rest.
-            let stop = lower[end..]
-                .find(&format!("</{name}"))
-                .map_or(lower.len(), |close| {
-                    let close = end + close;
-                    lower[close..]
-                        .find('>')
-                        .map_or(lower.len(), |gt| close + gt + 1)
-                });
-            out.push_str(&html[kept..lt]);
-            (kept, at) = (stop, stop);
-            continue;
-        }
-        if FLAT.contains(&name) {
-            at = end;
-            continue;
-        }
-        if closing {
-            if let Some(ix) = open.iter().rposition(|n| *n == name) {
-                open.truncate(ix);
+        self.nodes.push(Node {
+            parent: None,
+            children: Vec::new(),
+            depth: 0,
+            kind,
+        });
+        self.nodes.len() - 1
+    }
+
+    fn detach(&mut self, node: usize) {
+        if let Some(parent) = self.nodes[node].parent.take() {
+            let siblings = &mut self.nodes[parent].children;
+            if let Some(ix) = siblings.iter().rposition(|&n| n == node) {
+                siblings.remove(ix);
             }
+        }
+    }
+
+    // Puts `child` into `parent` at `ix`, merging text into a text node just before it.
+    fn insert(&mut self, parent: usize, ix: usize, child: NodeOrText<usize>) {
+        match child {
+            NodeOrText::AppendNode(node) => {
+                self.detach(node);
+                let ix = ix.min(self.nodes[parent].children.len());
+                let depth = self.nodes[parent].depth + 1;
+                self.nodes[node].parent = Some(parent);
+                self.nodes[node].depth = depth;
+                self.nodes[parent].children.insert(ix, node);
+                self.full |= depth > MAX_DEPTH;
+            }
+            NodeOrText::AppendText(text) => {
+                let before = ix.checked_sub(1).map(|i| self.nodes[parent].children[i]);
+                if let Some(before) = before
+                    && let Kind::Text(existing) = &mut self.nodes[before].kind
+                {
+                    existing.push_str(&text);
+                    return;
+                }
+                let node = self.add(Kind::Text(text.to_string()));
+                if node != PLACEHOLDER {
+                    self.nodes[node].parent = Some(parent);
+                    self.nodes[parent].children.insert(ix, node);
+                }
+            }
+        }
+    }
+}
+
+impl TreeSink for Arena {
+    type Handle = usize;
+    type Output = Arena;
+
+    fn finish(self) -> Arena {
+        self
+    }
+
+    fn parse_error(&mut self, _: Cow<'static, str>) {}
+
+    fn get_document(&mut self) -> usize {
+        DOCUMENT
+    }
+
+    fn elem_name<'a>(&'a self, target: &'a usize) -> ExpandedName<'a> {
+        match &self.nodes[*target].kind {
+            Kind::Element { name, .. } => name.expanded(),
+            _ => self.span.expanded(),
+        }
+    }
+
+    fn create_element(
+        &mut self,
+        name: QualName,
+        attrs: Vec<Attribute>,
+        flags: ElementFlags,
+    ) -> usize {
+        self.add(Kind::Element {
+            name,
+            attrs,
+            integration: flags.mathml_annotation_xml_integration_point,
+        })
+    }
+
+    fn create_comment(&mut self, _: StrTendril) -> usize {
+        self.add(Kind::Other)
+    }
+
+    fn create_pi(&mut self, _: StrTendril, _: StrTendril) -> usize {
+        self.add(Kind::Other)
+    }
+
+    fn append(&mut self, parent: &usize, child: NodeOrText<usize>) {
+        if !self.full {
+            let end = self.nodes[*parent].children.len();
+            self.insert(*parent, end, child);
+        }
+    }
+
+    fn append_based_on_parent_node(
+        &mut self,
+        element: &usize,
+        prev: &usize,
+        child: NodeOrText<usize>,
+    ) {
+        if self.nodes[*element].parent.is_some() {
+            self.append_before_sibling(element, child);
         } else {
-            open.push(name);
-            if open.len() > MAX_DEPTH {
+            self.append(prev, child);
+        }
+    }
+
+    fn append_doctype_to_document(&mut self, _: StrTendril, _: StrTendril, _: StrTendril) {}
+
+    // Template contents are kept as the template's children; the preview leaves templates out.
+    fn get_template_contents(&mut self, target: &usize) -> usize {
+        *target
+    }
+
+    fn same_node(&self, x: &usize, y: &usize) -> bool {
+        x == y
+    }
+
+    fn set_quirks_mode(&mut self, _: QuirksMode) {}
+
+    fn append_before_sibling(&mut self, sibling: &usize, child: NodeOrText<usize>) {
+        if self.full {
+            return;
+        }
+        if let NodeOrText::AppendNode(node) = &child {
+            self.detach(*node);
+        }
+        let Some(parent) = self.nodes[*sibling].parent else {
+            return;
+        };
+        let siblings = &self.nodes[parent].children;
+        let ix = siblings
+            .iter()
+            .rposition(|n| n == sibling)
+            .unwrap_or(siblings.len());
+        self.insert(parent, ix, child);
+    }
+
+    fn add_attrs_if_missing(&mut self, target: &usize, new: Vec<Attribute>) {
+        if self.full {
+            return;
+        }
+        if let Kind::Element { attrs, .. } = &mut self.nodes[*target].kind {
+            for attr in new {
+                if !attrs.iter().any(|a| a.name == attr.name) {
+                    attrs.push(attr);
+                }
+            }
+        }
+    }
+
+    fn remove_from_parent(&mut self, target: &usize) {
+        if !self.full {
+            self.detach(*target);
+        }
+    }
+
+    fn reparent_children(&mut self, node: &usize, new_parent: &usize) {
+        if self.full {
+            return;
+        }
+        let children = std::mem::take(&mut self.nodes[*node].children);
+        let depth = self.nodes[*new_parent].depth + 1;
+        for &child in &children {
+            self.nodes[child].parent = Some(*new_parent);
+            self.nodes[child].depth = depth;
+        }
+        self.nodes[*new_parent].children.extend(children);
+    }
+
+    fn is_mathml_annotation_xml_integration_point(&self, handle: &usize) -> bool {
+        matches!(
+            self.nodes[*handle].kind,
+            Kind::Element {
+                integration: true,
+                ..
+            }
+        )
+    }
+}
+
+// A container a block line is prefixed by: a quote, or a list item whose marker shows on its
+// first line and whose width indents the rest. `first` holds until its first block is written.
+enum Container {
+    Quote { first: bool },
+    Item { marker: String, first: bool },
+}
+
+// What leaving an element undoes.
+#[derive(Clone, Copy)]
+enum Opened {
+    Nothing,
+    Container,
+    List,
+    Mark,
+    Pre,
+    Code,
+    Table,
+    Row,
+    Cell,
+    Heading(usize),
+    Block,
+}
+
+enum Step {
+    Enter(usize),
+    Exit(Opened),
+}
+
+struct Table {
+    rows: Vec<Vec<String>>,
+}
+
+// Writes the arena as Markdown in one walk with an explicit stack. Page text is collapsed as
+// HTML collapses whitespace and has every ASCII punctuation escaped, so it makes no syntax;
+// the only syntax is what the walk writes, and its nesting is capped.
+struct Writer<'a> {
+    arena: &'a Arena,
+    out: String,
+    line: String,
+    space: bool,
+    nest: Vec<Container>,
+    lists: Vec<(bool, usize)>,
+    mark: Option<&'static str>,
+    marks: usize,
+    mark_written: bool,
+    pre: Option<String>,
+    code: Option<String>,
+    // A space pending when the code span began, written before it.
+    code_space: bool,
+    codes: usize,
+    table: Option<Table>,
+    tables: usize,
+    cell: bool,
+}
+
+impl<'a> Writer<'a> {
+    fn new(arena: &'a Arena) -> Writer<'a> {
+        Writer {
+            arena,
+            out: String::new(),
+            line: String::new(),
+            space: false,
+            nest: Vec::new(),
+            lists: Vec::new(),
+            mark: None,
+            marks: 0,
+            mark_written: false,
+            pre: None,
+            code: None,
+            code_space: false,
+            codes: 0,
+            table: None,
+            tables: 0,
+            cell: false,
+        }
+    }
+
+    fn write(mut self) -> String {
+        let mut steps = vec![Step::Enter(DOCUMENT)];
+        while let Some(step) = steps.pop() {
+            match step {
+                Step::Enter(node) => {
+                    let Some(opened) = self.enter(node) else {
+                        continue;
+                    };
+                    steps.push(Step::Exit(opened));
+                    let children = &self.arena.nodes[node].children;
+                    steps.extend(children.iter().rev().map(|&c| Step::Enter(c)));
+                }
+                Step::Exit(opened) => self.exit(opened),
+            }
+        }
+        self.flush();
+        self.out
+    }
+
+    // Starts `node`; `None` leaves out the node and everything inside it.
+    fn enter(&mut self, node: usize) -> Option<Opened> {
+        let (name, attrs) = match &self.arena.nodes[node].kind {
+            Kind::Document => return Some(Opened::Nothing),
+            Kind::Text(text) => {
+                self.text(text);
                 return None;
             }
+            Kind::Other => return None,
+            Kind::Element { name, attrs, .. } => (name, attrs),
+        };
+        if name.ns != ns!(html) {
+            return None;
         }
-        at = end;
+        let tag = &name.local;
+        let opened = match &**tag {
+            "head" | "script" | "style" | "title" | "template" | "noscript" | "iframe"
+            | "object" | "embed" | "canvas" | "video" | "audio" | "select" | "frameset"
+            | "noembed" | "noframes" => return None,
+            _ if self.pre.is_some() => {
+                if tag == &local_name!("br") {
+                    self.text("\n");
+                }
+                Opened::Nothing
+            }
+            "b" | "strong" | "i" | "em" => {
+                self.marks += 1;
+                if self.marks == 1 {
+                    let strong = matches!(tag.as_ref(), "b" | "strong");
+                    self.mark = Some(if strong { "**" } else { "*" });
+                    self.mark_written = false;
+                }
+                Opened::Mark
+            }
+            "code" | "kbd" | "samp" | "tt" => {
+                self.codes += 1;
+                if self.codes == 1 {
+                    self.code = Some(String::new());
+                    self.code_space = std::mem::take(&mut self.space);
+                }
+                Opened::Code
+            }
+            "img" => {
+                self.image(attrs);
+                Opened::Nothing
+            }
+            "br" | "hr" if self.cell => {
+                self.space = true;
+                Opened::Nothing
+            }
+            "br" => {
+                self.flush();
+                Opened::Nothing
+            }
+            "hr" => {
+                self.flush();
+                self.block("* * *");
+                Opened::Nothing
+            }
+            "table" if self.tables == 0 && !self.cell => {
+                self.flush();
+                self.tables = 1;
+                self.table = Some(Table { rows: Vec::new() });
+                Opened::Table
+            }
+            "table" => {
+                self.tables += 1;
+                self.space = true;
+                Opened::Table
+            }
+            "tr" if self.tables == 1 => {
+                if let Some(table) = &mut self.table {
+                    table.rows.push(Vec::new());
+                }
+                Opened::Row
+            }
+            "td" | "th" if self.tables == 1 && !self.cell => {
+                self.cell = true;
+                self.line.clear();
+                self.space = false;
+                Opened::Cell
+            }
+            "td" | "th" | "tr" => {
+                self.space = true;
+                Opened::Nothing
+            }
+            _ if self.table.is_some() && !self.cell => Opened::Nothing,
+            "pre" if !self.cell => {
+                self.flush();
+                self.pre = Some(String::new());
+                Opened::Pre
+            }
+            "h1" | "h2" | "h3" | "h4" | "h5" | "h6" if !self.cell => {
+                self.flush();
+                Opened::Heading(usize::from(tag.as_bytes()[1] - b'0'))
+            }
+            "ul" | "ol" => {
+                self.flush();
+                self.lists.push((tag == &local_name!("ol"), 0));
+                Opened::List
+            }
+            "li" | "blockquote" if !self.cell && self.nest.len() < MAX_NEST => {
+                self.flush();
+                let container = if tag == &local_name!("li") {
+                    let marker = match self.lists.last_mut() {
+                        Some((true, n)) => {
+                            *n += 1;
+                            format!("{n}. ")
+                        }
+                        _ => "- ".to_owned(),
+                    };
+                    Container::Item {
+                        marker,
+                        first: true,
+                    }
+                } else {
+                    Container::Quote { first: true }
+                };
+                self.nest.push(container);
+                Opened::Container
+            }
+            _ if is_block(tag) => {
+                self.flush();
+                Opened::Block
+            }
+            _ => Opened::Nothing,
+        };
+        Some(opened)
     }
-    out.push_str(&html[kept..]);
-    Some(out)
+
+    fn exit(&mut self, opened: Opened) {
+        match opened {
+            Opened::Nothing => {}
+            Opened::Block => self.flush(),
+            Opened::Mark => {
+                self.marks -= 1;
+                if self.marks == 0 {
+                    self.close_mark();
+                    self.mark = None;
+                }
+            }
+            Opened::Code => {
+                self.codes -= 1;
+                if self.codes == 0
+                    && let Some(code) = self.code.take()
+                {
+                    let after = std::mem::replace(&mut self.space, self.code_space);
+                    self.code_span(code.trim());
+                    self.space |= after;
+                }
+            }
+            Opened::Pre => {
+                if let Some(text) = self.pre.take() {
+                    let text = text.trim_end_matches('\n');
+                    let fence = "`".repeat(longest_run(text, '`').max(2) + 1);
+                    self.block(&format!("{fence}\n{text}\n{fence}"));
+                }
+            }
+            Opened::Heading(level) => {
+                self.close_mark();
+                let text = std::mem::take(&mut self.line);
+                self.space = false;
+                if !text.is_empty() {
+                    self.block(&format!("{} {text}", "#".repeat(level)));
+                }
+            }
+            Opened::List => {
+                self.flush();
+                self.lists.pop();
+            }
+            Opened::Container => {
+                self.flush();
+                self.nest.pop();
+            }
+            Opened::Cell => {
+                self.close_mark();
+                self.cell = false;
+                let text = std::mem::take(&mut self.line);
+                self.space = false;
+                if let Some(row) = self.table.as_mut().and_then(|t| t.rows.last_mut()) {
+                    row.push(text);
+                }
+            }
+            Opened::Row => {}
+            Opened::Table => {
+                self.tables -= 1;
+                if self.tables == 0
+                    && let Some(table) = self.table.take()
+                {
+                    self.table_block(table);
+                }
+            }
+        }
+    }
+
+    // Adds page text: raw inside a code block or span, otherwise collapsed and escaped.
+    fn text(&mut self, text: &str) {
+        if let Some(pre) = &mut self.pre {
+            pre.push_str(text);
+            return;
+        }
+        if self.table.is_some() && !self.cell {
+            return;
+        }
+        for c in text.chars() {
+            if matches!(c, ' ' | '\t' | '\n' | '\r' | '\x0c') {
+                self.space = true;
+                continue;
+            }
+            if let Some(code) = &mut self.code {
+                if self.space && !code.is_empty() {
+                    code.push(' ');
+                }
+                self.space = false;
+                code.push(c);
+                continue;
+            }
+            self.word_start();
+            if c.is_ascii_punctuation() {
+                self.line.push('\\');
+            }
+            self.line.push(c);
+        }
+    }
+
+    // Writes what goes before the next visible character: a collapsed space, then an
+    // emphasis delimiter that is open but not yet written.
+    fn word_start(&mut self) {
+        if self.space && !self.line.is_empty() {
+            self.line.push(' ');
+        }
+        self.space = false;
+        if let Some(mark) = self.mark
+            && !self.mark_written
+        {
+            self.line.push_str(mark);
+            self.mark_written = true;
+        }
+    }
+
+    // Closes the open delimiter, if one was written; whitespace after it stays pending.
+    fn close_mark(&mut self) {
+        if let Some(mark) = self.mark
+            && self.mark_written
+        {
+            self.line.push_str(mark);
+            self.mark_written = false;
+        }
+    }
+
+    fn code_span(&mut self, code: &str) {
+        if code.is_empty() || self.table.is_some() && !self.cell {
+            return;
+        }
+        let code = if self.cell {
+            code.replace('|', "\\|")
+        } else {
+            code.to_owned()
+        };
+        let fence = "`".repeat(longest_run(&code, '`') + 1);
+        let pad = if code.starts_with(['`', ' ']) || code.ends_with(['`', ' ']) {
+            " "
+        } else {
+            ""
+        };
+        self.word_start();
+        self.line
+            .push_str(&format!("{fence}{pad}{code}{pad}{fence}"));
+    }
+
+    // A raster `data:` image as an image, any other as its alt text.
+    fn image(&mut self, attrs: &[Attribute]) {
+        let attr = |name: &str| {
+            attrs
+                .iter()
+                .find(|a| &*a.name.local == name)
+                .map(|a| a.value.to_string())
+        };
+        let alt = attr("alt").unwrap_or_default();
+        let src: Option<String> =
+            attr("src").map(|s| s.chars().filter(|c| !c.is_ascii_whitespace()).collect());
+        match src.filter(|s| data_image(s).is_some() && self.code.is_none()) {
+            Some(src) if self.table.is_none() || self.cell => {
+                self.word_start();
+                self.line.push_str("![");
+                for c in alt.chars().filter(|c| !c.is_control()) {
+                    if c.is_ascii_punctuation() {
+                        self.line.push('\\');
+                    }
+                    self.line.push(c);
+                }
+                self.line.push_str("](");
+                self.line.push_str(&destination(&src));
+                self.line.push(')');
+            }
+            _ => self.text(&alt),
+        }
+    }
+
+    // Ends the paragraph being written; inside a table cell it only leaves a space.
+    fn flush(&mut self) {
+        if self.cell {
+            self.space = true;
+            return;
+        }
+        self.close_mark();
+        self.space = false;
+        if !self.line.is_empty() {
+            let line = std::mem::take(&mut self.line);
+            self.block(&line);
+        }
+    }
+
+    fn table_block(&mut self, table: Table) {
+        let columns = table.rows.iter().map(Vec::len).max().unwrap_or(0);
+        if columns == 0 {
+            return;
+        }
+        let row = |cells: &[String]| {
+            let cells = (0..columns).map(|i| cells.get(i).map_or("", String::as_str));
+            format!("| {} |", cells.collect::<Vec<_>>().join(" | "))
+        };
+        let mut lines = vec![row(&table.rows[0]), row(&vec!["---".to_owned(); columns])];
+        lines.extend(table.rows[1..].iter().map(|r| row(r)));
+        self.block(&lines.join("\n"));
+    }
+
+    // Writes one block, a blank line after the last, each line behind its containers' prefix.
+    fn block(&mut self, text: &str) {
+        if !self.out.is_empty() {
+            let gap = self.prefix(false);
+            self.out.push_str(gap.trim_end());
+            self.out.push('\n');
+        }
+        for (ix, line) in text.split('\n').enumerate() {
+            let prefix = self.prefix(ix == 0);
+            self.out.push_str(&prefix);
+            self.out.push_str(line);
+            self.out.push('\n');
+        }
+        for container in &mut self.nest {
+            let (Container::Quote { first } | Container::Item { first, .. }) = container;
+            *first = false;
+        }
+    }
+
+    // The prefix of a block's first line, or of its later lines and the gap before it; a
+    // quote that has written nothing yet leaves the gap outside it.
+    fn prefix(&self, first_line: bool) -> String {
+        let mut prefix = String::new();
+        for container in &self.nest {
+            match container {
+                Container::Quote { first } if *first && !first_line => {}
+                Container::Quote { .. } => prefix.push_str("> "),
+                Container::Item { marker, first } if *first && first_line => {
+                    prefix.push_str(marker)
+                }
+                Container::Item { marker, .. } => prefix.push_str(&" ".repeat(marker.len())),
+            }
+        }
+        prefix
+    }
+}
+
+fn is_block(tag: &LocalName) -> bool {
+    matches!(
+        tag.as_ref(),
+        "address"
+            | "article"
+            | "aside"
+            | "blockquote"
+            | "body"
+            | "caption"
+            | "center"
+            | "dd"
+            | "details"
+            | "dialog"
+            | "div"
+            | "dl"
+            | "dt"
+            | "fieldset"
+            | "figcaption"
+            | "figure"
+            | "footer"
+            | "form"
+            | "header"
+            | "hgroup"
+            | "html"
+            | "legend"
+            | "li"
+            | "main"
+            | "menu"
+            | "nav"
+            | "p"
+            | "search"
+            | "section"
+            | "summary"
+            | "h1"
+            | "h2"
+            | "h3"
+            | "h4"
+            | "h5"
+            | "h6"
+            | "pre"
+    )
+}
+
+// The longest run of `c` in `text`.
+fn longest_run(text: &str, c: char) -> usize {
+    let (mut longest, mut run) = (0, 0);
+    for ch in text.chars() {
+        run = if ch == c { run + 1 } else { 0 };
+        longest = longest.max(run);
+    }
+    longest
+}
+
+// `url` as a Markdown destination: every byte outside the URL characters, and the ones that
+// end or open a destination, percent-encoded.
+fn destination(url: &str) -> String {
+    let mut out = String::with_capacity(url.len());
+    for b in url.bytes() {
+        let plain = b.is_ascii_alphanumeric() || b"-._~:/?#[]@!$&'*+,;=%".contains(&b);
+        if plain {
+            out.push(char::from(b));
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
 }

@@ -688,7 +688,9 @@ fn a_previewed_html_page_holds_no_secret(cx: &mut TestAppContext) {
     })
     .unwrap();
     cx.run_until_parked();
-    let html = cx.update(|cx| view.read(cx).preview_html()).unwrap();
+    let html = cx.update(|cx| view.read(cx).preview_markdown()).unwrap();
     assert!(!html.contains(SECRET), "{html}");
-    assert!(html.contains(&format!("token {MASKED}")), "{html}");
+    // The page text is escaped for its Markdown layout, brackets included.
+    assert_eq!(MASKED, "[redacted]");
+    assert!(html.contains("token \\[redacted\\]"), "{html}");
 }
