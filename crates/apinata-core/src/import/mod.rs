@@ -15,6 +15,7 @@ mod note_place;
 mod openapi;
 mod place;
 mod postman;
+mod postman_export;
 mod protect;
 mod read;
 pub(crate) use postman::pm_chain_at;
@@ -35,6 +36,9 @@ pub use format::{
 };
 pub use place::{Placed, ensure_folder, place_items};
 pub use postman::{parse_postman, parse_postman_environment};
+pub use postman_export::{
+    ExportError, PostmanExport, looks_like_postman_export, parse_postman_export,
+};
 pub use protect::{auth_secret_fields, replace_auth_secret, secret_name_base};
 pub use read::read_reason;
 pub use request::{

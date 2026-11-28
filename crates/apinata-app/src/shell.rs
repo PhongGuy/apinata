@@ -3926,10 +3926,39 @@ pub fn parse_bundles_grouped(
     formats_shown: bool,
     group_by: GroupBy,
 ) -> Result<Vec<ImportBundle>, String> {
+    if apinata_core::import::looks_like_postman_export(file) {
+        return parse_export(file);
+    }
     let input = std::fs::read(file)
         .map_err(|e| crate::import_report::failure_at(file, &read_reason(&e)))?;
     let source = SpecLocation::File(file.to_path_buf());
     parse_bundles_with(file, &input, formats_shown, group_by, source)
+}
+
+/// Reads the Postman data export at `path` into one bundle per collection. Entries left out ride
+/// on the first collection's notes, so the import report lists them; an export with no
+/// collection to import is a failure naming what was left out.
+pub fn parse_export(path: &Path) -> Result<Vec<ImportBundle>, String> {
+    let export = apinata_core::import::parse_postman_export(path)
+        .map_err(|e| crate::ui::plain_quotes(&e.to_string()))?;
+    let mut bundles = export.bundles;
+    match bundles.first_mut() {
+        Some(first) => {
+            first.collection.unwritten.extend(export.skipped);
+            Ok(bundles)
+        }
+        None => {
+            let left: Vec<String> = export
+                .skipped
+                .iter()
+                .map(|n| format!("{}: {}", n.source, n.detail))
+                .collect();
+            Err(format!(
+                "This export holds no collection that could be imported.\n{}",
+                left.join("\n")
+            ))
+        }
+    }
 }
 
 /// `parse_bundles` over bytes already read from `file`, which only names the collection. With

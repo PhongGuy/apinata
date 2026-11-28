@@ -3,7 +3,9 @@
 
 use std::path::{Path, PathBuf};
 
-use apinata_core::import::{ImportBundle, ImportedRequest, RequestFormat, parse_request};
+use apinata_core::import::{
+    ImportBundle, ImportedRequest, RequestFormat, looks_like_postman_export, parse_request,
+};
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::{
     InteractiveElement as _, IntoElement, ParentElement as _, Styled as _, TestSupportExt as _, div,
@@ -28,6 +30,12 @@ pub enum Dropped {
 
 /// Reads `path` to decide what it is. Blocking: run it off the render path.
 pub fn classify(path: &Path) -> Dropped {
+    if looks_like_postman_export(path) {
+        return match crate::shell::parse_export(path) {
+            Ok(bundles) => Dropped::Collections(bundles),
+            Err(message) => Dropped::Refused(message),
+        };
+    }
     if path.is_dir() {
         return Dropped::Folder(path.to_path_buf());
     }
