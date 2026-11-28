@@ -402,8 +402,9 @@ pub(crate) fn content_hash(bytes: &[u8]) -> String {
     hex(&Sha256::digest(bytes))
 }
 
-/// Where a context's certificate files are read for hashing: the collection's own under the
-/// context's file access, those the options added anywhere, as a send reads them.
+/// Where certificate files are read for hashing: under the context's file access, except the
+/// certificates the options added to the context's own network, read anywhere as a send reads
+/// them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CertFiles {
     collection: FileScope,
@@ -411,10 +412,21 @@ pub(crate) struct CertFiles {
 }
 
 impl CertFiles {
-    pub(crate) fn of(ctx: &VarContext) -> CertFiles {
+    /// For hashing `ctx.network()` itself, whose certificates past the collection's own came
+    /// from the options.
+    pub(crate) fn of_context_network(ctx: &VarContext) -> CertFiles {
         CertFiles {
             collection: ctx.file_scope(),
             own: ctx.collection_certificates(),
+        }
+    }
+
+    /// For hashing any other network, such as one read from disk: every certificate is the
+    /// collection's, whatever its index.
+    pub(crate) fn collection(ctx: &VarContext) -> CertFiles {
+        CertFiles {
+            collection: ctx.file_scope(),
+            own: usize::MAX,
         }
     }
 
@@ -450,9 +462,10 @@ impl NetworkSnapshot {
     /// The snapshot of `network` as a send in `ctx`'s environment would use it. A value that
     /// came from a secret variable is kept only as a keyed hash; a variable nothing defines
     /// becomes an "unresolved" marker, so it is neither an error nor a way to hide a change; a
-    /// `{{$dynamic}}` field stays its template. Each certificate file is read and hashed.
+    /// `{{$dynamic}}` field stays its template. Each certificate file is read and
+    /// hashed under `ctx`'s file access, as the collection's own.
     pub fn resolve(network: &CollectionNetwork, ctx: &VarContext, salt: &str) -> NetworkSnapshot {
-        let files = CertFiles::of(ctx);
+        let files = CertFiles::collection(ctx);
         Self::from_expansions(network, &scope_expansions(network, ctx), &files, salt)
     }
 

@@ -398,3 +398,28 @@ async fn certificates_from_the_options_are_read_anywhere() {
         "{err:?}"
     );
 }
+
+#[test]
+fn a_certificate_the_disk_adds_after_the_context_is_never_hashed() {
+    let tmp = linked_key_layout();
+    let coll = tmp.path().join("coll");
+    std::fs::copy(fixture("network/client.key"), coll.join("c.key")).unwrap();
+    std::fs::write(coll.join("opencollection.yml"), cert_root("c.pem", "c.key")).unwrap();
+    let c = Collection::open(&coll).expect("opens");
+    let ctx = VarContext::new(&c, ContextOptions::new()).unwrap();
+    // An outside writer appends a second certificate naming a file outside the root.
+    let out = tmp.path().join("out.key");
+    let extra = format!(
+        "    - domain: \"x\"\n      type: pem\n      certificateFilePath: '{0}'\n      privateKeyFilePath: '{0}'\n",
+        out.display()
+    );
+    let appended = cert_root("c.pem", "c.key") + &extra;
+    std::fs::write(coll.join("opencollection.yml"), appended).unwrap();
+    let disk = apinata_core::saved_network(&coll).unwrap();
+    assert_eq!(disk.certificates.len(), 2);
+    let hash = || NetworkSnapshot::resolve(&disk, &ctx, "salt").fingerprint();
+    std::fs::write(&out, "first").unwrap();
+    let first = hash();
+    std::fs::write(&out, "second").unwrap();
+    assert_eq!(hash(), first);
+}

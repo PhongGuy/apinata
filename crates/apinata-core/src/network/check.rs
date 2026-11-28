@@ -266,7 +266,7 @@ impl NetworkBasis {
         let send = expand_all(&network, vars);
         NetworkBasis {
             root: ctx.root().to_path_buf(),
-            files: CertFiles::of(ctx),
+            files: CertFiles::of_context_network(ctx),
             collection: scope_expansions(&network, ctx),
             baseline: expand_all(&network, &scope),
             verified: consistent(&send, actual),
