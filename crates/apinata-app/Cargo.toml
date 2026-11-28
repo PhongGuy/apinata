@@ -18,6 +18,7 @@ futures-util.workspace = true
 tree-sitter-c-sharp.workspace = true
 tree-sitter-graphql.workspace = true
 tree-sitter-powershell.workspace = true
+tree-sitter-swift.workspace = true
 lsp-types.workspace = true
 chrono.workspace = true
 notify-debouncer-full.workspace = true

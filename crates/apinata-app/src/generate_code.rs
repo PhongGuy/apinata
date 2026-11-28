@@ -56,6 +56,15 @@ pub fn init() {
         "",
     );
     LanguageRegistry::singleton().register("powershell", &powershell);
+    let swift = LanguageConfig::new(
+        "swift",
+        tree_sitter_swift::LANGUAGE.into(),
+        Vec::new(),
+        tree_sitter_swift::HIGHLIGHTS_QUERY,
+        "",
+        "",
+    );
+    LanguageRegistry::singleton().register("swift", &swift);
 }
 
 /// The open dialog's view, for tests and the pilot; None when no dialog is open.
@@ -219,23 +228,22 @@ impl GenerateCodeView {
     }
 }
 
-/// The highlighter name for a target's language; the shell targets share bash. PowerShell uses
-/// the grammar `init` registers, and any later target shows as plain `"text"`.
+/// The highlighter name for a target's language; the shell targets share bash. PowerShell and
+/// Swift use the grammars `init` registers, and raw HTTP shows as plain `"text"`.
 pub fn highlighter(target: Target) -> &'static str {
     match target {
-        Target::Curl | Target::Httpie => "bash",
-        Target::PythonRequests => "python",
-        Target::JsFetch | Target::NodeAxios => "javascript",
+        Target::Curl | Target::Httpie | Target::Wget => "bash",
+        Target::PythonRequests | Target::PythonHttpClient => "python",
+        Target::JsFetch | Target::NodeAxios | Target::NodeHttp => "javascript",
         Target::GoNative => "go",
         Target::PhpCurl => "php",
         Target::RustReqwest => "rust",
         Target::JavaHttpClient => "java",
         Target::CSharpHttpClient => "csharp",
         Target::PowerShellRestMethod => "powershell",
-        // Raw HTTP has no grammar, and the Ruby, Kotlin and Swift grammars are not built in.
-        Target::RawHttp | Target::RubyNetHttp | Target::KotlinOkHttp | Target::SwiftUrlSession => {
-            "text"
-        }
+        Target::RubyNetHttp => "ruby",
+        Target::KotlinOkHttp => "kotlin",
+        Target::SwiftUrlSession => "swift",
         _ => "text",
     }
 }

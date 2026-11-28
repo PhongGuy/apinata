@@ -84,7 +84,7 @@ keyring-core = "1.0.0"
 zbus-secret-service-keyring-store = { version = "1.0.1", features = ["crypto-rust"] }
 apple-native-keyring-store = { version = "1.0.2", features = ["keychain"] }
 windows-native-keyring-store = "1.1.0"
-gpui-kit = { version = "=0.11.0", features = ["tree-sitter", "tree-sitter-bash", "tree-sitter-csharp", "tree-sitter-go", "tree-sitter-html", "tree-sitter-java", "tree-sitter-javascript", "tree-sitter-markdown", "tree-sitter-php", "tree-sitter-python", "tree-sitter-rust", "tree-sitter-graphql"] }
+gpui-kit = { version = "=0.11.0", features = ["tree-sitter", "tree-sitter-bash", "tree-sitter-csharp", "tree-sitter-go", "tree-sitter-html", "tree-sitter-java", "tree-sitter-javascript", "tree-sitter-markdown", "tree-sitter-php", "tree-sitter-python", "tree-sitter-ruby", "tree-sitter-rust", "tree-sitter-kotlin", "tree-sitter-swift", "tree-sitter-graphql"] }
 async-channel = "2.5.0"
 # The kit links this grammar but ships no highlights query for it; the app registers one.
 tree-sitter-c-sharp = "=0.23.5"
@@ -92,6 +92,8 @@ tree-sitter-c-sharp = "=0.23.5"
 tree-sitter-graphql = "=0.1.0"
 # The kit has no PowerShell grammar; the app registers this one with its own highlights query.
 tree-sitter-powershell = "=0.26.6"
+# The kit links this grammar with an empty highlights query; the app registers the grammar's own.
+tree-sitter-swift = "=0.7.4"
 # Parses GraphQL SDL schema files in core; error-tolerant, with byte offsets for positions.
 apollo-parser = "=0.8.7"
 # Validates GraphQL queries; exact, since a diagnostic filter matches its unstable_error_name.
