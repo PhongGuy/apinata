@@ -1031,6 +1031,9 @@ pub(crate) fn token_request(
         &url,
         &mut sensitive_values,
     )?;
+    // The token fetch is part of the request's own send, so it keeps the request's timeout and
+    // certificate check; the host policy still limits a skipped check to loopback.
+    let own = settings(req.document().get(&["settings"]), ctx.default_timeout());
     Ok(ResolvedRequest {
         method: "POST".to_owned(),
         url_text: url.clone(),
@@ -1039,13 +1042,13 @@ pub(crate) fn token_request(
         header_problem: None,
         body: Body::FormUrlEncoded(form),
         settings: Settings {
-            timeout: settings(req.document().get(&["settings"]), ctx.default_timeout()).timeout,
+            timeout: own.timeout,
             follow_redirects: false,
             max_redirects: 0,
             forward_authorization_header: false,
             encode_url: false,
             omit_headers: Vec::new(),
-            verify_tls: None,
+            verify_tls: own.verify_tls,
             http_version: None,
         },
         warnings: Vec::new(),

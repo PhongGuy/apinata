@@ -35,14 +35,20 @@ pub enum Target {
     Curl,
     /// A POSIX shell HTTPie (`http`) command.
     Httpie,
+    /// A POSIX shell GNU `wget` (1.15 or newer) command.
+    Wget,
     /// The HTTP/1.1 message as it goes on the wire.
     RawHttp,
     /// A Python script using `requests`.
     PythonRequests,
+    /// A Python script using the standard library's `http.client`.
+    PythonHttpClient,
     /// A Node 18+ ES module using the built-in `fetch`.
     JsFetch,
     /// A Node ES module using `axios`.
     NodeAxios,
+    /// A Node ES module using the built-in `http` or `https` module.
+    NodeHttp,
     /// A Go `package main` program using `net/http`.
     GoNative,
     /// A PowerShell 7 script using `Invoke-RestMethod`.
@@ -68,10 +74,13 @@ impl Target {
     pub const ALL: &'static [Target] = &[
         Target::Curl,
         Target::Httpie,
+        Target::Wget,
         Target::RawHttp,
         Target::PythonRequests,
+        Target::PythonHttpClient,
         Target::JsFetch,
         Target::NodeAxios,
+        Target::NodeHttp,
         Target::GoNative,
         Target::PowerShellRestMethod,
         Target::PhpCurl,
@@ -88,6 +97,9 @@ impl Target {
         match self {
             Target::Curl => "curl",
             Target::Httpie => "httpie",
+            Target::Wget => "wget",
+            Target::PythonHttpClient => "python-http-client",
+            Target::NodeHttp => "node-http",
             Target::RawHttp => "raw-http",
             Target::PythonRequests => "python-requests",
             Target::JsFetch => "js-fetch",
@@ -109,6 +121,9 @@ impl Target {
         match self {
             Target::Curl => "curl",
             Target::Httpie => "HTTPie",
+            Target::Wget => "wget",
+            Target::PythonHttpClient => "Python (http.client)",
+            Target::NodeHttp => "Node.js (http)",
             Target::RawHttp => "Raw HTTP",
             Target::PythonRequests => "Python (requests)",
             Target::JsFetch => "JavaScript (fetch)",
@@ -161,6 +176,9 @@ pub fn generate(req: &ResolvedRequest, target: Target) -> String {
     match target {
         Target::Curl => shell::curl(req),
         Target::Httpie => shell::httpie(req),
+        Target::Wget => shell::wget(req),
+        Target::PythonHttpClient => python::http_client(req),
+        Target::NodeHttp => javascript::node_http(req),
         Target::PythonRequests => python::requests(req),
         Target::JsFetch => javascript::fetch(req),
         Target::NodeAxios => javascript::axios(req),

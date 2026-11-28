@@ -24,7 +24,7 @@ async fn a_curl_command_becomes_the_request_core_writes() {
     assert!(
         notes
             .iter()
-            .any(|n| n["source"] == "curl flag -k" && n["kind"] == "dropped"),
+            .any(|n| n["source"] == "curl flag -k" && n["kind"] == "converted"),
         "{notes:?}"
     );
     let core = tempfile::tempdir().unwrap();
@@ -39,6 +39,7 @@ async fn a_curl_command_becomes_the_request_core_writes() {
     .unwrap();
     let read = |dir: &std::path::Path| fs::read_to_string(dir.join("Create user.yml")).unwrap();
     assert_eq!(read(server.root()), read(core.path()));
+    assert!(read(server.root()).contains("verifySsl: false"));
     // The URL holds a variable, so encoding stays off: its value may already be encoded.
     assert!(
         read(server.root()).contains("encodeUrl: false"),

@@ -454,12 +454,14 @@ setting.
 In the app, the request's Settings tab has a Certificate check select (Default,
 Verify, Don't verify) and an HTTP version select (Default, HTTP/1.1, Auto, HTTP/2
 prior knowledge). The Default entry names the Preferences value it follows, and
-choosing it removes the key from the file. A hop made without a certificate check
-says so in the address card, on the `--verbose` `tls:` line and as
+choosing it removes the key from the file. While the request's own setting is Don't
+verify, an unlocked mark before Send says so, and clicking it opens the Settings tab.
+A hop made without a certificate check says so in the address card, on the `--verbose` `tls:` line and as
 `"tls_unverified": true` on the request's row in the JSON report. The cookie jar is
 shared, so cookies flow between checked and unchecked sends as they do with
-`--insecure`. A token request for OAuth 2.0 follows the default, not the request's own
-setting.
+`--insecure`. The OAuth 2.0 token request a request makes follows that request's own
+setting; a folder's or the collection's Get token follows the default. A cached token
+is shared by every request with the same OAuth 2.0 settings, whichever check fetched it.
 
 Under the MCP server, a request's own `verifySsl: false` is honoured only for a
 loopback or `localhost` host reached directly, since an agent can edit the file. A
@@ -467,7 +469,8 @@ host override that maps the name anywhere but loopback, or a proxy on the route,
 refused too. The send fails before it connects, and every redirect is checked again. Starting the server with
 `--insecure` still turns the check off everywhere.
 
-Postman's `protocolProfileBehavior.strictSSL` and `protocolVersion` import into these
+A pasted curl command's `-k` or `--insecure` imports as `verifySsl: false`, with a
+note. Postman's `protocolProfileBehavior.strictSSL` and `protocolVersion` import into these
 keys and export back: `http1` is HTTP/1.1, `auto` is Auto, and `http2` imports as Auto
 with a note, since Postman negotiates it. HTTP/2 prior knowledge has no Postman
 setting and exports with a note.
