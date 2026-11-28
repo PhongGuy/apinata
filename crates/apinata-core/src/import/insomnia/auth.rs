@@ -128,7 +128,15 @@ pub(super) fn auth(
             key_id: templated(&mut auth, "keyId", notes, budget)?,
             subject: templated(&mut auth, "subject", notes, budget)?,
             expires_in: "600".to_owned(),
-            additional_claims: templated(&mut auth, "additionalClaims", notes, budget)?,
+            additional_claims: {
+                let claims = templated(&mut auth, "additionalClaims", notes, budget)?;
+                // Insomnia's v5 schema once spelled the key `addintionalClaims`.
+                if claims.is_empty() && auth.contains_key("addintionalClaims") {
+                    templated(&mut auth, "addintionalClaims", notes, budget)?
+                } else {
+                    claims
+                }
+            },
             private_key: templated(&mut auth, "privateKey", notes, budget)?,
         }),
         other => {

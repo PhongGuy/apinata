@@ -646,6 +646,17 @@ fn asap_maps_each_member_with_a_fixed_algorithm_and_expiry() {
     assert!(r.notes.is_empty(), "{:#?}", r.notes);
 }
 
+// Insomnia's v5 schema once spelled the claims key `addintionalClaims`; both spellings read.
+#[test]
+fn asap_reads_the_misspelled_v5_claims_key() {
+    let r = auth_of(json!({"type": "asap", "issuer": "i", "addintionalClaims": "{\"x\":1}"}));
+    let AuthSpec::Asap(spec) = &r.request.auth else {
+        panic!("not asap: {:?}", r.request.auth)
+    };
+    assert_eq!(spec.additional_claims, "{\"x\":1}");
+    assert!(r.notes.is_empty(), "{:#?}", r.notes);
+}
+
 #[test]
 fn other_auth_types_are_none_with_a_note() {
     for auth in [
