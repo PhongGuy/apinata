@@ -851,6 +851,7 @@ pub const RUN_COOKIE_CHOICES: [(&str, RunCookies); 3] = [
 
 const KEEP_COOKIES_TOOLTIP: &str = "Put the cookies the run set or changed into the shared jar; cookies it deleted stay there. A run on the shared jar always keeps them.";
 const KEEP_VARIABLES_TOOLTIP: &str = "Off, the run works on a copy of the variables, and the values it sets are dropped when it ends.";
+const TESTS_ONLY_TOOLTIP: &str = "Leave out requests with no enabled assertion and no test() call in their own scripts. Folder and collection tests do not count.";
 
 // A muted caption naming the input beside it.
 fn option_label(id: &'static str, text: &'static str, cx: &App) -> impl IntoElement + Styled {
@@ -1042,6 +1043,7 @@ impl Render for RunnerView {
         let (m1, m2, m3) = (self.model.clone(), self.model.clone(), self.model.clone());
         let m5 = self.model.clone();
         let (m6, m7) = (self.model.clone(), self.model.clone());
+        let m8 = self.model.clone();
         // Options sit in columns of a fixed label and control width, a row per group: what
         // runs, how often, and what counts as a failure. A narrow pane wraps whole
         // options, so the columns still line up. A pane too short for them and the list's
@@ -1049,6 +1051,10 @@ impl Render for RunnerView {
         let bail = ui::checkbox("run-bail", model.bail())
             .label("Stop after the first failure")
             .on_click(move |on: &bool, _, cx| m1.update(cx, |m, cx| m.set_bail(*on, cx)));
+        let tests_only = ui::checkbox("run-tests-only", model.tests_only())
+            .label("Only requests with tests")
+            .tooltip(TESTS_ONLY_TOOLTIP)
+            .on_click(move |on: &bool, _, cx| m8.update(cx, |m, cx| m.set_tests_only(*on, cx)));
         // Keeping cookies only means something for a run on its own jar.
         let keep_cookies = ui::checkbox("run-keep-cookies", model.keep_cookies())
             .label("Keep cookies after the run")
@@ -1188,6 +1194,13 @@ impl Render for RunnerView {
                         Some(option_label("run-exclude-tags-label", "Exclude tags", cx)),
                         field(&exclude_tags, "run-exclude-tags"),
                     )),
+            )
+            .child(
+                h_flex()
+                    .w_full()
+                    .gap_2()
+                    .child(div().flex_none().w(style::RUN_OPTION_LABEL_WIDTH))
+                    .child(tests_only),
             )
             .child(
                 option_row()

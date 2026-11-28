@@ -40,6 +40,19 @@ use std::time::{Duration, Instant, SystemTime};
 pub struct RunPlan {
     requests: Vec<(ItemPath, RequestFile, Vec<String>)>,
     load_errors: Vec<FileError>,
+    untested_dropped: usize,
+}
+
+/// Whether `request` checks something itself: an enabled assertion or a `test(...)` call.
+fn has_tests(request: &RequestFile) -> bool {
+    request.assertions().iter().any(|a| a.enabled())
+        || [
+            ScriptPhase::PreRequest,
+            ScriptPhase::PostResponse,
+            ScriptPhase::Tests,
+        ]
+        .into_iter()
+        .any(|phase| crate::js_scan::calls_test(&request.script(phase)))
 }
 
 impl RunPlan {
@@ -65,9 +78,14 @@ impl RunPlan {
         if !self.requests.is_empty() || !self.load_errors.is_empty() {
             return None;
         }
-        Some(match filter.describe() {
-            Some(what) => format!("no requests matched: {what}"),
-            None => "no requests to run in the selected path".to_owned(),
+        let dropped = self.untested_dropped;
+        Some(match (filter.describe(), dropped) {
+            (Some(what), 0) => format!("no requests matched: {what}"),
+            (Some(what), n) => {
+                format!("no requests matched: {what}; with tests only ({n} skipped)")
+            }
+            (None, 0) => "no requests to run in the selected path".to_owned(),
+            (None, n) => format!("no requests with tests to run ({n} skipped)"),
         })
     }
 
@@ -92,6 +110,21 @@ impl RunPlan {
         self.load_errors
             .retain(|e| kept.iter().any(|k| affects(e.path(), k)));
         self
+    }
+
+    /// The plan without the requests that check nothing; load errors are kept. A request checks
+    /// something when it has an enabled assertion of its own, or one of its own scripts calls
+    /// `test(...)`. Folder and collection checks do not count.
+    pub fn retain_tested(mut self) -> RunPlan {
+        let before = self.requests.len();
+        self.requests.retain(|(_, request, _)| has_tests(request));
+        self.untested_dropped += before - self.requests.len();
+        self
+    }
+
+    /// How many requests [`RunPlan::retain_tested`] dropped.
+    pub fn untested_dropped(&self) -> usize {
+        self.untested_dropped
     }
 
     /// The plan narrowed to exactly the requests in `requests`, kept in the plan's run order
@@ -174,6 +207,7 @@ impl Collection {
         Ok(RunPlan {
             requests,
             load_errors,
+            untested_dropped: 0,
         })
     }
 
@@ -195,6 +229,7 @@ impl Collection {
             return RunPlan {
                 requests: Vec::new(),
                 load_errors: Vec::new(),
+                untested_dropped: 0,
             };
         };
         plan.requests
@@ -2158,6 +2193,7 @@ mod tests {
         RunPlan {
             requests: Vec::new(),
             load_errors,
+            untested_dropped: 0,
         }
     }
 
