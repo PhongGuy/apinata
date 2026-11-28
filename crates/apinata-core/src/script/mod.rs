@@ -319,6 +319,9 @@ pub(crate) struct Record {
     /// The send's shared state, kept so the runner can read what scripts asked of it.
     pub(crate) state: Option<Arc<HostState>>,
     dropped: Option<(ScriptPhase, usize)>,
+    /// The phase and message of a shared-state call a parallel run refused after the
+    /// pre-request phase, which errors the send once its phases are over.
+    pub(crate) parallel_refused: Option<(ScriptPhase, String)>,
 }
 
 impl Record {
@@ -383,6 +386,14 @@ impl Record {
                 },
                 script_error: false,
             }));
+        // A refused shared-state call fails the send whether or not the script caught it: the
+        // pre-request phase stops it unsent, a later phase errors it at the end.
+        if let Some(message) = state.take_parallel_refusal() {
+            if phase == ScriptPhase::PreRequest {
+                return PhaseEnd::Failed(message);
+            }
+            self.parallel_refused.get_or_insert((phase, message));
+        }
         // A thrown error or a hit limit also reaches the console as an error of its phase.
         if let Some(Failure::Thrown { message } | Failure::Limit { message }) = &run.failure {
             self.console.push(ConsoleEntry {

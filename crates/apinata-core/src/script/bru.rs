@@ -90,6 +90,9 @@ fn dispatch(state: &HostState, op: &str, args: &str) -> String {
             Ok(value) => some(value),
             Err(e) => json!({ "e": e.to_string() }),
         },
+        "stopExecution" | "setNextRequest" if state.parallel() => {
+            json!({ "e": state.refuse_parallel(&format!("bru.{op}")) })
+        }
         "skipRequest" | "stopExecution" | "setNextRequest" => {
             let mut control = state.control.lock().unwrap_or_else(PoisonError::into_inner);
             match op {
@@ -176,6 +179,11 @@ fn scoped(state: &HostState, op: &str, scope: Scope, name: &str, value: Option<&
             }
             json!({ "p": pairs })
         }
+        "set" | "delete" | "deleteAll"
+            if state.parallel() && !matches!(scope, Scope::Folder | Scope::Request) =>
+        {
+            json!({ "e": state.refuse_parallel(&format!("writing {} variables", scope.as_str())) })
+        }
         "set" | "delete" | "deleteAll" => {
             write(state, op, scope, name, value);
             json!({})
@@ -233,6 +241,19 @@ fn write(state: &HostState, op: &str, scope: Scope, name: &str, value: Option<&V
             }
         }
         _ => {}
+    }
+}
+
+impl Scope {
+    fn as_str(self) -> &'static str {
+        match self {
+            Scope::Runtime => "runtime",
+            Scope::Env => "environment",
+            Scope::Global => "global",
+            Scope::Collection => "collection",
+            Scope::Folder => "folder",
+            Scope::Request => "request",
+        }
     }
 }
 
