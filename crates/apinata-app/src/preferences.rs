@@ -32,8 +32,8 @@ use crate::keymap::{ResetZoom, ZoomIn, ZoomOut};
 use crate::persisted::Persisted;
 use crate::prefs_section::PrefsSection;
 use crate::settings::{
-    HttpVersionPref, LinuxTitleBar, Orientation, ProxyMode, ProxyPrefs, REQUEST_TIMEOUT_SECS,
-    RunScripts, SCRIPT_TIMEOUT_SECS, Settings, ThemeChoice,
+    EditorKeymap, HttpVersionPref, LinuxTitleBar, Orientation, ProxyMode, ProxyPrefs,
+    REQUEST_TIMEOUT_SECS, RunScripts, SCRIPT_TIMEOUT_SECS, Settings, ThemeChoice,
 };
 use crate::style::{
     FORM_INPUT_WIDTH, PREFS_DIALOG_CHROME, PREFS_DIALOG_HEIGHT, PREFS_DIALOG_WIDTH,
@@ -91,6 +91,10 @@ const HTTP_VERSION_HINT: &str = "Keep HTTP/1.1 unless a server needs HTTP/2. Aut
     HTTP/2 when a secure (https) server supports it. HTTP/2 uses it for every request, even \
     without https, and fails on servers that do not support it.";
 const PROXY_PROTOCOLS: [&str; 4] = ["http", "https", "socks4", "socks5"];
+const EDITOR_KEYMAPS: [(EditorKeymap, &str); 2] = [
+    (EditorKeymap::Default, "Default"),
+    (EditorKeymap::Vim, "Vim"),
+];
 const ORIENTATIONS: [(Orientation, &str); 2] = [
     (Orientation::Vertical, "Stacked"),
     (Orientation::Horizontal, "Side by side"),
@@ -1136,6 +1140,19 @@ impl PreferencesView {
                 }
             }),
         );
+        let editor_keymap = ui::segmented(
+            "editor-keymap",
+            EDITOR_KEYMAPS.map(|(_, label)| label),
+            EDITOR_KEYMAPS
+                .iter()
+                .position(|(k, _)| *k == current.editor_keymap)
+                .unwrap_or_default(),
+            edit(|s, ix| {
+                if let Some(&(k, _)) = EDITOR_KEYMAPS.get(ix) {
+                    s.editor_keymap = k;
+                }
+            }),
+        );
         let updates_enabled = self.updates.as_ref().is_some_and(|u| u.read(cx).enabled());
 
         let mut appearance = PrefsSection::new("prefs-appearance", "Appearance")
@@ -1206,7 +1223,8 @@ impl PreferencesView {
                         this.edit(|s| s.wrap_editors = on, cx)
                     },
                 )),
-            );
+            )
+            .row("pref-editor-keymap", "Editor key map", editor_keymap);
         let run_scripts = ui::segmented(
             "run-scripts",
             RUN_SCRIPTS.map(|(_, label)| label),
