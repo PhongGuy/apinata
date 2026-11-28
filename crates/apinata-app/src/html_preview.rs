@@ -7,8 +7,12 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use crate::body_text::ImageKind;
+use crate::image_guard::{self, Refusal};
 use gpui_kit::component::text::{MarkdownExtensions, TextView};
-use gpui_kit::{ElementId, Image, ImageFormat, ImageSource, SharedString, SharedUri};
+use gpui_kit::{
+    App, Asset, ElementId, ImageCacheError, ImageSource, RenderImage, SharedString, SharedUri,
+};
 use html5ever::tendril::{StrTendril, TendrilSink as _};
 use html5ever::tree_builder::{ElementFlags, NodeOrText, QuirksMode, TreeSink};
 use html5ever::{
@@ -64,11 +68,41 @@ pub fn prepare(html: &str) -> Option<Page> {
     })
 }
 
-/// Where a previewed image comes from: a raster `data:` image decoded in place, and for any
-/// other URL an empty image that fails to decode, so nothing is fetched.
+/// Where a previewed image comes from: a raster `data:` image decoded off the main thread under
+/// the preview caps. Any other URL, or a refused image, loads as an error and shows nothing, so
+/// nothing is fetched.
 pub fn image_source(uri: &SharedUri) -> ImageSource {
-    let (format, bytes) = data_image(uri).unwrap_or((ImageFormat::Png, Vec::new()));
-    ImageSource::Image(Arc::new(Image::from_bytes(format, bytes)))
+    let uri = uri.clone();
+    ImageSource::Custom(Arc::new(move |window, cx| {
+        window.use_asset::<DataImage>(&uri, cx)
+    }))
+}
+
+// Loads a `data:` image on gpui's background executor, cached by its URL.
+enum DataImage {}
+
+impl Asset for DataImage {
+    type Source = SharedUri;
+    type Output = Result<Arc<RenderImage>, ImageCacheError>;
+
+    // An async fn would capture the App borrow, and the trait wants a 'static future.
+    #[allow(clippy::manual_async_fn)]
+    fn load(uri: SharedUri, _: &mut App) -> impl Future<Output = Self::Output> + Send + 'static {
+        async move {
+            load_data_image(&uri)
+                .map_err(|refusal| ImageCacheError::Asset(format!("{refusal:?}").into()))
+        }
+    }
+}
+
+/// The longest `data:` image payload the preview reads, as written in the page.
+pub const MAX_DATA_IMAGE_BYTES: usize = 16 * 1024 * 1024;
+
+/// Decodes a raster `data:` image under the preview caps. A payload over
+/// [`MAX_DATA_IMAGE_BYTES`] is refused before it is read; any other URL is undecodable.
+pub fn load_data_image(uri: &str) -> Result<Arc<RenderImage>, Refusal> {
+    let (kind, bytes) = data_image(uri)?;
+    image_guard::decode_preview(kind, &bytes, &image_guard::PREVIEW_LIMITS)
 }
 
 /// The preview of `markdown`, scrolling in its own list. Raw HTML is off and links are inert,
@@ -81,25 +115,30 @@ pub fn view(id: impl Into<ElementId>, markdown: SharedString) -> TextView {
         .on_link_click(|_, _, _, _| {})
 }
 
-// The format and bytes of a raster `data:<mime>[;base64],<data>` image, or `None` for any
-// other URL. An SVG is refused, since its decoder reads local files the SVG names.
-fn data_image(uri: &str) -> Option<(ImageFormat, Vec<u8>)> {
+// The kind and bytes of a raster `data:<mime>[;base64],<data>` image. Any other URL, an SVG
+// among them, is undecodable, and a payload over the cap is refused before it is decoded.
+fn data_image(uri: &str) -> Result<(ImageKind, Vec<u8>), Refusal> {
+    data_parts(uri).ok_or(Refusal::Undecodable)?
+}
+
+fn data_parts(uri: &str) -> Option<Result<(ImageKind, Vec<u8>), Refusal>> {
     let rest = uri
         .get(..5)?
         .eq_ignore_ascii_case("data:")
         .then(|| &uri[5..])?;
     let (header, data) = rest.split_once(',')?;
     let mime = header.split(';').next()?.trim().to_ascii_lowercase();
-    let format = ImageFormat::from_mime_type(&mime).filter(|f| {
-        matches!(
-            f,
-            ImageFormat::Png
-                | ImageFormat::Jpeg
-                | ImageFormat::Gif
-                | ImageFormat::Webp
-                | ImageFormat::Bmp
-        )
-    })?;
+    let kind = match mime.as_str() {
+        "image/png" => ImageKind::Png,
+        "image/jpeg" | "image/jpg" => ImageKind::Jpeg,
+        "image/gif" => ImageKind::Gif,
+        "image/webp" => ImageKind::Webp,
+        "image/bmp" => ImageKind::Bmp,
+        _ => return None,
+    };
+    if data.len() > MAX_DATA_IMAGE_BYTES {
+        return Some(Err(Refusal::Oversized));
+    }
     let base64 = (header.split(';').skip(1)).any(|p| p.trim().eq_ignore_ascii_case("base64"));
     let bytes = if base64 {
         use base64::Engine as _;
@@ -110,7 +149,7 @@ fn data_image(uri: &str) -> Option<(ImageFormat, Vec<u8>)> {
     } else {
         percent_encoding::percent_decode_str(data).collect()
     };
-    Some((format, bytes))
+    Some(Ok((kind, bytes)))
 }
 
 // The parsed page: nodes in a flat list, linked by index, so neither building nor dropping it
@@ -748,7 +787,7 @@ impl<'a> Writer<'a> {
         let alt = attr("alt").unwrap_or_default();
         let src: Option<String> =
             attr("src").map(|s| s.chars().filter(|c| !c.is_ascii_whitespace()).collect());
-        match src.filter(|s| data_image(s).is_some() && self.code.is_none()) {
+        match src.filter(|s| data_image(s).is_ok() && self.code.is_none()) {
             Some(src) if self.table.is_none() || self.cell => {
                 self.word_start();
                 self.line.push_str("![");

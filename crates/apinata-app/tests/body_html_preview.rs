@@ -7,11 +7,12 @@ use std::sync::Arc;
 
 use apinata_app::body_view::BodyView;
 use apinata_app::html_preview;
+use apinata_app::image_guard::Refusal;
 use apinata_core::{Outcome, RequestResult, Response};
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{
-    AnyWindowHandle, AppContext, Entity, ImageFormat, ImageSource, SharedUri, TestAppContext,
-    WindowOptions, point, px,
+    AnyWindowHandle, AppContext, Entity, ImageSource, SharedUri, TestAppContext, WindowOptions,
+    point, px,
 };
 use support::*;
 
@@ -117,16 +118,53 @@ fn a_remote_or_file_image_is_never_handed_to_the_loader() {
 }
 
 #[test]
-fn a_data_image_is_decoded_inline() {
+fn a_data_image_is_never_handed_to_gpui_as_raw_bytes() {
     // The eight-byte PNG signature, base64.
     let uri = SharedUri::from("data:image/png;base64,iVBORw0KGgo=".to_string());
-    match html_preview::image_source(&uri) {
-        ImageSource::Image(image) => {
-            assert_eq!(image.format(), ImageFormat::Png);
-            assert_eq!(image.bytes(), b"\x89PNG\r\n\x1a\n");
-        }
-        _ => panic!("a data: image should be decoded inline"),
-    }
+    assert!(matches!(
+        html_preview::image_source(&uri),
+        ImageSource::Custom(_)
+    ));
+}
+
+// A data: GIF whose logical screen is `w` x `h` holding one 1x1 frame.
+fn data_gif(w: u16, h: u16) -> String {
+    use base64::Engine as _;
+    let mut gif = b"GIF89a".to_vec();
+    gif.extend_from_slice(&w.to_le_bytes());
+    gif.extend_from_slice(&h.to_le_bytes());
+    gif.extend_from_slice(&[0x80, 0, 0, 0, 0, 0, 255, 255, 255]);
+    gif.extend_from_slice(&[0x2C, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2, 2, 0x44, 0x01, 0, 0x3B]);
+    let data = base64::engine::general_purpose::STANDARD.encode(gif);
+    format!("data:image/gif;base64,{data}")
+}
+
+#[test]
+fn a_data_gif_declaring_a_huge_canvas_is_refused_before_decoding() {
+    // The refusal comes from the header, so nothing large is allocated either way.
+    assert_eq!(
+        html_preview::load_data_image(&data_gif(65535, 65535)).err(),
+        Some(Refusal::TooLarge {
+            width: 65535,
+            height: 65535
+        })
+    );
+    assert_eq!(
+        html_preview::load_data_image(&data_gif(2, 2))
+            .map(|i| i.frame_count())
+            .ok(),
+        Some(1)
+    );
+}
+
+#[test]
+fn a_data_image_over_the_payload_cap_is_refused_unread() {
+    let data = "A".repeat(html_preview::MAX_DATA_IMAGE_BYTES + 4);
+    let uri = format!("data:image/png;base64,{data}");
+    assert_eq!(
+        html_preview::load_data_image(&uri).err(),
+        Some(Refusal::Oversized)
+    );
 }
 
 // A bare window laying out Markdown `page` with `view`, under the text selection layer the
@@ -384,12 +422,11 @@ fn an_svg_data_image_is_not_decoded() {
         "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%2F%3E",
         "data:image/tiff;base64,SUkqAA==",
     ] {
-        match html_preview::image_source(&SharedUri::from(uri.to_string())) {
-            ImageSource::Image(image) => {
-                assert!(image.bytes().is_empty(), "{uri} was decoded")
-            }
-            _ => panic!("{uri} should become an empty image"),
-        }
+        assert_eq!(
+            html_preview::load_data_image(uri).err(),
+            Some(Refusal::Undecodable),
+            "{uri} was decoded"
+        );
     }
 }
 

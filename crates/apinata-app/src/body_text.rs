@@ -44,21 +44,18 @@ pub enum ImageKind {
     Gif,
     /// `image/webp`.
     Webp,
-    /// `image/svg+xml`.
-    Svg,
     /// `image/bmp`.
     Bmp,
 }
 
 impl ImageKind {
-    /// The format's display name: `PNG`, `JPEG`, `GIF`, `WebP`, `SVG`, `BMP`.
+    /// The format's display name: `PNG`, `JPEG`, `GIF`, `WebP`, `BMP`.
     pub fn label(self) -> &'static str {
         match self {
             ImageKind::Png => "PNG",
             ImageKind::Jpeg => "JPEG",
             ImageKind::Gif => "GIF",
             ImageKind::Webp => "WebP",
-            ImageKind::Svg => "SVG",
             ImageKind::Bmp => "BMP",
         }
     }
@@ -70,7 +67,6 @@ impl ImageKind {
             "image/jpeg" | "image/jpg" => ImageKind::Jpeg,
             "image/gif" => ImageKind::Gif,
             "image/webp" => ImageKind::Webp,
-            "image/svg+xml" => ImageKind::Svg,
             "image/bmp" => ImageKind::Bmp,
             _ => return None,
         })
@@ -87,8 +83,17 @@ pub struct ImageInfo {
     /// Width and height in pixels, when the bytes say.
     pub dimensions: Option<(u32, u32)>,
     /// Whether the pixels can be transparent: an alpha channel or transparency key in
-    /// the decoded format, and always for SVG.
+    /// the decoded format.
     pub alpha: bool,
+}
+
+const SVG_MEDIA: &str = "image/svg+xml";
+
+/// Whether the `Content-Type` names an SVG image.
+pub fn is_svg(headers: &[(String, String)]) -> bool {
+    let content_type = content_type(headers);
+    let media = content_type.split(';').next().unwrap_or_default().trim();
+    media.eq_ignore_ascii_case(SVG_MEDIA)
 }
 
 /// Classifies a body from its `Content-Type` header and its bytes.
@@ -102,6 +107,10 @@ pub fn body_kind(headers: &[(String, String)], body: &[u8]) -> BodyKind {
     let media = content_type.split(';').next().unwrap_or_default().trim();
     if let Some(image) = ImageKind::from_media_type(media) {
         return BodyKind::Image(image);
+    }
+    // An SVG is shown as its XML source; a gzipped one stays binary and is never inflated.
+    if media.eq_ignore_ascii_case(SVG_MEDIA) && body.starts_with(&[0x1f, 0x8b]) {
+        return BodyKind::Binary;
     }
     // Documents, archives and media are binary whatever their bytes; an octet stream is often
     // text in practice, so its bytes still decide.
@@ -485,60 +494,12 @@ pub fn image_info(kind: ImageKind, body: &[u8]) -> ImageInfo {
         ImageKind::Gif => raster(image::ImageFormat::Gif),
         ImageKind::Webp => raster(image::ImageFormat::WebP),
         ImageKind::Bmp => raster(image::ImageFormat::Bmp),
-        ImageKind::Svg => (svg_dimensions(body), true),
     };
     ImageInfo {
         kind,
         size: body.len() as u64,
         dimensions,
         alpha,
-    }
-}
-
-/// The root `svg` element's numeric `width` and `height` (pixels, optional
-/// `px`), else its `viewBox` size, rounded.
-fn svg_dimensions(body: &[u8]) -> Option<(u32, u32)> {
-    let mut reader = quick_xml::Reader::from_reader(body);
-    let mut buf = Vec::new();
-    let root = loop {
-        match reader.read_event_into(&mut buf).ok()? {
-            Event::Start(e) | Event::Empty(e) => break e.into_owned(),
-            Event::Eof => return None,
-            _ => buf.clear(),
-        }
-    };
-    if root.local_name().as_ref() != b"svg" {
-        return None;
-    }
-    let attr = |name: &[u8]| {
-        root.attributes()
-            .flatten()
-            .find(|a| a.key.local_name().as_ref() == name)
-            .and_then(|a| String::from_utf8(a.value.into_owned()).ok())
-    };
-    // A usable length is finite and positive; anything else defers to the viewBox.
-    let length = |v: String| -> Option<f64> {
-        let v = v.trim();
-        let n: f64 = v.strip_suffix("px").unwrap_or(v).trim().parse().ok()?;
-        (n.is_finite() && n > 0.0).then_some(n)
-    };
-    let round = |w: f64, h: f64| (w.round().max(1.0) as u32, h.round().max(1.0) as u32);
-    if let (Some(w), Some(h)) = (
-        attr(b"width").and_then(length),
-        attr(b"height").and_then(length),
-    ) {
-        return Some(round(w, h));
-    }
-    let view_box = attr(b"viewBox")?;
-    let numbers: Vec<f64> = view_box
-        .split(|c: char| c.is_whitespace() || c == ',')
-        .filter(|n| !n.is_empty())
-        .map(str::parse)
-        .collect::<Result<_, _>>()
-        .ok()?;
-    match numbers[..] {
-        [_, _, w, h] if w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0 => Some(round(w, h)),
-        _ => None,
     }
 }
 

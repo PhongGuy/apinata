@@ -89,6 +89,7 @@ pub mod history_palette;
 pub mod html_preview;
 pub mod icons;
 pub mod identity;
+pub mod image_guard;
 pub mod import_curl;
 pub mod import_link;
 pub mod import_report;

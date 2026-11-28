@@ -348,6 +348,7 @@ mod history_view;
 mod http_version_display;
 mod http_version_prefs;
 mod icon_button_names;
+mod image_guard;
 mod ime_refresh;
 mod import_bundles;
 mod import_collection;

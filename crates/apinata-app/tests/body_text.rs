@@ -305,7 +305,6 @@ fn image_content_types_are_images_whatever_the_bytes() {
         ("image/jpg", ImageKind::Jpeg),
         ("image/gif", ImageKind::Gif),
         ("image/webp", ImageKind::Webp),
-        ("image/svg+xml", ImageKind::Svg),
         ("image/bmp", ImageKind::Bmp),
     ] {
         assert_eq!(body_kind(&ct(ty), b"<svg/>"), BodyKind::Image(kind), "{ty}");
@@ -360,39 +359,23 @@ fn image_info_says_which_images_can_be_transparent() {
         ImageKind::Jpeg,
         &encode(opaque, image::ImageFormat::Jpeg)
     ));
-    // An SVG paints on a clear canvas; bytes that do not decode claim nothing.
-    assert!(alpha(ImageKind::Svg, b"<svg width='2' height='2'/>"));
+    // Bytes that do not decode claim nothing.
     assert!(!alpha(ImageKind::Png, b"not a png"));
 }
 
 #[test]
-fn image_info_reads_svg_dimensions_from_its_size_or_view_box() {
-    let sized = br#"<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" width="120px" height="80"></svg>"#;
-    assert_eq!(
-        image_info(ImageKind::Svg, sized).dimensions,
-        Some((120, 80))
-    );
-    let boxed = br#"<svg viewBox="0 0 24.4 16" xmlns="http://www.w3.org/2000/svg"/>"#;
-    assert_eq!(image_info(ImageKind::Svg, boxed).dimensions, Some((24, 16)));
-    let relative = br#"<svg width="100%" height="100%"/>"#;
-    assert_eq!(image_info(ImageKind::Svg, relative).dimensions, None);
-    assert_eq!(image_info(ImageKind::Svg, b"<html/>").dimensions, None);
+fn an_svg_body_is_xml_text() {
+    let svg = br#"<svg xmlns="http://www.w3.org/2000/svg"/>"#;
+    assert_eq!(body_kind(&ct("image/svg+xml"), svg), BodyKind::Xml);
 }
 
 #[test]
-fn image_info_falls_back_to_the_view_box_for_unusable_svg_sizes() {
-    let dims = |svg: &str| image_info(ImageKind::Svg, svg.as_bytes()).dimensions;
-    for width in ["0", "-5", "NaN", "inf"] {
-        let svg = format!(r#"<svg width="{width}" height="10" viewBox="0 0 30 20"/>"#);
-        assert_eq!(dims(&svg), Some((30, 20)), "width={width}");
+fn a_gzipped_svg_is_binary_and_never_inflated() {
+    // Gzip magic stays binary even when a charset claims the bytes are text.
+    let gz = [0x1f, 0x8b, 0x08, 0, 0, 0, 0, 0, 0, 3, b'a'];
+    for ty in ["image/svg+xml", "image/svg+xml; charset=utf-8"] {
+        assert_eq!(body_kind(&ct(ty), &gz), BodyKind::Binary, "{ty}");
     }
-    let no_height = r#"<svg width="50" viewBox="0 0 30 20"/>"#;
-    assert_eq!(dims(no_height), Some((30, 20)));
-    assert_eq!(dims(r#"<svg width="0" height="0"/>"#), None);
-    assert_eq!(
-        dims(r#"<svg width="0" height="9" viewBox="0 0 0 20"/>"#),
-        None
-    );
 }
 
 #[test]
@@ -405,12 +388,12 @@ fn image_caption_names_format_dimensions_and_size() {
     };
     assert_eq!(image_caption(&info), "PNG image, 640 × 480, 2.0 KB");
     let info = ImageInfo {
-        kind: ImageKind::Svg,
+        kind: ImageKind::Gif,
         size: 512,
         dimensions: None,
         alpha: true,
     };
-    assert_eq!(image_caption(&info), "SVG image, 512 B");
+    assert_eq!(image_caption(&info), "GIF image, 512 B");
 }
 
 #[test]
@@ -840,10 +823,7 @@ fn text_and_markup_types_stay_out_of_binary() {
         body_kind(&ct("application/problem+json"), b"{}"),
         BodyKind::Json
     );
-    assert_eq!(
-        body_kind(&ct("image/svg+xml"), b"<svg/>"),
-        BodyKind::Image(ImageKind::Svg)
-    );
+    assert_eq!(body_kind(&ct("image/svg+xml"), b"<svg/>"), BodyKind::Xml);
     assert_eq!(
         body_kind(&ct("application/atom+xml"), b"<feed/>"),
         BodyKind::Xml

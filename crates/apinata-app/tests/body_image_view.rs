@@ -161,7 +161,29 @@ fn the_checkerboard_is_drawn_only_behind_images_that_can_be_transparent(cx: &mut
         result(opaque(8, 8, image::ImageFormat::Jpeg), "image/jpeg"),
     );
     assert!(present(cx, win, "body-image") && !present(cx, win, "body-image-checker"));
-    let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"/>"#;
-    show(cx, win, &view, result(svg.to_vec(), "image/svg+xml"));
-    assert!(present(cx, win, "body-image-checker"));
+}
+
+#[gpui_kit::test]
+fn an_image_over_the_preview_limit_shows_a_note_instead_of_the_picture(cx: &mut TestAppContext) {
+    let (win, view) = host(cx);
+    // One side past the cap; the bytes stay tiny, so nothing large is decoded either way.
+    let wide = rgba_png(apinata_app::image_guard::PREVIEW_LIMITS.max_side + 1, 1);
+    show(cx, win, &view, result(wide, "image/png"));
+    assert!(present(cx, win, "body-image-refused"));
+    assert!(!present(cx, win, "body-image-frame"));
+    let note = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.find("body-image-refused").label().map(str::to_owned)
+        })
+        .unwrap();
+    assert_eq!(
+        note.as_deref(),
+        Some("Image not shown: 16385 × 1 is over the 16384-pixel side limit.")
+    );
+
+    // A body within the caps is drawn again.
+    show(cx, win, &view, result(rgba_png(8, 8), "image/png"));
+    assert!(present(cx, win, "body-image-frame"));
+    assert!(!present(cx, win, "body-image-refused"));
 }
