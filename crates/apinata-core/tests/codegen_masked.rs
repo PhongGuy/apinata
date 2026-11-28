@@ -98,6 +98,18 @@ fn slots() -> Vec<(&'static str, ResolvedRequest, &'static str)> {
             head(),
         ),
         (
+            "multipart file path",
+            resolved_one(
+                "POST",
+                url,
+                &format!(
+                    "  body:\n    type: multipart-form\n    data:\n      - name: up\n        type: file\n        value: [\"/data/{h}.bin\"]\n"
+                ),
+                "",
+            ),
+            head(),
+        ),
+        (
             "digest auth",
             resolved_one(
                 "GET",
@@ -135,18 +147,34 @@ fn no_target_shows_a_secret_that_it_escapes() {
     }
 }
 
+// Characters a URL keeps or percent-encodes, but no `/`, `?`, `#` or backslash, which would
+// change the URL's shape.
+const URL_SECRET: &str = "Qx7Zr$Wv9Kp'Jm4Hs`Bt2Ny Fd6Lc";
+
 #[test]
-fn a_secret_in_the_query_is_masked_in_every_target() {
-    let secret = "Qx7Zr$Wv9Kp";
-    let req = resolved_one("GET", &format!("http://x.test/p?k=1{secret}"), "", "");
-    for target in Target::ALL {
-        let masked = generate_masked(&req, *target, &[(secret, "<secret>")], "<secret>");
-        assert!(
-            !masked.contains("Qx7Zr") && !masked.contains("Wv9Kp"),
-            "{}: {masked}",
-            target.id()
-        );
-        assert!(masked.contains("<secret>"), "{}: {masked}", target.id());
+fn a_secret_anywhere_in_the_url_is_masked_in_every_target() {
+    let urls = [
+        ("query", format!("http://x.test/p?k=1{URL_SECRET}")),
+        ("path segment", format!("http://x.test/p/{URL_SECRET}/z")),
+        ("userinfo", format!("http://bob:{URL_SECRET}@x.test/p")),
+    ];
+    for (slot, url) in urls {
+        let req = resolved_one("GET", &url, "", "");
+        for target in Target::ALL {
+            let masked = generate_masked(&req, *target, &[(URL_SECRET, "<secret>")], "<secret>");
+            for run in &RUNS[..5] {
+                assert!(
+                    !masked.contains(run),
+                    "{} leaks {run} from the {slot}: {masked}",
+                    target.id()
+                );
+            }
+            assert!(
+                masked.contains("<secret>"),
+                "{} {slot}: {masked}",
+                target.id()
+            );
+        }
     }
 }
 

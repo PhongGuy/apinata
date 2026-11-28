@@ -155,8 +155,8 @@ impl fmt::Display for UnknownTarget {
 impl std::error::Error for UnknownTarget {}
 
 /// The request as a `target` snippet. Secret values are included as resolved; check
-/// `ResolvedRequest::sensitive_values` before showing it, or use [`generate_masked`]. Auth the target cannot express is
-/// named in a leading comment, never dropped silently.
+/// `ResolvedRequest::sensitive_values` before showing it, or use [`generate_masked`]. Auth the
+/// target cannot express is named in a leading comment, never dropped silently.
 pub fn generate(req: &ResolvedRequest, target: Target) -> String {
     match target {
         Target::Curl => shell::curl(req),

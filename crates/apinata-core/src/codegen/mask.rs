@@ -10,7 +10,8 @@ use super::{Target, generate};
 /// The request as a `target` snippet with every secret replaced. Each mask is a secret value
 /// and the text shown in its place; a base64 run that decodes to text holding a secret, such as
 /// a Basic credential, shows as `redacted`. Values under 4 characters are not masked, as every
-/// redactor leaves them.
+/// redactor leaves them. Where two secrets overlap, the one starting first is masked whole and
+/// the rest of the other shows, as with [`crate::replace_secrets`].
 pub fn generate_masked(
     req: &ResolvedRequest,
     target: Target,

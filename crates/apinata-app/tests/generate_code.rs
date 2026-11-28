@@ -579,3 +579,81 @@ fn the_code_is_wide_and_never_wraps(cx: &mut TestAppContext) {
         close(cx, &s);
     }
 }
+
+#[gpui_kit::test]
+fn a_cached_oauth2_token_shows_masked(cx: &mut TestAppContext) {
+    use wiremock::matchers::{method, path};
+    http_ready(cx);
+    let handle = cx.update(|cx| apinata_app::tokio_bridge::handle(cx));
+    let server = handle.block_on(wiremock::MockServer::builder().start());
+    let body = r#"{"access_token":"tok-gen-7c2f","token_type":"Bearer","expires_in":3600}"#;
+    handle.block_on(
+        wiremock::Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(body))
+            .mount(&server),
+    );
+    handle.block_on(
+        wiremock::Mock::given(method("GET"))
+            .and(path("/o"))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&server),
+    );
+    let file = format!(
+        "{}  auth:\n    type: oauth2\n    flow: client_credentials\n    accessTokenUrl: \"{}/token\"\n    credentials:\n      clientId: app\n    tokenConfig:\n      placement:\n        header: Bearer\n",
+        request("a", &format!("{}/o", server.uri())),
+        server.uri()
+    );
+    let col = with_request(&file, &[]);
+    let s = started(cx, &col);
+    let model = sender(cx, &s.ws);
+    let root = s.root.clone();
+    assert!(model.update(cx, |m, cx| m.send(&root, ip("a.yml"), cx)));
+    finished(cx, &model);
+    open_tab(cx, &s.ws, &s.root, "a.yml");
+    frame(cx, s.win);
+    palette(cx, &s, "generate code");
+    let view = cx.update(|cx| current(cx)).expect("the dialog is open");
+    click(cx, &s, "generate-code-show-secrets");
+    let (_, revealed) = shown(cx).unwrap();
+    assert!(
+        revealed.contains("tok-gen-7c2f"),
+        "no token was placed: {revealed}"
+    );
+    click(cx, &s, "generate-code-show-secrets");
+    for target in Target::ALL {
+        cx.update_window(s.win, |_, w, cx| {
+            view.update(cx, |v, cx| v.set_target(*target, w, cx))
+        })
+        .unwrap();
+        let (_, text) = shown(cx).unwrap();
+        assert!(!text.contains("tok-gen-7c2f"), "{target:?}: {text}");
+    }
+}
+
+#[gpui_kit::test]
+fn a_signed_jwt_shows_masked(cx: &mut TestAppContext) {
+    let file = format!(
+        "{}  auth:\n    type: jwt\n    algorithm: HS256\n    secret: jwt-sign-key-4411\n    payload: '{{\"sub\":\"gen\"}}'\n    placement: header\n    headerPrefix: Bearer\n",
+        request("a", "http://x.test/j")
+    );
+    let col = with_request(&file, &[]);
+    let s = started(cx, &col);
+    open_tab(cx, &s.ws, &s.root, "a.yml");
+    frame(cx, s.win);
+    palette(cx, &s, "generate code");
+    let view = cx.update(|cx| current(cx)).expect("the dialog is open");
+    click(cx, &s, "generate-code-show-secrets");
+    let (_, revealed) = shown(cx).unwrap();
+    // A signed JWT always opens with the base64 of `{"`, so its presence proves one was made.
+    assert!(revealed.contains("eyJ"), "no token was signed: {revealed}");
+    click(cx, &s, "generate-code-show-secrets");
+    for target in Target::ALL {
+        cx.update_window(s.win, |_, w, cx| {
+            view.update(cx, |v, cx| v.set_target(*target, w, cx))
+        })
+        .unwrap();
+        let (_, text) = shown(cx).unwrap();
+        assert!(!text.contains("eyJ"), "{target:?}: {text}");
+    }
+}
