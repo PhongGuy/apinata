@@ -1,0 +1,8 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+wget --quiet --output-document=- --content-on-error --method='GET' \
+  --header='X-A: 2' \
+  --header='Cookie: b=2' \
+  'http://x.test/a?q=1&r=two'
