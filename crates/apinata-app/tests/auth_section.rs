@@ -4,7 +4,7 @@ use apinata_app::auth_section::{AuthField, AuthMode, AuthSection};
 use apinata_app::command::Edit;
 use apinata_app::style::{FORM_LABEL_WIDTH, JWT_BLOCK_MAX_HEIGHT, at_zoom};
 use apinata_core::{
-    ApiKeyPlacement, AuthSpec, EdgeGridSpec, HawkSpec, OAuth1SignatureMethod, OAuth1Spec,
+    ApiKeyPlacement, AsapSpec, AuthSpec, EdgeGridSpec, HawkSpec, OAuth1SignatureMethod, OAuth1Spec,
     OAuth2Flow, OAuth2Spec,
 };
 use gpui_kit::test::TestWindowExt;
@@ -287,6 +287,7 @@ fn switching_to_the_new_modes_sends_empty_specs_and_back_restores(cx: &mut TestA
             "WSSE",
             "Akamai EdgeGrid",
             "Hawk",
+            "Atlassian ASAP",
             "OAuth 1.0",
             "OAuth 2.0"
         ]
@@ -809,7 +810,7 @@ fn a_secret_field_reveals_with_its_eye_and_stays_shown_while_typing(cx: &mut Tes
 // plain one has none.
 #[gpui_kit::test]
 fn every_secret_input_has_an_eye_button(cx: &mut TestAppContext) {
-    let cases: [(AuthMode, &[&str]); 11] = [
+    let cases: [(AuthMode, &[&str]); 12] = [
         (AuthMode::Basic, &["auth-password"]),
         (AuthMode::Digest, &["auth-password"]),
         (AuthMode::Wsse, &["auth-password"]),
@@ -829,6 +830,7 @@ fn every_secret_input_has_an_eye_button(cx: &mut TestAppContext) {
             ],
         ),
         (AuthMode::Hawk, &["auth-hawk-auth-key"]),
+        (AuthMode::Asap, &["auth-asap-private-key"]),
         (
             AuthMode::OAuth1,
             &["oauth1-consumer-secret", "oauth1-token-secret"],
@@ -894,6 +896,9 @@ fn auth_fields_show_example_placeholders(cx: &mut TestAppContext) {
         (AuthField::MaxBodySize, "131072"),
         (AuthField::HawkNonce, "Generated when sent"),
         (AuthField::HawkTimestamp, "Generated when sent"),
+        (AuthField::AsapSubject, "Same as issuer"),
+        (AuthField::AsapExpiresIn, "3600"),
+        (AuthField::AsapAdditionalClaims, "{\"scope\": \"read\"}"),
     ];
     for (f, want) in expected {
         assert_eq!(hint(cx, f), want, "{f:?}");
@@ -1209,5 +1214,143 @@ fn switching_to_hawk_sends_the_default_spec_and_back_restores(cx: &mut TestAppCo
     mode(cx, win, &s, AuthMode::Basic);
     assert_eq!(last_auth(cx, &host), basic("u", "p"));
     mode(cx, win, &s, AuthMode::Hawk);
+    assert_eq!(last_auth(cx, &host), typed);
+}
+
+fn asap(f: impl FnOnce(&mut AsapSpec)) -> AuthSpec {
+    let mut s = AsapSpec::default();
+    f(&mut s);
+    AuthSpec::Asap(s)
+}
+
+fn asap_filled(s: &mut AsapSpec) {
+    s.algorithm = "PS256".into();
+    s.issuer = "i".into();
+    s.audience = "a".into();
+    s.key_id = "k".into();
+    s.subject = "s".into();
+    s.expires_in = "60".into();
+    s.additional_claims = "{}".into();
+    s.private_key = "pk".into();
+}
+
+const ASAP_IDS: [&str; 8] = [
+    "auth-asap-algorithm",
+    "auth-asap-issuer",
+    "auth-asap-audience",
+    "auth-asap-key-id",
+    "auth-asap-subject",
+    "auth-asap-expires-in",
+    "auth-asap-additional-claims",
+    "auth-asap-private-key",
+];
+
+#[gpui_kit::test]
+fn asap_loads_every_field_with_only_the_key_masked(cx: &mut TestAppContext) {
+    let (win, host, s) = auth(cx, asap(asap_filled));
+    assert_eq!(s.read_with(cx, |s, _| s.mode()), Some(AuthMode::Asap));
+    assert_eq!(AuthMode::Asap.key(), "asap");
+    assert_eq!(AuthMode::of(&asap(|_| {})), Some(AuthMode::Asap));
+    assert_eq!(shown(cx, win, ASAP_IDS), [true; 8]);
+    let read = |cx: &mut TestAppContext, f: AuthField| {
+        let input = s.read_with(cx, |s, _| s.input(f).clone());
+        input.read_with(cx, |i, _| {
+            (i.presentation().is_masked(), i.value().to_string())
+        })
+    };
+    let fields = [
+        (AuthField::AsapIssuer, false, "i"),
+        (AuthField::AsapAudience, false, "a"),
+        (AuthField::AsapKeyId, false, "k"),
+        (AuthField::AsapSubject, false, "s"),
+        (AuthField::AsapExpiresIn, false, "60"),
+        (AuthField::AsapAdditionalClaims, false, "{}"),
+        (AuthField::AsapPrivateKey, true, "pk"),
+    ];
+    for (f, masked, value) in fields {
+        assert_eq!(read(cx, f), (masked, value.to_owned()), "{f:?}");
+    }
+    let algorithm = cx
+        .update_window(win, |_, w, _| {
+            w.find("auth-asap-algorithm").value().map(str::to_owned)
+        })
+        .unwrap();
+    assert_eq!(algorithm.as_deref(), Some("PS256"));
+    // An edit carries every loaded field, the algorithm included.
+    type_at_end(cx, win, None, "auth-asap-subject", "x");
+    cx.run_until_parked();
+    assert_eq!(
+        last_auth(cx, &host),
+        asap(|s| {
+            asap_filled(s);
+            s.subject = "sx".into();
+        })
+    );
+}
+
+// Sets the one ASAP field an input edits.
+type SetAsap = fn(&mut AsapSpec);
+
+#[gpui_kit::test]
+fn asap_typing_emits_the_field_it_names(cx: &mut TestAppContext) {
+    let (win, host, _s) = auth(cx, asap(|_| {}));
+    let cases: [(&'static str, SetAsap); 7] = [
+        ("auth-asap-issuer", |s| s.issuer = "z".into()),
+        ("auth-asap-audience", |s| s.audience = "z".into()),
+        ("auth-asap-key-id", |s| s.key_id = "z".into()),
+        ("auth-asap-subject", |s| s.subject = "z".into()),
+        ("auth-asap-expires-in", |s| s.expires_in = "z".into()),
+        ("auth-asap-additional-claims", |s| {
+            s.additional_claims = "z".into()
+        }),
+        ("auth-asap-private-key", |s| s.private_key = "z".into()),
+    ];
+    for (id, set) in cases {
+        replace_input(cx, win, None, id, "z");
+        cx.run_until_parked();
+        assert_eq!(last_auth(cx, &host), asap(set), "{id}");
+        replace_input(cx, win, None, id, "");
+        cx.run_until_parked();
+    }
+}
+
+#[gpui_kit::test]
+fn asap_algorithm_select_emits_and_an_unknown_spelling_survives(cx: &mut TestAppContext) {
+    let (win, host, _s) = auth(cx, asap(|_| {}));
+    let click = |cx: &mut TestAppContext, id: &'static str| {
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.click(id, cx)
+        })
+        .unwrap();
+        cx.run_until_parked();
+    };
+    click(cx, "auth-asap-algorithm");
+    click(cx, "auth-asap-algorithm-option-ES384");
+    assert_eq!(last_auth(cx, &host), asap(|s| s.algorithm = "ES384".into()));
+    let (win, host, _s) = auth(cx, asap(|s| s.algorithm = "{{alg}}".into()));
+    type_at_end(cx, win, None, "auth-asap-issuer", "i");
+    cx.run_until_parked();
+    assert_eq!(
+        last_auth(cx, &host),
+        asap(|s| {
+            s.algorithm = "{{alg}}".into();
+            s.issuer = "i".into();
+        })
+    );
+}
+
+#[gpui_kit::test]
+fn switching_to_asap_sends_the_default_spec_and_back_restores(cx: &mut TestAppContext) {
+    let (win, host, s) = auth(cx, basic("u", "p"));
+    mode(cx, win, &s, AuthMode::Asap);
+    assert_eq!(last_auth(cx, &host), asap(|_| {}));
+    type_at_end(cx, win, None, "auth-asap-private-key", "k");
+    cx.run_until_parked();
+    let typed = asap(|s| s.private_key = "k".into());
+    assert_eq!(last_auth(cx, &host), typed);
+    mode(cx, win, &s, AuthMode::Basic);
+    assert_eq!(last_auth(cx, &host), basic("u", "p"));
+    mode(cx, win, &s, AuthMode::Asap);
     assert_eq!(last_auth(cx, &host), typed);
 }
