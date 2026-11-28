@@ -154,7 +154,7 @@ pub use check::{
     CheckError, CheckOptions, CheckReport, Finding, FindingKind, Severity, check_collection,
     undefined_variables,
 };
-pub use codegen::{Target, UnknownTarget, generate};
+pub use codegen::{Target, UnknownTarget, generate, generate_masked};
 pub use collection::{
     AdoptError, Change, ChangeKind, Collection, DotenvBackup, DraftSnapshot, DropTarget,
     Environment, EnvironmentChoice, FileTexts, Folder, IgnorePolicy, ItemKind, OpenOptions,

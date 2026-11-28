@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use apinata_core::{ItemPath, NamedSecret, ResolvedRequest, Target, replace_secrets};
+use apinata_core::{ItemPath, NamedSecret, ResolvedRequest, Target, generate_masked};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::{Editor, EditorState};
 use gpui_kit::component::notification::Notification;
@@ -191,11 +191,13 @@ impl GenerateCodeView {
     /// Shows `target`'s snippet with its highlighter and remembers it for the next dialog.
     pub fn set_target(&mut self, target: Target, window: &mut Window, cx: &mut Context<Self>) {
         self.target = target;
-        let code = apinata_core::generate(&self.request, target);
         self.text = if self.revealed {
-            code
+            apinata_core::generate(&self.request, target)
         } else {
-            replace_secrets(&code, &self.secrets)
+            let masks: Vec<(&str, &str)> = (self.secrets.iter())
+                .map(|s| (s.value(), s.placeholder()))
+                .collect();
+            generate_masked(&self.request, target, &masks, "[redacted]")
         };
         cx.set_global(LastTarget(target));
         let text = self.text.clone();

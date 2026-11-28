@@ -85,6 +85,24 @@ impl Part {
         self.content_type.as_deref()
     }
 
+    /// This part with `map` applied to its name, text value, UTF-8 file path and content type;
+    /// the path as the request file wrote it is kept.
+    pub(crate) fn map_text(&self, map: impl Fn(&str) -> String) -> Part {
+        let value = match &self.value {
+            PartValue::Text(text) => PartValue::Text(map(text)),
+            PartValue::File(path) => match path.to_str() {
+                Some(text) => PartValue::File(PathBuf::from(map(text))),
+                None => PartValue::File(path.clone()),
+            },
+        };
+        Part {
+            name: map(&self.name),
+            value,
+            content_type: self.content_type.as_deref().map(&map),
+            written: self.written.clone(),
+        }
+    }
+
     /// The same part remembering the path as the request file wrote it, before interpolation.
     pub(crate) fn with_written(self, written: impl Into<String>) -> Part {
         Part {

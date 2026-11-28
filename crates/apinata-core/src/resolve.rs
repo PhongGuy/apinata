@@ -244,6 +244,43 @@ pub enum Body {
 }
 
 impl ResolvedRequest {
+    /// A copy with `map` applied to every text code generation writes: method, URL, header
+    /// names and values, body text, form fields, multipart parts (file paths included), and the
+    /// digest credentials. A file body's path, never interpolated, and other send auth are kept.
+    pub(crate) fn map_text(&self, map: impl Fn(&str) -> String) -> ResolvedRequest {
+        let pairs = |list: &[(String, String)]| -> Vec<(String, String)> {
+            list.iter().map(|(n, v)| (map(n), map(v))).collect()
+        };
+        let body = match &self.body {
+            Body::None => Body::None,
+            Body::Text(text) => Body::Text(map(text)),
+            Body::FormUrlEncoded(fields) => Body::FormUrlEncoded(pairs(fields)),
+            Body::Multipart(parts) => {
+                Body::Multipart(parts.iter().map(|p| p.map_text(&map)).collect())
+            }
+            Body::File { path, content_type } => Body::File {
+                path: path.clone(),
+                content_type: map(content_type),
+            },
+        };
+        let send_auth = match &self.send_auth {
+            Some(SendAuth::Digest { username, password }) => Some(SendAuth::Digest {
+                username: map(username),
+                password: map(password),
+            }),
+            other => other.clone(),
+        };
+        ResolvedRequest {
+            method: map(&self.method),
+            url: map(&self.url),
+            url_text: map(&self.url_text),
+            headers: pairs(&self.headers),
+            body,
+            send_auth,
+            ..self.clone()
+        }
+    }
+
     /// Whether the body was built from a GraphQL body spec (file or script-set).
     pub(crate) fn graphql(&self) -> bool {
         self.graphql

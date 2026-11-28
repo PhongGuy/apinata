@@ -2,11 +2,11 @@
 
 use std::collections::BTreeMap;
 
-use apinata_core::{ResolveError, ResolvedRequest, Target, VarContext, generate, resolve};
+use apinata_core::{ResolveError, ResolvedRequest, Target, VarContext, generate_masked, resolve};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::redact::Redactor;
+use crate::redact::{Redactor, SECRET};
 use crate::send;
 
 /// `generate_code`'s arguments.
@@ -52,7 +52,12 @@ pub(crate) fn render(req: &ResolvedRequest, target: Target, learned: &mut Redact
     learned.add_values(req.sensitive_values());
     learned.add_basic_auth(req.headers());
     learned.add_basic_auth(&send::url_basic_auth(req.url()));
-    learned.scrub(&generate(req, target))
+    // Masking before generation catches every escaped form a target writes; the session
+    // redactor then scrubs whatever else it has learned.
+    let masks: Vec<(&str, &str)> = (req.sensitive_values().iter())
+        .map(|value| (value.as_str(), SECRET))
+        .collect();
+    learned.scrub(&generate_masked(req, target, &masks, SECRET))
 }
 
 /// Resolve `file` under `ctx` once, for the caller to retry after loading a cached token.
