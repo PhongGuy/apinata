@@ -71,6 +71,8 @@ rquickjs = { version = "=0.14.0", default-features = false, features = ["std", "
 wiremock = "0.6.5"
 flate2 = "1"
 tar = { version = "0.4.46", default-features = false }
+# Reads Postman data exports in memory; deflate is the only method they use.
+zip = { version = "9.8.2", default-features = false, features = ["deflate-flate2"] }
 tokio-rustls = "0.26"
 rustls = { version = "=0.23.46", default-features = false, features = ["std"] }
 clap = { version = "4.6.7", features = ["derive"] }

@@ -1,4 +1,4 @@
-//! `--delay`, `--tags`, `--exclude-tags` and the data-file flags.
+//! `--delay`, `--tags`, `--exclude-tags`, `--tests-only` and the data-file flags.
 
 use crate::common;
 
@@ -173,4 +173,49 @@ async fn delay_spaces_the_requests() {
     let (code, _) = run_json(dir.path(), &["--delay", "400"]);
     assert_eq!(code, 0);
     assert!(t.elapsed() >= Duration::from_millis(400));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn tests_only_sends_only_requests_with_checks_and_counts_the_rest() {
+    let s = ok_server().await;
+    let u = s.uri();
+    let checked = "runtime:\n  assertions:\n    - expression: res.status\n      operator: eq\n      value: \"200\"\n";
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        (
+            "a.yml",
+            &format!("{}{checked}", tagged("A", 1, &format!("{u}/a"), "")),
+        ),
+        ("b.yml", &tagged("B", 2, &format!("{u}/b"), "")),
+        ("c.yml", &tagged("C", 3, &format!("{u}/c"), "")),
+    ]);
+    let out = apinata()
+        .arg("run")
+        .arg(dir.path())
+        .args(["--tests-only", "--format", "json"])
+        .output()
+        .expect("runs");
+    assert_eq!(out.status.code(), Some(0));
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+    assert_eq!(column(&report, "path"), ["a.yml"]);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        err.contains("Skipped 2 requests without tests"),
+        "stderr: {err}"
+    );
+    assert_eq!(served(&s).await, ["/a"]);
+    // A target with no tests at all is a usage error, as an empty tag filter is.
+    let out = apinata()
+        .arg("run")
+        .arg(dir.path().join("b.yml"))
+        .arg("--tests-only")
+        .output()
+        .expect("runs");
+    assert_eq!(out.status.code(), Some(3));
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        err.contains("no requests with tests to run (1 skipped)"),
+        "stderr: {err}"
+    );
+    assert_eq!(served(&s).await.len(), 1, "nothing more was sent");
 }

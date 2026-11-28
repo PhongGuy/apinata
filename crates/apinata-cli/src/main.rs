@@ -1569,6 +1569,11 @@ pub struct RunArgs {
     /// Skip requests with one of these comma-separated tags.
     #[arg(long, value_name = "TAGS")]
     pub exclude_tags: Option<String>,
+    /// Run only requests that check something: an enabled assertion of their own, or a
+    /// `test(...)` call in one of their own scripts. Folder and collection checks do not count.
+    /// The others are left out of the run and their count is printed on stderr.
+    #[arg(long)]
+    pub tests_only: bool,
     /// Run the collection once per row of this CSV file.
     #[arg(long, value_name = "PATH", conflicts_with = "json_file_path")]
     pub csv_file_path: Option<PathBuf>,

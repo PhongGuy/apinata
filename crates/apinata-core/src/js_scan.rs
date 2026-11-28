@@ -207,3 +207,27 @@ pub(crate) fn skip_trivia(src: &str, mut i: usize, end: usize) -> usize {
         }
     }
 }
+
+/// Whether `src` calls `test(...)` as a plain function: the call has to sit outside strings,
+/// comments, templates and regexes, and `obj.test(` or `mytest(` do not count.
+pub(crate) fn calls_test(src: &str) -> bool {
+    let b = src.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        if let Some(end) = skip_opaque(src, i) {
+            i = end;
+        } else if is_ident_byte(b[i]) {
+            let end = ident_end(b, i);
+            if &b[i..end] == b"test"
+                && !is_property_access(b, i)
+                && b.get(skip_ws(b, end)) == Some(&b'(')
+            {
+                return true;
+            }
+            i = end;
+        } else {
+            i += 1;
+        }
+    }
+    false
+}
