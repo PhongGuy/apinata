@@ -57,6 +57,27 @@ async fn https_server_fixture(stem: &str) -> String {
 }
 
 async fn serve(cert: CertificateDer<'static>, key: PrivateKeyDer<'static>) -> String {
+    serve_reply(cert, key, "", "ok").await
+}
+
+/// Like `https_server`, answering every request with `body` as `content_type`; an empty type
+/// sends no content-type header.
+async fn https_reply(content_type: &'static str, body: &'static str) -> String {
+    serve_reply(
+        CertificateDer::from_pem_slice(CERT.as_bytes()).expect("cert"),
+        PrivateKeyDer::from_pem_slice(KEY.as_bytes()).expect("key"),
+        content_type,
+        body,
+    )
+    .await
+}
+
+async fn serve_reply(
+    cert: CertificateDer<'static>,
+    key: PrivateKeyDer<'static>,
+    content_type: &'static str,
+    body: &'static str,
+) -> String {
     let config = ServerConfig::builder()
         .with_no_client_auth()
         .with_single_cert(vec![cert], key)
@@ -75,8 +96,16 @@ async fn serve(cert: CertificateDer<'static>, key: PrivateKeyDer<'static>) -> St
                 };
                 let mut buf = vec![0; 4096];
                 let _ = tls.read(&mut buf).await;
-                let reply = b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\nok";
-                let _ = tls.write_all(reply).await;
+                let typed = if content_type.is_empty() {
+                    String::new()
+                } else {
+                    format!("content-type: {content_type}\r\n")
+                };
+                let reply = format!(
+                    "HTTP/1.1 200 OK\r\n{typed}content-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = tls.write_all(reply.as_bytes()).await;
                 let _ = tls.shutdown().await;
             });
         }
@@ -486,4 +515,114 @@ async fn the_default_json_report_marks_a_skipped_check() {
     let value: serde_json::Value = serde_json::from_str(&json).expect("json");
     assert_eq!(value["results"][0]["tls_unverified"], true, "{json}");
     assert!(value["results"][0].get("response").is_none(), "{json}");
+}
+
+/// A token endpoint over TLS with the self-signed certificate; its base URL has no trailing slash.
+async fn token_server() -> String {
+    let url = https_reply(
+        "application/json",
+        r#"{"access_token":"tok-tls","token_type":"Bearer","expires_in":3600}"#,
+    )
+    .await;
+    url.trim_end_matches('/').to_owned()
+}
+
+/// One request using client-credentials OAuth 2.0 against `provider`, with `top` after it.
+fn oauth_fixture(provider: &str, top: &str) -> crate::oauth2_support::Fixture {
+    use crate::oauth2_support::{Fixture, ROOT, client_credentials, request};
+    let text = request(
+        "a",
+        1,
+        "https://api.test/r",
+        &client_credentials(provider, ""),
+    ) + top;
+    Fixture::new(&[("opencollection.yml", ROOT), ("a.yml", &text)])
+}
+
+async fn get_token(
+    exec: &Executor,
+    f: &crate::oauth2_support::Fixture,
+    target: apinata_core::OAuth2Target<'_>,
+) -> Result<apinata_core::TokenStatus, apinata_core::OAuth2Error> {
+    use apinata_core::{AuthorizeOptions, CancelHandle};
+    let (how, cancel) = (AuthorizeOptions::new(), CancelHandle::new());
+    let fetch = exec.fetch_token(target, &f.ctx, &how, &cancel);
+    tokio::time::timeout(Duration::from_secs(10), fetch)
+        .await
+        .expect("ends")
+}
+
+fn connect_failed(result: Result<apinata_core::TokenStatus, apinata_core::OAuth2Error>) -> bool {
+    matches!(
+        result,
+        Err(apinata_core::OAuth2Error::Exec(ExecError::Connect { .. }))
+    )
+}
+
+#[tokio::test]
+async fn the_token_fetch_follows_the_requests_own_check() {
+    use apinata_core::OAuth2Target;
+    let provider = token_server().await;
+    let strict = Executor::new(ExecOptions::new()).expect("client");
+    let plain = oauth_fixture(&provider, "");
+    let result = get_token(
+        &strict,
+        &plain,
+        OAuth2Target::Request(plain.request("a.yml")),
+    )
+    .await;
+    assert!(connect_failed(result), "the default verifies");
+    let off = oauth_fixture(&provider, SKIP_CHECK);
+    get_token(&strict, &off, OAuth2Target::Request(off.request("a.yml")))
+        .await
+        .expect("this request skips the check, so its token fetch does too");
+    let lax = Executor::new(ExecOptions::new().insecure(true)).expect("client");
+    let on = oauth_fixture(&provider, CHECK);
+    let result = get_token(&lax, &on, OAuth2Target::Request(on.request("a.yml"))).await;
+    assert!(connect_failed(result), "this request insists on the check");
+}
+
+#[tokio::test]
+async fn a_collection_token_fetch_follows_the_default() {
+    use crate::oauth2_support::{Fixture, ROOT, client_credentials};
+    use apinata_core::OAuth2Target;
+    let provider = token_server().await;
+    let root = format!(
+        "{ROOT}request:\n  auth:\n{}",
+        client_credentials(&provider, "")
+    );
+    let f = Fixture::new(&[("opencollection.yml", root.as_str())]);
+    let strict = Executor::new(ExecOptions::new()).expect("client");
+    assert!(connect_failed(
+        get_token(&strict, &f, OAuth2Target::Collection).await
+    ));
+    let lax = Executor::new(ExecOptions::new().insecure(true)).expect("client");
+    get_token(&lax, &f, OAuth2Target::Collection)
+        .await
+        .expect("the default skips the check");
+}
+
+#[tokio::test]
+async fn under_a_host_policy_a_token_fetch_skips_the_check_only_for_loopback() {
+    use apinata_core::{OAuth2Error, OAuth2Target};
+    let provider = token_server().await;
+    let exec = trusting(&["auth.invalid"]);
+    let local = oauth_fixture(&provider, SKIP_CHECK);
+    get_token(&exec, &local, OAuth2Target::Request(local.request("a.yml")))
+        .await
+        .expect("loopback may skip");
+    let remote = oauth_fixture("https://auth.invalid", SKIP_CHECK);
+    let result = get_token(
+        &exec,
+        &remote,
+        OAuth2Target::Request(remote.request("a.yml")),
+    )
+    .await;
+    assert!(
+        matches!(
+            &result,
+            Err(OAuth2Error::Exec(ExecError::InsecureNotAllowed { hop: 0, host, .. })) if host == "auth.invalid"
+        ),
+        "{result:?}"
+    );
 }

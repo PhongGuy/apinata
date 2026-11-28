@@ -218,7 +218,7 @@ fn unknown_flags_and_shell_text_are_noted_without_values() {
             n("curl flag -S", d),
             n("curl flag -o", d),
             n("curl flag --proxy-user", d),
-            n("curl flag -k", d),
+            n("curl flag -k", NoteKind::Converted),
             n("shell", d),
         ]
     );
