@@ -1,9 +1,10 @@
 //! Auth objects and legacy auth strings to `AuthSpec`.
 
-use super::model::{Auth, JwtMembers, Mapped};
+use super::model::{Auth, HawkMembers, JwtMembers, Mapped};
 use super::tree::Scope;
 use crate::edit::{
-    ApiKeyPlacement, AuthSpec, JwtAlgorithm, JwtPlacement, JwtSpec, OAuth1KeyKind, OAuth1PrivateKey,
+    ApiKeyPlacement, AuthSpec, HawkSpec, JwtAlgorithm, JwtPlacement, JwtSpec, OAuth1KeyKind,
+    OAuth1PrivateKey,
 };
 use crate::import::{DocumentError, NoteKind};
 
@@ -61,6 +62,31 @@ pub(super) fn auth(
             }
         }
         Mapped::Jwt(members) => AuthSpec::Jwt(jwt(*members, scope)?),
+        Mapped::Hawk(members) => AuthSpec::Hawk(hawk(*members, scope)?),
+    })
+}
+
+/// A Hawk auth with its templates rewritten; a blank algorithm is `sha256`. The user never
+/// reaches the header, so a stated one is noted and dropped.
+fn hawk(m: HawkMembers, scope: &mut Scope) -> Result<HawkSpec, DocumentError> {
+    if !m.user.trim().is_empty() {
+        scope.note("auth.user", NoteKind::Dropped, "Hawk never sends it")?;
+    }
+    let algorithm = scope.value(m.algorithm, || "auth.algorithm".to_owned())?;
+    Ok(HawkSpec {
+        auth_id: scope.value(m.auth_id, || "auth.authId".to_owned())?,
+        auth_key: scope.value(m.auth_key, || "auth.authKey".to_owned())?,
+        algorithm: if algorithm.trim().is_empty() {
+            "sha256".to_owned()
+        } else {
+            algorithm
+        },
+        ext: scope.value(m.ext, || "auth.ext".to_owned())?,
+        app: scope.value(m.app, || "auth.app".to_owned())?,
+        dlg: scope.value(m.dlg, || "auth.dlg".to_owned())?,
+        nonce: scope.value(m.nonce, || "auth.nonce".to_owned())?,
+        timestamp: scope.value(m.timestamp, || "auth.timestamp".to_owned())?,
+        include_payload_hash: m.include_payload_hash,
     })
 }
 

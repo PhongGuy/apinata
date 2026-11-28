@@ -149,7 +149,7 @@ const JSON_ACCEPT: &str =
 const NO_MULTIPART_HEADER: &str = "Bruno adds a multipart Content-Type header without a boundary";
 
 fn bruno_cases() -> Vec<Case> {
-    use NoteKind::{Converted, Dropped, NeedsInput};
+    use NoteKind::{Converted, NeedsInput};
     vec![
         case("get", "curl https://api.example.com/users", "GET", "https://api.example.com/users"),
         case("header-no-space", r#"curl --header "Content-Type:application/json" https://api.example.com"#, "GET", "https://api.example.com")
@@ -187,7 +187,7 @@ fn bruno_cases() -> Vec<Case> {
             .headers(&[("Content-Type", "application/json"), ("Accept", "application/json")]).body(json("{\n  \"name\": \"John Doe\",\n  \"email\": \"john@example.com\"\n}"))
             .differs(JSON_ACCEPT),
         case("insecure", "curl -k https://api.example.com", "GET", "https://api.example.com")
-            .note("curl flag -k", Dropped).differs("Bruno drops -k silently"),
+            .note("curl flag -k", Converted).differs("Bruno drops -k silently"),
         case("get-data", r#"curl -G -d "name=John" -d "age=30" https://api.example.com/users"#, "GET", "https://api.example.com/users?name=John&age=30")
             .query(&[("name", "John"), ("age", "30")]),
         case("get-urlencode", "curl -G --data-urlencode \"name=John Doe\" \\\n  --data-urlencode \"email=john@example.com\" \\\n  --data-urlencode \"hello\" \\\n  https://api.example.com/users?test=urlquery&hello", "GET", "https://api.example.com/users?test=urlquery&hello&name=John+Doe&email=john%40example.com&hello")

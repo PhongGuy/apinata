@@ -177,3 +177,16 @@ async fn a_pac_chosen_untrusted_proxy_files_an_approval_naming_it() {
         Some("http://proxy.corp.example:3128")
     );
 }
+
+#[tokio::test]
+async fn a_request_that_skips_the_check_never_reaches_a_trusted_remote_host() {
+    let text = request("r", 1, "GET", "https://api.example/x") + "settings:\n  verifySsl: false\n";
+    let server = TestServer::start(&[("opencollection.yml", ROOT), ("r.yml", &text)]).await;
+    server.trust("api.example");
+    let message = server.err("send_request", json!({"path": "r.yml"})).await;
+    assert!(
+        message.contains("turns off certificate checks for `api.example` (hop 0)"),
+        "{message}"
+    );
+    assert!(server.inbox().pending().expect("inbox").is_empty());
+}

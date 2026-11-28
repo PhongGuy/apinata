@@ -1,0 +1,13 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+import http.client
+
+conn = http.client.HTTPConnection('x.test')
+headers = {}
+
+conn.request('GET', '/n', headers=headers)
+response = conn.getresponse()
+print(response.status)
+print(response.read().decode('utf-8', 'replace'))

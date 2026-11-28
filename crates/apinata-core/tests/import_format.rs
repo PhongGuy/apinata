@@ -189,7 +189,7 @@ fn a_curl_command_is_detected_by_its_first_word() {
         ("POST", "https://x.test/a")
     );
     assert!(
-        parsed.notes.iter().any(|n| n.kind == NoteKind::Dropped),
+        parsed.notes.iter().any(|n| n.kind == NoteKind::Converted),
         "{:?}",
         parsed.notes
     );

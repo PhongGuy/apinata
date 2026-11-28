@@ -1,6 +1,7 @@
 //! A request's `http.auth` as the app edits it.
 
 use super::edgegrid::EdgeGridSpec;
+use super::hawk::HawkSpec;
 use super::jwt::{JwtPlacement, JwtSpec};
 use super::oauth1::{OAuth1Placement, OAuth1Spec};
 use super::oauth2::{OAuth2Spec, TokenPlacement};
@@ -95,6 +96,8 @@ pub enum AuthSpec {
     EdgeGrid(EdgeGridSpec),
     /// A JWT signed on every send and sent as a bearer token.
     Jwt(JwtSpec),
+    /// Hawk, signed over each hop.
+    Hawk(HawkSpec),
     /// A mode this editor does not model; it is shown but never written.
     Unsupported {
         /// The mode as written in the file, or `unknown`.
@@ -168,6 +171,7 @@ impl fmt::Debug for AuthSpec {
                 .finish(),
             AuthSpec::EdgeGrid(spec) => f.debug_tuple("EdgeGrid").field(spec).finish(),
             AuthSpec::Jwt(spec) => f.debug_tuple("Jwt").field(spec).finish(),
+            AuthSpec::Hawk(spec) => f.debug_tuple("Hawk").field(spec).finish(),
             AuthSpec::Unsupported { mode } => {
                 f.debug_struct("Unsupported").field("mode", mode).finish()
             }
@@ -215,6 +219,7 @@ pub(crate) const CREDENTIAL_PATHS: &[&[&str]] = &[
     &["secretAccessKey"],
     &["sessionToken"],
     &["secret"],
+    &["authKey"],
 ];
 /// The OAuth 2 key holding each stage's extra parameter rows; a row's `value` is a credential.
 pub(crate) const PARAM_ROWS: &str = "additionalParameters";
@@ -229,7 +234,8 @@ impl AuthSpec {
             AuthSpec::Basic { .. }
             | AuthSpec::Bearer { .. }
             | AuthSpec::AwsV4 { .. }
-            | AuthSpec::EdgeGrid(_) => Some(AUTHORIZATION),
+            | AuthSpec::EdgeGrid(_)
+            | AuthSpec::Hawk(_) => Some(AUTHORIZATION),
             // Sending tests the raw key and value: either one empty sets no header.
             AuthSpec::ApiKey {
                 key,
@@ -293,6 +299,7 @@ impl AuthSpec {
                 "akamai-edgegrid" => AuthSpec::EdgeGrid(EdgeGridSpec::from_yaml(map)),
                 "oauth1" => AuthSpec::OAuth1(OAuth1Spec::from_yaml(map)),
                 "jwt" => AuthSpec::Jwt(JwtSpec::from_yaml(map)),
+                "hawk" => AuthSpec::Hawk(HawkSpec::from_yaml(map)),
                 "oauth2" => OAuth2Spec::from_yaml(map).map_or_else(
                     || AuthSpec::Unsupported {
                         mode: "oauth2".to_owned(),
@@ -412,7 +419,7 @@ impl AuthSpec {
 /// Write `auth` at `keys`; `order[i]` is the writer order of the mapping at depth `i` above it.
 /// `None` removes the key, `Inherit` writes `inherit` and `Unsupported` does nothing. The same
 /// mode rewrites only its own keys, so others survive; another mode replaces the whole mapping.
-/// OAuth 1.0 and 2.0, WSSE, NTLM, EdgeGrid and JWT always replace the whole mapping with their projection,
+/// OAuth 1.0 and 2.0, WSSE, NTLM, EdgeGrid, JWT and Hawk always replace the whole mapping with their projection,
 /// dropping unknown keys as the reference writer does; an unchanged projection is an equal value
 /// and leaves the file clean.
 pub(crate) fn write_auth(doc: &mut Document, keys: &[&str], order: &[&[&str]], auth: &AuthSpec) {
@@ -428,6 +435,7 @@ pub(crate) fn write_auth(doc: &mut Document, keys: &[&str], order: &[&[&str]], a
         AuthSpec::Ntlm { .. } => doc.set(keys, auth.fresh_mapping("ntlm"), order),
         AuthSpec::EdgeGrid(spec) => doc.set(keys, spec.to_yaml(), order),
         AuthSpec::Jwt(spec) => doc.set(keys, spec.to_yaml(), order),
+        AuthSpec::Hawk(spec) => doc.set(keys, spec.to_yaml(), order),
         _ => {
             let Some(mode) = auth.mode() else { return };
             let mut path = keys.to_vec();

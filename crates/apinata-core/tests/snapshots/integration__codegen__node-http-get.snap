@@ -1,0 +1,20 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+// Node's http module does not follow redirects; this prints the first response.
+import http from 'node:http';
+
+const url = 'http://x.test/a?q=1&r=two';
+const headers = {
+  'X-A': '2',
+  'Cookie': 'b=2',
+};
+
+const req = http.request(url, { method: 'GET', headers }, (res) => {
+  console.log(res.statusCode);
+  const chunks = [];
+  res.on('data', (chunk) => chunks.push(chunk));
+  res.on('end', () => console.log(Buffer.concat(chunks).toString()));
+});
+req.end();

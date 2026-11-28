@@ -5,8 +5,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use apinata_core::{
-    ApiKeyPlacement, AuthSource, AuthSpec, Collection, EdgeGridSpec, InheritedAuth, JwtSpec,
-    OAuth1Spec, OAuth2Flow, OAuth2Spec, VariableSet,
+    ApiKeyPlacement, AuthSource, AuthSpec, Collection, EdgeGridSpec, HawkSpec, InheritedAuth,
+    JwtSpec, OAuth1Spec, OAuth2Flow, OAuth2Spec, VariableSet,
 };
 use gpui_kit::component::IndexPath;
 use gpui_kit::component::button::Button;
@@ -47,13 +47,14 @@ pub enum AuthMode {
     AwsV4,
     Wsse,
     EdgeGrid,
+    Hawk,
     OAuth1,
     OAuth2,
 }
 
 impl AuthMode {
     /// Every mode, in picker order.
-    pub const ALL: [AuthMode; 13] = [
+    pub const ALL: [AuthMode; 14] = [
         AuthMode::None,
         AuthMode::Inherit,
         AuthMode::Basic,
@@ -65,6 +66,7 @@ impl AuthMode {
         AuthMode::AwsV4,
         AuthMode::Wsse,
         AuthMode::EdgeGrid,
+        AuthMode::Hawk,
         AuthMode::OAuth1,
         AuthMode::OAuth2,
     ];
@@ -83,6 +85,7 @@ impl AuthMode {
             AuthMode::AwsV4 => "AWS Sig v4",
             AuthMode::Wsse => "WSSE",
             AuthMode::EdgeGrid => "Akamai EdgeGrid",
+            AuthMode::Hawk => "Hawk",
             AuthMode::OAuth1 => "OAuth 1.0",
             AuthMode::OAuth2 => "OAuth 2.0",
         }
@@ -102,6 +105,7 @@ impl AuthMode {
             AuthMode::AwsV4 => "awsv4",
             AuthMode::Wsse => "wsse",
             AuthMode::EdgeGrid => "edgegrid",
+            AuthMode::Hawk => "hawk",
             AuthMode::OAuth1 => "oauth1",
             AuthMode::OAuth2 => "oauth2",
         }
@@ -121,6 +125,7 @@ impl AuthMode {
             AuthSpec::AwsV4 { .. } => AuthMode::AwsV4,
             AuthSpec::Wsse { .. } => AuthMode::Wsse,
             AuthSpec::EdgeGrid(_) => AuthMode::EdgeGrid,
+            AuthSpec::Hawk(_) => AuthMode::Hawk,
             AuthSpec::OAuth1(_) => AuthMode::OAuth1,
             AuthSpec::OAuth2(_) => AuthMode::OAuth2,
             _ => return None,
@@ -166,6 +171,7 @@ impl AuthMode {
                 password: String::new(),
             },
             AuthMode::EdgeGrid => AuthSpec::EdgeGrid(EdgeGridSpec::default()),
+            AuthMode::Hawk => AuthSpec::Hawk(HawkSpec::default()),
             AuthMode::OAuth1 => AuthSpec::OAuth1(OAuth1Spec::default()),
             AuthMode::OAuth2 => AuthSpec::OAuth2(OAuth2Spec::new(OAuth2Flow::AuthorizationCode)),
         }
@@ -196,6 +202,13 @@ pub enum AuthField {
     Timestamp,
     HeadersToSign,
     MaxBodySize,
+    HawkAuthId,
+    HawkAuthKey,
+    HawkExt,
+    HawkApp,
+    HawkDlg,
+    HawkNonce,
+    HawkTimestamp,
 }
 
 /// The level whose auth the section edits; it picks the No Auth wording.
@@ -260,6 +273,32 @@ const EDGEGRID_FIELDS: [(&str, &str, bool); 7] = [
     ("Timestamp", "auth-eg-timestamp", false),
     ("Headers to sign", "auth-eg-headers-to-sign", false),
 ];
+
+// The `AuthField` of each `HAWK_FIELDS` row.
+const HAWK_AUTH_FIELDS: [AuthField; 7] = [
+    AuthField::HawkAuthId,
+    AuthField::HawkAuthKey,
+    AuthField::HawkExt,
+    AuthField::HawkApp,
+    AuthField::HawkDlg,
+    AuthField::HawkNonce,
+    AuthField::HawkTimestamp,
+];
+
+// The Hawk inputs in `AuthField` order: label, element id, and whether it is masked. The
+// algorithm select sits after the first two rows.
+const HAWK_FIELDS: [(&str, &str, bool); 7] = [
+    ("Auth ID", "auth-hawk-auth-id", false),
+    ("Auth key", "auth-hawk-auth-key", true),
+    ("Ext", "auth-hawk-ext", false),
+    ("App", "auth-hawk-app", false),
+    ("Delegation", "auth-hawk-dlg", false),
+    ("Nonce", "auth-hawk-nonce", false),
+    ("Timestamp", "auth-hawk-timestamp", false),
+];
+
+// The Hawk algorithms the picker offers: the spelling written to the file and the label.
+const HAWK_ALGORITHMS: [(&str, &str); 2] = [("sha256", "SHA-256"), ("sha1", "SHA-1")];
 
 // The mode select's rows, each found by its mode's key.
 fn mode_rows(modes: &[AuthMode]) -> Vec<IdItem> {
@@ -334,6 +373,13 @@ pub struct AuthSection {
     aws: [Entity<InputState>; 6],
     // The EdgeGrid inputs, in `EDGEGRID_FIELDS` order.
     edgegrid: [Entity<InputState>; 7],
+    // The Hawk inputs, in `HAWK_FIELDS` order.
+    hawk: [Entity<InputState>; 7],
+    // The Hawk algorithm and payload-hash flag last loaded or picked; every Hawk edit carries
+    // them, so a spelling the picker does not offer survives an unrelated edit.
+    hawk_algorithm: String,
+    hawk_payload_hash: bool,
+    hawk_select: Entity<IdSelect>,
     // The EdgeGrid Max Body Size last loaded or validly typed; every EdgeGrid edit carries it.
     edgegrid_max: Option<f64>,
     // Its input has its own subscription, so a refused parse never reaches `emit`.
@@ -378,6 +424,7 @@ impl AuthSection {
         );
         let aws = AWS_FIELDS.map(|(_, _, masked)| input(masked));
         let edgegrid = EDGEGRID_FIELDS.map(|(_, _, masked)| input(masked));
+        let hawk = HAWK_FIELDS.map(|(_, _, masked)| input(masked));
         let max_body_size = input(false);
         // Fields whose format is not obvious show a short example while empty.
         let hints = [
@@ -393,10 +440,18 @@ impl AuthSection {
             (&edgegrid[5], "Generated when sent"),
             (&edgegrid[6], "X-Header-One, X-Header-Two"),
             (&max_body_size, "131072"),
+            (&hawk[5], "Generated when sent"),
+            (&hawk[6], "Generated when sent"),
         ];
         for (state, hint) in hints {
             state.update(cx, |s, cx| s.set_placeholder(hint, window, cx));
         }
+        let algorithms = HAWK_ALGORITHMS
+            .iter()
+            .map(|(key, label)| IdItem::new("auth-hawk-algorithm", key, *label))
+            .collect();
+        let hawk_select =
+            cx.new(|cx| SelectState::new(algorithms, Some(IndexPath::new(0)), window, cx));
         let oauth1 = cx.new(|cx| OAuth1Editor::new(window, cx));
         let oauth2 = cx.new(|cx| OAuth2Editor::new(window, cx));
         let jwt_auth = cx.new(|cx| JwtEditor::new(window, cx));
@@ -456,6 +511,19 @@ impl AuthSection {
                 },
             ),
             cx.subscribe_in(
+                &hawk_select,
+                window,
+                |this, _, event: &SelectEvent<Vec<IdItem>>, window, cx| {
+                    if let SelectEvent::Confirm(Some(label)) = event
+                        && let Some((key, _)) =
+                            HAWK_ALGORITHMS.iter().find(|(_, l)| *l == label.as_ref())
+                        && this.hawk_algorithm != *key
+                    {
+                        this.set_hawk_algorithm(key, window, cx);
+                    }
+                },
+            ),
+            cx.subscribe_in(
                 &placement_select,
                 window,
                 |this, _, event: &SelectEvent<Vec<IdItem>>, window, cx| {
@@ -472,6 +540,7 @@ impl AuthSection {
             .into_iter()
             .chain(&aws)
             .chain(&edgegrid)
+            .chain(&hawk)
         {
             subs.push(cx.subscribe(state, |this, _, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change)
@@ -523,6 +592,10 @@ impl AuthSection {
             aws,
             edgegrid,
             edgegrid_max: None,
+            hawk,
+            hawk_algorithm: HawkSpec::default().algorithm,
+            hawk_payload_hash: false,
+            hawk_select,
             max_body_size,
             max_refused: false,
             oauth1,
@@ -769,7 +842,8 @@ impl AuthSection {
             &self.key,
         ];
         let fields = own.into_iter().chain([&self.value, &self.max_body_size]);
-        for input in fields.chain(&self.aws).chain(&self.edgegrid) {
+        let typed = fields.chain(&self.aws).chain(&self.edgegrid);
+        for input in typed.chain(&self.hawk) {
             crate::ui::end_input_run(input, window, cx);
         }
         self.oauth1.update(cx, |o, cx| o.end_typing(window, cx));
@@ -800,6 +874,13 @@ impl AuthSection {
             AuthField::Timestamp => &self.edgegrid[5],
             AuthField::HeadersToSign => &self.edgegrid[6],
             AuthField::MaxBodySize => &self.max_body_size,
+            AuthField::HawkAuthId => &self.hawk[0],
+            AuthField::HawkAuthKey => &self.hawk[1],
+            AuthField::HawkExt => &self.hawk[2],
+            AuthField::HawkApp => &self.hawk[3],
+            AuthField::HawkDlg => &self.hawk[4],
+            AuthField::HawkNonce => &self.hawk[5],
+            AuthField::HawkTimestamp => &self.hawk[6],
         }
     }
 
@@ -897,6 +978,19 @@ impl AuthSection {
                 spec.max_body_size = self.edgegrid_max;
                 AuthSpec::EdgeGrid(spec)
             }
+            AuthMode::Hawk => {
+                let mut spec = HawkSpec::default();
+                spec.auth_id = text(AuthField::HawkAuthId);
+                spec.auth_key = text(AuthField::HawkAuthKey);
+                spec.algorithm = self.hawk_algorithm.clone();
+                spec.ext = text(AuthField::HawkExt);
+                spec.app = text(AuthField::HawkApp);
+                spec.dlg = text(AuthField::HawkDlg);
+                spec.nonce = text(AuthField::HawkNonce);
+                spec.timestamp = text(AuthField::HawkTimestamp);
+                spec.include_payload_hash = self.hawk_payload_hash;
+                AuthSpec::Hawk(spec)
+            }
             AuthMode::OAuth1 => AuthSpec::OAuth1(self.oauth1.read(cx).spec(cx)),
             AuthMode::OAuth2 => AuthSpec::OAuth2(self.oauth2.read(cx).spec(cx)),
             AuthMode::Jwt => AuthSpec::Jwt(self.jwt_auth.read(cx).spec(cx)),
@@ -989,12 +1083,72 @@ impl AuthSection {
                     set_text(&self.max_body_size, &text, window, cx);
                 }
             }
+            AuthSpec::Hawk(h) => {
+                let values = [
+                    &h.auth_id,
+                    &h.auth_key,
+                    &h.ext,
+                    &h.app,
+                    &h.dlg,
+                    &h.nonce,
+                    &h.timestamp,
+                ];
+                for (state, value) in self.hawk.iter().zip(values) {
+                    self.masks.fill(state, value, window, cx);
+                }
+                self.hawk_payload_hash = h.include_payload_hash;
+                self.show_hawk_algorithm(&h.algorithm, window, cx);
+            }
             AuthSpec::OAuth1(o) => self.oauth1.update(cx, |e, cx| e.load(o, window, cx)),
             AuthSpec::OAuth2(o) => self.oauth2.update(cx, |e, cx| e.load(o, window, cx)),
             AuthSpec::Jwt(j) => self.jwt_auth.update(cx, |e, cx| e.load(j, window, cx)),
             _ => {}
         }
         self.refresh_jwt(cx);
+        cx.notify();
+    }
+
+    /// Sets the Hawk algorithm spelling, sending an edit while Hawk is shown.
+    pub fn set_hawk_algorithm(
+        &mut self,
+        algorithm: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.show_hawk_algorithm(algorithm, window, cx);
+        self.emit_hawk(cx);
+    }
+
+    /// Sets whether Hawk signs the payload hash, sending an edit while Hawk is shown.
+    pub fn set_hawk_payload_hash(&mut self, on: bool, cx: &mut Context<Self>) {
+        self.hawk_payload_hash = on;
+        self.emit_hawk(cx);
+        cx.notify();
+    }
+
+    fn emit_hawk(&mut self, cx: &mut Context<Self>) {
+        if self.mode == Some(AuthMode::Hawk)
+            && let Some(auth) = self.current(cx)
+        {
+            self.emit(auth, cx);
+        }
+    }
+
+    // Selects the algorithm's row; a spelling the picker does not offer clears the selection
+    // and is shown as the placeholder instead.
+    fn show_hawk_algorithm(
+        &mut self,
+        algorithm: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.hawk_algorithm = algorithm.to_owned();
+        let row = HAWK_ALGORITHMS
+            .iter()
+            .position(|(key, _)| *key == algorithm);
+        self.hawk_select.update(cx, |s, cx| {
+            s.set_selected_index(row.map(IndexPath::new), window, cx)
+        });
         cx.notify();
     }
 
@@ -1371,7 +1525,7 @@ pub fn inherit_text(inherited: &InheritedAuth, collection: &Collection) -> Strin
 }
 
 // The masked inputs, re-checked every render so a lone reference shows while typed.
-const SECRET_FIELDS: [AuthField; 8] = [
+const SECRET_FIELDS: [AuthField; 9] = [
     AuthField::Password,
     AuthField::Token,
     AuthField::Value,
@@ -1380,6 +1534,7 @@ const SECRET_FIELDS: [AuthField; 8] = [
     AuthField::AccessToken,
     AuthField::ClientToken,
     AuthField::ClientSecret,
+    AuthField::HawkAuthKey,
 ];
 
 impl Render for AuthSection {
@@ -1523,6 +1678,47 @@ impl Render for AuthSection {
                     ))
                 })
                 .into_any_element(),
+            (Some(AuthMode::Hawk), _) => {
+                let known = HAWK_ALGORITHMS
+                    .iter()
+                    .any(|(key, _)| *key == self.hawk_algorithm);
+                let unknown = (!known).then(|| self.hawk_algorithm.clone());
+                v_flex()
+                    .gap_2()
+                    .child(self.table_fields(
+                        &HAWK_FIELDS[..2],
+                        &self.hawk[..2],
+                        &HAWK_AUTH_FIELDS[..2],
+                        vars.clone(),
+                        cx,
+                    ))
+                    .child(ui::form_row(
+                        "auth-hawk-algorithm-row",
+                        "Algorithm",
+                        div().w(style::MODE_SELECT_WIDTH).max_w_full().child(
+                            Select::new(&self.hawk_select)
+                                .id("auth-hawk-algorithm")
+                                .when_some(unknown, |s, p| s.placeholder(p)),
+                        ),
+                    ))
+                    .child(self.table_fields(
+                        &HAWK_FIELDS[2..],
+                        &self.hawk[2..],
+                        &HAWK_AUTH_FIELDS[2..],
+                        vars,
+                        cx,
+                    ))
+                    .child(ui::form_row(
+                        "auth-hawk-include-payload-hash-row",
+                        "",
+                        ui::checkbox("auth-hawk-include-payload-hash", self.hawk_payload_hash)
+                            .label("Include payload hash")
+                            .on_click(
+                                cx.listener(|t, on: &bool, _, cx| t.set_hawk_payload_hash(*on, cx)),
+                            ),
+                    ))
+                    .into_any_element()
+            }
             (Some(AuthMode::OAuth1), _) => self.oauth1.clone().into_any_element(),
             (Some(AuthMode::OAuth2), _) => self.oauth2.clone().into_any_element(),
             (Some(AuthMode::Jwt), _) => self.jwt_auth.clone().into_any_element(),

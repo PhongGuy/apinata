@@ -1,12 +1,16 @@
-//! The shell targets: curl, which wraps `to_curl`, and HTTPie. Both write one argument per
-//! line and single-quote every word.
+//! The shell targets: curl, which wraps `to_curl`, HTTPie and wget. Each writes one argument
+//! per line and single-quotes every word.
 
 use crate::curl_export::{SEPARATOR, quote, to_curl};
-use crate::execute::form_payload;
+use url::Url;
+
+use crate::execute::{form_payload, url_credentials};
 use crate::multipart::PartValue;
 use crate::resolve::{Body, ResolvedRequest};
 
-use super::{digest_credentials, omitted_auth, sent_headers};
+use super::{
+    BOUNDARY, Segment, digest_credentials, multipart_segments, omitted_auth, sent_headers,
+};
 
 /// `to_curl` with `--location` when following redirects, which curl does not do by default,
 /// curl's own digest flags, and a leading comment for SigV4.
@@ -108,4 +112,92 @@ pub(super) fn httpie(req: &ResolvedRequest) -> String {
         Some(note) => format!("# {note}\n{command}"),
         None => command,
     }
+}
+
+/// `text` as a single-quoted `printf '%b'` argument: backslashes are doubled so none starts an
+/// escape, and line breaks become `\r` and `\n` so each run stays on one line.
+fn printf_word(text: &str) -> String {
+    quote(
+        &text
+            .replace('\\', "\\\\")
+            .replace('\r', "\\r")
+            .replace('\n', "\\n"),
+    )
+}
+
+/// A GNU `wget` command printing the response body, error statuses included. wget has no
+/// multipart support and reads a body only from a regular file, so a multipart body is built
+/// into a temporary file first and removed after. URL credentials go out up front, as the
+/// executor sends them, rather than after a 401.
+pub(super) fn wget(req: &ResolvedRequest) -> String {
+    let mut out = String::new();
+    if let Some(note) = omitted_auth(req, true) {
+        out.push_str(&format!("# {note}\n"));
+    }
+    let multipart = match req.body() {
+        Body::Multipart(parts) => Some(parts),
+        _ => None,
+    };
+    if let Some(parts) = multipart {
+        out.push_str("body=$(mktemp)\n{\n");
+        for segment in multipart_segments(parts) {
+            match segment {
+                Segment::Text(text) => {
+                    out.push_str(&format!("  printf '%b' {}\n", printf_word(&text)));
+                }
+                Segment::File(path) => {
+                    out.push_str(&format!("  cat {}\n", quote(&path.to_string_lossy())));
+                }
+            }
+        }
+        out.push_str("} > \"$body\"\n");
+    }
+
+    let mut args = vec![format!(
+        "wget --quiet --output-document=- --content-on-error --method={}",
+        quote(req.method())
+    )];
+    if !req.follow_redirects() {
+        args.push("--max-redirect=0".to_string());
+    }
+    let url_has_credentials = Url::parse(req.url())
+        .ok()
+        .and_then(|url| url_credentials(&url))
+        .is_some();
+    if url_has_credentials {
+        args.push("--auth-no-challenge".to_string());
+    }
+    if let Some((user, password)) = digest_credentials(req) {
+        args.push(format!("--user={}", quote(user)));
+        args.push(format!("--password={}", quote(password)));
+    }
+    for (name, value) in sent_headers(req) {
+        args.push(format!("--header={}", quote(&format!("{name}: {value}"))));
+    }
+    match req.body() {
+        Body::None => {}
+        Body::Text(text) => args.push(format!("--body-data={}", quote(text))),
+        Body::FormUrlEncoded(pairs) => {
+            args.push(format!("--body-data={}", quote(&form_payload(pairs))));
+        }
+        Body::File { path, .. } => {
+            args.push(format!("--body-file={}", quote(&path.to_string_lossy())));
+        }
+        Body::Multipart(_) => {
+            args.push(format!(
+                "--header={}",
+                quote(&format!(
+                    "Content-Type: multipart/form-data; boundary={BOUNDARY}"
+                ))
+            ));
+            args.push("--body-file=\"$body\"".to_string());
+        }
+    }
+    args.push(quote(req.url()));
+    out.push_str(&args.join(SEPARATOR));
+    out.push('\n');
+    if multipart.is_some() {
+        out.push_str("rm -f \"$body\"\n");
+    }
+    out
 }

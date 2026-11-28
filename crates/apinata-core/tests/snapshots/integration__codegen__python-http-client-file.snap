@@ -1,0 +1,18 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+# http.client does not follow redirects; this prints the first response.
+import http.client
+from pathlib import Path
+
+conn = http.client.HTTPConnection('x.test')
+headers = {
+    'content-type': 'application/json',
+}
+body = Path('/data/body.json').read_bytes()
+
+conn.request('PUT', '/b', body=body, headers=headers)
+response = conn.getresponse()
+print(response.status)
+print(response.read().decode('utf-8', 'replace'))

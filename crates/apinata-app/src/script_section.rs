@@ -2,6 +2,7 @@
 //! Pre-request / Post-response switch, with the tests editor under the post-response one.
 
 use crate::ui::SolidRing as _;
+use crate::vim::Vim;
 use std::ops::Range;
 use std::rc::Rc;
 
@@ -39,6 +40,7 @@ struct PhaseEditor {
     redo_text: Option<String>,
     // Whether this editor wraps long lines.
     wrap: bool,
+    vim: Entity<Vim>,
 }
 
 /// Edits the scripts of some phases; each change goes out as [`Edit::Script`] for its phase.
@@ -331,6 +333,8 @@ impl ScriptSection {
                 }),
             );
             let id = format!("script-{}-code", phase.as_str()).into();
+            let vim = cx.new(|cx| Vim::new(&code, cx));
+            subs.push(cx.observe(&vim, |_, _, cx| cx.notify()));
             editors.push(PhaseEditor {
                 phase,
                 id,
@@ -338,6 +342,7 @@ impl ScriptSection {
                 typed: false,
                 redo_text: None,
                 wrap: default_wrap,
+                vim,
             });
         }
         let id = if phases == [ScriptPhase::Tests] {
@@ -603,6 +608,14 @@ impl ScriptSection {
             .unwrap_or(0)
     }
 
+    /// The Vim key map of `phase`'s editor, if this section shows it.
+    pub fn vim(&self, phase: ScriptPhase) -> Option<&Entity<Vim>> {
+        self.editors
+            .iter()
+            .find(|e| e.phase == phase)
+            .map(|e| &e.vim)
+    }
+
     /// The editor of `phase`, if this section shows it.
     pub fn code(&self, phase: ScriptPhase) -> Option<&Entity<EditorState>> {
         self.editors
@@ -731,6 +744,7 @@ impl Render for ScriptSection {
                                             .map(|s| snippet_button(s, e.phase, this.clone(), cx)),
                                     ),
                             )
+                            .children(crate::vim::mode_label("script-vim-mode", &e.vim, cx))
                             .child({
                                 let (this, phase) = (this.clone(), e.phase);
                                 ui::checkbox("script-wrap-toggle", e.wrap)
@@ -746,8 +760,7 @@ impl Render for ScriptSection {
                         col.child(error_banner(note, this.clone(), cx))
                     })
                     .child(
-                        div()
-                            .id(e.id.clone())
+                        crate::vim::scope(div().id(e.id.clone()), &e.vim, cx)
                             .test_support()
                             .w_full()
                             .flex_1()
