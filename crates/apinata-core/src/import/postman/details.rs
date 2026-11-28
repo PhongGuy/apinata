@@ -61,7 +61,23 @@ pub(super) fn auth(
         Some("oauth1") => AuthSpec::OAuth1(oauth1(values)),
         Some("edgegrid") => AuthSpec::EdgeGrid(edgegrid(values)),
         Some("jwt") => AuthSpec::Jwt(jwt(values)),
-        Some("asap") => AuthSpec::Asap(asap(values)),
+        Some("asap") => {
+            let mut spec = asap(values);
+            let given = spec.expires_in.trim().to_owned();
+            spec.expires_in = runtime_expiry(&given);
+            if spec.expires_in != given {
+                let detail = match spec.expires_in.as_str() {
+                    "" => format!(
+                        "the ASAP expiry `{given}` is not a positive whole number of seconds; the default hour is used"
+                    ),
+                    seconds => format!(
+                        "the ASAP expiry `{given}` is read as `{seconds}`, a lifetime in seconds"
+                    ),
+                };
+                notes.push(ImportNote::new(source, NoteKind::Converted, detail));
+            }
+            AuthSpec::Asap(spec)
+        }
         Some("hawk") => {
             // The user field never reaches the header, so a stated one is noted and dropped.
             if !get("user").trim().is_empty() {
@@ -452,6 +468,21 @@ fn asap(values: Option<&Value>) -> AsapSpec {
             _ => get("claims"),
         },
         private_key: get("privateKey"),
+    }
+}
+
+/// The expiry the runtime sends for `given`: like `parseInt`, the leading whole number, and
+/// blank (the default hour) when there is none or it is not positive.
+fn runtime_expiry(given: &str) -> String {
+    let digits: String = given
+        .strip_prefix('+')
+        .unwrap_or(given)
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect();
+    match digits.parse::<u64>() {
+        Ok(n) if n > 0 => n.to_string(),
+        _ => String::new(),
     }
 }
 

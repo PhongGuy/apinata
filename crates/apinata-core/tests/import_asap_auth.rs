@@ -4,8 +4,8 @@
 use crate::export_support::{exported, http, open};
 
 use apinata_core::import::{
-    ImportedCollection, ImportedItem, auth_secret_fields, parse_postman, replace_auth_secret,
-    write_collection,
+    ImportedCollection, ImportedItem, NoteKind, auth_secret_fields, parse_postman,
+    replace_auth_secret, write_collection,
 };
 use apinata_core::{
     AsapSpec, AuthSpec, Collection, ContextOptions, MemoryStore, SecretStore, VarContext,
@@ -74,6 +74,31 @@ fn postman_asap_defaults_fill_what_is_missing() {
     assert_eq!(spec.algorithm, "RS256");
     assert_eq!(spec.expires_in, "");
     assert_eq!(spec.additional_claims, "");
+}
+
+/// The runtime reads the expiry with `parseInt`, falling back to an hour on a falsy result,
+/// so the import keeps the whole seconds it would send and notes any change.
+#[test]
+fn postman_expiry_keeps_the_whole_seconds_the_runtime_would_send() {
+    for (given, want, noted) in [
+        (json!("600"), "600", false),
+        (json!(600), "600", false),
+        (json!(" 90 "), "90", false),
+        (json!("1h"), "1", true),
+        (json!("600.5"), "600", true),
+        (json!("soon"), "", true),
+        (json!("0"), "", true),
+        (json!("-5"), "", true),
+        (json!(""), "", false),
+    ] {
+        let c = postman(json!([kv("iss", json!("i")), kv("exp", given.clone())]));
+        assert_eq!(asap_of(&c).expires_in, want, "{given}");
+        let notes = &only(&c).notes;
+        let has = notes
+            .iter()
+            .any(|n| n.kind == NoteKind::Converted && n.detail.contains("expiry"));
+        assert_eq!(has, noted, "{given}: {notes:#?}");
+    }
 }
 
 #[test]
