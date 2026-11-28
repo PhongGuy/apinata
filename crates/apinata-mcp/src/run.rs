@@ -56,6 +56,10 @@ pub(crate) struct RunArgs {
     /// Skip requests with one of these tags.
     #[serde(default)]
     pub exclude_tags: Vec<String>,
+    /// Run only requests that check something: an enabled assertion of their own, or a
+    /// `test(...)` call in one of their own scripts. Folder and collection checks do not count.
+    #[serde(default)]
+    pub tests_only: bool,
     /// For event-streams, end each after this many seconds; 30 when absent, 1 to 300.
     #[schemars(range(min = 1))]
     pub stream_max_seconds: Option<u64>,
@@ -209,6 +213,13 @@ pub(crate) struct RunResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub iterations: Option<Vec<IterationDoc>>,
     pub load_errors: Vec<String>,
+    /// How many requests `tests_only` left out because they check nothing; absent when none.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub skipped_without_tests: usize,
+}
+
+fn is_zero(n: &usize) -> bool {
+    *n == 0
 }
 
 /// One pass of an iterated run: its data row and the requests it ran.
@@ -229,8 +240,13 @@ pub(crate) struct PreparedRun {
 }
 
 /// The run of `path`: the folder or request it names, or the whole collection for `""`, keeping
-/// only the requests `filter` keeps.
-pub(crate) fn plan(c: &Collection, path: &str, filter: &TagFilter) -> Result<RunPlan, String> {
+/// only the requests `filter` keeps, and of those only the ones with checks when `tests_only`.
+pub(crate) fn plan(
+    c: &Collection,
+    path: &str,
+    filter: &TagFilter,
+    tests_only: bool,
+) -> Result<RunPlan, String> {
     let target = if path.is_empty() {
         c.root().to_path_buf()
     } else {
@@ -239,9 +255,13 @@ pub(crate) fn plan(c: &Collection, path: &str, filter: &TagFilter) -> Result<Run
             None => return Err(format!("`{path}` is not an item path")),
         }
     };
-    c.plan(&target)
-        .map(|plan| plan.filter_tags(filter))
-        .map_err(|e| e.to_string())
+    let plan = c.plan(&target).map_err(|e| e.to_string())?;
+    let plan = plan.filter_tags(filter);
+    Ok(if tests_only {
+        plan.retain_tested()
+    } else {
+        plan
+    })
 }
 
 /// Plan the run of `path` under `filter` and re-resolve each planned request: its sensitive values
@@ -255,11 +275,12 @@ pub(crate) fn prepare(
     c: &Collection,
     path: &str,
     filter: &TagFilter,
+    tests_only: bool,
     ctx: VarContext,
     scripted: &HashSet<ItemPath>,
 ) -> (Redactor, Result<PreparedRun, String>) {
     let mut redactor = Redactor::default();
-    let plan = match plan(c, path, filter) {
+    let plan = match plan(c, path, filter, tests_only) {
         Ok(plan) => plan,
         Err(e) => return (redactor, Err(e)),
     };

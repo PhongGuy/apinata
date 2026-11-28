@@ -591,6 +591,7 @@ Filtering:
 | --- | --- |
 | `--tags <TAGS>` | Run only the requests that have at least one of these comma-separated tags. |
 | `--exclude-tags <TAGS>` | Skip the requests that have any of these tags, even when `--tags` picks them. |
+| `--tests-only` | Run only the requests that check something: an enabled assertion of their own, or a `test(...)` call in one of their own scripts. Folder and collection tests do not count. The run prints how many it left out on stderr, and a path where no request has tests is an error. |
 | `--bail` | Stop after the first failed or errored request. |
 
 Data-driven runs:
@@ -1247,6 +1248,9 @@ after the run puts the cookies the run set or changed into the shared jar;
 cookies it deleted stay there. Keep variable values set by the run is on by
 default; off, the run works on a copy of the variables and drops the values it
 set when it ends. A collection or folder runner remembers these choices.
+Only requests with tests leaves out the requests `--tests-only` would, for
+that tab only; the list shows what will run, and a finished run notes how many
+it left out.
 
 The bottom dock has Console, Network and Variables tabs. Variables lists the
 variables the active request sees, grouped by the scope that defines them, after

@@ -571,3 +571,40 @@ async fn a_request_whose_url_and_params_disagree_reports_query_mismatch() {
     let description = tool.description.as_deref().unwrap_or_default();
     assert!(description.contains("query_mismatch"), "{description}");
 }
+
+#[tokio::test]
+async fn tests_only_runs_only_requests_with_checks_and_counts_the_rest() {
+    let mock = echo_ok().await;
+    let checked = "runtime:\n  scripts:\n    - type: tests\n      code: |-\n        test(\"ok\", () => {});\n";
+    let server = TestServer::start(&[
+        ("opencollection.yml", ROOT),
+        ("a.yml", &get("a", 1, &mock.uri(), "")),
+        ("b.yml", &get("b", 2, &mock.uri(), checked)),
+    ])
+    .await;
+    // Scripts stay off, since they need approval; their test() call still counts.
+    let result = server
+        .ok(
+            "run_folder",
+            json!({"path": "", "tests_only": true, "skip_scripts": true}),
+        )
+        .await;
+    let paths: Vec<&str> = result["results"]
+        .as_array()
+        .expect("results")
+        .iter()
+        .map(|r| r["path"].as_str().expect("path"))
+        .collect();
+    assert_eq!(paths, ["b.yml"]);
+    assert_eq!(result["skipped_without_tests"], 1);
+    assert_eq!(mock.received_requests().await.expect("recorded").len(), 1);
+    let refused = server
+        .call("run_folder", json!({"path": "a.yml", "tests_only": true}))
+        .await;
+    assert_eq!(refused.is_error, Some(true));
+    let shown = serde_json::to_string(&refused).expect("serialises");
+    assert!(
+        shown.contains("no requests with tests to run (1 skipped)"),
+        "{shown}"
+    );
+}

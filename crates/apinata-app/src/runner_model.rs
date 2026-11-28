@@ -121,6 +121,8 @@ pub struct RunnerModel {
     iteration_count: Option<usize>,
     tags: String,
     exclude_tags: String,
+    /// Whether the next run keeps only requests that check something.
+    tests_only: bool,
     data_file: Option<PathBuf>,
     run_cookies: RunCookies,
     keep_cookies: bool,
@@ -146,9 +148,10 @@ pub struct RunnerModel {
     // A prompt-variable or trust dialog is open for this run.
     waiting: bool,
     task: Option<Task<()>>,
-    // The saved plan with each request's effective tags, unfiltered, and that filtered by
-    // the current tags; refiltered on every tag edit so typing never waits on the actor.
-    planned: Vec<(PlannedRow, Vec<String>)>,
+    // The saved plan with each request's effective tags and whether it checks anything,
+    // unfiltered, and that filtered by the current tags and tests-only choice; refiltered on
+    // every edit so typing never waits on the actor.
+    planned: Vec<(PlannedRow, Vec<String>, bool)>,
     preview: Vec<PlannedRow>,
     preview_loaded: bool,
     // The chosen data file as last read: its rows, or why it cannot be read.
@@ -200,6 +203,7 @@ type RunChoice = (
     Option<usize>,
     (u32, u64, bool),
     Option<StatusRule>,
+    bool,
 );
 
 impl RunnerModel {
@@ -227,6 +231,7 @@ impl RunnerModel {
             iteration_count: None,
             tags: String::new(),
             exclude_tags: String::new(),
+            tests_only: false,
             data_file: None,
             run_cookies: RunCookies::Shared,
             keep_cookies: false,
@@ -384,6 +389,18 @@ impl RunnerModel {
     /// Sets the tags the next run keeps.
     pub fn set_tags(&mut self, text: String, cx: &mut Context<Self>) {
         self.tags = text;
+        self.refilter();
+        cx.notify();
+    }
+
+    /// Whether the next run keeps only requests that check something.
+    pub fn tests_only(&self) -> bool {
+        self.tests_only
+    }
+
+    /// Sets whether the next run keeps only requests that check something.
+    pub fn set_tests_only(&mut self, on: bool, cx: &mut Context<Self>) {
+        self.tests_only = on;
         self.refilter();
         cx.notify();
     }
@@ -552,18 +569,22 @@ impl RunnerModel {
         // Replacing the task drops, and so cancels, an older refresh.
         self.preview_task = Some(cx.spawn(async move |this, cx| {
             let planned = match answer.recv().await {
-                Ok(Ok(Planned { plan, .. })) => (plan.items())
-                    .zip(plan.requests())
-                    .zip(plan.tags())
-                    .map(|((path, request), tags)| {
-                        let row = PlannedRow {
-                            path: path.clone(),
-                            name: request.name().to_owned(),
-                            method: request.method().to_owned(),
-                        };
-                        (row, tags.to_vec())
-                    })
-                    .collect(),
+                Ok(Ok(Planned { plan, .. })) => {
+                    let tested: Vec<ItemPath> =
+                        plan.clone().retain_tested().items().cloned().collect();
+                    (plan.items())
+                        .zip(plan.requests())
+                        .zip(plan.tags())
+                        .map(|((path, request), tags)| {
+                            let row = PlannedRow {
+                                path: path.clone(),
+                                name: request.name().to_owned(),
+                                method: request.method().to_owned(),
+                            };
+                            (row, tags.to_vec(), tested.contains(path))
+                        })
+                        .collect()
+                }
                 _ => Vec::new(),
             };
             let _ = this.update(cx, |m, cx| m.keep_plan(planned, cx));
@@ -665,7 +686,7 @@ impl RunnerModel {
             .count()
     }
 
-    fn keep_plan(&mut self, planned: Vec<(PlannedRow, Vec<String>)>, cx: &mut Context<Self>) {
+    fn keep_plan(&mut self, planned: Vec<(PlannedRow, Vec<String>, bool)>, cx: &mut Context<Self>) {
         self.planned = planned;
         self.preview_loaded = true;
         self.refilter();
@@ -678,8 +699,8 @@ impl RunnerModel {
             TagFilter::parse_list(&self.exclude_tags),
         );
         self.preview = (self.planned.iter())
-            .filter(|(_, tags)| filter.matches(tags))
-            .map(|(row, _)| row.clone())
+            .filter(|(_, tags, tested)| filter.matches(tags) && (*tested || !self.tests_only))
+            .map(|(row, _, _)| row.clone())
             .collect();
     }
 
@@ -701,6 +722,7 @@ impl RunnerModel {
             self.iteration_count,
             (self.retries, self.retry_delay_ms, self.retry_unsafe),
             self.fail_on_status,
+            self.tests_only,
         )
     }
 
@@ -745,7 +767,8 @@ impl RunnerModel {
         &self.load_errors
     }
 
-    /// One note per request of a type the app cannot send yet, naming it as skipped.
+    /// One note per request of a type the app cannot send yet, naming it as skipped, then one
+    /// counting the requests a tests-only run left out.
     pub fn skipped(&self) -> &[String] {
         &self.skipped
     }
@@ -867,7 +890,7 @@ impl RunnerModel {
         let (retries, retry_delay, retry_unsafe) =
             (self.retries, self.retry_delay_ms, self.retry_unsafe);
         let count = self.iteration_count;
-        let fail_on_status = self.fail_on_status;
+        let (fail_on_status, tests_only) = (self.fail_on_status, self.tests_only);
         self.task = Some(cx.spawn(async move |this, cx| {
             // A reply channel that closes unanswered means the actor is gone.
             let planned = match answer.recv().await {
@@ -896,6 +919,11 @@ impl RunnerModel {
                 (false, _) => context,
             };
             let plan = plan.filter_tags(&filter);
+            let plan = if tests_only {
+                plan.retain_tested()
+            } else {
+                plan
+            };
             let plan = match choose_checked(plan, &unchecked) {
                 Ok(plan) => plan,
                 Err(e) => {
@@ -988,6 +1016,11 @@ impl RunnerModel {
                             errors.push(format!("{}: {}", path.display(), e.message()));
                         }
                     }
+                }
+                let dropped = planned.plan.untested_dropped();
+                if dropped > 0 {
+                    let noun = if dropped == 1 { "request" } else { "requests" };
+                    skipped.push(format!("Skipped {dropped} {noun} without tests"));
                 }
                 (m.load_errors, m.skipped) = (errors, skipped);
                 m.load_error_rows = (planned.plan.load_errors().iter())

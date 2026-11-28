@@ -156,6 +156,9 @@ pub fn open_with(args: &RunArgs, keychain: Arc<dyn SecretStore>) -> anyhow::Resu
         "pass the collection as `apinata run <PATH>` or `apinata run --collection <DIR>`",
     )?;
     target.plan = target.plan.filter_tags(&tag_filter(args));
+    if args.tests_only {
+        target.plan = target.plan.retain_tested();
+    }
     Ok(target)
 }
 
@@ -324,6 +327,11 @@ pub async fn run(
     // A run that would send nothing is a usage error, so a typo in a tag cannot pass CI.
     if let Some(message) = target.plan.empty_message(&tag_filter(args)) {
         return Err(NothingToRun(message).into());
+    }
+    let dropped = target.plan.untested_dropped();
+    if dropped > 0 {
+        let noun = if dropped == 1 { "request" } else { "requests" };
+        eprintln!("Skipped {dropped} {noun} without tests");
     }
     let data = data_file(args)?;
     let example = crate::example_cmd::plan(args, &target, data.as_ref())?;
