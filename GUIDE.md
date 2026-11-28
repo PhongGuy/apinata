@@ -31,6 +31,7 @@ and a quick start, see the [README](README.md).
   - [GraphQL queries](#graphql-queries)
   - [OAuth 2.0 and scripts](#oauth-20-and-scripts)
   - [JWT Bearer auth](#jwt-bearer-auth)
+  - [Hawk auth](#hawk-auth)
   - [Team servers](#team-servers)
   - [Timeouts, streams and body size](#timeouts-streams-and-body-size)
   - [Reading responses](#reading-responses)
@@ -1014,6 +1015,40 @@ apinata item request users/get.yml --auth-json '{"type": "jwt", "algorithm": "HS
 `private_key` is `{"type": "text", "value": "{{jwt_key}}"}` or `{"type": "file", "value":
 "keys/k.pem"}`. Values are written into the file as given, so keep the secret and key in an
 environment (`apinata env set --secret`) and refer to them as `{{name}}`.
+
+### Hawk auth
+
+A request, folder or collection with `type: hawk` auth signs every hop with a Hawk
+`Authorization` header:
+
+```yaml
+auth:
+  type: hawk
+  authId: dh37fgj492je
+  authKey: "{{hawk_key}}"
+  algorithm: sha256           # sha256 or sha1
+  ext: ""                     # optional application data
+  app: ""                     # optional; dlg is sent only with app
+  dlg: ""
+  nonce: ""                   # blank makes a fresh one per hop
+  timestamp: ""               # blank uses the current time
+  includePayloadHash: false   # true also signs the body and its Content-Type
+```
+
+The MAC covers the method, path and query, host and port, so a redirect is signed again; a hop
+to another origin is signed only when `forwardAuthorizationHeader` is on. A blank id or key, an
+unknown algorithm, a timestamp that is not a whole number or an attribute outside printable
+ASCII stops the request before it is sent, and the error never shows the key. The key, the
+header and its MAC are hidden in history, reports and the Timeline. Postman, Insomnia and
+Hoppscotch Hawk auth import as this kind, and Postman export maps it back.
+
+`--auth-json` and MCP take every field in snake_case:
+
+```sh
+apinata item request users/get.yml --auth-json '{"type": "hawk", "auth_id": "dh37fgj492je",
+  "auth_key": "{{hawk_key}}", "algorithm": "sha256", "ext": "", "app": "", "dlg": "",
+  "nonce": "", "timestamp": "", "include_payload_hash": false}'
+```
 
 ### Team servers
 
