@@ -1,0 +1,10 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+wget --quiet --output-document=- --content-on-error --method='POST' \
+  --header='X-H: it'\''s "q" \ $HOME {x} ü' \
+  --header='content-type: text/plain' \
+  --body-data='a'\''b"c\d $e {f}	g
+ü€ end' \
+  'http://x.test/p?x=a%27b$c{d}&y=%C3%BC'

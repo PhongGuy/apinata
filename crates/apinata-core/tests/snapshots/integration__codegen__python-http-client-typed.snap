@@ -1,0 +1,19 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&typed(), target)"
+---
+# http.client does not follow redirects; this prints the first response.
+import http.client
+
+conn = http.client.HTTPConnection('x.test')
+headers = {
+    'Content-Type': 'multipart/form-data; boundary=apinata-boundary-5f0c2e9a7d4b',
+}
+body = b''.join([
+    '--apinata-boundary-5f0c2e9a7d4b\r\nContent-Disposition: form-data; name="j"\r\nContent-Type: application/json\r\n\r\n{"a": "x﻿y"}\r\n--apinata-boundary-5f0c2e9a7d4b\r\nContent-Disposition: form-data; name="t"\r\n\r\nplain\r\n--apinata-boundary-5f0c2e9a7d4b--\r\n'.encode('utf-8'),
+])
+
+conn.request('POST', '/t', body=body, headers=headers)
+response = conn.getresponse()
+print(response.status)
+print(response.read().decode('utf-8', 'replace'))
