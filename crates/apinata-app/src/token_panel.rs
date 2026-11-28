@@ -341,7 +341,7 @@ impl TokenPanel {
             let planned = match planned {
                 Ok(p) => {
                     let ctx = this
-                        .update(cx, |_, cx| settings::with_request_timeout(&p.context, cx))
+                        .update(cx, |_, cx| settings::with_send_settings(&p.context, cx))
                         .unwrap_or_else(|_| p.context.clone());
                     planned_target(target, &p.plan).map(|which| (which, ctx))
                 }

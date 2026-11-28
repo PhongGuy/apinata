@@ -1,10 +1,9 @@
-//! The file pass: body files and client certificate files must exist, inside the root.
-
-use std::path::Path;
+//! The file pass: body files and client certificate files must exist, inside the root unless
+//! the context reads files anywhere.
 
 use super::report::{Finding, FindingKind, Severity};
 use crate::CertificateFiles;
-use crate::execute::escapes_root;
+use crate::file_access::ReadFailure;
 use crate::resolve::ResolvedRequest;
 
 /// Check every file one resolved request names. Only metadata is read, never contents.
@@ -23,12 +22,15 @@ pub(super) fn check_files(
             message,
         ));
     };
+    let scope = resolved.file_scope();
     for file in resolved.files() {
         let written = file.written.display();
-        if escapes_root(&file.given) {
-            missing(format!("file `{written}` is outside the collection"));
-        } else if !exists(&file.path) {
-            missing(format!("file `{written}` does not exist"));
+        match scope.probe(&file.given) {
+            Ok(()) => {}
+            Err(ReadFailure::Outside) => {
+                missing(format!("file `{written}` is outside the collection"));
+            }
+            Err(ReadFailure::Io(_)) => missing(format!("file `{written}` does not exist")),
         }
     }
     let Some(cert) = resolved.network().certificate() else {
@@ -42,15 +44,14 @@ pub(super) fn check_files(
         CertificateFiles::Pkcs12 { file } => vec![file],
     };
     for path in paths {
-        if !exists(&path.read) {
-            missing(format!(
-                "client certificate file `{}` does not exist",
-                path.written
-            ));
-        }
+        let problem = match path.scope.probe(&path.given) {
+            Ok(()) => continue,
+            Err(ReadFailure::Outside) => "is outside the collection",
+            Err(ReadFailure::Io(_)) => "does not exist",
+        };
+        missing(format!(
+            "client certificate file `{}` {problem}",
+            path.written
+        ));
     }
-}
-
-fn exists(path: &Path) -> bool {
-    std::fs::metadata(path).is_ok()
 }

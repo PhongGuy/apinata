@@ -11,6 +11,9 @@
     clippy::missing_assert_message,
     clippy::unwrap_used
 )]
+// The iterated runner's future nests the executor's send, whose layout query outgrows the
+// default depth.
+#![recursion_limit = "256"]
 
 mod asap_auth;
 mod check_files;

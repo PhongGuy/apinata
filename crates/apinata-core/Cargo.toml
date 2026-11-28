@@ -72,6 +72,8 @@ rsa.workspace = true
 aws-sigv4.workspace = true
 aws-credential-types.workspace = true
 zip.workspace = true
+# Opens collection files beneath the root in one step, so a swapped symlink cannot escape it.
+cap-std.workspace = true
 keyring-core = { workspace = true, optional = true }
 minisign-verify = { workspace = true, optional = true }
 semver = { workspace = true, optional = true }

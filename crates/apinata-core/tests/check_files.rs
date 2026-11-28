@@ -1,5 +1,5 @@
 use crate::common;
-use apinata_core::{CheckOptions, FindingKind, Severity};
+use apinata_core::{CheckOptions, FileAccess, FindingKind, Severity};
 use common::{ROOT, check_tree};
 
 fn req(body: &str) -> String {
@@ -125,15 +125,25 @@ fn a_client_certificate_path_is_checked_for_existence_only() {
         ])
         .is_empty()
     );
+    let outside = [
+        (
+            "opencollection.yml",
+            root_with_cert(&pem.display().to_string()),
+        ),
+        ("a.yml", req("")),
+    ];
+    let outside: Vec<(&str, &str)> = outside.iter().map(|(p, t)| (*p, t.as_str())).collect();
+    let anywhere = CheckOptions::default().file_access(FileAccess::Anywhere);
+    let (_d, r) = check_tree(&outside, &anywhere);
+    assert!(r.findings().is_empty(), "{:?}", r.findings());
+    // Inside-only access names an absolute certificate as outside, without opening it.
+    let found = kinds(&outside);
+    assert!(!found.is_empty(), "{found:?}");
     assert!(
-        kinds(&[
-            (
-                "opencollection.yml",
-                &root_with_cert(&pem.display().to_string())
-            ),
-            ("a.yml", &req(""))
-        ])
-        .is_empty()
+        found
+            .iter()
+            .all(|f| f.2.contains("is outside the collection")),
+        "{found:?}"
     );
     let found = kinds(&[
         ("opencollection.yml", &root_with_cert("gone.pem")),
@@ -344,4 +354,32 @@ fn a_multipart_path_is_interpolated_before_the_existence_check() {
     ]);
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].2, "file `{{f}}` does not exist");
+}
+
+#[cfg(unix)]
+#[test]
+fn files_linked_out_of_the_root_are_named_as_outside() {
+    use std::os::unix::fs::symlink;
+    let outside = tempfile::tempdir().unwrap();
+    let target = outside.path().join("x.pem");
+    std::fs::write(&target, "never read").unwrap();
+    let dir = common::write_tree(&[
+        ("opencollection.yml", &root_with_cert("link.pem")),
+        ("a.yml", &req(&file_body("link.json"))),
+    ]);
+    symlink(&target, dir.path().join("link.pem")).unwrap();
+    symlink(&target, dir.path().join("link.json")).unwrap();
+    let report = apinata_core::check_collection(dir.path(), &CheckOptions::default()).unwrap();
+    let found: Vec<&str> = report.findings().iter().map(|f| f.message()).collect();
+    assert!(
+        found.contains(&"file `link.json` is outside the collection"),
+        "{found:?}"
+    );
+    assert!(
+        found.contains(&"client certificate file `link.pem` is outside the collection"),
+        "{found:?}"
+    );
+    let anywhere = CheckOptions::default().file_access(FileAccess::Anywhere);
+    let report = apinata_core::check_collection(dir.path(), &anywhere).unwrap();
+    assert!(report.findings().is_empty(), "{:?}", report.findings());
 }

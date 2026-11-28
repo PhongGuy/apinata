@@ -5,8 +5,9 @@ use std::sync::Arc;
 
 use pkcs8::der::pem::LineEnding;
 
-use crate::document::{read_regular, read_regular_async};
+use crate::document::read_regular;
 use crate::execute::ExecError;
+use crate::file_access::ReadFailure;
 
 use super::{CertPath, CertificateFiles, Preloaded, ResolvedCertificate};
 
@@ -126,15 +127,21 @@ async fn read_given(
 ) -> Result<Vec<u8>, ExecError> {
     match preloaded.and_then(|p| p.0.get(at)) {
         Some(Ok(bytes)) => Ok(bytes.clone()),
-        Some(Err(message)) => Err(failure(&file.written, message.clone())),
+        Some(Err(err)) => Err(err.clone()),
         None => read(file).await,
     }
 }
 
-async fn read(file: &CertPath) -> Result<Vec<u8>, ExecError> {
-    read_regular_async(&file.read)
+pub(crate) async fn read(file: &CertPath) -> Result<Vec<u8>, ExecError> {
+    file.scope
+        .read_async(&file.given)
         .await
-        .map_err(|e| failure(&file.written, e.to_string()))
+        .map_err(|e| match e {
+            ReadFailure::Outside => ExecError::FileOutsideCollection {
+                path: PathBuf::from(&file.written),
+            },
+            ReadFailure::Io(e) => failure(&file.written, e.to_string()),
+        })
 }
 
 /// The first private key in `text` as an unencrypted PEM block, decrypting an encrypted PKCS#8
@@ -188,6 +195,7 @@ fn sections(text: &str) -> Vec<(&str, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::file_access::{FileAccess, FileScope};
 
     fn fixture(name: &str) -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -206,6 +214,8 @@ mod tests {
         let path = |p: &PathBuf| CertPath {
             read: p.clone(),
             written: p.display().to_string(),
+            given: p.clone(),
+            scope: FileScope::new(dir.path(), FileAccess::Anywhere),
         };
         let resolved = ResolvedCertificate::new(
             "127.0.0.1".into(),
@@ -224,7 +234,8 @@ mod tests {
         std::fs::copy(fixture("server.key"), &key).unwrap();
         let sent = load_identity(&resolved, Some(&loaded)).await.unwrap();
         assert_eq!(sent, original);
-        let unread = Preloaded(vec![Err("gone".into()), Err("gone".into())]);
+        let gone = || Err(failure("c.pem", "gone"));
+        let unread = Preloaded(vec![gone(), gone()]);
         assert!(load_identity(&resolved, Some(&unread)).await.is_err());
     }
 }

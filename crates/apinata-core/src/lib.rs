@@ -44,6 +44,7 @@ mod error;
 mod example;
 mod execute;
 pub mod export;
+mod file_access;
 mod git;
 mod global_env;
 mod graphql_query;
@@ -194,6 +195,7 @@ pub use edit::{
     OAuth2Stage, Param, ParamKind, RequestSettings, Timeout, TlsVerify, TokenPlacement,
     TokenSource, VarValue, Variable, collection_relative, parse_auth_json,
 };
+pub use file_access::FileAccess;
 // The auth JSON parser's two paths, for the test that holds them equal.
 pub use connection::{TlsDetails, TlsVersion, status_description};
 pub use content_type_conflict::{ContentTypeConflict, body_content_type, content_type_conflict};

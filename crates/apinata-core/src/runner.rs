@@ -757,6 +757,11 @@ impl RunError {
     /// The hint rendered for the command line by [`UndefinedHint::cli_text`].
     pub fn cli_hint(&self) -> Option<String> {
         match self {
+            RunError::Resolve(ResolveError::FileOutsideCollection { .. })
+            | RunError::Exec(ExecError::FileOutsideCollection { .. })
+            | RunError::OAuth2(OAuth2Error::Exec(ExecError::FileOutsideCollection { .. })) => {
+                Some("pass --allow-outside-files to read files outside the collection".to_owned())
+            }
             RunError::Resolve(e) | RunError::OAuth2(OAuth2Error::Resolve(e)) => e.cli_hint(),
             _ => None,
         }

@@ -2,6 +2,8 @@
 
 // A binary with no caller to hand an error to: an expect that fires is a bug report naming why.
 #![allow(clippy::expect_used)]
+// The run future nests the executor's send, whose layout query outgrows the default depth.
+#![recursion_limit = "256"]
 
 #[macro_use]
 mod out;
@@ -1515,6 +1517,10 @@ pub struct RunArgs {
     /// Accept invalid TLS certificates for every request, over its own certificate setting.
     #[arg(long)]
     pub insecure: bool,
+    /// Let the collection name body, key and certificate files outside its folder; without it,
+    /// such a file is refused and nothing is sent.
+    #[arg(long)]
+    pub allow_outside_files: bool,
     /// Do not store or send cookies between requests in this run.
     #[arg(long)]
     pub disable_cookies: bool,

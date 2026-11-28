@@ -82,14 +82,6 @@ pub(crate) fn read_regular(path: &Path) -> std::io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
-/// The bytes at `path`, read through [`open_regular_async`].
-pub(crate) async fn read_regular_async(path: &Path) -> std::io::Result<Vec<u8>> {
-    let mut bytes = Vec::new();
-    let mut file = open_regular_async(path).await?;
-    tokio::io::AsyncReadExt::read_to_end(&mut file, &mut bytes).await?;
-    Ok(bytes)
-}
-
 /// [`read_regular`] as UTF-8 text; other bytes are `InvalidData`.
 pub(crate) fn read_regular_text(path: &Path) -> std::io::Result<String> {
     String::from_utf8(read_regular(path)?)

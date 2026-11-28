@@ -19,6 +19,7 @@ use crate::dynamic::Generator;
 use crate::env_overlay::{EnvOverlay, OverlayLayer};
 use crate::environment::{EnvValue, ResolvedEnv, resolve_environment};
 use crate::error::{ContextError, UndefinedHint};
+use crate::file_access::{FileAccess, FileScope};
 use crate::global_env::GlobalEnvironments;
 use crate::interpolate::{Tracker, Vars, interpolate_lenient};
 use crate::iteration_data::IterationData;
@@ -55,6 +56,7 @@ pub struct ContextOptions {
     client_certificates: Vec<ClientCertificate>,
     oauth2_tokens: Option<TokenCache>,
     aws_shared_files: Option<AwsSharedFiles>,
+    file_access: FileAccess,
 }
 
 /// The environment a context uses: one of the collection's, or a file from outside it.
@@ -210,6 +212,13 @@ impl ContextOptions {
         self.aws_shared_files = Some(files);
         self
     }
+
+    /// Where the files the collection names may be read from; [`FileAccess::Collection`]
+    /// unless set.
+    pub fn file_access(mut self, access: FileAccess) -> ContextOptions {
+        self.file_access = access;
+        self
+    }
 }
 
 /// Every variable layer that does not depend on the request being resolved.
@@ -271,6 +280,10 @@ pub struct VarContext {
     prompt_values: Option<Arc<Vec<(String, String)>>>,
     /// The timeout for requests that inherit theirs; `None` means no limit.
     default_timeout: Option<Duration>,
+    /// See [`ContextOptions::file_access`].
+    file_access: FileAccess,
+    /// How many of `network`'s certificates the collection wrote; the options' come after.
+    own_certificates: usize,
 }
 
 impl VarContext {
@@ -376,6 +389,7 @@ impl VarContext {
         let mut captures = BTreeMap::new();
         collect_captures(collection, collection.tree(), &mut captures);
         let mut network = read_network(collection.root_document());
+        let own_certificates = network.certificates.len();
         network.certificates.extend(options.client_certificates);
         let flow = collection
             .root_document()
@@ -419,6 +433,8 @@ impl VarContext {
             iteration_row: None,
             prompt_values: None,
             default_timeout: None,
+            file_access: options.file_access,
+            own_certificates,
         })
     }
 
@@ -541,6 +557,35 @@ impl VarContext {
     /// The timeout given to requests that inherit theirs.
     pub(crate) fn default_timeout(&self) -> Option<Duration> {
         self.default_timeout
+    }
+
+    /// A clone that reads the files the collection names under `access`.
+    pub fn with_file_access(&self, access: FileAccess) -> VarContext {
+        let mut ctx = self.clone();
+        ctx.file_access = access;
+        ctx
+    }
+
+    /// Where the files the collection names may be read from.
+    pub fn file_access(&self) -> FileAccess {
+        self.file_access
+    }
+
+    /// The root and access the collection's own files are read under.
+    pub(crate) fn file_scope(&self) -> FileScope {
+        FileScope::new(&self.root, self.file_access)
+    }
+
+    /// How many of [`VarContext::network`]'s certificates the collection names; the options'
+    /// follow them.
+    pub(crate) fn collection_certificates(&self) -> usize {
+        self.own_certificates
+    }
+
+    /// Whether certificate `index` of [`VarContext::network`] came from the options, which name
+    /// files on the caller's authority rather than the collection's.
+    pub(crate) fn is_option_certificate(&self, index: usize) -> bool {
+        index >= self.own_certificates
     }
 
     /// Whether this context holds an answer for the prompt `label`.
@@ -1232,7 +1277,7 @@ impl VarContext {
     }
 
     /// The collection root, against which relative file paths in bodies resolve.
-    pub(crate) fn root(&self) -> &Path {
+    pub fn root(&self) -> &Path {
         &self.root
     }
 

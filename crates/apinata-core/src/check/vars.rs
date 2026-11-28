@@ -401,7 +401,7 @@ fn no_value_warnings(
 
 /// The caller's options with no placeholders added.
 fn plain_options(opts: &CheckOptions, env: Option<&str>) -> ContextOptions {
-    let mut o = ContextOptions::new();
+    let mut o = ContextOptions::new().file_access(opts.file_access);
     if let Some(name) = env {
         o = o.env(name);
     }
@@ -464,7 +464,7 @@ fn options(
     env: Option<&str>,
     undefined: &[String],
 ) -> ContextOptions {
-    let mut o = ContextOptions::new();
+    let mut o = ContextOptions::new().file_access(opts.file_access);
     if let Some(name) = env {
         o = o.env(name);
         if let Some(resolved) = resolve_environment(collection.environments(), name) {

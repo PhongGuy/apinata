@@ -274,12 +274,11 @@ fn cert_collection(entries: &[(&str, &str)]) -> TempDir {
 
 #[tokio::test]
 async fn a_certificate_reorder_that_changes_the_chosen_certificate_asks() {
-    let (a, b) = (
-        (fixture("client.pem"), fixture("client.key")),
-        (fixture("server.pem"), fixture("server.key")),
-    );
-    let order = [(a.0.as_str(), a.1.as_str()), (b.0.as_str(), b.1.as_str())];
+    let order = [("client.pem", "client.key"), ("server.pem", "server.key")];
     let dir = cert_collection(&order);
+    for name in ["client.pem", "client.key", "server.pem", "server.key"] {
+        fs::copy(fixture(name), dir.path().join(name)).unwrap();
+    }
     let store = dir.path().join("ack.json");
     let (c, seen) = check(&store, Send, Cancel);
     send(dir.path(), "a.yml", c.clone()).await;

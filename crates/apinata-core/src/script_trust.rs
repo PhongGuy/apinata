@@ -1,6 +1,8 @@
-//! The per-user script trust file: whether each collection may run scripts, and the exact
-//! script texts the user approved for agent-driven sends, keyed by canonical collection root.
+//! The per-user script trust file: whether each collection may run scripts, the exact script
+//! texts the user approved for agent-driven sends, and whether its requests may read files
+//! outside it, keyed by canonical collection root.
 
+use crate::file_access::FileAccess;
 use crate::trust::{TrustError, key, symlink_target, write_atomic};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -53,6 +55,7 @@ pub struct ScriptTrust {
 struct Entry {
     decision: Option<ScriptDecision>,
     approved: BTreeSet<String>,
+    files: FileAccess,
 }
 
 // Values are read loosely so a hand-edited entry degrades to "absent" rather than failing
@@ -70,6 +73,8 @@ struct EntryFile {
     scripts: Option<serde_json::Value>,
     #[serde(default)]
     approved: Vec<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    files: Option<serde_json::Value>,
 }
 
 impl ScriptTrust {
@@ -122,7 +127,19 @@ impl ScriptTrust {
                     .filter(|h| is_script_hash(h))
                     .map(str::to_owned)
                     .collect();
-                (root, Entry { decision, approved })
+                // Only the exact word lifts the default; anything else keeps files inside.
+                let files = match entry.files.as_ref().and_then(|v| v.as_str()) {
+                    Some("anywhere") => FileAccess::Anywhere,
+                    _ => FileAccess::Collection,
+                };
+                (
+                    root,
+                    Entry {
+                        decision,
+                        approved,
+                        files,
+                    },
+                )
             })
             .collect();
         Ok(ScriptTrust { path, collections })
@@ -184,6 +201,18 @@ impl ScriptTrust {
             .and_then(|e| e.decision)
     }
 
+    /// Where `collection`'s requests may read the files they name; inside it until set.
+    pub fn file_access(&self, collection: &Path) -> FileAccess {
+        self.collections
+            .get(&key(collection))
+            .map_or(FileAccess::Collection, |e| e.files)
+    }
+
+    /// Record where `collection`'s requests may read the files they name.
+    pub fn set_file_access(&mut self, collection: &Path, access: FileAccess) {
+        self.collections.entry(key(collection)).or_default().files = access;
+    }
+
     /// Record `collection`'s decision; `None` makes it undecided. Approvals are kept.
     pub fn set_decision(&mut self, collection: &Path, decision: Option<ScriptDecision>) {
         self.collections
@@ -223,16 +252,19 @@ impl ScriptTrust {
     }
 
     /// Write the file atomically as pretty JSON, creating the directory and dropping
-    /// collections with no decision and no approvals.
+    /// collections with no decision, no approvals and files kept inside.
     pub fn save(&self) -> Result<(), TrustError> {
         let collections = self
             .collections
             .iter()
-            .filter(|(_, e)| e.decision.is_some() || !e.approved.is_empty())
+            .filter(|(_, e)| {
+                e.decision.is_some() || !e.approved.is_empty() || e.files != FileAccess::Collection
+            })
             .map(|(root, e)| {
                 let entry = EntryFile {
                     scripts: e.decision.map(|d| d.name().into()),
                     approved: e.approved.iter().map(|h| h.as_str().into()).collect(),
+                    files: (e.files == FileAccess::Anywhere).then(|| "anywhere".into()),
                 };
                 (root.clone(), entry)
             })

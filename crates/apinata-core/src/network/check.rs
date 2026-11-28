@@ -12,15 +12,14 @@ use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 use std::time::SystemTime;
 
 use super::fingerprint::{
-    AckState, Expanded, NetworkAck, NetworkChange, NetworkSnapshot, content_hash, expand_fixed,
-    path_hash, root_key, scope_expansions, templates,
+    AckState, CertFiles, Expanded, NetworkAck, NetworkChange, NetworkSnapshot, content_hash,
+    expand_fixed, root_key, scope_expansions, templates,
 };
 use super::model::CollectionNetwork;
 use super::resolved::domain_matches;
 use super::{CertificateFiles, RequestNetwork};
 use crate::cancel::CancelHandle;
 use crate::context::VarContext;
-use crate::document::read_regular_async;
 use crate::dynamic::{Generator, next_generated};
 use crate::execute::ExecError;
 use crate::interpolate::{Vars, interpolate_tracked};
@@ -181,6 +180,7 @@ impl fmt::Debug for NetworkCheck {
 #[derive(Clone, PartialEq)]
 pub(crate) struct NetworkBasis {
     root: PathBuf,
+    files: CertFiles,
     network: CollectionNetwork,
     url: String,
     collection: BTreeMap<String, Expanded>,
@@ -266,6 +266,7 @@ impl NetworkBasis {
         let send = expand_all(&network, vars);
         NetworkBasis {
             root: ctx.root().to_path_buf(),
+            files: CertFiles::of_context_network(ctx),
             collection: scope_expansions(&network, ctx),
             baseline: expand_all(&network, &scope),
             verified: consistent(&send, actual),
@@ -278,7 +279,7 @@ impl NetworkBasis {
 
     /// The collection's settings as the Network section would show them.
     fn collection_snapshot(&self, salt: &str) -> NetworkSnapshot {
-        NetworkSnapshot::from_expansions(&self.network, &self.collection, &self.root, salt)
+        NetworkSnapshot::from_expansions(&self.network, &self.collection, &self.files, salt)
     }
 
     // A text as `values` expanded it, secret when it holds any of `sensitive`, so the send's
@@ -325,7 +326,7 @@ impl NetworkBasis {
         loaded: &Preloaded,
     ) -> NetworkSnapshot {
         let expand = |t: &str| Self::label(t, &self.send, sensitive);
-        let content = |i: usize, _: &Expanded| match loaded.0.get(i) {
+        let content = |_: usize, i: usize, _: &Expanded| match loaded.0.get(i) {
             Some(Ok(bytes)) => content_hash(bytes),
             _ => "unreadable".to_owned(),
         };
@@ -348,8 +349,11 @@ impl NetworkBasis {
                     _ => false,
                 }
         });
-        let root = &self.root;
-        let content = |_: usize, p: &Expanded| path_hash(root, p);
+        // The one certificate left is the network's certificate `chosen`.
+        let files = &self.files;
+        let content = |_: usize, _: usize, p: &Expanded| {
+            chosen.map_or_else(|| "unreadable".to_owned(), |cert| files.hash(cert, p))
+        };
         NetworkSnapshot::build(&self.with_only(chosen), salt, &expand, Some(&content))
     }
 }
@@ -357,7 +361,7 @@ impl NetworkBasis {
 /// The bytes of the chosen certificate's files, read once by the check so the send loads
 /// exactly what was hashed; an entry is the read's error when the file could not be read.
 #[derive(Default)]
-pub(crate) struct Preloaded(pub(crate) Vec<Result<Vec<u8>, String>>);
+pub(crate) struct Preloaded(pub(crate) Vec<Result<Vec<u8>, ExecError>>);
 
 impl Preloaded {
     async fn read(network: &RequestNetwork) -> Preloaded {
@@ -373,11 +377,7 @@ impl Preloaded {
         };
         let mut out = Vec::new();
         for path in paths {
-            out.push(
-                read_regular_async(&path.read)
-                    .await
-                    .map_err(|e| e.to_string()),
-            );
+            out.push(super::identity::read(path).await);
         }
         Preloaded(out)
     }

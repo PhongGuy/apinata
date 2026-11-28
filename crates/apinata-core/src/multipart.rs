@@ -9,6 +9,7 @@ use std::sync::LazyLock;
 
 use regress::Regex;
 
+use crate::file_access::{FileScope, ReadFailure};
 use crate::mime_table::MIME_TYPES;
 
 /// One part of a multipart body: a field name, its text or file value, and an optional
@@ -169,12 +170,13 @@ pub fn file_content_type(path: &Path) -> &'static str {
         .map_or("application/octet-stream", |i| MIME_TYPES[i].1)
 }
 
-/// Frames `parts` under `boundary`, reading each file part from disk. On a read failure it
-/// returns the part's written path (else the path read) with the I/O error.
+/// Frames `parts` under `boundary`, reading each file part through `files`. On a read failure
+/// it returns the part's written path (else the path read) with the reason.
 pub(crate) async fn encode(
     parts: &[Part],
     boundary: &str,
-) -> Result<Vec<u8>, (PathBuf, std::io::Error)> {
+    files: &FileScope,
+) -> Result<Vec<u8>, (PathBuf, ReadFailure)> {
     let mut body = Vec::new();
     for part in parts {
         body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
@@ -183,7 +185,7 @@ pub(crate) async fn encode(
         let (bytes, looked_up) = match &part.value {
             PartValue::Text(text) => (text.as_bytes().to_vec(), None),
             PartValue::File(path) => {
-                let bytes = tokio::fs::read(path).await.map_err(|err| {
+                let bytes = files.read_body_async(path).await.map_err(|err| {
                     let shown = part
                         .written
                         .as_ref()
@@ -224,6 +226,10 @@ mod tests {
         golden.replace("<B>", boundary).into_bytes()
     }
 
+    fn anywhere() -> FileScope {
+        FileScope::new("/", crate::FileAccess::Anywhere)
+    }
+
     #[tokio::test]
     async fn text_parts_frame_as_form_data_does() {
         let parts = [
@@ -233,7 +239,9 @@ mod tests {
             Part::text("mp_obj", "{\"key\":\"value\"}"),
         ];
         let boundary = "--------------------------0123456789abcdef01234567";
-        let body = encode(&parts, boundary).await.expect("encodes");
+        let body = encode(&parts, boundary, &anywhere())
+            .await
+            .expect("encodes");
         assert_eq!(body, wire(FIXTURE_WIRE, boundary));
     }
 
@@ -261,7 +269,9 @@ mod tests {
             Part::file("many", &b),
             Part::text("empty", ""),
         ];
-        let body = encode(&parts, "XyZ123").await.expect("encodes");
+        let body = encode(&parts, "XyZ123", &anywhere())
+            .await
+            .expect("encodes");
         assert_eq!(
             String::from_utf8_lossy(&body),
             String::from_utf8_lossy(&wire(FILES_WIRE, "XyZ123"))
@@ -270,14 +280,18 @@ mod tests {
 
     #[tokio::test]
     async fn no_parts_is_an_empty_body_and_a_missing_file_names_its_path() {
-        assert_eq!(encode(&[], "b").await.expect("encodes"), b"");
+        assert_eq!(encode(&[], "b", &anywhere()).await.expect("encodes"), b"");
         let gone = Path::new("/nonexistent-apinata-dir/x.bin");
         let parts = [Part::text("a", "1"), Part::file("f", gone)];
-        let (path, _) = encode(&parts, "b").await.expect_err("missing file");
+        let (path, _) = encode(&parts, "b", &anywhere())
+            .await
+            .expect_err("missing file");
         assert_eq!(path, gone);
         // The path as the request file wrote it is reported instead, so no secret is shown.
         let parts = [Part::file("f", gone).with_written("{{token}}/x.bin")];
-        let (path, _) = encode(&parts, "b").await.expect_err("missing file");
+        let (path, _) = encode(&parts, "b", &anywhere())
+            .await
+            .expect_err("missing file");
         assert_eq!(path, Path::new("{{token}}/x.bin"));
     }
 

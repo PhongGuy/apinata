@@ -19,6 +19,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/PhongGuy/apinata"
 
 [workspace.dependencies]
+cap-std = "4.0.3"
 yaml_serde = "0.10.7"
 saphyr-parser = "=0.3.3"
 serde = { version = "1", features = ["derive"] }

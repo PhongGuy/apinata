@@ -351,11 +351,17 @@ async fn expecting_body(needle: &str, hits: u64) -> MockServer {
 
 /// Run a saved request from `elsewhere`, which holds nothing the request could point at.
 fn run_saved(file: &std::path::Path, elsewhere: &TempDir) {
+    run_saved_with(file, elsewhere, &[]);
+}
+
+/// As `run_saved`, with `extra` arguments to `run`.
+fn run_saved_with(file: &std::path::Path, elsewhere: &TempDir, extra: &[&str]) {
     apinata()
         .current_dir(elsewhere.path())
         .arg("run")
         .arg(file)
         .args(["--body", "--no-keychain"])
+        .args(extra)
         .assert()
         .code(0)
         .stdout("got it");
@@ -402,7 +408,8 @@ async fn save_keeps_a_body_file_outside_the_collection_absolute() {
     let saved = fs::read_to_string(&file).unwrap();
     let absolute = dir.path().join("o.txt");
     assert!(saved.contains(absolute.to_str().unwrap()), "{saved}");
-    run_saved(&file, &cwd());
+    // The saved request names a file outside its collection, so running it needs the flag.
+    run_saved_with(&file, &cwd(), &["--allow-outside-files"]);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -499,7 +506,8 @@ async fn mixed_parts_keep_the_inside_file_relative_and_the_outside_one_absolute(
         !saved.contains(coll.path().to_str().unwrap()),
         "the inside file was saved absolute: {saved}"
     );
-    run_saved(&file, &cwd());
+    // The saved request names a file outside its collection, so running it needs the flag.
+    run_saved_with(&file, &cwd(), &["--allow-outside-files"]);
 }
 
 // `--save` resolves the root through the link while the part names the link path, so only

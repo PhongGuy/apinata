@@ -60,6 +60,7 @@ mod network;
 mod oauth2;
 mod oauth2_token;
 mod output_schemas;
+mod outside_files;
 mod post_response_vars;
 mod prompt_vars;
 mod prompts;

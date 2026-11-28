@@ -183,6 +183,8 @@ impl CheckView {
             };
             opts = opts.global_env_var(v.name, value);
         }
+        // Files are judged as this collection's sends read them.
+        opts = opts.file_access(crate::settings::file_access(&self.root, cx));
         self.state = State::Running;
         self.selected = 0;
         let root = self.root.clone();

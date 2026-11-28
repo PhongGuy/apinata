@@ -1,6 +1,6 @@
 //! The per-user script trust file: decisions and approved hashes per canonical collection root.
 
-use apinata_core::{ScriptDecision, ScriptTrust, TrustError, script_hash};
+use apinata_core::{FileAccess, ScriptDecision, ScriptTrust, TrustError, script_hash};
 use std::fs;
 use tempfile::TempDir;
 
@@ -213,4 +213,41 @@ fn an_update_reports_an_unusable_directory_as_an_error() {
             assert!(!file.exists());
         }
     }
+}
+
+#[test]
+fn reading_files_outside_a_collection_is_off_until_set_and_round_trips() {
+    let state = TempDir::new().unwrap();
+    let coll = TempDir::new().unwrap();
+    let file = state.path().join("script-trust.json");
+    let mut trust = ScriptTrust::empty(&file);
+    assert_eq!(trust.file_access(coll.path()), FileAccess::Collection);
+    trust.set_file_access(coll.path(), FileAccess::Anywhere);
+    trust.save().unwrap();
+    let mut back = ScriptTrust::load(&file).unwrap();
+    assert_eq!(back.file_access(coll.path()), FileAccess::Anywhere);
+    assert_eq!(back.decision(coll.path()), None);
+    // Turning it off again leaves nothing to keep, so the entry is dropped.
+    back.set_file_access(coll.path(), FileAccess::Collection);
+    back.save().unwrap();
+    let json: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+    assert_eq!(json["collections"], serde_json::json!({}));
+}
+
+// The key is written by hand, which matches `key` only for a plain Unix path.
+#[cfg(unix)]
+#[test]
+fn an_unknown_files_value_reads_as_collection_only() {
+    let state = TempDir::new().unwrap();
+    let coll = TempDir::new().unwrap();
+    let file = state.path().join("script-trust.json");
+    let key = fs::canonicalize(coll.path()).unwrap();
+    let text = serde_json::json!({
+        "version": 1,
+        "collections": { key.to_str().unwrap(): { "files": "everywhere" } }
+    });
+    fs::write(&file, text.to_string()).unwrap();
+    let trust = ScriptTrust::load(&file).unwrap();
+    assert_eq!(trust.file_access(coll.path()), FileAccess::Collection);
 }

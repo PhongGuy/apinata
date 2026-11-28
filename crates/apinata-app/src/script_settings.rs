@@ -1,9 +1,9 @@
-//! The "Script trust" settings of a collection: whether its scripts run, from the per-user script
-//! trust file, which this view edits in place.
+//! The "Script trust" settings of a collection: whether its scripts run and whether its requests
+//! may read files outside it, from the per-user script trust file, which this view edits in place.
 
 use std::path::PathBuf;
 
-use apinata_core::{ScriptDecision, ScriptTrust};
+use apinata_core::{FileAccess, ScriptDecision, ScriptTrust};
 use gpui_kit::component::v_flex;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::prelude::*;
@@ -23,6 +23,9 @@ const CHOICES: [(&str, Option<ScriptDecision>); 3] = [
 /// When each option runs this collection's scripts, Ask's question first.
 pub const DECISION_NOTE: &str = "Ask: before a send runs scripts you did not write in the app, you choose whether to run them. Run scripts: always run them, unless Run scripts is set to Never in Preferences. Never: never run them.";
 
+/// What reading files outside the collection allows, under its checkbox.
+pub const OUTSIDE_FILES_NOTE: &str = "Off: a request can only send or sign with files inside this collection's folder. Turn it on only for a collection you trust, since its requests could then send any file you can read.";
+
 /// The option labels in order, for tests that pin the wording.
 pub fn choice_labels() -> [&'static str; 3] {
     CHOICES.map(|(label, _)| label)
@@ -33,6 +36,7 @@ pub struct ScriptSettingsView {
     trust_file: PathBuf,
     root: PathBuf,
     decision: Option<ScriptDecision>,
+    files: FileAccess,
     error: Option<String>,
     _subs: Vec<Subscription>,
 }
@@ -50,6 +54,7 @@ impl ScriptSettingsView {
             trust_file,
             root,
             decision: None,
+            files: FileAccess::Collection,
             error: None,
             _subs: subs,
         };
@@ -72,10 +77,12 @@ impl ScriptSettingsView {
         match ScriptTrust::load(&self.trust_file) {
             Ok(store) => {
                 self.decision = store.decision(&self.root);
+                self.files = store.file_access(&self.root);
                 self.error = None;
             }
             Err(e) => {
                 self.decision = None;
+                self.files = FileAccess::Collection;
                 self.error = Some(e.to_string());
             }
         }
@@ -107,6 +114,22 @@ impl ScriptSettingsView {
     }
 }
 
+impl ScriptSettingsView {
+    // Written under the store's lock like a decision; a send reads it fresh from the file.
+    fn set_files(&mut self, access: FileAccess, cx: &mut Context<Self>) {
+        let written = ScriptTrust::update(&self.trust_file, |store| {
+            store.set_file_access(&self.root, access);
+        });
+        match written {
+            Ok(()) => self.reload(cx),
+            Err(e) => {
+                self.error = Some(e.to_string());
+                cx.notify();
+            }
+        }
+    }
+}
+
 impl Render for ScriptSettingsView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // A decision this build does not know shows no option selected.
@@ -115,6 +138,7 @@ impl Render for ScriptSettingsView {
             .position(|(_, d)| *d == self.decision)
             .unwrap_or(CHOICES.len());
         let this = cx.entity().downgrade();
+        let files_view = this.clone();
         let group = ui::segmented(
             "script-decision",
             CHOICES.map(|(label, _)| label),
@@ -135,6 +159,19 @@ impl Render for ScriptSettingsView {
                 group,
             ))
             .child(ui::form_note("script-decision-note", DECISION_NOTE))
+            .child(
+                ui::checkbox("outside-files", self.files == FileAccess::Anywhere)
+                    .label("Read files outside this collection")
+                    .on_click(move |on, _, cx| {
+                        let access = if *on {
+                            FileAccess::Anywhere
+                        } else {
+                            FileAccess::Collection
+                        };
+                        let _ = files_view.update(cx, |v, cx| v.set_files(access, cx));
+                    }),
+            )
+            .child(ui::form_note("outside-files-note", OUTSIDE_FILES_NOTE))
             .when_some(self.error.clone(), |el, error| {
                 el.child(ui::form_note("config-scripts-error", untrusted_text(&error)).danger())
             })

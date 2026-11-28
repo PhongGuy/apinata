@@ -8,9 +8,9 @@ use crate::tree_support::ip;
 use apinata_core::legacy::plan_conversion;
 use apinata_core::watch::seams::gap_paths;
 use apinata_core::{
-    Collection, ContextOptions, DropTarget, ExecOptions, Executor, GlobalProxy, NetworkAck,
-    NetworkAnswer, NetworkCheck, NetworkQuestion, NetworkSettings, NetworkSnapshot, SaveError,
-    TreeError, VarContext,
+    ClientCertificate, Collection, ContextOptions, DropTarget, ExecOptions, Executor, FileAccess,
+    GlobalProxy, NetworkAck, NetworkAnswer, NetworkCheck, NetworkQuestion, NetworkSettings,
+    NetworkSnapshot, SaveError, TreeError, VarContext,
 };
 use common::{request, write_tree};
 use std::fs;
@@ -350,8 +350,8 @@ fn send_failure_on(root: &Path, pipe: &Path, options: ExecOptions) -> String {
 fn certificate_over_a_pipe() -> (TempDir, PathBuf) {
     let dir = TempDir::new().expect("tempdir");
     let pipe = dir.path().join("client.pem");
-    let key = pki("client.key").display().to_string();
-    let entry = [("127.0.0.1", pipe.to_str().expect("utf-8"), key.as_str(), "")];
+    fs::copy(pki("client.key"), dir.path().join("client.key")).expect("copy the key");
+    let entry = [("127.0.0.1", "client.pem", "client.key", "")];
     let root = root_with(&pem_certificates(&entry));
     let request = ITEM.replace("https://x.test/", "https://127.0.0.1:9/");
     for (rel, text) in [("opencollection.yml", &root), ("r.yml", &request)] {
@@ -407,6 +407,54 @@ fn a_pipe_certificate_hashes_as_a_missing_one() {
     assert_eq!(piped, snapshot_again());
 }
 
+// Read anywhere, as the options' certificates are, a pipe still hashes as a missing file.
+#[test]
+fn a_pipe_certificate_read_anywhere_hashes_as_a_missing_one() {
+    let (dir, pipe) = certificate_over_a_pipe();
+    let root = dir.path().to_path_buf();
+    let snapshot = move || {
+        let c = Collection::open(&root).expect("opens");
+        let anywhere = ContextOptions::new().file_access(FileAccess::Anywhere);
+        let ctx = VarContext::new(&c, anywhere).expect("context");
+        NetworkSnapshot::resolve(&c.file().network(), &ctx, "salt").fingerprint()
+    };
+    let snapshot_again = snapshot.clone();
+    let piped = finishes(&pipe, snapshot);
+    fs::remove_file(&pipe).unwrap();
+    assert_eq!(piped, snapshot_again());
+}
+
+#[test]
+fn a_pipe_as_an_option_certificate_fails_the_send() {
+    let (dir, pipe) = request_over_a_pipe("", "opt.pem");
+    let request = ITEM.replace("https://x.test/", "https://127.0.0.1:9/");
+    fs::write(dir.path().join("r.yml"), request).expect("write");
+    let root = dir.path().to_path_buf();
+    let (cert, key) = (
+        pipe.display().to_string(),
+        pki("client.key").display().to_string(),
+    );
+    let failure = finishes(&pipe, move || {
+        let c = Collection::open(&root).expect("opens");
+        let options = ContextOptions::new().client_certificates(vec![ClientCertificate::pem(
+            "127.0.0.1",
+            cert,
+            key,
+        )]);
+        let ctx = VarContext::new(&c, options).expect("context");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("a runtime");
+        let request = common::at(&c, &ctx, "r.yml").map_err(|e| e.to_string())?;
+        let executor = Executor::new(ExecOptions::new().network(no_proxy())).expect("executor");
+        let sent = runtime.block_on(executor.send(&request));
+        sent.map(|_| ()).map_err(|e| e.to_string())
+    })
+    .expect_err("a pipe is not a certificate");
+    assert!(failure.contains("not a regular file"), "{failure}");
+}
+
 #[test]
 fn a_pipe_as_the_network_record_reads_as_empty() {
     let dir = TempDir::new().expect("tempdir");
@@ -428,6 +476,14 @@ fn a_legacy_plan_passes_over_a_pipe_root_collection() {
     let root = dir.path().to_path_buf();
     let planned = finishes(&pipe, move || plan_conversion(&root).map(|_| ()));
     assert!(planned.is_ok(), "{planned:?}");
+}
+
+#[test]
+fn a_pipe_as_a_jwt_key_file_fails_the_send() {
+    let auth = "  auth:\n    type: jwt\n    algorithm: RS256\n    privateKey:\n      type: file\n      value: k.pem\n    payload: '{}'\n    placement: header\n";
+    let (dir, pipe) = request_over_a_pipe(auth, "k.pem");
+    let failure = send_failure(dir.path(), &pipe);
+    assert!(failure.contains("not a regular file"), "{failure}");
 }
 
 #[test]

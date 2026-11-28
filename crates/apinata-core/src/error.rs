@@ -118,6 +118,13 @@ pub enum SaveError {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum ResolveError {
+    /// A key file the request names lies outside the collection, so it was not read.
+    #[error("{}: outside the collection", path.display())]
+    #[non_exhaustive]
+    FileOutsideCollection {
+        /// The path as the request file wrote it, never interpolated.
+        path: std::path::PathBuf,
+    },
     /// Prompt variables `{{?label}}` the request needs have no answer.
     #[error("no value for prompt variables: {}", labels.join(", "))]
     PromptRequired {

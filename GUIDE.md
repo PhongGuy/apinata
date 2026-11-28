@@ -633,6 +633,7 @@ Network:
 | `--cacert <FILE>` | Also trust the CA certificates in this PEM file. |
 | `--ignore-truststore` | With `--cacert`, trust only that file and not the system's certificates. |
 | `--client-cert-config <FILE>` | Add client certificates from a JSON file (`{"enabled": true, "certs": [...]}`). |
+| `--allow-outside-files` | Read body, key and client certificate files the collection names outside its folder. Without it such a file is refused and nothing is sent. Certificates from `--client-cert-config` and files given to `apinata send` are always read. |
 | `--noproxy` | Connect directly, ignoring the collection's proxy and the system's. |
 | `--proxy-pac <URL\|PATH>` | Pick the proxy for requests that use the global proxy setting from this proxy auto-config (PAC) file. Not with `--noproxy`. |
 | `--http-version <VERSION>` | `1.1` sends HTTP/1.1 only, `auto` uses HTTP/2 over HTTPS when the server offers it, and `2-prior-knowledge` uses HTTP/2 without asking, plain `http` too. Given, it overrides every request's own `httpVersion`; left out, each request chooses and HTTP/1.1 is the default. |

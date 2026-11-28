@@ -15,7 +15,6 @@ use crate::aws_profile::profile_keys;
 use crate::collection::Collection;
 use crate::context::{Defaults, VarContext};
 use crate::decomment::decomment;
-use crate::document::read_regular_text;
 use crate::dynamic::{Generator, mock};
 use crate::edgegrid;
 use crate::edit::KeyValue;
@@ -28,6 +27,7 @@ use crate::edit::{
 use crate::edit::{Param, ParamKind};
 use crate::encode_url::{authority_span, encode_url};
 use crate::error::ResolveError;
+use crate::file_access::{FileAccess, FileScope, ReadFailure};
 use crate::hawk;
 use crate::header_check::header_problem;
 use crate::interpolate::{Tracker, Vars, interpolate, interpolate_tracked};
@@ -72,6 +72,8 @@ pub struct ResolvedRequest {
     url_text: String,
     /// The files the body reads, in body order.
     files: Vec<FileRef>,
+    /// The root and access every file the request names is read under.
+    file_scope: FileScope,
     network: RequestNetwork,
     /// Auth the executor applies per hop; never printed by `Debug`.
     send_auth: Option<SendAuth>,
@@ -417,6 +419,11 @@ impl ResolvedRequest {
     /// The files the body reads, in body order.
     pub(crate) fn files(&self) -> &[FileRef] {
         &self.files
+    }
+
+    /// The root and access the request's files are read under.
+    pub(crate) fn file_scope(&self) -> &FileScope {
+        &self.file_scope
     }
 
     /// The proxy and client certificate the collection chose for this request.
@@ -879,7 +886,7 @@ pub fn resolve_prepared(
         };
         let signed = match &auth {
             Some(auth) => {
-                match place_jwt_token(auth, &scope, ctx.root(), &mut headers, &mut url)? {
+                match place_jwt_token(auth, &scope, &ctx.file_scope(), &mut headers, &mut url)? {
                     Some(signed) => Some(signed),
                     None => place_asap_token(auth, &scope, &mut headers)?,
                 }
@@ -974,6 +981,7 @@ pub fn resolve_prepared(
             template_host: template_host(&with_scheme(template)).to_owned(),
             url_text,
             files,
+            file_scope: ctx.file_scope(),
             network,
             send_auth,
             auth_secrets,
@@ -1067,6 +1075,7 @@ pub(crate) fn token_request(
         secret_host,
         template_host: template_host(&with_scheme(template_url.to_owned())).to_owned(),
         files: Vec::new(),
+        file_scope: ctx.file_scope(),
         network,
         send_auth: None,
         auth_secrets: Vec::new(),
@@ -1159,6 +1168,7 @@ pub(crate) fn script_request(
             false => template_host(&url_text).to_owned(),
         },
         files: Vec::new(),
+        file_scope: ctx.file_scope(),
         network,
         send_auth: None,
         auth_secrets: Vec::new(),
@@ -1244,10 +1254,19 @@ fn resolve_network(
         if !domain_matches(&domain, url) {
             continue;
         }
+        // Certificates the caller passed in name files on its own authority, not the collection's.
+        let scope = if ctx.is_option_certificate(index) {
+            FileScope::new(ctx.root(), FileAccess::Anywhere)
+        } else {
+            ctx.file_scope()
+        };
         let path = |written: &String| -> Result<CertPath, ResolveError> {
+            let given = PathBuf::from(expand(&extras, written)?);
             Ok(CertPath {
-                read: ctx.root().join(expand(&extras, written)?),
+                read: ctx.root().join(&given),
                 written: written.clone(),
+                given,
+                scope: scope.clone(),
             })
         };
         let files = match &cert.kind {
@@ -1775,10 +1794,27 @@ fn place_oauth2_token(
 /// Signs the token of a jwt `auth` and puts it in the header or query parameter its settings
 /// name. Returns the values to hide (the secret, inline key text and token) and the token, or
 /// `None` for any other auth. Every field is expanded before any check, so a variable error wins.
+/// The text of the key file the request wrote as `written`, which expanded to `path`. A path
+/// outside the collection is `Err(Ok(..))` with the written path; a read failure `Err(Err(..))`.
+fn read_key_file(
+    files: &FileScope,
+    written: &str,
+    path: &str,
+) -> Result<String, Result<ResolveError, std::io::Error>> {
+    let bytes = files.read(Path::new(path)).map_err(|e| match e {
+        ReadFailure::Outside => Ok(ResolveError::FileOutsideCollection {
+            path: PathBuf::from(written),
+        }),
+        ReadFailure::Io(e) => Err(e),
+    })?;
+    String::from_utf8(bytes)
+        .map_err(|e| Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))
+}
+
 fn place_jwt_token(
     auth: &Mapping,
     scope: &Scope,
-    root: &Path,
+    files: &FileScope,
     headers: &mut Vec<(String, String)>,
     url: &mut Url,
 ) -> Result<Option<(Vec<String>, String)>, ResolveError> {
@@ -1824,8 +1860,14 @@ fn place_jwt_token(
             Some((_, value)) if value.is_empty() => String::new(),
             // Inline text may carry its line breaks as literal `\n`, as a one-line field must.
             Some((OAuth1KeyKind::Text, text)) => text.replace("\\n", "\n"),
-            Some((_, path)) => read_regular_text(&root.join(&path))
-                .map_err(|e| fail(format!("cannot read the private key file `{path}`: {e}")))?,
+            Some((_, path)) => {
+                let written = spec.private_key.as_ref().map_or("", |k| k.value.as_str());
+                read_key_file(files, written, &path).map_err(|e| {
+                    e.unwrap_or_else(|e| {
+                        fail(format!("cannot read the private key file `{path}`: {e}"))
+                    })
+                })?
+            }
             None => String::new(),
         };
         jwt_auth::Key::Pem(pem)
@@ -2033,7 +2075,7 @@ fn per_hop_auth(
         }
         Some("oauth1") => {
             let spec = OAuth1Spec::from_yaml(&Value::Mapping(auth.clone()));
-            let signer = oauth1_signer(&spec, scope, ctx.root(), secrets)?;
+            let signer = oauth1_signer(&spec, scope, &ctx.file_scope(), secrets)?;
             Ok(Some(SendAuth::OAuth1(Box::new(signer))))
         }
         Some("wsse") => {
@@ -2100,7 +2142,7 @@ fn per_hop_auth(
 fn oauth1_signer(
     spec: &OAuth1Spec,
     scope: &Scope,
-    root: &Path,
+    files: &FileScope,
     secrets: &mut Vec<String>,
 ) -> Result<oauth1::Signer, ResolveError> {
     let field = |value: &Option<String>| scope.expand(value.as_deref().unwrap_or_default());
@@ -2159,10 +2201,16 @@ fn oauth1_signer(
             secrets.push(text.clone());
             Some(text.replace("\\n", "\n"))
         }
-        Some((_, path)) => match read_regular_text(&root.join(&path)) {
-            Ok(pem) => Some(pem),
-            Err(e) => return fail(format!("cannot read the private key file `{path}`: {e}")),
-        },
+        Some((_, path)) => {
+            let written = spec.private_key.as_ref().map_or("", |k| k.value.as_str());
+            match read_key_file(files, written, &path) {
+                Ok(pem) => Some(pem),
+                Err(Err(e)) => {
+                    return fail(format!("cannot read the private key file `{path}`: {e}"));
+                }
+                Err(Ok(outside)) => return Err(outside),
+            }
+        }
         None => None,
     };
     let Some(pem) = pem else {
